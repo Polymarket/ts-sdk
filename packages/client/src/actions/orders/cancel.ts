@@ -5,14 +5,13 @@ import {
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { SecureClient } from '../../clients';
-import {
-  CancelError,
-  type RateLimitError,
+import type {
+  RateLimitError,
   RequestRejectedError,
-  type SigningError,
-  type TransportError,
-  type UnexpectedResponseError,
-  type UserInputError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
@@ -41,7 +40,7 @@ const CancelMarketOrdersRequestSchema = z
 export type CancelOrderRequest = z.input<typeof CancelOrderRequestSchema>;
 
 export type CancelOrderError =
-  | CancelError
+  | RequestRejectedError
   | RateLimitError
   | SigningError
   | TransportError
@@ -67,7 +66,7 @@ export async function cancelOrder(
 
 export type CancelOrdersRequest = z.input<typeof CancelOrdersRequestSchema>;
 export type CancelOrdersError =
-  | CancelError
+  | RequestRejectedError
   | RateLimitError
   | SigningError
   | TransportError
@@ -90,7 +89,7 @@ export async function cancelOrders(
 }
 
 export type CancelAllError =
-  | CancelError
+  | RequestRejectedError
   | RateLimitError
   | SigningError
   | TransportError
@@ -112,7 +111,7 @@ export type CancelMarketOrdersRequest = z.input<
   typeof CancelMarketOrdersRequestSchema
 >;
 export type CancelMarketOrdersError =
-  | CancelError
+  | RequestRejectedError
   | RateLimitError
   | SigningError
   | TransportError
@@ -147,15 +146,6 @@ async function cancel(
     client.secureClob
       .del(path, {
         json: payload,
-      })
-      .mapErr((error) => {
-        if (!(error instanceof RequestRejectedError)) {
-          return error;
-        }
-
-        return new CancelError(error.message, {
-          cause: error,
-        });
       })
       .andThen(validateWith(CancelOrdersResponseSchema)),
   );

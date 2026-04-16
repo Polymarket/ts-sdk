@@ -119,23 +119,6 @@ export class TransactionFailedError extends PolymarketError {
 }
 
 /**
- * Error thrown when the SDK cannot complete a cancel request.
- */
-export class CancelError extends PolymarketError {
-  override name = 'CancelError' as const;
-
-  constructor(message: string, options: ErrorOptions = {}) {
-    super(message, options);
-  }
-
-  static fromError(error: Error): CancelError {
-    return new CancelError(error.message, {
-      cause: error,
-    });
-  }
-}
-
-/**
  * Error thrown when the user cancels a required wallet signing action.
  */
 export class CancelledSigningError extends PolymarketError {
