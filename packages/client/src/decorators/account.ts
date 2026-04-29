@@ -40,43 +40,18 @@ import type {
 } from '../clients';
 import type { Paginated } from '../pagination';
 
-export type AccountPublicActions = {
-  /**
-   * Lists current positions for a wallet.
-   *
-   * @throws {@link ListPositionsError}
-   * Thrown on failure.
-   *
-   * @example
-   * Fetch the first page of results:
-   * ```ts
-   * const paginator = client.listPositions({
-   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
-   *   pageSize: 10,
-   * });
-   *
-   * const firstPage = await paginator.firstPage();
-   *
-   * // Optionally, fetch additional pages:
-   * for await (const page of paginator.from(firstPage.nextCursor)) {
-   *   // page.items: Position[]
-   * }
-   * ```
-   *
-   * @example
-   * Loop through all pages with `for await`:
-   * ```ts
-   * const paginator = client.listPositions({
-   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
-   *   pageSize: 10,
-   * });
-   *
-   * for await (const page of paginator) {
-   *   // page.items: Position[]
-   * }
-   * ```
-   */
-  listPositions(request: ListPositionsRequest): Paginated<Position>;
+export type SecureListPositionsRequest = Prettify<
+  Omit<ListPositionsRequest, 'user'> & {
+    /**
+     * Wallet address to list positions for.
+     *
+     * @defaultValue `client.account.wallet`
+     */
+    user?: ListPositionsRequest['user'];
+  }
+>;
+
+export type CommonAccountActions = {
   /**
    * Lists closed positions for a wallet.
    *
@@ -237,86 +212,141 @@ export type AccountPublicActions = {
   listActivity(request: ListActivityRequest): Paginated<Activity>;
 };
 
-export type AccountActions = Prettify<
-  AccountPublicActions & {
-    /**
-     * Lists trades for the authenticated account across all pages.
-     *
-     * @throws {@link ListAccountTradesError}
-     * Thrown on failure.
-     *
-     * @example
-     * Fetch the first page of results:
-     * ```ts
-     * const paginator = client.listAccountTrades({
-     *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
-     * });
-     *
-     * const firstPage = await paginator.firstPage();
-     *
-     * // Optionally, fetch additional pages:
-     * for await (const page of paginator.from(firstPage.nextCursor)) {
-     *   // page.items: ClobTrade[]
-     * }
-     * ```
-     *
-     * @example
-     * Loop through all pages with `for await`:
-     * ```ts
-     * const paginator = client.listAccountTrades({
-     *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
-     * });
-     *
-     * for await (const page of paginator) {
-     *   // page.items: ClobTrade[]
-     * }
-     * ```
-     */
-    listAccountTrades(request?: ListAccountTradesRequest): Paginated<ClobTrade>;
-    /**
-     * Fetches notifications for the authenticated account.
-     *
-     * @throws {@link FetchNotificationsError}
-     * Thrown on failure.
-     *
-     * @example
-     * ```ts
-     * const notifications = await client.fetchNotifications();
-     * ```
-     */
-    fetchNotifications(): Promise<NotificationsResponse>;
-    /**
-     * Drops notifications for the authenticated account.
-     *
-     * @throws {@link DropNotificationsError}
-     * Thrown on failure.
-     *
-     * @example
-     * ```ts
-     * await client.dropNotifications({
-     *   ids: ['1', '2'],
-     * });
-     * ```
-     */
-    dropNotifications(request: DropNotificationsRequest): Promise<void>;
-    /**
-     * Fetches whether the account is restricted to closed-only trading.
-     *
-     * @throws {@link FetchClosedOnlyModeError}
-     * Thrown on failure.
-     *
-     * @example
-     * ```ts
-     * const closedOnly = await client.fetchClosedOnlyMode();
-     * ```
-     */
-    fetchClosedOnlyMode(): Promise<boolean>;
-  }
->;
+export type PublicAccountActions = CommonAccountActions & {
+  /**
+   * Lists current positions for a wallet.
+   *
+   * @throws {@link ListPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * Fetch the first page of results:
+   * ```ts
+   * const paginator = client.listPositions({
+   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+   *   pageSize: 10,
+   * });
+   *
+   * const firstPage = await paginator.firstPage();
+   *
+   * // Optionally, fetch additional pages:
+   * for await (const page of paginator.from(firstPage.nextCursor)) {
+   *   // page.items: Position[]
+   * }
+   * ```
+   *
+   * @example
+   * Loop through all pages with `for await`:
+   * ```ts
+   * const paginator = client.listPositions({
+   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+   *   pageSize: 10,
+   * });
+   *
+   * for await (const page of paginator) {
+   *   // page.items: Position[]
+   * }
+   * ```
+   */
+  listPositions(request: ListPositionsRequest): Paginated<Position>;
+};
 
-function publicAccountActions(client: BaseClient): AccountPublicActions {
+export type SecureAccountActions = CommonAccountActions & {
+  /**
+   * Lists current positions for a wallet.
+   *
+   * Defaults to the authenticated account's wallet when `user` is omitted.
+   *
+   * @throws {@link ListPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * Fetch the first page of results for the authenticated account:
+   * ```ts
+   * const paginator = client.listPositions({
+   *   pageSize: 10,
+   * });
+   *
+   * const firstPage = await paginator.firstPage();
+   * ```
+   */
+  listPositions(request?: SecureListPositionsRequest): Paginated<Position>;
+  /**
+   * Lists trades for the authenticated account across all pages.
+   *
+   * @throws {@link ListAccountTradesError}
+   * Thrown on failure.
+   *
+   * @example
+   * Fetch the first page of results:
+   * ```ts
+   * const paginator = client.listAccountTrades({
+   *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
+   * });
+   *
+   * const firstPage = await paginator.firstPage();
+   *
+   * // Optionally, fetch additional pages:
+   * for await (const page of paginator.from(firstPage.nextCursor)) {
+   *   // page.items: ClobTrade[]
+   * }
+   * ```
+   *
+   * @example
+   * Loop through all pages with `for await`:
+   * ```ts
+   * const paginator = client.listAccountTrades({
+   *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
+   * });
+   *
+   * for await (const page of paginator) {
+   *   // page.items: ClobTrade[]
+   * }
+   * ```
+   */
+  listAccountTrades(request?: ListAccountTradesRequest): Paginated<ClobTrade>;
+  /**
+   * Fetches notifications for the authenticated account.
+   *
+   * @throws {@link FetchNotificationsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const notifications = await client.fetchNotifications();
+   * ```
+   */
+  fetchNotifications(): Promise<NotificationsResponse>;
+  /**
+   * Drops notifications for the authenticated account.
+   *
+   * @throws {@link DropNotificationsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * await client.dropNotifications({
+   *   ids: ['1', '2'],
+   * });
+   * ```
+   */
+  dropNotifications(request: DropNotificationsRequest): Promise<void>;
+  /**
+   * Fetches whether the account is restricted to closed-only trading.
+   *
+   * @throws {@link FetchClosedOnlyModeError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const closedOnly = await client.fetchClosedOnlyMode();
+   * ```
+   */
+  fetchClosedOnlyMode(): Promise<boolean>;
+};
+
+function commonAccountActions(client: BaseClient): CommonAccountActions {
   return {
-    listPositions: listPositions.bind(null, client),
     listClosedPositions: listClosedPositions.bind(null, client),
     fetchPortfolioValue: fetchPortfolioValue.bind(null, client),
     fetchTradedMarketCount: fetchTradedMarketCount.bind(null, client),
@@ -326,19 +356,27 @@ function publicAccountActions(client: BaseClient): AccountPublicActions {
   };
 }
 
-export function accountActions(client: BasePublicClient): AccountPublicActions;
-export function accountActions(client: BaseSecureClient): AccountActions;
+export function accountActions(client: BasePublicClient): PublicAccountActions;
+export function accountActions(client: BaseSecureClient): SecureAccountActions;
 export function accountActions(
   client: BaseClient,
-): AccountPublicActions | AccountActions {
-  const actions = publicAccountActions(client);
+): PublicAccountActions | SecureAccountActions {
+  const actions = commonAccountActions(client);
 
   if (client.isPublicClient()) {
-    return actions;
+    return {
+      ...actions,
+      listPositions: listPositions.bind(null, client),
+    };
   }
 
   return {
     ...actions,
+    listPositions: (request: SecureListPositionsRequest = {}) =>
+      listPositions(client, {
+        ...request,
+        user: request.user ?? client.account.wallet,
+      }),
     listAccountTrades: listAccountTrades.bind(null, client),
     fetchNotifications: fetchNotifications.bind(null, client),
     dropNotifications: dropNotifications.bind(null, client),
@@ -348,7 +386,7 @@ export function accountActions(
 
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on AccountPublicActions / AccountActions.
+// Keep this list in sync with the methods on PublicAccountActions / SecureAccountActions.
 export {
   DownloadAccountingSnapshotError,
   DropNotificationsError,

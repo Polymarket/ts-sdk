@@ -5,9 +5,9 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import {
-  type AccountActions,
-  type AccountPublicActions,
   accountActions,
+  type PublicAccountActions,
+  type SecureAccountActions,
 } from './account';
 import { type AnalyticsActions, analyticsActions } from './analytics';
 import { type DataActions, dataActions } from './data';
@@ -33,7 +33,7 @@ export type PublicActions = Prettify<
   DiscoveryActions &
     DataActions &
     AnalyticsActions &
-    AccountPublicActions &
+    PublicAccountActions &
     RewardsPublicActions &
     PublicSubscriptionsActions &
     PublicWalletActions
@@ -43,7 +43,7 @@ export type SecureActions = Prettify<
   DiscoveryActions &
     DataActions &
     AnalyticsActions &
-    AccountActions &
+    SecureAccountActions &
     RewardsActions &
     SecureSubscriptionsActions &
     SecureWalletActions &

@@ -1,6 +1,6 @@
 import { AssetType } from '@polymarket/bindings/clob';
 import { describe, expect, it } from 'vitest';
-import type { AccountActions } from '../decorators';
+import type { SecureAccountActions } from '../decorators';
 import { publicClient, safeWalletAddress, walletClient } from '../testing';
 import { authenticateWith } from '../viem';
 import { fetchBalanceAllowance } from './account';
@@ -69,7 +69,7 @@ describe('Account', () => {
 });
 
 async function waitForNotificationsToClear(
-  secureClient: Pick<AccountActions, 'fetchNotifications'>,
+  secureClient: Pick<SecureAccountActions, 'fetchNotifications'>,
   ids: string[],
 ) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
