@@ -1,8 +1,10 @@
 import {
+  approveAutoRedeem,
   approveErc20,
   approveErc1155ForAll,
   isGaslessReady,
   mergePositions,
+  type PrepareAutoRedeemApprovalRequest,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
   type PrepareErc1155ApprovalForAllRequest,
@@ -31,7 +33,7 @@ export type WalletActions = {
    */
   isGaslessReady(): Promise<boolean>;
   /**
-   * Sets up the approvals required for trading.
+   * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
    * @throws {@link SetupTradingApprovalsError}
    * Thrown on failure.
@@ -46,6 +48,24 @@ export type WalletActions = {
    * ```
    */
   setupTradingApprovals(): Promise<TransactionHandle>;
+  /**
+   * Approves or revokes auto-redeem for the authenticated account.
+   *
+   * @throws {@link ApproveAutoRedeemError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.approveAutoRedeem();
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  approveAutoRedeem(
+    request?: PrepareAutoRedeemApprovalRequest,
+  ): Promise<TransactionHandle>;
   /**
    * Approves ERC-20 token spending for the authenticated account.
    *
@@ -190,6 +210,7 @@ export function walletActions(client: BaseSecureClient): WalletActions {
         type: client.account.walletType,
       }),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
+    approveAutoRedeem: approveAutoRedeem.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
     transferErc20: transferErc20.bind(null, client),
@@ -203,6 +224,7 @@ export function walletActions(client: BaseSecureClient): WalletActions {
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on SecureWalletActions.
 export {
+  ApproveAutoRedeemError,
   ApproveErc20Error,
   ApproveErc1155ForAllError,
   IsGaslessReadyError,

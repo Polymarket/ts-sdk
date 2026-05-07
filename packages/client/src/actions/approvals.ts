@@ -239,6 +239,77 @@ export function approveErc1155ForAll(
   );
 }
 
+const PrepareAutoRedeemApprovalRequestSchema = z.object({
+  approved: z.boolean().default(true),
+  metadata: GaslessTransactionMetadataSchema.optional(),
+});
+
+export type PrepareAutoRedeemApprovalRequest = z.input<
+  typeof PrepareAutoRedeemApprovalRequestSchema
+>;
+
+export type PrepareAutoRedeemApprovalError = UserInputError;
+export const PrepareAutoRedeemApprovalError = makeErrorGuard(UserInputError);
+
+/**
+ * Starts an auto-redeem approval workflow.
+ *
+ * @remarks
+ * Auto-redeem uses ERC-1155 operator approval on the authenticated account's
+ * position tokens. Set `approved` to `false` to revoke the approval.
+ *
+ * @example
+ * ```ts
+ * const workflow = await prepareAutoRedeemApproval(client);
+ * ```
+ *
+ * @throws {@link PrepareAutoRedeemApprovalError}
+ * Thrown on failure.
+ */
+export async function prepareAutoRedeemApproval(
+  client: BaseSecureClient,
+  request: PrepareAutoRedeemApprovalRequest = {},
+): Promise<Erc1155ApprovalForAllWorkflow> {
+  const params = parseUserInput(
+    request,
+    PrepareAutoRedeemApprovalRequestSchema,
+  );
+
+  return prepareErc1155ApprovalForAll(client, {
+    approved: params.approved,
+    metadata:
+      params.metadata ??
+      `${params.approved ? 'Approve' : 'Revoke'} auto-redeem`,
+    operatorAddress: client.environment.autoRedeemOperator,
+    tokenAddress: client.environment.conditionalTokens,
+  });
+}
+
+export type ApproveAutoRedeemError =
+  | PrepareAutoRedeemApprovalError
+  | CancelledSigningError
+  | SigningError;
+export const ApproveAutoRedeemError = makeErrorGuard(
+  CancelledSigningError,
+  SigningError,
+  UserInputError,
+);
+
+/**
+ * Approves or revokes auto-redeem for the authenticated account.
+ *
+ * @throws {@link ApproveAutoRedeemError}
+ * Thrown on failure.
+ */
+export function approveAutoRedeem(
+  client: BaseSecureClient,
+  request: PrepareAutoRedeemApprovalRequest = {},
+): Promise<TransactionHandle> {
+  return prepareAutoRedeemApproval(client, request).then(
+    completeWith(client.signer),
+  );
+}
+
 export type TradingApprovalsWorkflowRequest =
   | GaslessWorkflowRequest
   | SendErc20ApprovalTransactionRequest
@@ -262,7 +333,8 @@ export const PrepareTradingApprovalsError = makeErrorGuard(UserInputError);
  * Prepares all approvals required for trading, including collateral and
  * position token approvals for both standard and neg-risk market flows.
  * The neg-risk adapter approvals cover split, merge, and redemption workflows
- * on neg-risk markets.
+ * on neg-risk markets. Auto-redeem approval is included so accounts are ready
+ * for supported position lifecycle workflows.
  *
  * @example
  * ```ts
@@ -306,6 +378,11 @@ export async function prepareTradingApprovals(
       client.environment.negRiskAdapter,
       true,
     ),
+    erc1155ApprovalForAllCall(
+      client.environment.conditionalTokens,
+      client.environment.autoRedeemOperator,
+      true,
+    ),
   ] as const;
 
   return async function* (): TradingApprovalsWorkflow {
@@ -345,9 +422,16 @@ export async function prepareTradingApprovals(
       );
       await conditionalNegRiskApproval.wait();
 
-      return expectTransactionHandle(
+      const conditionalNegRiskAdapterApproval = expectTransactionHandle(
         yield sendErc1155ApprovalForAllTransaction(
           signerTransactionRequest(client.environment.chainId, calls[5]),
+        ),
+      );
+      await conditionalNegRiskAdapterApproval.wait();
+
+      return expectTransactionHandle(
+        yield sendErc1155ApprovalForAllTransaction(
+          signerTransactionRequest(client.environment.chainId, calls[6]),
         ),
       );
     }

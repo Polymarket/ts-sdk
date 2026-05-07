@@ -26,6 +26,7 @@ The first shipping target is `@polymarket/client`. Its job is to make Polymarket
 - Do not add `simplified-markets`, `sampling-markets`, or `sampling-simplified-markets` actions unless a concrete SDK workflow needs those legacy market listing variants.
 - Do not add heartbeat actions to `@polymarket/client`; the current heartbeat endpoint is expected to be removed in v2.
 - Normalize the CTF position identifier to `tokenId` in the SDK public model, even when upstream services call the same value `assetId`.
+- Auto-redeem is an ERC-1155 operator approval on the Conditional Tokens position contract. `setupTradingApprovals` includes it for integrators who want a fully ready account, and `approveAutoRedeem` remains available when consumers need to manage that approval independently.
 - Standardize SDK identifier naming on JS/TS-style `...Id` forms such as `orderId`, `tradeId`, `tokenId`, and `marketId`, and translate legacy `...ID` and wire-format variants at the service boundary.
 
 ## Wallet Direction

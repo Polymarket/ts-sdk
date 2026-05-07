@@ -7,6 +7,26 @@ import { ZERO_ADDRESS } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 
 describe('Approvals', () => {
+  describe('SecureClient.approveAutoRedeem', () => {
+    it('submits an auto-redeem approval for Conditional Tokens', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      relayerAuthentication,
+    }) => {
+      const secureClient = await createSecureClient({
+        apiKey: relayerAuthentication,
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
+
+      expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+
+      const handle = await secureClient.approveAutoRedeem();
+
+      await expect(handle.wait()).resolves.toBeTruthy();
+    });
+  });
+
   describe('SecureClient.approveErc20', () => {
     it('submits a collateral approval for the standard exchange', async ({
       depositWalletAddress,
