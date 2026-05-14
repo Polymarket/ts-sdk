@@ -184,7 +184,7 @@ export class ServiceClient {
         }
 
         const message = await this.#extractResponseErrorMessage(response);
-        throw new RequestRejectedError(`${message} (${response.url})`, {
+        throw new RequestRejectedError(message, {
           status: response.status,
         });
       }),
@@ -209,7 +209,7 @@ export class ServiceClient {
         .clone()
         .json()
         .catch(() => ({}));
-      if (error) return String(error);
+      if (error) return `${String(error)} (${response.url})`;
     }
 
     if (contentType?.includes('text/plain')) {
@@ -222,7 +222,7 @@ export class ServiceClient {
         );
 
       if (text) {
-        return text;
+        return `${text} (${response.url})`;
       }
     }
 

@@ -2,7 +2,6 @@ import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { RequestRejectedError } from './errors';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -114,13 +113,11 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/html-error'))).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof RequestRejectedError &&
-        error.status === 502 &&
-        error.message.includes('blocked by Cloudflare') &&
-        !error.message.includes('Cloudflare error'),
-    );
+    await expect(unwrap(client.get('/html-error'))).rejects.toMatchObject({
+      message: `Request to ${root}/html-error was blocked by Cloudflare with status 502`,
+      name: 'RequestRejectedError',
+      status: 502,
+    });
   });
 
   it('identifies unreadable HTML errors when the server is unknown', async () => {
@@ -136,12 +133,32 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/generic-html-error'))).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof RequestRejectedError &&
-        error.status === 502 &&
-        error.message.includes('unexpected HTML response body') &&
-        !error.message.includes('Gateway error'),
+    await expect(
+      unwrap(client.get('/generic-html-error')),
+    ).rejects.toMatchObject({
+      message: `Request to ${root}/generic-html-error failed with status 502 and an unexpected HTML response body`,
+      name: 'RequestRejectedError',
+      status: 502,
+    });
+  });
+
+  it('falls back to an unreadable-body message for unknown content types', async () => {
+    server.use(
+      http.get(
+        `${root}/binary-error`,
+        () =>
+          new HttpResponse(new Uint8Array([0, 1, 2, 3]), {
+            headers: { 'content-type': 'application/octet-stream' },
+            status: 500,
+          }),
+      ),
     );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.get('/binary-error'))).rejects.toMatchObject({
+      message: `Request to ${root}/binary-error failed with status 500 and unreadable response body`,
+      name: 'RequestRejectedError',
+      status: 500,
+    });
   });
 });
