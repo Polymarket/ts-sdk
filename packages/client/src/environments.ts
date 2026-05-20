@@ -66,7 +66,7 @@ export type EnvironmentConfig = {
 export const production: EnvironmentConfig = {
   name: 'production',
   chainId: 137,
-  rpc: 'https://polygon-rpc.com',
+  rpc: 'https://polygon.drpc.org',
   walletDerivation: {
     depositWalletFactory: expectEvmAddress(
       '0x00000000000Fb5C9ADea0298D729A0CB3823Cc07',
