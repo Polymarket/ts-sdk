@@ -58,7 +58,7 @@ describe('Markets', () => {
 
     it('fetches a market by URL', async ({ publicClient }) => {
       const marketByUrl = await publicClient.fetchMarket({
-        url: `https://polymarket.com/market/${expectPresent(market.slug)}`,
+        url: `https://polymarket.com/event/some-event-slug/${expectPresent(market.slug)}`,
       });
 
       expect(marketByUrl.id).toBe(market.id);

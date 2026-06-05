@@ -266,7 +266,7 @@ export const FetchMarketError = makeErrorGuard(
  * });
  *
  * const marketByUrl = await fetchMarket(client, {
- *   url: 'https://polymarket.com/market/some-market-slug',
+ *   url: 'https://polymarket.com/event/some-event-slug/some-market-slug',
  * });
  *
  * // market === Market
