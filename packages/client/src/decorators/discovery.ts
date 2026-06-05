@@ -63,6 +63,8 @@ export type DiscoveryActions = {
   /**
    * Lists events.
    *
+   * Defaults to open events. Pass `closed: true` to list settled events.
+   *
    * @throws {@link ListEventsError}
    * Thrown on failure.
    *

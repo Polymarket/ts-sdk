@@ -33,7 +33,7 @@ import { snakeCase, toDataSearchParams, toSearchParams } from './params';
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
-  closed: z.boolean().optional(),
+  closed: z.boolean().default(false),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
   cyom: z.boolean().optional(),
@@ -134,6 +134,8 @@ export const ListEventsError = makeErrorGuard(
 
 /**
  * Lists events.
+ *
+ * Defaults to open events. Pass `closed: true` to list settled events.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
