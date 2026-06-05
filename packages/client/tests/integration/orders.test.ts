@@ -1,10 +1,11 @@
-import { OrderSide, OrderType } from '@polymarket/bindings';
+import { BuilderCodeSchema, OrderSide, OrderType } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
   createSecureClient,
   InsufficientLiquidityError,
   type Market,
   type SecureClient,
+  UserInputError,
 } from '@polymarket/client';
 import { fetchNegRisk } from '@polymarket/client/actions';
 import { expectPresent } from '@polymarket/types';
@@ -20,6 +21,9 @@ import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
 
 const market = await findHighVolumeLowPriceMarket(publicClient);
+const UNKNOWN_BUILDER_CODE = BuilderCodeSchema.parse(
+  '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd',
+);
 let marketOrderCleanup:
   | {
       market: Market;
@@ -167,6 +171,26 @@ describe('Orders', { timeout: 60_000 }, () => {
       });
 
       expect(order.builder).toBe(builderCode);
+    });
+
+    it('reports unknown builder codes as user input errors when resolving buy amounts against max spend', async ({
+      annotate,
+      secureClientWithDepositWallet,
+    }) => {
+      const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
+      const minimumOrderSize = expectPresent(market.trading.minimumOrderSize);
+      annotate(`Market ID: ${market.id}`);
+      annotate(`Token ID: ${yesTokenId}`);
+
+      await expect(
+        secureClientWithDepositWallet.createMarketOrder({
+          amount: minimumOrderSize,
+          builderCode: UNKNOWN_BUILDER_CODE,
+          maxSpend: minimumOrderSize,
+          side: OrderSide.BUY,
+          tokenId: yesTokenId,
+        }),
+      ).rejects.toThrow(UserInputError);
     });
   });
 
