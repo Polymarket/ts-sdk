@@ -30,10 +30,9 @@ export function parsePolymarketSlugUrl(
     resource === 'market' &&
     actualResource === 'event' &&
     slug !== undefined &&
-    marketSlug !== undefined &&
-    extraSegments.length === 1
+    extraSegments.length <= 1
   ) {
-    return marketSlug;
+    return marketSlug ?? slug;
   }
 
   if (

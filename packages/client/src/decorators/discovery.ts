@@ -189,7 +189,7 @@ export type DiscoveryActions = {
    * });
    *
    * const marketByUrl = await client.fetchMarket({
-   *   url: 'https://polymarket.com/event/some-event-slug/some-market-slug',
+   *   url: 'https://polymarket.com/event/some-market-slug',
    * });
    * ```
    */
