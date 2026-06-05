@@ -8,6 +8,7 @@ import {
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UnknownBuilderCodeError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
@@ -36,6 +37,7 @@ export type PrepareMarketOrderError =
   | RequestRejectedError
   | SigningError
   | TransportError
+  | UnknownBuilderCodeError
   | UnexpectedResponseError
   | UserInputError;
 export const PrepareMarketOrderError = makeErrorGuard(
@@ -44,6 +46,7 @@ export const PrepareMarketOrderError = makeErrorGuard(
   RequestRejectedError,
   SigningError,
   TransportError,
+  UnknownBuilderCodeError,
   UnexpectedResponseError,
   UserInputError,
 );

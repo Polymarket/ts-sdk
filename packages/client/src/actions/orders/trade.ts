@@ -13,6 +13,7 @@ import {
   TransactionFailedError,
   TransportError,
   UnexpectedResponseError,
+  UnknownBuilderCodeError,
   UserInputError,
 } from '../../errors';
 import { completeWith } from '../../workflow';
@@ -44,6 +45,7 @@ export const CreateMarketOrderError = makeErrorGuard(
   RequestRejectedError,
   SigningError,
   TransportError,
+  UnknownBuilderCodeError,
   UnexpectedResponseError,
   UserInputError,
 );
@@ -78,6 +80,7 @@ export const PlaceMarketOrderError = makeErrorGuard(
   TimeoutError,
   TransactionFailedError,
   TransportError,
+  UnknownBuilderCodeError,
   UnexpectedResponseError,
   UserInputError,
 );

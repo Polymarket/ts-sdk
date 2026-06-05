@@ -89,6 +89,21 @@ export class RequestRejectedError extends PolymarketError {
 }
 
 /**
+ * Error thrown when builder fee metadata is requested for an unknown builder.
+ */
+export class UnknownBuilderCodeError extends PolymarketError {
+  override name = 'UnknownBuilderCodeError' as const;
+
+  readonly builderCode: string;
+  readonly status = 404;
+
+  constructor(builderCode: string, options: ErrorOptions = {}) {
+    super(`Unknown builder code: ${builderCode}`, options);
+    this.builderCode = builderCode;
+  }
+}
+
+/**
  * Error thrown when the service rejects a request because the rate limit has
  * been exceeded.
  */

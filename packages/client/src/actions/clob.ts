@@ -48,6 +48,7 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UnknownBuilderCodeError,
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
@@ -382,12 +383,14 @@ export type FetchBuilderFeeRatesError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
+  | UnknownBuilderCodeError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchBuilderFeeRatesError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
+  UnknownBuilderCodeError,
   UnexpectedResponseError,
   UserInputError,
 );
@@ -410,8 +413,24 @@ export async function fetchBuilderFeeRates(
   return unwrap(
     client.clob
       .get(`/fees/builder-fees/${params.builderCode}`)
-      .andThen(validateWith(FetchBuilderFeeRatesResponseSchema)),
+      .andThen(validateWith(FetchBuilderFeeRatesResponseSchema))
+      .mapErr((error) => mapBuilderFeeRatesError(error, params.builderCode)),
   );
+}
+
+function mapBuilderFeeRatesError(
+  error:
+    | RateLimitError
+    | RequestRejectedError
+    | TransportError
+    | UnexpectedResponseError,
+  builderCode: string,
+) {
+  if (error instanceof RequestRejectedError && error.status === 404) {
+    return new UnknownBuilderCodeError(builderCode, { cause: error });
+  }
+
+  return error;
 }
 
 const FetchPriceRequestSchema = z.object({
