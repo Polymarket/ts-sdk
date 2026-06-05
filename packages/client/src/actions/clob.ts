@@ -48,7 +48,6 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
-  UnknownBuilderCodeError,
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
@@ -383,14 +382,12 @@ export type FetchBuilderFeeRatesError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
-  | UnknownBuilderCodeError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchBuilderFeeRatesError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
-  UnknownBuilderCodeError,
   UnexpectedResponseError,
   UserInputError,
 );
@@ -427,7 +424,9 @@ function mapBuilderFeeRatesError(
   builderCode: string,
 ) {
   if (error instanceof RequestRejectedError && error.status === 404) {
-    return new UnknownBuilderCodeError(builderCode, { cause: error });
+    return new UserInputError(`Unknown builder code: ${builderCode}`, {
+      cause: error,
+    });
   }
 
   return error;
