@@ -7,8 +7,7 @@ import { ethers } from 'ethers-v5';
 import { polygon } from 'viem/chains';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
-
-const TEST_MARKET_SLUG = 'eth-flipped-in-2026';
+import { findHighVolumeLowPriceMarket } from './markets';
 
 const provider = new ethers.providers.JsonRpcProvider(
   polygon.rpcUrls.default.http[0],
@@ -39,9 +38,7 @@ describe('ethers-v5', () => {
       publicClient,
       relayerAuthentication,
     }) => {
-      const market = await publicClient.fetchMarket({
-        slug: TEST_MARKET_SLUG,
-      });
+      const market = await findHighVolumeLowPriceMarket(publicClient);
       const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
       const price = expectPresent(market.trading.minimumTickSize);
       const size = expectPresent(market.trading.minimumOrderSize);

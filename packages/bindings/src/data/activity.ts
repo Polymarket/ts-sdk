@@ -62,8 +62,8 @@ export type TradeActivity = ActivityBase & {
   title: string;
   /** URL slug of the market traded by the wallet. */
   slug: string;
-  /** Icon URL for the market traded by the wallet. */
-  icon: string;
+  /** Icon URL for the market traded by the wallet, when available. */
+  icon: string | null;
   /** URL slug of the event containing the traded market. */
   eventSlug: string;
 };
@@ -79,8 +79,8 @@ export type SplitActivity = ActivityBase & {
   title: string;
   /** URL slug of the market whose complete set was created. */
   slug: string;
-  /** Icon URL for the market whose complete set was created. */
-  icon: string;
+  /** Icon URL for the market whose complete set was created, when available. */
+  icon: string | null;
   /** URL slug of the event containing the split market. */
   eventSlug: string;
 };
@@ -96,8 +96,8 @@ export type MergeActivity = ActivityBase & {
   title: string;
   /** URL slug of the market whose complete set was merged. */
   slug: string;
-  /** Icon URL for the market whose complete set was merged. */
-  icon: string;
+  /** Icon URL for the market whose complete set was merged, when available. */
+  icon: string | null;
   /** URL slug of the event containing the merged market. */
   eventSlug: string;
 };
@@ -113,8 +113,8 @@ export type RedeemActivity = ActivityBase & {
   title: string;
   /** URL slug of the market redeemed by the wallet. */
   slug: string;
-  /** Icon URL for the market redeemed by the wallet. */
-  icon: string;
+  /** Icon URL for the market redeemed by the wallet, when available. */
+  icon: string | null;
   /** URL slug of the event containing the redeemed market. */
   eventSlug: string;
 };
@@ -130,8 +130,8 @@ export type ConversionActivity = ActivityBase & {
   title: string;
   /** URL slug of the market involved in the conversion. */
   slug: string;
-  /** Icon URL for the market involved in the conversion. */
-  icon: string;
+  /** Icon URL for the market involved in the conversion, when available. */
+  icon: string | null;
   /** URL slug of the event containing the converted market. */
   eventSlug: string;
 };
@@ -280,7 +280,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         outcomeIndex: expectPresent(activity.outcomeIndex, 'outcomeIndex'),
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
-        icon: expectPresent(activity.icon, 'icon'),
+        icon: activity.icon ?? null,
         eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
       };
     case ActivityType.SPLIT:
@@ -294,7 +294,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         amount: inferAmount(activity),
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
-        icon: expectPresent(activity.icon, 'icon'),
+        icon: activity.icon ?? null,
         eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
       };
     case ActivityType.REWARD:

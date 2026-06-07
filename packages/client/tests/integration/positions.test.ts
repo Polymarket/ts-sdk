@@ -6,8 +6,8 @@ import {
 import { expectPresent } from '@polymarket/types';
 import { vi } from 'vitest';
 import { describe, expect, it, publicClient } from './fixtures';
+import { findHighVolumeLowPriceMarket } from './markets';
 
-const TEST_MARKET_SLUG = 'eth-flipped-in-2026';
 const TEST_COMBO_AMOUNT = 1_000_000n;
 const TEST_COMBO_CONDITION_ID =
   '0x034eabdeca272641d98717d8ca2f8e5f330000000000000000000000000000';
@@ -15,11 +15,9 @@ const TEST_COMBO_LEGS = [
   '920454018917169090762848014984037642864617754825717966757321143422977835520',
   '1012585296795354377868537359137497102116066671623168081060942028909450362880',
 ];
-const conditionId = await publicClient
-  .fetchMarket({
-    slug: TEST_MARKET_SLUG,
-  })
-  .then((market) => expectPresent(market.conditionId));
+const conditionId = expectPresent(
+  (await findHighVolumeLowPriceMarket(publicClient)).conditionId,
+);
 
 describe('Positions', () => {
   describe('and a CLOB market', () => {
