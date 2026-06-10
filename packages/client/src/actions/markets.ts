@@ -1,4 +1,5 @@
 import {
+  type ComboConditionId,
   CtfConditionIdSchema,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
@@ -236,10 +237,14 @@ export function listMarkets(
   );
 }
 
+const ComboMarketConditionIdSchema = z
+  .string()
+  .transform((value): ComboConditionId => value as ComboConditionId);
+
 const ListComboMarketsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.max(100).optional(),
-  exclude: z.array(CtfConditionIdSchema).optional(),
+  exclude: z.array(ComboMarketConditionIdSchema).optional(),
 });
 
 export type ListComboMarketsRequest = z.input<

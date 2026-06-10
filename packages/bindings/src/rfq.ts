@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { type SignatureType, SignatureTypeSchema } from './clob/signature-type';
 import type {
   BaseUnits,
-  CtfConditionId,
+  ComboConditionId,
   DecimalString,
   EvmAddress,
   MarketId,
@@ -15,7 +15,6 @@ import type {
 } from './shared';
 import {
   ComboConditionIdSchema,
-  CtfConditionIdSchema,
   DecimalStringSchema,
   EpochMillisecondsSchema,
   EvmAddressSchema,
@@ -102,9 +101,13 @@ export const RfqExecutionStatusSchema = z.enum(RfqExecutionStatus);
 export const RfqRequestedSizeUnitSchema = z.enum(RfqRequestedSizeUnit);
 export const RfqErrorCodeSchema = z.enum(RfqErrorCode);
 
+const ComboMarketConditionIdSchema = z
+  .string()
+  .transform((value): ComboConditionId => value as ComboConditionId);
+
 export type ComboMarket = {
   id: MarketId;
-  conditionId: CtfConditionId;
+  conditionId: ComboConditionId;
   slug: string;
   title: string;
   outcomes: ComboMarketOutcomes;
@@ -127,7 +130,7 @@ export type ComboMarketOutcomes = {
 export const ComboMarketSchema = z
   .object({
     id: MarketIdSchema,
-    condition_id: CtfConditionIdSchema,
+    condition_id: ComboMarketConditionIdSchema,
     position_ids: z.array(PositionIdSchema),
     slug: z.string(),
     title: z.string(),
