@@ -30,6 +30,10 @@
       "types": "./dist/ethers-v5.d.ts",
       "default": "./dist/ethers-v5.js"
     },
+    "./openfort": {
+      "types": "./dist/openfort.d.ts",
+      "default": "./dist/openfort.js"
+    },
     "./privy": {
       "types": "./dist/privy.d.ts",
       "default": "./dist/privy.js"
@@ -50,6 +54,9 @@
       "ethers-v5": [
         "./dist/ethers-v5.d.ts"
       ],
+      "openfort": [
+        "./dist/openfort.d.ts"
+      ],
       "privy": [
         "./dist/privy.d.ts"
       ],
@@ -67,6 +74,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@openfort/openfort-node": "^0.10.5",
     "@privy-io/node": "^0.15.0",
     "ethers-v5": "npm:ethers@^5.8.0",
     "tsup": "^8.5.1",
@@ -75,11 +83,15 @@
   },
   "license": "MIT",
   "peerDependencies": {
+    "@openfort/openfort-node": "^0.10.5",
     "@privy-io/node": "^0.15.0",
     "ethers-v5": "^5.8.0",
     "viem": "^2.46.3"
   },
   "peerDependenciesMeta": {
+    "@openfort/openfort-node": {
+      "optional": true
+    },
     "@privy-io/node": {
       "optional": true
     },

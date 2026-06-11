@@ -8,6 +8,9 @@ declare namespace NodeJS {
     POLYMARKET_PROXY_WALLET: string | undefined;
     POLYMARKET_SAFE_PRIVATE_KEY: string | undefined;
     POLYMARKET_SAFE_WALLET: string | undefined;
+    OPENFORT_TEST_SECRET_KEY: string | undefined;
+    OPENFORT_TEST_WALLET_SECRET: string | undefined;
+    OPENFORT_TEST_ACCOUNT_ID: string | undefined;
     PRIVY_TEST_APP_ID: string | undefined;
     PRIVY_TEST_APP_SECRET: string | undefined;
     PRIVY_TEST_WALLET_ID: string | undefined;
