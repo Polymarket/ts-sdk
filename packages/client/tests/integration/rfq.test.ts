@@ -28,6 +28,7 @@ import {
   recordOutboundFrame,
   rfqErrorMessage,
   TX_HASH,
+  tradeMessage,
   unknownRfqMessage,
 } from './rfq-frames';
 
@@ -82,6 +83,7 @@ describe('RFQ sessions', () => {
               socket.send(confirmationAckMessage(decision));
               if (decision === 'CONFIRM') {
                 socket.send(executionUpdateMessage());
+                socket.send(tradeMessage());
               }
             }
           });
@@ -338,6 +340,44 @@ describe('RFQ sessions', () => {
             expect(event).toMatchObject({
               rfqId: RFQ_ID,
               status: 'CONFIRMED',
+              txHash: TX_HASH,
+            });
+
+            await session.close();
+            break;
+          }
+        }
+      } finally {
+        await secureClientWithDepositWallet.closeSubscriptions();
+      }
+    });
+
+    it('yields confirmed trade broadcasts', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const session = await secureClientWithDepositWallet.openRfqSession();
+
+      try {
+        for await (const event of session) {
+          if (event.type === 'quote_request') {
+            await event.quote({ price: 0.45 });
+            continue;
+          }
+
+          if (event.type === 'confirmation_request') {
+            await event.confirm();
+            continue;
+          }
+
+          if (event.type === 'trade') {
+            expect(event).toMatchObject({
+              direction: 'BUY',
+              legPositionIds: ['1', '2'],
+              price: '0.125',
+              requestorPublicId: 'req-1',
+              rfqId: RFQ_ID,
+              side: 'YES',
+              size: '0.8',
               txHash: TX_HASH,
             });
 

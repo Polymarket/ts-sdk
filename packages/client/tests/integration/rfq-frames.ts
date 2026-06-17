@@ -183,6 +183,27 @@ export function executionUpdateMessage() {
   return JSON.stringify(executionUpdateFrame());
 }
 
+function tradeFrame() {
+  return {
+    condition_id:
+      '0x032def24bfb0c5c57fb236fac08b94236a000000000000000000000000000000',
+    direction: 'BUY',
+    executed_at: 1_780_854_786_039,
+    leg_position_ids: ['1', '2'],
+    price_e6: '125000',
+    requestor_public_id: 'req-1',
+    rfq_id: RFQ_ID,
+    side: 'YES',
+    size_e6: '800000',
+    tx_hash: TX_HASH,
+    type: 'RFQ_TRADE',
+  };
+}
+
+export function tradeMessage() {
+  return JSON.stringify(tradeFrame());
+}
+
 function rfqErrorFrame(options: {
   code: string;
   error: string;
