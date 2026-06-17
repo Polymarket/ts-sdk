@@ -79,6 +79,50 @@ describe('JsonRpcClient', () => {
     ).resolves.toEqual(['0xaaaa', '0xbbbb']);
   });
 
+  it('recovers failed eth_call batches while preserving result order', async () => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    let requestCount = 0;
+
+    server.use(
+      http.post(root, async ({ request }) => {
+        requestCount += 1;
+
+        const body = (await request.json()) as
+          | {
+              id: number;
+              params: [{ data: string }];
+            }
+          | unknown[];
+
+        if (Array.isArray(body)) {
+          return new HttpResponse(null, { status: 500 });
+        }
+
+        return HttpResponse.json({
+          jsonrpc: '2.0',
+          id: body.id,
+          result: body.params[0].data,
+        });
+      }),
+    );
+    const client = new JsonRpcClient({ url: root });
+
+    await expect(
+      client.ethCallBatch([
+        { to, data: '0x11111111' },
+        { to, data: '0x22222222' },
+        { to, data: '0x33333333' },
+        { to, data: '0x44444444' },
+      ]),
+    ).resolves.toEqual([
+      '0x11111111',
+      '0x22222222',
+      '0x33333333',
+      '0x44444444',
+    ]);
+    expect(requestCount).toBe(7);
+  });
+
   it('wraps JSON-RPC errors as rejected requests', async () => {
     const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
     server.use(

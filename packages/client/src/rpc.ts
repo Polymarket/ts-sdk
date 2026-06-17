@@ -80,6 +80,36 @@ export class JsonRpcClient {
       return [];
     }
 
+    return this.#ethCallBatchWithSplit(requests);
+  }
+
+  async #ethCallBatchWithSplit(
+    requests: readonly EthCallRequest[],
+  ): Promise<HexString[]> {
+    if (requests.length === 1) {
+      return [await this.ethCall(requests[0] as EthCallRequest)];
+    }
+
+    try {
+      return await this.#postEthCallBatch(requests);
+    } catch (error) {
+      if (!(error instanceof RequestRejectedError) || error.status < 500) {
+        throw error;
+      }
+
+      const midpoint = Math.ceil(requests.length / 2);
+      const [left, right] = await Promise.all([
+        this.#ethCallBatchWithSplit(requests.slice(0, midpoint)),
+        this.#ethCallBatchWithSplit(requests.slice(midpoint)),
+      ]);
+
+      return [...left, ...right];
+    }
+  }
+
+  async #postEthCallBatch(
+    requests: readonly EthCallRequest[],
+  ): Promise<HexString[]> {
     const responses = await this.#postBatch<HexString>(
       requests.map((request, index) => ({
         jsonrpc: '2.0',
