@@ -374,7 +374,7 @@ describe('RFQ sessions', () => {
               direction: 'BUY',
               legPositionIds: ['1', '2'],
               price: '0.125',
-              requestorPublicId: 'req-1',
+              requesterId: 'req-1',
               rfqId: RFQ_ID,
               side: 'YES',
               size: '0.8',

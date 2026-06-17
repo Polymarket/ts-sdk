@@ -440,7 +440,7 @@ export type RfqExecutionUpdate = z.infer<typeof RfqExecutionUpdateSchema>;
 export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.Trade),
   rfq_id: RfqIdSchema,
-  requestor_public_id: RfqRequestorPublicIdSchema,
+  requester_id: RfqRequestorPublicIdSchema,
   condition_id: ComboConditionIdSchema,
   leg_position_ids: z.array(PositionIdSchema),
   direction: RfqDirectionSchema,
@@ -455,7 +455,7 @@ export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
   executedAt: message.executed_at,
   legPositionIds: message.leg_position_ids,
   price: message.price_e6,
-  requestorPublicId: message.requestor_public_id,
+  requesterId: message.requester_id,
   rfqId: message.rfq_id,
   side: message.side,
   size: message.size_e6,

@@ -191,7 +191,7 @@ function tradeFrame() {
     executed_at: 1_780_854_786_039,
     leg_position_ids: ['1', '2'],
     price_e6: '125000',
-    requestor_public_id: 'req-1',
+    requester_id: 'req-1',
     rfq_id: RFQ_ID,
     side: 'YES',
     size_e6: '800000',

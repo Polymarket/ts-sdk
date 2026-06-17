@@ -6,7 +6,7 @@ describe('RFQ quoter inbound messages', () => {
     const message = RfqQuoterInboundMessageSchema.parse({
       type: 'RFQ_TRADE',
       rfq_id: 'rfq-1',
-      requestor_public_id: 'req-1',
+      requester_id: 'req-1',
       condition_id:
         '0x032def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000',
       leg_position_ids: ['1', '2'],
@@ -22,7 +22,7 @@ describe('RFQ quoter inbound messages', () => {
     expect(message).toMatchObject({
       type: 'trade',
       rfqId: 'rfq-1',
-      requestorPublicId: 'req-1',
+      requesterId: 'req-1',
       price: '0.125',
       size: '0.8',
     });
