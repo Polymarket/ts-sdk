@@ -195,7 +195,6 @@ function tradeFrame() {
     rfq_id: RFQ_ID,
     side: 'YES',
     size_e6: '800000',
-    tx_hash: TX_HASH,
     type: 'RFQ_TRADE',
   };
 }

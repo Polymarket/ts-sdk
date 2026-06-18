@@ -447,7 +447,6 @@ export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
   side: RfqSideSchema,
   price_e6: E6BigIntStringToDecimalStringSchema,
   size_e6: E6BigIntStringToDecimalStringSchema,
-  tx_hash: TxHashSchema,
   executed_at: EpochMillisecondsSchema,
 }).transform((message) => ({
   conditionId: message.condition_id,
@@ -459,7 +458,6 @@ export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
   rfqId: message.rfq_id,
   side: message.side,
   size: message.size_e6,
-  txHash: message.tx_hash,
   type: 'trade' as const,
 }));
 

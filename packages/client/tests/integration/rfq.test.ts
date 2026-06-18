@@ -378,8 +378,8 @@ describe('RFQ sessions', () => {
               rfqId: RFQ_ID,
               side: 'YES',
               size: '0.8',
-              txHash: TX_HASH,
             });
+            expect(event).not.toHaveProperty('txHash');
 
             await session.close();
             break;

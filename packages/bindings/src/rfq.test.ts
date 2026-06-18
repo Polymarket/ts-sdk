@@ -14,8 +14,6 @@ describe('RFQ quoter inbound messages', () => {
       side: 'YES',
       price_e6: '125000',
       size_e6: '800000',
-      tx_hash:
-        '0x1111111111111111111111111111111111111111111111111111111111111111',
       executed_at: 1_780_854_786_039,
     });
 
@@ -27,5 +25,6 @@ describe('RFQ quoter inbound messages', () => {
       size: '0.8',
     });
     expect(message).not.toHaveProperty('makerAddress');
+    expect(message).not.toHaveProperty('txHash');
   });
 });
