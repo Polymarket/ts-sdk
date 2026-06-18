@@ -82,6 +82,8 @@ export enum RfqErrorCode {
   InvalidRfq = 'INVALID_RFQ',
   InvalidRfqState = 'INVALID_RFQ_STATE',
   InvalidRole = 'INVALID_ROLE',
+  InvalidSignature = 'INVALID_SIGNATURE',
+  InternalError = 'INTERNAL_ERROR',
   LegMetadataUnavailable = 'LEG_METADATA_UNAVAILABLE',
   MakerAlreadyResponded = 'MAKER_ALREADY_RESPONDED',
   MakerNotRequired = 'MAKER_NOT_REQUIRED',
@@ -438,6 +440,7 @@ export type RfqExecutionUpdate = z.infer<typeof RfqExecutionUpdateSchema>;
 
 export const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.Error),
+  error_id: z.string().optional(),
   request_type: z.string().optional(),
   rfq_id: RfqIdSchema.optional(),
   quote_id: RfqQuoteIdSchema.optional(),
@@ -446,6 +449,7 @@ export const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
   request: z.unknown().optional(),
 }).transform((message) => ({
   code: message.code,
+  errorId: message.error_id,
   message: message.error,
   quoteId: message.quote_id,
   requestType: message.request_type,

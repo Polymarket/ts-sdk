@@ -334,6 +334,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         quoteAckKey(message.rfqId),
         new RfqQuoteRejectedError(message.message, {
           code: message.code,
+          errorId: message.errorId,
           rfqId: message.rfqId,
         }),
       );
@@ -350,6 +351,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         quoteCancelAckKey(message.rfqId, message.quoteId),
         new RfqCancelQuoteRejectedError(message.message, {
           code: message.code,
+          errorId: message.errorId,
           quoteId: message.quoteId,
           rfqId: message.rfqId,
         }),
@@ -367,6 +369,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         confirmationAckKey(message.rfqId, message.quoteId),
         new RfqConfirmationRejectedError(message.message, {
           code: message.code,
+          errorId: message.errorId,
           quoteId: message.quoteId,
           rfqId: message.rfqId,
         }),

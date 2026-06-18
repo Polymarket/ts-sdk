@@ -185,6 +185,7 @@ export function executionUpdateMessage() {
 
 function rfqErrorFrame(options: {
   code: string;
+  errorId?: string;
   error: string;
   quoteId?: string;
   requestType: string;
@@ -192,6 +193,7 @@ function rfqErrorFrame(options: {
 }) {
   return {
     code: options.code,
+    error_id: options.errorId,
     error: options.error,
     quote_id: options.quoteId,
     request_type: options.requestType,
@@ -202,6 +204,7 @@ function rfqErrorFrame(options: {
 
 export function rfqErrorMessage(options: {
   code: string;
+  errorId?: string;
   error: string;
   quoteId?: string;
   requestType: string;
