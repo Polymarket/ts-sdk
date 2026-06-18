@@ -36,6 +36,7 @@ import {
   toQuoteAck,
   toQuoteCancelAck,
   toQuoteRequestEvent,
+  toTradeEvent,
 } from './events';
 import {
   createAuthMessage,
@@ -299,6 +300,9 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         return;
       case 'execution_update':
         this.#queue.push(toExecutionUpdateEvent(message));
+        return;
+      case 'trade':
+        this.#queue.push(toTradeEvent(message));
         return;
       case 'rfq_error':
         this.#handleRfqError(message);

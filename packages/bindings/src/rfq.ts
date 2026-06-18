@@ -272,6 +272,7 @@ export enum RfqKnownInboundType {
   ConfirmationRequest = 'RFQ_CONFIRMATION_REQUEST',
   ConfirmationAck = 'ACK_RFQ_CONFIRMATION_RESPONSE',
   ExecutionUpdate = 'RFQ_EXECUTION_UPDATE',
+  Trade = 'RFQ_TRADE',
   Error = 'RFQ_ERROR',
 }
 
@@ -436,6 +437,32 @@ export const RfqExecutionUpdateSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqExecutionUpdate = z.infer<typeof RfqExecutionUpdateSchema>;
 
+export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
+  type: z.literal(RfqKnownInboundType.Trade),
+  rfq_id: RfqIdSchema,
+  requester_id: RfqRequestorPublicIdSchema,
+  condition_id: ComboConditionIdSchema,
+  leg_position_ids: z.array(PositionIdSchema),
+  direction: RfqDirectionSchema,
+  side: RfqSideSchema,
+  price_e6: E6BigIntStringToDecimalStringSchema,
+  size_e6: E6BigIntStringToDecimalStringSchema,
+  executed_at: EpochMillisecondsSchema,
+}).transform((message) => ({
+  conditionId: message.condition_id,
+  direction: message.direction,
+  executedAt: message.executed_at,
+  legPositionIds: message.leg_position_ids,
+  price: message.price_e6,
+  requesterId: message.requester_id,
+  rfqId: message.rfq_id,
+  side: message.side,
+  size: message.size_e6,
+  type: 'trade' as const,
+}));
+
+export type RfqTrade = z.infer<typeof RfqTradeSchema>;
+
 export const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.Error),
   request_type: z.string().optional(),
@@ -463,6 +490,7 @@ export const RfqQuoterInboundMessageSchema = z.discriminatedUnion('type', [
   RfqConfirmationRequestSchema,
   RfqConfirmationAckSchema,
   RfqExecutionUpdateSchema,
+  RfqTradeSchema,
   RfqErrorMessageSchema,
 ]);
 
