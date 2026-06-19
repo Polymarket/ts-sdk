@@ -1,4 +1,8 @@
-import { toDecimalString } from '@polymarket/bindings';
+import {
+  OrderSide,
+  OrderSideSchema,
+  toDecimalString,
+} from '@polymarket/bindings';
 import {
   type PerpsCancelOrderAck,
   PerpsClientOrderIdSchema,
@@ -42,7 +46,7 @@ type RawPerpsOrderInput = readonly [
 
 const PerpsOrderInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
-  buy: z.boolean(),
+  side: OrderSideSchema,
   price: PerpsDecimalInputSchema.optional(),
   quantity: PerpsDecimalInputSchema,
   timeInForce: PerpsTimeInForceSchema,
@@ -343,7 +347,7 @@ function toRawPerpsOrder(
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,
-    order.buy,
+    order.side === OrderSide.BUY,
     order.price === undefined ? undefined : toDecimalString(order.price),
     toDecimalString(order.quantity),
     order.timeInForce,

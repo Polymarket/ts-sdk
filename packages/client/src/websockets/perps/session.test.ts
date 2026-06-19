@@ -1,3 +1,4 @@
+import { OrderSide } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
@@ -249,12 +250,12 @@ describe('PerpsSession', () => {
       const [ack] = await session.placeOrders({
         orders: [
           {
-            buy: true,
             clientOrderId: '0123456789abcdef0123456789abcdef',
             instrumentId: 1,
             postOnly: false,
             price: '100.00',
             quantity: '1.5',
+            side: OrderSide.BUY,
             timeInForce: PerpsTimeInForce.Gtc,
           },
         ],
@@ -310,11 +311,11 @@ describe('PerpsSession', () => {
       try {
         await expect(
           session.placeOrder({
-            buy: true,
             clientOrderId: '0123456789abcdef0123456789abcdef',
             instrumentId: 1,
             price: '100',
             quantity: '1',
+            side: OrderSide.BUY,
             timeInForce: PerpsTimeInForce.Ioc,
           }),
         ).resolves.toEqual({
@@ -352,17 +353,17 @@ describe('PerpsSession', () => {
           session.placeOrders({
             orders: [
               {
-                buy: true,
                 instrumentId: 1,
                 price: '100',
                 quantity: '1',
+                side: OrderSide.BUY,
                 timeInForce: PerpsTimeInForce.Ioc,
               },
               {
-                buy: true,
                 instrumentId: 1,
                 price: '101',
                 quantity: '2',
+                side: OrderSide.SELL,
                 timeInForce: PerpsTimeInForce.Ioc,
               },
             ],
@@ -377,6 +378,12 @@ describe('PerpsSession', () => {
             status: 'err',
           },
         ]);
+        expect(frames[2]).toMatchObject({
+          op: {
+            args: [{ buy: true }, { buy: false }],
+            type: 'createOrders',
+          },
+        });
       } finally {
         await session.close();
       }
