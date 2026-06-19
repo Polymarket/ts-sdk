@@ -16,7 +16,10 @@ import {
   RawPerpsTxHashSchema,
 } from './common';
 
-export { PerpsFundingIntervalSchema, type PerpsFundingInterval } from './common';
+export {
+  type PerpsFundingInterval,
+  PerpsFundingIntervalSchema,
+} from './common';
 
 export const PerpsRiskTierSchema = z.object({
   lowerBound: DecimalStringSchema,
