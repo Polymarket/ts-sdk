@@ -36,35 +36,142 @@ export type PerpsOrder = z.infer<typeof PerpsOrderSchema>;
 
 export const PerpsCommandStatusSchema = z.enum(['ok', 'err']);
 
-export const PerpsOrderCommandAckSchema = z.object({
-  status: PerpsCommandStatusSchema,
-  orderId: PerpsOrderIdSchema.optional(),
-  clientOrderId: PerpsClientOrderIdSchema.optional(),
-  error: z.string().optional(),
-});
+const PerpsAckErrorSchema = z
+  .string()
+  .min(1)
+  .optional()
+  .transform(perpsAckError);
 
-export type PerpsOrderCommandAck = z.infer<typeof PerpsOrderCommandAckSchema>;
+export const PerpsPlaceOrderAckSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    orderId: PerpsOrderIdSchema,
+    clientOrderId: PerpsClientOrderIdSchema.optional(),
+  }),
+  z.object({
+    status: z.literal('err'),
+    error: PerpsAckErrorSchema,
+    clientOrderId: PerpsClientOrderIdSchema.optional(),
+  }),
+]);
 
-export const RawPerpsOrderCommandAckSchema = z
+export type PerpsPlaceOrderAck = z.infer<typeof PerpsPlaceOrderAckSchema>;
+
+export const PerpsModifyOrderAckSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok') }),
+  z.object({
+    status: z.literal('err'),
+    error: PerpsAckErrorSchema,
+  }),
+]);
+
+export type PerpsModifyOrderAck = z.infer<typeof PerpsModifyOrderAckSchema>;
+
+export const PerpsCancelOrderAckSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('ok'),
+    orderId: PerpsOrderIdSchema,
+    clientOrderId: PerpsClientOrderIdSchema.optional(),
+  }),
+  z.object({
+    status: z.literal('err'),
+    error: PerpsAckErrorSchema,
+    orderId: PerpsOrderIdSchema.optional(),
+    clientOrderId: PerpsClientOrderIdSchema.optional(),
+  }),
+]);
+
+export type PerpsCancelOrderAck = z.infer<typeof PerpsCancelOrderAckSchema>;
+
+export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('ok') }),
+  z.object({
+    status: z.literal('err'),
+    error: PerpsAckErrorSchema,
+  }),
+]);
+
+export type PerpsCommandAck = z.infer<typeof PerpsCommandAckSchema>;
+
+export const RawPerpsPlaceOrderAckSchema = z
   .object({
     status: PerpsCommandStatusSchema,
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
   })
-  .transform((ack) => ({
-    status: ack.status,
-    orderId: ack.oid,
-    clientOrderId: ack.coid,
-    error: ack.error,
-  }));
+  .transform((ack, ctx): PerpsPlaceOrderAck => {
+    if (ack.status === 'err') {
+      return {
+        status: 'err',
+        error: perpsAckError(ack.error),
+        clientOrderId: ack.coid,
+      };
+    }
 
-export const PerpsCommandAckSchema = z.object({
-  status: PerpsCommandStatusSchema,
-  error: z.string().optional(),
-});
+    if (ack.oid === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Expected Perps place order acknowledgement order id.',
+      });
+      return z.NEVER;
+    }
 
-export type PerpsCommandAck = z.infer<typeof PerpsCommandAckSchema>;
+    return {
+      status: 'ok',
+      orderId: ack.oid,
+      clientOrderId: ack.coid,
+    };
+  });
+
+export const RawPerpsModifyOrderAckSchema = z
+  .object({
+    status: PerpsCommandStatusSchema,
+    oid: PerpsOrderIdSchema.optional(),
+    error: z.string().optional(),
+  })
+  .transform((ack): PerpsModifyOrderAck => {
+    if (ack.status === 'err') {
+      return { status: 'err', error: perpsAckError(ack.error) };
+    }
+    return { status: 'ok' };
+  });
+
+export const RawPerpsCancelOrderAckSchema = z
+  .object({
+    status: PerpsCommandStatusSchema,
+    oid: PerpsOrderIdSchema.optional(),
+    coid: PerpsClientOrderIdSchema.optional(),
+    error: z.string().optional(),
+  })
+  .transform((ack, ctx): PerpsCancelOrderAck => {
+    if (ack.status === 'err') {
+      return {
+        status: 'err',
+        error: perpsAckError(ack.error),
+        orderId: ack.oid,
+        clientOrderId: ack.coid,
+      };
+    }
+
+    if (ack.oid === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Expected Perps cancel order acknowledgement order id.',
+      });
+      return z.NEVER;
+    }
+
+    return {
+      status: 'ok',
+      orderId: ack.oid,
+      clientOrderId: ack.coid,
+    };
+  });
+
+function perpsAckError(error: string | undefined): string {
+  return error ?? 'Perps command was rejected.';
+}
 
 export const RawPerpsOrderSchema = z
   .object({

@@ -3,13 +3,15 @@ import {
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
   type PerpsBalance,
+  type PerpsCancelOrderAck,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
+  type PerpsModifyOrderAck,
   type PerpsOrder,
-  type PerpsOrderCommandAck,
+  type PerpsPlaceOrderAck,
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsWithdrawal,
@@ -21,7 +23,11 @@ import {
 import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
-import { SigningError, TransportError } from '../../errors';
+import {
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+} from '../../errors';
 import type { Paginated } from '../../pagination';
 import { validateWith } from '../../response';
 import { ServiceClient } from '../../ServiceClient';
@@ -104,6 +110,11 @@ type PendingResponse = {
   schema: z.ZodType;
 };
 
+export type {
+  PerpsCancelOrderAck,
+  PerpsModifyOrderAck,
+  PerpsPlaceOrderAck,
+} from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
 export type {
   FetchPerpsAccountConfigRequest,
@@ -125,6 +136,10 @@ export type {
   PlacePerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
+} from './actions/trading';
+export {
+  UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
 } from './actions/trading';
 
 export type PerpsSessionOptions = {
@@ -248,49 +263,45 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   async placeOrder(
     request: PlacePerpsOrderRequest,
-  ): Promise<PerpsOrderCommandAck> {
+  ): Promise<PerpsPlaceOrderAck> {
     return await placePerpsOrder(this.#tradingTransport(), request);
   }
 
   async placeOrders(
     request: PlacePerpsOrdersRequest,
-  ): Promise<PerpsOrderCommandAck[]> {
+  ): Promise<PerpsPlaceOrderAck[]> {
     return await placePerpsOrders(this.#tradingTransport(), request);
   }
 
   async modifyOrder(
     request: ModifyPerpsOrderRequest,
-  ): Promise<PerpsOrderCommandAck> {
+  ): Promise<PerpsModifyOrderAck> {
     return await modifyPerpsOrder(this.#tradingTransport(), request);
   }
 
   async modifyOrders(
     request: ModifyPerpsOrdersRequest,
-  ): Promise<PerpsOrderCommandAck[]> {
+  ): Promise<PerpsModifyOrderAck[]> {
     return await modifyPerpsOrders(this.#tradingTransport(), request);
   }
 
   async cancelOrder(
     request: CancelPerpsOrderRequest,
-  ): Promise<PerpsCommandAck> {
+  ): Promise<PerpsCancelOrderAck> {
     return await cancelPerpsOrder(this.#tradingTransport(), request);
   }
 
   async cancelOrders(
     request: CancelPerpsOrdersRequest,
-  ): Promise<PerpsCommandAck[]> {
+  ): Promise<PerpsCancelOrderAck[]> {
     return await cancelPerpsOrders(this.#tradingTransport(), request);
   }
 
-  async updateLeverage(
-    request: UpdatePerpsLeverageRequest,
-  ): Promise<PerpsCommandAck> {
+  async updateLeverage(request: UpdatePerpsLeverageRequest): Promise<void> {
     return await updatePerpsLeverage(this.#tradingTransport(), request);
   }
 
-  async updateMargin(
-    request: UpdatePerpsMarginRequest,
-  ): Promise<PerpsCommandAck> {
+  async updateMargin(request: UpdatePerpsMarginRequest): Promise<void> {
     return await updatePerpsMargin(this.#tradingTransport(), request);
   }
 
@@ -485,9 +496,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
     if (isRejectedPerpsAck(data.data)) {
       pending.reject(
-        new TransportError(
-          data.data.error ?? 'Perps session request rejected.',
-        ),
+        new RequestRejectedError(data.data.error, { status: 200 }),
       );
     } else {
       pending.resolve(data.data);
@@ -560,7 +569,9 @@ function createPendingResponse<T>(
   return { promise, reject, resolve, schema };
 }
 
-function isRejectedPerpsAck(value: unknown): value is { error?: string } {
+function isRejectedPerpsAck(
+  value: unknown,
+): value is Extract<PerpsCommandAck, { status: 'err' }> {
   return (
     !Array.isArray(value) &&
     typeof value === 'object' &&

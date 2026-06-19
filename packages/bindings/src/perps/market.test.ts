@@ -1,10 +1,43 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RawPerpsInstrumentSchema,
   RawPerpsPublicTradeResponseSchema,
   RawPerpsPublicTradeSchema,
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
+
+describe('RawPerpsInstrumentSchema', () => {
+  it('normalizes instrument identifiers without exposing instrument type', () => {
+    const instrument = RawPerpsInstrumentSchema.parse({
+      base_asset: 'BTC',
+      category: 'crypto',
+      funding_interval: '1h',
+      instrument_id: 1,
+      instrument_type: 'perpetual',
+      liquidation_fee: '0.01',
+      max_leverage: 10,
+      max_limit_notional: '1000000',
+      max_market_notional: '100000',
+      max_order_count: 200,
+      min_notional: '1',
+      price_bounds: '0.1',
+      price_decimals: 2,
+      quantity_decimals: 4,
+      quote_asset: 'USD',
+      risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
+      symbol: 'BTC-PERP',
+    });
+
+    expect(instrument).toMatchObject({
+      id: 1,
+      category: 'crypto',
+      symbol: 'BTC-PERP',
+    });
+    expect(instrument).not.toHaveProperty('instrumentId');
+    expect(instrument).not.toHaveProperty('instrumentType');
+  });
+});
 
 describe('RawPerpsPublicTradeSchema', () => {
   it('normalizes placeholder hashes to undefined', () => {

@@ -97,12 +97,19 @@ export type {
   ListPerpsWithdrawalsRequest,
   ModifyPerpsOrderRequest,
   ModifyPerpsOrdersRequest,
+  PerpsCancelOrderAck,
+  PerpsModifyOrderAck,
+  PerpsPlaceOrderAck,
   PerpsSession,
   PerpsSessionEvent,
   PlacePerpsOrderRequest,
   PlacePerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
+} from '../websockets/perps/session';
+export {
+  UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';

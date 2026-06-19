@@ -33,8 +33,7 @@ const RawPerpsRiskTierSchema = z
 export type PerpsRiskTier = z.infer<typeof PerpsRiskTierSchema>;
 
 export const PerpsInstrumentSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  instrumentType: PerpsInstrumentTypeSchema,
+  id: PerpsInstrumentIdSchema,
   category: PerpsInstrumentCategorySchema,
   symbol: z.string().min(1),
   baseAsset: PerpsAssetSchema,
@@ -75,8 +74,7 @@ export const RawPerpsInstrumentSchema = z
     risk_tiers: z.array(RawPerpsRiskTierSchema),
   })
   .transform((instrument) => ({
-    instrumentId: instrument.instrument_id,
-    instrumentType: instrument.instrument_type,
+    id: instrument.instrument_id,
     category: instrument.category,
     symbol: instrument.symbol,
     baseAsset: instrument.base_asset,
