@@ -275,11 +275,18 @@ export async function fetchPerpsTickers(
   });
 }
 
+export type PerpsBookDepth = 10 | 100 | 500 | 1000;
+
+const PerpsBookDepthSchema: z.ZodType<PerpsBookDepth> = z.union([
+  z.literal(10),
+  z.literal(100),
+  z.literal(500),
+  z.literal(1000),
+]);
+
 const FetchPerpsBookRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
-  depth: z
-    .union([z.literal(10), z.literal(100), z.literal(500), z.literal(1000)])
-    .optional(),
+  depth: PerpsBookDepthSchema.default(100),
 });
 
 export type FetchPerpsBookRequest = z.input<typeof FetchPerpsBookRequestSchema>;

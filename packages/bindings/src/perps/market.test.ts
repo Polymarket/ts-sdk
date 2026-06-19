@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsFundingIntervalSchema,
   RawPerpsInstrumentSchema,
   RawPerpsPublicTradeResponseSchema,
   RawPerpsPublicTradeSchema,
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
+
+describe('PerpsFundingIntervalSchema', () => {
+  it('accepts positive whole-hour funding intervals', () => {
+    expect(PerpsFundingIntervalSchema.parse('1h')).toBe('1h');
+    expect(PerpsFundingIntervalSchema.parse('8h')).toBe('8h');
+  });
+
+  it('rejects unsupported funding interval formats', () => {
+    expect(() => PerpsFundingIntervalSchema.parse('0h')).toThrow();
+    expect(() => PerpsFundingIntervalSchema.parse('30m')).toThrow();
+    expect(() => PerpsFundingIntervalSchema.parse('1.5h')).toThrow();
+  });
+});
 
 describe('RawPerpsInstrumentSchema', () => {
   it('normalizes instrument identifiers without exposing instrument type', () => {
