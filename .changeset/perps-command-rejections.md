@@ -3,4 +3,4 @@
 "@polymarket/bindings": patch
 ---
 
-Add bespoke Perps trading acknowledgement unions and return per-item place, modify, and cancel acknowledgements. Perps leverage and margin updates now return `void` and throw `RequestRejectedError` when their command acknowledgement is rejected. Perps instrument responses now expose `id` instead of `instrumentId` and omit `instrumentType`.
+Normalize Perps trading command responses to match the rest of the SDK: place, modify, and cancel now return per-item acknowledgement unions, while leverage and margin updates return `void` and throw `RequestRejectedError` when rejected. Clean up the `PerpsInstrument` type.
