@@ -16,6 +16,8 @@ import {
   RawPerpsTxHashSchema,
 } from './common';
 
+export { PerpsFundingIntervalSchema, type PerpsFundingInterval } from './common';
+
 export const PerpsRiskTierSchema = z.object({
   lowerBound: DecimalStringSchema,
   maxLeverage: z.number().int().positive(),
@@ -395,7 +397,6 @@ export const FetchPerpsFundingHistoryResponseSchema = PerpsDataResponseSchema(
 );
 
 export const PerpsFeeScheduleEntrySchema = z.object({
-  instrumentType: PerpsInstrumentTypeSchema,
   category: PerpsInstrumentCategorySchema,
   takerFeeRate: DecimalStringSchema,
   makerFeeRate: DecimalStringSchema,
@@ -411,7 +412,6 @@ export const RawPerpsFeeScheduleEntrySchema = z
     maker_fee_rate: DecimalStringSchema,
   })
   .transform((fee) => ({
-    instrumentType: fee.instrument_type,
     category: fee.category,
     takerFeeRate: fee.taker_fee_rate,
     makerFeeRate: fee.maker_fee_rate,
