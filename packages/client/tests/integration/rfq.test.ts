@@ -627,6 +627,7 @@ describe('RFQ sessions', () => {
               socket.send(
                 rfqErrorMessage({
                   code: 'SUBMISSION_WINDOW_CLOSED',
+                  errorId: 'reqerr-1',
                   error: 'submission window closed',
                   requestType: 'RFQ_QUOTE',
                   rfqId: RFQ_ID,
@@ -650,6 +651,7 @@ describe('RFQ sessions', () => {
 
             await expect(quote).rejects.toMatchObject({
               code: 'SUBMISSION_WINDOW_CLOSED',
+              errorId: 'reqerr-1',
               message: 'submission window closed',
               name: 'RfqQuoteRejectedError',
               rfqId: event.rfqId,

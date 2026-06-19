@@ -92,6 +92,8 @@ export type RfqQuoteResponse = {
 export type RfqQuoteRejectedErrorOptions = {
   /** RFQ error code for the rejected quote. */
   code?: RfqErrorCode;
+  /** Error identifier for the rejected quote. */
+  errorId?: string;
   /** RFQ identifier for the rejected quote. */
   rfqId: RfqId;
 };
@@ -103,6 +105,7 @@ export class RfqQuoteRejectedError extends PolymarketError {
   override name = 'RfqQuoteRejectedError' as const;
 
   readonly code: RfqErrorCode | undefined;
+  readonly errorId: string | undefined;
   readonly rfqId: RfqId;
 
   constructor(
@@ -111,6 +114,7 @@ export class RfqQuoteRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.code = options.code;
+    this.errorId = options.errorId;
     this.rfqId = options.rfqId;
   }
 }
@@ -132,6 +136,8 @@ export const RfqQuoteError = makeErrorGuard(
 export type RfqCancelQuoteRejectedErrorOptions = {
   /** RFQ error code for the rejected cancellation request. */
   code?: RfqErrorCode;
+  /** Error identifier for the rejected cancellation request. */
+  errorId?: string;
   /** RFQ identifier for the cancellation request. */
   rfqId: RfqId;
   /** Quote identifier for the cancellation request. */
@@ -145,6 +151,7 @@ export class RfqCancelQuoteRejectedError extends PolymarketError {
   override name = 'RfqCancelQuoteRejectedError' as const;
 
   readonly code: RfqErrorCode | undefined;
+  readonly errorId: string | undefined;
   readonly rfqId: RfqId;
   readonly quoteId: RfqQuoteId;
 
@@ -154,6 +161,7 @@ export class RfqCancelQuoteRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.code = options.code;
+    this.errorId = options.errorId;
     this.rfqId = options.rfqId;
     this.quoteId = options.quoteId;
   }
@@ -172,6 +180,8 @@ export const RfqCancelQuoteError = makeErrorGuard(
 export type RfqConfirmationRejectedErrorOptions = {
   /** RFQ error code for the rejected confirmation decision. */
   code?: RfqErrorCode;
+  /** Error identifier for the rejected confirmation decision. */
+  errorId?: string;
   /** RFQ identifier for the rejected confirmation decision. */
   rfqId: RfqId;
   /** Quote identifier for the rejected confirmation decision. */
@@ -185,6 +195,7 @@ export class RfqConfirmationRejectedError extends PolymarketError {
   override name = 'RfqConfirmationRejectedError' as const;
 
   readonly code: RfqErrorCode | undefined;
+  readonly errorId: string | undefined;
   readonly rfqId: RfqId;
   readonly quoteId: RfqQuoteId;
 
@@ -194,6 +205,7 @@ export class RfqConfirmationRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.code = options.code;
+    this.errorId = options.errorId;
     this.rfqId = options.rfqId;
     this.quoteId = options.quoteId;
   }
