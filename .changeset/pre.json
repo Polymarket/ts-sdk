@@ -11,6 +11,7 @@
     "blue-badgers-attend",
     "brave-lobsters-deploy",
     "calm-pugs-approve",
+    "calm-trades-broadcast",
     "clever-books-cheer",
     "combo-market-catalog",
     "combo-redeem-position-id",
@@ -30,6 +31,7 @@
     "fifty-lands-talk",
     "fix-gtd-expiration-boundary",
     "fix-rfq-submission-window-code",
+    "fork-environment-configs",
     "fuzzy-hornets-report",
     "harden-rfq-invalid-frames",
     "lazy-trades-fix",
@@ -38,6 +40,8 @@
     "low-level-action-helpers",
     "nice-pandas-trade",
     "node-24-engines",
+    "perps-deposit-placeholder-hashes",
+    "perps-sdk-support",
     "production-rfq-quoter-ws",
     "protocol-v2-approvals",
     "public-beta-release",
@@ -47,6 +51,7 @@
     "rfq-close-reconnect",
     "rfq-discriminated-union",
     "rfq-error-codes",
+    "rfq-error-id",
     "rfq-quoter-ws-url",
     "rfq-trade-broadcast-revert",
     "rfq-uncorrelated-errors",
@@ -59,6 +64,7 @@
     "sparse-activity-icons",
     "upset-words-dress",
     "wide-houses-type",
+    "young-breads-return",
     "zero-nonce-auth"
   ]
 }
