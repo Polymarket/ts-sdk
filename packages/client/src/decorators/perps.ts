@@ -129,13 +129,15 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * Opens a Perps account session.
    *
    * @remarks
-   * Pass `expiresIn` to create new delegated Perps credentials, or pass existing
-   * credentials to validate and resume a previous session.
+   * Omit `expiresIn` to create new delegated Perps credentials that expire after
+   * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
+   * longer credential lifetime, or pass existing credentials to validate and
+   * resume a previous session.
    *
    * @throws {@link OpenPerpsSessionError}
    * Thrown on failure.
    */
-  openPerpsSession(request: OpenPerpsSessionRequest): Promise<PerpsSession>;
+  openPerpsSession(request?: OpenPerpsSessionRequest): Promise<PerpsSession>;
 
   /**
    * Revokes delegated Perps credentials by proxy address.
