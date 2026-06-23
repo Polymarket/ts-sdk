@@ -765,12 +765,18 @@ const PerpsCredentialsSchema = z.object({
   expiresAt: z.number().int().positive(),
 });
 
-const CreatePerpsSessionRequestSchema = z.object({
-  expiresIn: z.number().int().positive(),
+const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
+
+const CreatePerpsSessionRequestSchema = z.strictObject({
+  expiresIn: z
+    .number()
+    .int()
+    .positive()
+    .default(DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN),
   label: z.string().min(1).optional(),
 });
 
-const ResumePerpsSessionRequestSchema = z.object({
+const ResumePerpsSessionRequestSchema = z.strictObject({
   credentials: PerpsCredentialsSchema,
 });
 
@@ -784,6 +790,9 @@ const RevokePerpsCredentialsRequestSchema = z.object({
 });
 
 export type CreatePerpsSessionRequest = z.input<
+  typeof CreatePerpsSessionRequestSchema
+>;
+type ParsedCreatePerpsSessionRequest = z.output<
   typeof CreatePerpsSessionRequestSchema
 >;
 
@@ -899,15 +908,17 @@ export const WithdrawFromPerpsError = makeErrorGuard(
  * Opens a Perps account session.
  *
  * @remarks
- * Pass `expiresIn` to create new delegated Perps credentials, or pass existing
- * credentials to validate and resume a previous session.
+ * Omit `expiresIn` to create new delegated Perps credentials that expire after
+ * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
+ * longer credential lifetime, or pass existing credentials to validate and
+ * resume a previous session.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
  */
 export async function openPerpsSession(
   client: BaseSecureClient,
-  request: OpenPerpsSessionRequest,
+  request: OpenPerpsSessionRequest = {},
 ): Promise<PerpsSession> {
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
   const credentials =
@@ -1089,7 +1100,7 @@ export async function withdrawFromPerps(
 
 async function createPerpsCredentials(
   client: BaseSecureClient,
-  request: CreatePerpsSessionRequest,
+  request: ParsedCreatePerpsSessionRequest,
 ): Promise<PerpsCredentials> {
   const privateKey = createPerpsProxyPrivateKey();
   const proxy = addressFromPrivateKey(privateKey);

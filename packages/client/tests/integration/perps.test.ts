@@ -2,6 +2,8 @@ import type { PerpsSession, TxHash } from '@polymarket/client';
 import { RequestRejectedError } from '@polymarket/client';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
+const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
+
 describe('Perps integration', () => {
   it.runIf(runMeteredTests)(
     'deposits and withdraws the same Perps amount',
@@ -48,16 +50,20 @@ describe('Perps integration', () => {
   );
 
   it.runIf(runMeteredTests)(
-    'creates delegated Perps credentials',
+    'creates delegated Perps credentials with the default expiry',
     async ({ secureClientWithDepositWallet }) => {
-      const session = await secureClientWithDepositWallet.openPerpsSession({
-        expiresIn: 30 * 60_000,
-      });
+      const startedAt = Date.now();
+      const session = await secureClientWithDepositWallet.openPerpsSession();
 
       expect(session.credentials.proxy).toMatch(/^0x[0-9a-f]{40}$/i);
       expect(session.credentials.privateKey).toMatch(/^0x[0-9a-f]{64}$/i);
       expect(session.credentials.secret).toEqual(expect.any(String));
-      expect(session.credentials.expiresAt).toBeGreaterThan(Date.now());
+      expect(session.credentials.expiresAt).toBeGreaterThanOrEqual(
+        startedAt + DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN,
+      );
+      expect(session.credentials.expiresAt).toBeLessThanOrEqual(
+        Date.now() + DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN,
+      );
 
       await session.close();
     },
