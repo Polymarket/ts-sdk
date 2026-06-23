@@ -70,7 +70,7 @@ export type PerpsModifyOrderAck = z.infer<typeof PerpsModifyOrderAckSchema>;
 export const PerpsCancelOrderAckSchema = z.discriminatedUnion('status', [
   z.object({
     status: z.literal('ok'),
-    orderId: PerpsOrderIdSchema,
+    orderId: PerpsOrderIdSchema.optional(),
     clientOrderId: PerpsClientOrderIdSchema.optional(),
   }),
   z.object({
@@ -144,7 +144,7 @@ export const RawPerpsCancelOrderAckSchema = z
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
   })
-  .transform((ack, ctx): PerpsCancelOrderAck => {
+  .transform((ack): PerpsCancelOrderAck => {
     if (ack.status === 'err') {
       return {
         status: 'err',
@@ -152,14 +152,6 @@ export const RawPerpsCancelOrderAckSchema = z
         orderId: ack.oid,
         clientOrderId: ack.coid,
       };
-    }
-
-    if (ack.oid === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Expected Perps cancel order acknowledgement order id.',
-      });
-      return z.NEVER;
     }
 
     return {

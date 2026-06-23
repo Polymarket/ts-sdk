@@ -81,4 +81,11 @@ describe('RawPerpsCancelOrderAckSchema', () => {
       status: 'ok',
     });
   });
+
+  it('allows accepted cancel order acknowledgements without an order id', () => {
+    const ack = RawPerpsCancelOrderAckSchema.parse({ status: 'ok' });
+
+    expect(ack.status).toBe('ok');
+    expect(ack.orderId).toBeUndefined();
+  });
 });
