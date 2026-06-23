@@ -7,12 +7,18 @@ import {
 import {
   PerpsAssetSchema,
   PerpsDataResponseSchema,
+  PerpsFundingIntervalSchema,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
   PerpsInstrumentTypeSchema,
   PerpsSideSchema,
   PerpsTradeIdSchema,
   RawPerpsTxHashSchema,
+} from './common';
+
+export {
+  type PerpsFundingInterval,
+  PerpsFundingIntervalSchema,
 } from './common';
 
 export const PerpsRiskTierSchema = z.object({
@@ -33,13 +39,12 @@ const RawPerpsRiskTierSchema = z
 export type PerpsRiskTier = z.infer<typeof PerpsRiskTierSchema>;
 
 export const PerpsInstrumentSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  instrumentType: PerpsInstrumentTypeSchema,
+  id: PerpsInstrumentIdSchema,
   category: PerpsInstrumentCategorySchema,
   symbol: z.string().min(1),
   baseAsset: PerpsAssetSchema,
   quoteAsset: PerpsAssetSchema,
-  fundingInterval: z.string().min(1),
+  fundingInterval: PerpsFundingIntervalSchema,
   quantityDecimals: z.number().int().nonnegative(),
   priceDecimals: z.number().int().nonnegative(),
   priceBounds: DecimalStringSchema,
@@ -62,7 +67,7 @@ export const RawPerpsInstrumentSchema = z
     symbol: z.string().min(1),
     base_asset: PerpsAssetSchema,
     quote_asset: PerpsAssetSchema,
-    funding_interval: z.string().min(1),
+    funding_interval: PerpsFundingIntervalSchema,
     quantity_decimals: z.number().int().nonnegative(),
     price_decimals: z.number().int().nonnegative(),
     price_bounds: DecimalStringSchema,
@@ -75,8 +80,7 @@ export const RawPerpsInstrumentSchema = z
     risk_tiers: z.array(RawPerpsRiskTierSchema),
   })
   .transform((instrument) => ({
-    instrumentId: instrument.instrument_id,
-    instrumentType: instrument.instrument_type,
+    id: instrument.instrument_id,
     category: instrument.category,
     symbol: instrument.symbol,
     baseAsset: instrument.base_asset,
@@ -396,7 +400,6 @@ export const FetchPerpsFundingHistoryResponseSchema = PerpsDataResponseSchema(
 );
 
 export const PerpsFeeScheduleEntrySchema = z.object({
-  instrumentType: PerpsInstrumentTypeSchema,
   category: PerpsInstrumentCategorySchema,
   takerFeeRate: DecimalStringSchema,
   makerFeeRate: DecimalStringSchema,
@@ -412,7 +415,6 @@ export const RawPerpsFeeScheduleEntrySchema = z
     maker_fee_rate: DecimalStringSchema,
   })
   .transform((fee) => ({
-    instrumentType: fee.instrument_type,
     category: fee.category,
     takerFeeRate: fee.taker_fee_rate,
     makerFeeRate: fee.maker_fee_rate,

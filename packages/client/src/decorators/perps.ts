@@ -42,7 +42,14 @@ import type {
 import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
-export type { PerpsSession, PerpsSessionEvent } from '../actions';
+export type {
+  PerpsCancelOrderAck,
+  PerpsModifyOrderAck,
+  PerpsPlaceOrderAck,
+  PerpsSession,
+  PerpsSessionEvent,
+} from '../actions';
+export { UpdatePerpsLeverageError, UpdatePerpsMarginError } from '../actions';
 
 export type PublicPerpsActions = {
   /**

@@ -1,3 +1,4 @@
+import { OrderSide } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
@@ -17,6 +18,7 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
+import { RequestRejectedError } from '../../errors';
 import { captureConnection, waitForNextEvent } from '../testing';
 import { PerpsSession } from './session';
 
@@ -248,12 +250,12 @@ describe('PerpsSession', () => {
       const [ack] = await session.placeOrders({
         orders: [
           {
-            buy: true,
             clientOrderId: '0123456789abcdef0123456789abcdef',
             instrumentId: 1,
             postOnly: false,
             price: '100.00',
             quantity: '1.5',
+            side: OrderSide.BUY,
             timeInForce: PerpsTimeInForce.Gtc,
           },
         ],
@@ -289,6 +291,104 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('returns rejected order acknowledgements', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'createOrders') {
+          return [
+            {
+              coid: '0123456789abcdef0123456789abcdef',
+              error: 'order would cross post-only book',
+              status: 'err',
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            clientOrderId: '0123456789abcdef0123456789abcdef',
+            instrumentId: 1,
+            price: '100',
+            quantity: '1',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.Ioc,
+          }),
+        ).resolves.toEqual({
+          clientOrderId: '0123456789abcdef0123456789abcdef',
+          status: 'err',
+          error: 'order would cross post-only book',
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('returns mixed batch order acknowledgements', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'createOrders') {
+          return [
+            {
+              oid: 123,
+              status: 'ok',
+            },
+            {
+              error: 'insufficient margin',
+              status: 'err',
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrders({
+            orders: [
+              {
+                instrumentId: 1,
+                price: '100',
+                quantity: '1',
+                side: OrderSide.BUY,
+                timeInForce: PerpsTimeInForce.Ioc,
+              },
+              {
+                instrumentId: 1,
+                price: '101',
+                quantity: '2',
+                side: OrderSide.SELL,
+                timeInForce: PerpsTimeInForce.Ioc,
+              },
+            ],
+          }),
+        ).resolves.toEqual([
+          {
+            orderId: 123,
+            status: 'ok',
+          },
+          {
+            error: 'insufficient margin',
+            status: 'err',
+          },
+        ]);
+        expect(frames[2]).toMatchObject({
+          op: {
+            args: [{ buy: true }, { buy: false }],
+            type: 'createOrders',
+          },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('updates leverage over the session socket', async () => {
       const session = createSession();
       await session.connect();
@@ -299,7 +399,7 @@ describe('PerpsSession', () => {
           instrumentId: 1,
           leverage: 5,
         }),
-      ).resolves.toEqual({ status: 'ok' });
+      ).resolves.toBeUndefined();
       expect(frames[2]).toMatchObject({
         id: 3,
         op: {
@@ -319,6 +419,30 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('throws when leverage update is rejected', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'updateLeverage') {
+          return { status: 'err', error: 'invalid leverage' };
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverage({
+            crossMargin: false,
+            instrumentId: 1,
+            leverage: 5,
+          }),
+        ).rejects.toBeInstanceOf(RequestRejectedError);
+      } finally {
+        await session.close();
+      }
+    });
+
     it('cancels a single order by client order id', async () => {
       const session = createSession();
       await session.connect();
@@ -327,7 +451,11 @@ describe('PerpsSession', () => {
         session.cancelOrder({
           clientOrderId: '0123456789abcdef0123456789abcdef',
         }),
-      ).resolves.toEqual({ status: 'ok' });
+      ).resolves.toEqual({
+        clientOrderId: '0123456789abcdef0123456789abcdef',
+        orderId: 123,
+        status: 'ok',
+      });
       expect(frames[2]).toMatchObject({
         id: 3,
         op: {
@@ -341,6 +469,22 @@ describe('PerpsSession', () => {
       });
 
       await session.close();
+    });
+
+    it('throws when margin update is rejected', async () => {
+      server.use(
+        http.patch(`${production.perps.rest}/v1/trade/margin`, () => {
+          return HttpResponse.json({
+            status: 'err',
+            error: 'invalid margin',
+          });
+        }),
+      );
+      const session = createSession();
+
+      await expect(
+        session.updateMargin({ amount: '1', instrumentId: 1 }),
+      ).rejects.toBeInstanceOf(RequestRejectedError);
     });
   });
 
@@ -506,7 +650,12 @@ function createSession(): PerpsSession {
   });
 }
 
-function mockCommandSession(): unknown[] {
+function mockCommandSession(
+  responder: (frame: {
+    op?: { type?: string };
+    req?: string;
+  }) => unknown = responseForFrame,
+): unknown[] {
   const frames: unknown[] = [];
 
   server.use(
@@ -517,7 +666,7 @@ function mockCommandSession(): unknown[] {
         client.send(
           JSON.stringify({
             id: frame.id,
-            data: responseForFrame(frame),
+            data: responder(frame),
           }),
         );
       });
@@ -542,6 +691,14 @@ function responseForFrame(frame: { op?: { type?: string }; req?: string }) {
       ];
     case 'updateLeverage':
       return { status: 'ok' };
+    case 'cancelOrdersCOID':
+      return [
+        {
+          coid: '0123456789abcdef0123456789abcdef',
+          oid: 123,
+          status: 'ok',
+        },
+      ];
     default:
       return [{ status: 'ok' }];
   }

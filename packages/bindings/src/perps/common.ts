@@ -19,6 +19,7 @@ export type PerpsClientOrderId = Tagged<string, 'PerpsClientOrderId'>;
 export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
 export type PerpsWithdrawalId = Tagged<number, 'PerpsWithdrawalId'>;
 export type PerpsInternalTransferId = Tagged<number, 'PerpsInternalTransferId'>;
+export type PerpsFundingInterval = `${number}h`;
 
 function taggedInteger<T extends number>(value: number): T {
   return value as T;
@@ -58,6 +59,11 @@ export const PerpsInternalTransferIdSchema = z
   .int()
   .nonnegative()
   .transform(taggedInteger<PerpsInternalTransferId>);
+
+export const PerpsFundingIntervalSchema = z
+  .string()
+  .regex(/^[1-9]\d*h$/)
+  .transform((value) => value as PerpsFundingInterval);
 
 export const PerpsDecimalInputSchema = DecimalishSchema;
 export type PerpsDecimalInput = z.input<typeof PerpsDecimalInputSchema>;

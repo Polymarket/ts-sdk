@@ -1,20 +1,36 @@
-import { toDecimalString } from '@polymarket/bindings';
 import {
+  OrderSide,
+  OrderSideSchema,
+  toDecimalString,
+} from '@polymarket/bindings';
+import {
+  type PerpsCancelOrderAck,
   PerpsClientOrderIdSchema,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
-  type PerpsOrderCommandAck,
+  type PerpsModifyOrderAck,
   type PerpsOrderId,
   PerpsOrderIdSchema,
+  type PerpsPlaceOrderAck,
   type PerpsTimeInForce,
   PerpsTimeInForceSchema,
-  RawPerpsOrderCommandAckSchema,
+  RawPerpsCancelOrderAckSchema,
+  RawPerpsModifyOrderAckSchema,
+  RawPerpsPlaceOrderAckSchema,
 } from '@polymarket/bindings/perps';
 import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
+import {
+  makeErrorGuard,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+} from '../../../errors';
 import { parseUserInput } from '../../../input';
 import type { PerpsSignedOp } from '../signing';
 
@@ -30,7 +46,7 @@ type RawPerpsOrderInput = readonly [
 
 const PerpsOrderInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
-  buy: z.boolean(),
+  side: OrderSideSchema,
   price: PerpsDecimalInputSchema.optional(),
   quantity: PerpsDecimalInputSchema,
   timeInForce: PerpsTimeInForceSchema,
@@ -67,7 +83,7 @@ export type PlacePerpsOrderRequest = z.input<
 export async function placePerpsOrder(
   transport: PerpsTradingTransport,
   request: PlacePerpsOrderRequest,
-): Promise<PerpsOrderCommandAck> {
+): Promise<PerpsPlaceOrderAck> {
   const [ack] = await placePerpsOrders(transport, { orders: [request] });
   return expectPresent(ack, 'Expected Perps place order acknowledgement.');
 }
@@ -84,11 +100,11 @@ export type PlacePerpsOrdersRequest = z.input<
 export async function placePerpsOrders(
   transport: PerpsTradingTransport,
   request: PlacePerpsOrdersRequest,
-): Promise<PerpsOrderCommandAck[]> {
+): Promise<PerpsPlaceOrderAck[]> {
   const params = parseUserInput(request, PlacePerpsOrdersRequestSchema);
   return await transport.sendSignedWsCommand({
     op: ['createOrders', params.orders.map(toRawPerpsOrder)],
-    responseSchema: z.array(RawPerpsOrderCommandAckSchema),
+    responseSchema: z.array(RawPerpsPlaceOrderAckSchema),
     timeoutMessage: 'Perps place order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
@@ -107,7 +123,7 @@ export type ModifyPerpsOrderRequest = z.input<
 export async function modifyPerpsOrder(
   transport: PerpsTradingTransport,
   request: ModifyPerpsOrderRequest,
-): Promise<PerpsOrderCommandAck> {
+): Promise<PerpsModifyOrderAck> {
   const params = parseUserInput(request, ModifyPerpsOrderRequestSchema);
   const [ack] = await modifyPerpsOrders(transport, {
     orders: [{ orderId: params.orderId, order: params.order }],
@@ -135,7 +151,7 @@ export type ModifyPerpsOrdersRequest = z.input<
 export async function modifyPerpsOrders(
   transport: PerpsTradingTransport,
   request: ModifyPerpsOrdersRequest,
-): Promise<PerpsOrderCommandAck[]> {
+): Promise<PerpsModifyOrderAck[]> {
   const params = parseUserInput(request, ModifyPerpsOrdersRequestSchema);
   return await transport.sendSignedWsCommand({
     op: [
@@ -145,7 +161,7 @@ export async function modifyPerpsOrders(
         toRawPerpsOrder(order.order),
       ]),
     ],
-    responseSchema: z.array(RawPerpsOrderCommandAckSchema),
+    responseSchema: z.array(RawPerpsModifyOrderAckSchema),
     timeoutMessage: 'Perps modify order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
@@ -171,7 +187,7 @@ export type CancelPerpsOrderRequest = z.input<
 export async function cancelPerpsOrder(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrderRequest,
-): Promise<PerpsCommandAck> {
+): Promise<PerpsCancelOrderAck> {
   const params = parseUserInput(request, CancelPerpsOrderRequestSchema);
   const [ack] =
     params.orderId !== undefined
@@ -206,19 +222,19 @@ export type CancelPerpsOrdersRequest = z.input<
 export async function cancelPerpsOrders(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrdersRequest,
-): Promise<PerpsCommandAck[]> {
+): Promise<PerpsCancelOrderAck[]> {
   const params = parseUserInput(request, CancelPerpsOrdersRequestSchema);
   if (params.orderIds !== undefined) {
     return await transport.sendSignedWsCommand({
       op: ['cancelOrders', params.orderIds],
-      responseSchema: z.array(PerpsCommandAckSchema),
+      responseSchema: z.array(RawPerpsCancelOrderAckSchema),
       timeoutMessage: 'Perps cancel order acknowledgement timed out.',
       expiresAt: params.expiresAt,
     });
   }
   return await transport.sendSignedWsCommand({
     op: ['cancelOrdersCOID', params.clientOrderIds],
-    responseSchema: z.array(PerpsCommandAckSchema),
+    responseSchema: z.array(RawPerpsCancelOrderAckSchema),
     timeoutMessage: 'Perps cancel order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
@@ -234,12 +250,30 @@ export type UpdatePerpsLeverageRequest = z.input<
   typeof UpdatePerpsLeverageRequestSchema
 >;
 
+export type UpdatePerpsLeverageError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+export const UpdatePerpsLeverageError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UserInputError,
+);
+
+/**
+ * Updates Perps leverage and margin mode for an instrument.
+ *
+ * @throws {@link UpdatePerpsLeverageError}
+ * Thrown on failure.
+ */
 export async function updatePerpsLeverage(
   transport: PerpsTradingTransport,
   request: UpdatePerpsLeverageRequest,
-): Promise<PerpsCommandAck> {
+): Promise<void> {
   const params = parseUserInput(request, UpdatePerpsLeverageRequestSchema);
-  return await transport.sendSignedWsCommand({
+  const ack = await transport.sendSignedWsCommand({
     op: [
       'updateLeverage',
       [params.instrumentId, params.leverage, params.crossMargin],
@@ -247,6 +281,12 @@ export async function updatePerpsLeverage(
     responseSchema: PerpsCommandAckSchema,
     timeoutMessage: 'Perps update leverage acknowledgement timed out.',
   });
+  if (ack.status === 'err') {
+    throw new RequestRejectedError(
+      ack.error ?? 'Perps update leverage command was rejected.',
+      { status: 200 },
+    );
+  }
 }
 
 const UpdatePerpsMarginRequestSchema = z.object({
@@ -258,13 +298,33 @@ export type UpdatePerpsMarginRequest = z.input<
   typeof UpdatePerpsMarginRequestSchema
 >;
 
+export type UpdatePerpsMarginError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const UpdatePerpsMarginError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Updates isolated margin for an instrument position.
+ *
+ * @throws {@link UpdatePerpsMarginError}
+ * Thrown on failure.
+ */
 export async function updatePerpsMargin(
   transport: PerpsTradingTransport,
   request: UpdatePerpsMarginRequest,
-): Promise<PerpsCommandAck> {
+): Promise<void> {
   const params = parseUserInput(request, UpdatePerpsMarginRequestSchema);
   const amount = toDecimalString(params.amount);
-  return await transport.sendSignedHttpCommand('/v1/trade/margin', {
+  const ack = await transport.sendSignedHttpCommand('/v1/trade/margin', {
     op: ['updateMargin', [params.instrumentId, amount]],
     bodyOp: {
       args: {
@@ -274,6 +334,12 @@ export async function updatePerpsMargin(
       type: 'updateMargin',
     },
   });
+  if (ack.status === 'err') {
+    throw new RequestRejectedError(
+      ack.error ?? 'Perps update margin command was rejected.',
+      { status: 200 },
+    );
+  }
 }
 
 function toRawPerpsOrder(
@@ -281,7 +347,7 @@ function toRawPerpsOrder(
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,
-    order.buy,
+    order.side === OrderSide.BUY,
     order.price === undefined ? undefined : toDecimalString(order.price),
     toDecimalString(order.quantity),
     order.timeInForce,
