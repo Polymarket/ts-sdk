@@ -7,6 +7,7 @@ import {
 
 const rawBinaryMarket = {
   id: '1',
+  groupItemTitle: 'New Rihanna Album',
   marketMakerAddress: '0x0000000000000000000000000000000000000000',
   outcomes: '["Yes", "No"]',
   outcomePrices: '["0.4", "0.6"]',
@@ -28,6 +29,7 @@ describe('MarketSchema', () => {
       yes: { label: 'Yes', tokenId: null, price: '0.4' },
       no: { label: 'No', tokenId: null, price: '0.6' },
     });
+    expect(market.groupItemTitle).toBe('New Rihanna Album');
   });
 
   it('fails validation instead of throwing for multi-outcome markets', () => {

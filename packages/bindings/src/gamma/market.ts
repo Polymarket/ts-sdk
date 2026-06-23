@@ -169,6 +169,7 @@ export type Market = {
   slug?: string | null;
   conditionId: CtfConditionId | null;
   question?: string | null;
+  groupItemTitle?: string | null;
   description?: string | null;
   category?: string | null;
   image?: string | null;
@@ -420,6 +421,7 @@ export function normalizeMarket(market: GammaMarket): Market {
     slug: market.slug,
     conditionId: market.conditionId,
     question: market.question,
+    groupItemTitle: market.groupItemTitle,
     description: market.description,
     category: market.category,
     image: market.image,
