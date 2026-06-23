@@ -1,5 +1,16 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.7
+
+### Minor Changes
+
+- 7c76b5a: Add confirmed combo trade broadcasts to RFQ quoter sessions.
+- b20773a: Add Perps SDK support with public market data reads/subscriptions, credential-backed private sessions, account reads, trading commands, approvals, deposits, withdrawals, and Perps bindings.
+
+### Patch Changes
+
+- 330af57: Normalize placeholder Perps deposit update hashes to `undefined`.
+
 ## 0.1.0-beta.6
 
 ### Minor Changes

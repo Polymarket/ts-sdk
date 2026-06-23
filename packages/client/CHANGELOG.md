@@ -1,5 +1,20 @@
 # @polymarket/client
 
+## 0.1.0-beta.8
+
+### Minor Changes
+
+- 7c76b5a: Add confirmed combo trade broadcasts to RFQ quoter sessions.
+- b20773a: Add Perps SDK support with public market data reads/subscriptions, credential-backed private sessions, account reads, trading commands, approvals, deposits, withdrawals, and Perps bindings.
+
+### Patch Changes
+
+- 30aef9d: Expose RFQ error identifiers and signature-validation error codes to quoter clients.
+- Updated dependencies [7c76b5a]
+- Updated dependencies [330af57]
+- Updated dependencies [b20773a]
+  - @polymarket/bindings@0.1.0-beta.7
+
 ## 0.1.0-beta.7
 
 ### Minor Changes
