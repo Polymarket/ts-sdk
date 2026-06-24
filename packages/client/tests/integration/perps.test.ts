@@ -108,10 +108,6 @@ describe('Perps integration', () => {
 
         orderId = ack.orderId;
         expect(orderId).toEqual(expect.any(Number));
-
-        console.log(
-          await session.fetchOpenOrders({ instrumentId: instrument.id }),
-        );
       } finally {
         try {
           if (orderId !== undefined) {
