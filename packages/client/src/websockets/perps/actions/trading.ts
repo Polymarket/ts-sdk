@@ -32,7 +32,7 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import type { PerpsSignedOp } from '../signing';
+import type { PerpsSignableValue, PerpsSignedOp } from '../signing';
 
 type RawPerpsOrderInput = readonly [
   PerpsInstrumentId,
@@ -62,7 +62,7 @@ export type PerpsSignedWsCommandRequest<T> = {
 };
 
 export type PerpsSignedHttpCommandRequest = {
-  bodyOp: unknown;
+  bodyOp: PerpsSignableValue;
   op: PerpsSignedOp;
 };
 
@@ -327,11 +327,11 @@ export async function updatePerpsMargin(
   const ack = await transport.sendSignedHttpCommand('/v1/trade/margin', {
     op: ['updateMargin', [params.instrumentId, amount]],
     bodyOp: {
+      type: 'updateMargin',
       args: {
         amt: amount,
         iid: params.instrumentId,
       },
-      type: 'updateMargin',
     },
   });
   if (ack.status === 'err') {
@@ -361,22 +361,22 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
   switch (type) {
     case 'createOrders':
       return {
-        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
         type,
+        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
       };
     case 'modifyOrders':
       return {
+        type,
         args: (args as Array<readonly [PerpsOrderId, RawPerpsOrderInput]>).map(
           ([orderId, order]) => ({
             oid: orderId,
             order: toPerpsOrderBody(order),
           }),
         ),
-        type,
       };
     case 'cancelOrders':
     case 'cancelOrdersCOID':
-      return { args, type };
+      return { type, args };
     case 'updateLeverage': {
       const [instrumentId, leverage, crossMargin] = args as readonly [
         PerpsInstrumentId,
@@ -384,12 +384,12 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
         boolean,
       ];
       return {
+        type,
         args: {
           cross: crossMargin,
           iid: instrumentId,
           lev: leverage,
         },
-        type,
       };
     }
     default:
@@ -399,13 +399,13 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
 
 function toPerpsOrderBody(order: RawPerpsOrderInput) {
   const body: Record<string, unknown> = {
-    buy: order[1],
     iid: order[0],
-    po: order[5],
-    qty: order[3],
-    tif: order[4],
+    buy: order[1],
   };
   if (order[2] !== undefined) body.p = order[2];
+  body.qty = order[3];
+  if (order[4] !== undefined) body.tif = order[4];
+  body.po = order[5];
   if (order[6] !== undefined) body.c = order[6];
   return body;
 }

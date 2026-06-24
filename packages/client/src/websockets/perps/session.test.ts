@@ -328,6 +328,35 @@ describe('PerpsSession', () => {
       }
     });
 
+    it('rejects request-level order errors', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'createOrders') {
+          return {
+            error: 'price exceeds allowed precision',
+            status: 'err',
+          };
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            price: '100.123',
+            quantity: '1',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.Gtc,
+          }),
+        ).rejects.toThrow(RequestRejectedError);
+      } finally {
+        await session.close();
+      }
+    });
+
     it('returns mixed batch order acknowledgements', async () => {
       mockCommandSession((frame) => {
         if (frame.op?.type === 'createOrders') {

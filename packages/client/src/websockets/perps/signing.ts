@@ -9,13 +9,15 @@ type MsgpackValue =
   | number
   | string
   | readonly MsgpackValue[]
+  | { readonly [key: string]: MsgpackValue }
   | undefined;
 
 export type PerpsSignedOp = readonly MsgpackValue[];
+export type PerpsSignableValue = MsgpackValue;
 
 export type SignPerpsOpRequest = {
   chainId: number;
-  op: PerpsSignedOp;
+  op: PerpsSignableValue;
   privateKey: PrivateKey;
   salt: number;
   timestamp: number;
@@ -47,7 +49,9 @@ export function createPerpsOpTypedDataPayload(
       version: '1',
     },
     message: {
-      data: Hash.keccak256(encode(request.op), { as: 'Hex' }),
+      data: Hash.keccak256(encode(compactSignableValue(request.op)), {
+        as: 'Hex',
+      }),
       salt: BigInt(request.salt),
       ts: BigInt(request.timestamp),
     },
@@ -60,4 +64,12 @@ export function createPerpsOpTypedDataPayload(
       ],
     },
   };
+}
+
+function compactSignableValue(value: PerpsSignableValue): PerpsSignableValue {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined).map(compactSignableValue);
+  }
+
+  return value;
 }

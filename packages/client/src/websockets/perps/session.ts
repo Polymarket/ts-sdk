@@ -77,7 +77,7 @@ import {
   updatePerpsLeverage,
   updatePerpsMargin,
 } from './actions/trading';
-import { type PerpsSignedOp, signPerpsOp } from './signing';
+import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
@@ -91,10 +91,12 @@ const PERPS_SESSION_CHANNELS = [
   'withdrawals',
 ] as const;
 
-const PerpsResponseEnvelopeSchema = z.object({
-  id: z.number().int().positive().optional(),
-  data: z.unknown(),
-});
+const PerpsResponseEnvelopeSchema = z
+  .object({
+    id: z.number().int().positive().optional(),
+    data: z.unknown().optional(),
+  })
+  .passthrough();
 
 const PerpsSessionAckSchema = z
   .union([PerpsCommandAckSchema, z.array(PerpsCommandAckSchema)])
@@ -378,12 +380,13 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async #sendSignedWsCommand<T>(
     request: PerpsSignedWsCommandRequest<T>,
   ): Promise<T> {
+    const bodyOp = toPerpsCommandBodyOp(request.op);
     const command = this.#createSignedCommand(request.op, request.expiresAt);
     return await this.#sendRequest(
       {
         ...command,
         id: this.#nextRequestId++,
-        op: toPerpsCommandBodyOp(request.op),
+        op: bodyOp,
         req: 'post',
       },
       request.responseSchema,
@@ -409,7 +412,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     );
   }
 
-  #createSignedCommand(op: PerpsSignedOp, expiresAt?: number) {
+  #createSignedCommand(op: PerpsSignableValue, expiresAt?: number) {
     const salt = randomUint32();
     const timestamp = Date.now();
     let signature: string;
@@ -490,7 +493,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
     const data = pending.schema.safeParse(parsed.data.data);
     if (!data.success) {
-      pending.reject(new TransportError('Perps session empty response.'));
+      const ack = errorAckFrom(parsed.data.data ?? parsed.data);
+      if (ack !== undefined) {
+        pending.reject(new RequestRejectedError(ack.error, { status: 200 }));
+      } else {
+        pending.reject(
+          new TransportError('Perps session unexpected response.'),
+        );
+      }
       return true;
     }
 
@@ -572,13 +582,20 @@ function createPendingResponse<T>(
 function isRejectedPerpsAck(
   value: unknown,
 ): value is Extract<PerpsCommandAck, { status: 'err' }> {
-  return (
-    !Array.isArray(value) &&
-    typeof value === 'object' &&
-    value !== null &&
-    'status' in value &&
-    value.status === 'err'
-  );
+  return errorAckFrom(value) !== undefined;
+}
+
+function errorAckFrom(value: unknown): { error: string } | undefined {
+  if (Array.isArray(value) || typeof value !== 'object' || value === null) {
+    return undefined;
+  }
+
+  const ack = value as { error?: unknown; status?: unknown };
+  if (ack.status !== 'err') return undefined;
+
+  return {
+    error: typeof ack.error === 'string' ? ack.error : 'Perps command failed.',
+  };
 }
 
 function randomUint32(): number {
