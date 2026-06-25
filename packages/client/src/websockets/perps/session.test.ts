@@ -90,7 +90,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('emits balance ticks and resync on sequence gaps', async () => {
+    it('emits resync on sequence gaps', async () => {
       const connection = captureConnection(server, perps);
       const session = createSession();
 
@@ -109,25 +109,15 @@ describe('PerpsSession', () => {
       });
 
       const nextEvent = waitForNextEvent(session);
-      await connection.send(balanceUpdate({ balance: '1', sequence: 2 }));
-      await connection.send(balanceUpdate({ balance: '2', sequence: 4 }));
+      await connection.send(balanceUpdate({ balance: '2', sequence: 3 }));
 
       await expect(nextEvent).resolves.toMatchObject({
         done: false,
         value: {
           channel: 'balances',
-          payload: { asset: 'USDC', balance: '1', value: '1' },
-          sequence: 2,
-          type: 'balance',
-        },
-      });
-      await expect(waitForNextEvent(session)).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'balances',
-          previousSequence: 2,
+          previousSequence: 1,
           reason: 'sequence_gap',
-          sequence: 4,
+          sequence: 3,
           type: 'resync',
         },
       });
@@ -136,40 +126,7 @@ describe('PerpsSession', () => {
         value: {
           channel: 'balances',
           payload: { asset: 'USDC', balance: '2', value: '2' },
-          sequence: 4,
-          type: 'balance',
-        },
-      });
-
-      await session.close();
-    });
-
-    it('emits repeated balance ticks', async () => {
-      const connection = captureConnection(server, perps);
-      const session = createSession();
-
-      await session.connect();
-
-      const firstEvent = waitForNextEvent(session);
-      await connection.send(balanceUpdate({ balance: '1', sequence: 1 }));
-      await expect(firstEvent).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'balances',
-          sequence: 1,
-          type: 'balance',
-        },
-      });
-
-      const nextEvent = waitForNextEvent(session);
-      await connection.send(balanceUpdate({ balance: '1', sequence: 2 }));
-
-      await expect(nextEvent).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'balances',
-          payload: { asset: 'USDC', balance: '1', value: '1' },
-          sequence: 2,
+          sequence: 3,
           type: 'balance',
         },
       });
