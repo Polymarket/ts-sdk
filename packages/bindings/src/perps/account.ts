@@ -125,7 +125,7 @@ export const ListPerpsFundingPaymentsResponseSchema = PerpsDataResponseSchema(
   PerpsAccountFundingPaymentSchema,
 );
 
-export const RawPerpsAccountFundingPaymentEntrySchema = z
+export const PerpsAccountFundingPaymentEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     sz: DecimalStringSchema,

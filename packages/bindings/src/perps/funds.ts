@@ -48,7 +48,7 @@ export type PerpsDeposit = z.infer<typeof PerpsDepositSchema>;
 export const ListPerpsDepositsResponseSchema =
   PerpsDataResponseSchema(PerpsDepositSchema);
 
-export const RawPerpsDepositUpdateSchema = z
+export const PerpsDepositUpdateSchema = z
   .object({
     hash: PerpsTxHashSchema,
     asset: PerpsAssetSchema,
@@ -108,7 +108,7 @@ export const PerpsWithdrawResponseSchema = z
     error: response.error,
   }));
 
-export const RawPerpsWithdrawalUpdateSchema = z
+export const PerpsWithdrawalUpdateSchema = z
   .object({
     withdraw_id: PerpsWithdrawalIdSchema,
     asset: PerpsAssetSchema,

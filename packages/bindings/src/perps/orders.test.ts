@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   PerpsAccountFillSchema,
+  PerpsCancelOrderResultSchema,
   PerpsOrderSchema,
   PerpsOrderStatus,
-  RawPerpsCancelOrderAckSchema,
-  RawPerpsPostOrderAckSchema,
+  PerpsPostOrderAckSchema,
 } from './orders';
 
 const baseFill = {
@@ -35,15 +35,15 @@ describe('PerpsAccountFillSchema', () => {
   });
 });
 
-describe('RawPerpsPostOrderAckSchema', () => {
+describe('PerpsPostOrderAckSchema', () => {
   it('normalizes mixed post order acknowledgements', () => {
     const acks = [
-      RawPerpsPostOrderAckSchema.parse({
+      PerpsPostOrderAckSchema.parse({
         coid: '0123456789abcdef0123456789abcdef',
         oid: 123,
         status: 'ok',
       }),
-      RawPerpsPostOrderAckSchema.parse({
+      PerpsPostOrderAckSchema.parse({
         coid: 'fedcba9876543210fedcba9876543210',
         error: 'insufficient_margin',
         status: 'err',
@@ -65,7 +65,7 @@ describe('RawPerpsPostOrderAckSchema', () => {
   });
 
   it('requires order id for accepted post order acknowledgements', () => {
-    expect(() => RawPerpsPostOrderAckSchema.parse({ status: 'ok' })).toThrow();
+    expect(() => PerpsPostOrderAckSchema.parse({ status: 'ok' })).toThrow();
   });
 });
 
@@ -91,25 +91,25 @@ describe('PerpsOrderSchema', () => {
   });
 });
 
-describe('RawPerpsCancelOrderAckSchema', () => {
-  it('normalizes cancel order acknowledgement identifiers', () => {
-    const ack = RawPerpsCancelOrderAckSchema.parse({
+describe('PerpsCancelOrderResultSchema', () => {
+  it('normalizes cancel order result identifiers', () => {
+    const result = PerpsCancelOrderResultSchema.parse({
       coid: '0123456789abcdef0123456789abcdef',
       oid: 123,
       status: 'ok',
     });
 
-    expect(ack).toEqual({
+    expect(result).toEqual({
       clientOrderId: '0123456789abcdef0123456789abcdef',
       orderId: 123,
       status: 'ok',
     });
   });
 
-  it('allows accepted cancel order acknowledgements without an order id', () => {
-    const ack = RawPerpsCancelOrderAckSchema.parse({ status: 'ok' });
+  it('allows accepted cancel order results without an order id', () => {
+    const result = PerpsCancelOrderResultSchema.parse({ status: 'ok' });
 
-    expect(ack.status).toBe('ok');
-    expect(ack.orderId).toBeUndefined();
+    expect(result.status).toBe('ok');
+    expect(result.orderId).toBeUndefined();
   });
 });

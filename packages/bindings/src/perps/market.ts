@@ -116,7 +116,7 @@ export type PerpsTicker = z.infer<typeof PerpsTickerSchema> & {
 
 export const FetchPerpsTickersResponseSchema = z.array(PerpsTickerSchema);
 
-export const RawPerpsTickerEntrySchema = z
+export const PerpsTickerEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     idx: DecimalStringSchema,
@@ -180,7 +180,7 @@ export type PerpsStatistic = z.infer<typeof PerpsStatisticSchema>;
 
 export const FetchPerpsStatisticsResponseSchema = z.array(PerpsStatisticSchema);
 
-export const RawPerpsStatisticDataSchema = z
+export const PerpsStatisticUpdateSchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     vol: DecimalStringSchema,
@@ -218,7 +218,7 @@ export const PerpsBookSchema = z
 
 export type PerpsBook = z.infer<typeof PerpsBookSchema>;
 
-export const RawPerpsBookUpdateSchema = z
+export const PerpsBookUpdateSchema = z
   .object({
     b: z.array(PerpsBookLevelSchema),
     a: z.array(PerpsBookLevelSchema),
@@ -239,7 +239,7 @@ export const PerpsBboSchema = z.object({
 
 export type PerpsBbo = z.infer<typeof PerpsBboSchema>;
 
-export const RawPerpsBboDataSchema = z
+export const PerpsBboUpdateSchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     bp: DecimalStringSchema,
@@ -277,7 +277,7 @@ export const PerpsPublicTradeSchema = z
 
 export type PerpsPublicTrade = z.infer<typeof PerpsPublicTradeSchema>;
 
-export const RawPerpsPublicTradeResponseSchema = z
+export const PerpsPublicTradeUpdateSchema = z
   .object({
     tid: PerpsTradeIdSchema,
     iid: PerpsInstrumentIdSchema,

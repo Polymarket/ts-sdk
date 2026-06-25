@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsDepositUpdateSchema,
   PerpsWithdrawalSchema,
-  RawPerpsDepositUpdateSchema,
-  RawPerpsWithdrawalUpdateSchema,
+  PerpsWithdrawalUpdateSchema,
 } from './funds';
 
 const baseWithdrawal = {
@@ -17,9 +17,9 @@ const baseWithdrawal = {
   created_timestamp: 1_700_000_000_000,
 };
 
-describe('RawPerpsDepositUpdateSchema', () => {
+describe('PerpsDepositUpdateSchema', () => {
   it.each(['', '0x'])('normalizes %s pending hashes to undefined', (hash) => {
-    const deposit = RawPerpsDepositUpdateSchema.parse({
+    const deposit = PerpsDepositUpdateSchema.parse({
       hash,
       asset: 'USDC',
       amount: '1000000',
@@ -41,9 +41,9 @@ describe('PerpsWithdrawalSchema', () => {
   });
 });
 
-describe('RawPerpsWithdrawalUpdateSchema', () => {
+describe('PerpsWithdrawalUpdateSchema', () => {
   it('normalizes placeholder pending hashes to undefined', () => {
-    const withdrawal = RawPerpsWithdrawalUpdateSchema.parse({
+    const withdrawal = PerpsWithdrawalUpdateSchema.parse({
       withdraw_id: baseWithdrawal.withdraw_id,
       asset: baseWithdrawal.asset,
       amount: baseWithdrawal.amount,

@@ -4,22 +4,19 @@ import {
   toDecimalString,
 } from '@polymarket/bindings';
 import {
-  type PerpsCancelOrderAck,
+  type PerpsCancelOrderResult,
+  PerpsCancelOrderResultSchema,
   PerpsClientOrderIdSchema,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
-  type PerpsModifyOrderAck,
-  type PerpsOrderId,
   PerpsOrderIdSchema,
   type PerpsPostOrderAck,
+  PerpsPostOrderAckSchema,
   type PerpsTimeInForce,
   PerpsTimeInForceSchema,
-  RawPerpsCancelOrderAckSchema,
-  RawPerpsModifyOrderAckSchema,
-  RawPerpsPostOrderAckSchema,
 } from '@polymarket/bindings/perps';
 import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -96,65 +93,8 @@ export async function postPerpsOrders(
   const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
   return await transport.sendSignedWsCommand({
     op: ['createOrders', params.orders.map(toRawPerpsOrder)],
-    responseSchema: z.array(RawPerpsPostOrderAckSchema),
+    responseSchema: z.array(PerpsPostOrderAckSchema),
     timeoutMessage: 'Perps post order acknowledgement timed out.',
-    expiresAt: params.expiresAt,
-  });
-}
-
-const ModifyPerpsOrderRequestSchema = z.object({
-  orderId: PerpsOrderIdSchema,
-  order: PerpsOrderInputSchema,
-  expiresAt: z.number().int().positive().optional(),
-});
-
-export type ModifyPerpsOrderRequest = z.input<
-  typeof ModifyPerpsOrderRequestSchema
->;
-
-export async function modifyPerpsOrder(
-  transport: PerpsTradingTransport,
-  request: ModifyPerpsOrderRequest,
-): Promise<PerpsModifyOrderAck> {
-  const params = parseUserInput(request, ModifyPerpsOrderRequestSchema);
-  const [ack] = await modifyPerpsOrders(transport, {
-    orders: [{ orderId: params.orderId, order: params.order }],
-    expiresAt: params.expiresAt,
-  });
-  return expectPresent(ack, 'Expected Perps modify order acknowledgement.');
-}
-
-const ModifyPerpsOrdersRequestSchema = z.object({
-  orders: z
-    .array(
-      z.object({
-        orderId: PerpsOrderIdSchema,
-        order: PerpsOrderInputSchema,
-      }),
-    )
-    .min(1),
-  expiresAt: z.number().int().positive().optional(),
-});
-
-export type ModifyPerpsOrdersRequest = z.input<
-  typeof ModifyPerpsOrdersRequestSchema
->;
-
-export async function modifyPerpsOrders(
-  transport: PerpsTradingTransport,
-  request: ModifyPerpsOrdersRequest,
-): Promise<PerpsModifyOrderAck[]> {
-  const params = parseUserInput(request, ModifyPerpsOrdersRequestSchema);
-  return await transport.sendSignedWsCommand({
-    op: [
-      'modifyOrders',
-      params.orders.map((order) => [
-        order.orderId,
-        toRawPerpsOrder(order.order),
-      ]),
-    ],
-    responseSchema: z.array(RawPerpsModifyOrderAckSchema),
-    timeoutMessage: 'Perps modify order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
 }
@@ -179,9 +119,9 @@ export type CancelPerpsOrderRequest = z.input<
 export async function cancelPerpsOrder(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrderRequest,
-): Promise<PerpsCancelOrderAck> {
+): Promise<PerpsCancelOrderResult> {
   const params = parseUserInput(request, CancelPerpsOrderRequestSchema);
-  const [ack] =
+  const [result] =
     params.orderId !== undefined
       ? await cancelPerpsOrders(transport, {
           orderIds: [params.orderId],
@@ -191,7 +131,7 @@ export async function cancelPerpsOrder(
           clientOrderIds: [params.clientOrderId],
           expiresAt: params.expiresAt,
         });
-  return expectPresent(ack, 'Expected Perps cancel order acknowledgement.');
+  return expectPresent(result, 'Expected Perps cancel order result.');
 }
 
 const CancelPerpsOrdersRequestSchema = z.union([
@@ -214,20 +154,20 @@ export type CancelPerpsOrdersRequest = z.input<
 export async function cancelPerpsOrders(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrdersRequest,
-): Promise<PerpsCancelOrderAck[]> {
+): Promise<PerpsCancelOrderResult[]> {
   const params = parseUserInput(request, CancelPerpsOrdersRequestSchema);
   if (params.orderIds !== undefined) {
     return await transport.sendSignedWsCommand({
       op: ['cancelOrders', params.orderIds],
-      responseSchema: z.array(RawPerpsCancelOrderAckSchema),
-      timeoutMessage: 'Perps cancel order acknowledgement timed out.',
+      responseSchema: z.array(PerpsCancelOrderResultSchema),
+      timeoutMessage: 'Perps cancel order response timed out.',
       expiresAt: params.expiresAt,
     });
   }
   return await transport.sendSignedWsCommand({
     op: ['cancelOrdersCOID', params.clientOrderIds],
-    responseSchema: z.array(RawPerpsCancelOrderAckSchema),
-    timeoutMessage: 'Perps cancel order acknowledgement timed out.',
+    responseSchema: z.array(PerpsCancelOrderResultSchema),
+    timeoutMessage: 'Perps cancel order response timed out.',
     expiresAt: params.expiresAt,
   });
 }
@@ -355,16 +295,6 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
       return {
         type,
         args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
-      };
-    case 'modifyOrders':
-      return {
-        type,
-        args: (args as Array<readonly [PerpsOrderId, RawPerpsOrderInput]>).map(
-          ([orderId, order]) => ({
-            oid: orderId,
-            order: toPerpsOrderBody(order),
-          }),
-        ),
       };
     case 'cancelOrders':
     case 'cancelOrdersCOID':

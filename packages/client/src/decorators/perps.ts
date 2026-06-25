@@ -43,8 +43,7 @@ import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
 export type {
-  PerpsCancelOrderAck,
-  PerpsModifyOrderAck,
+  PerpsCancelOrderResult,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionEvent,

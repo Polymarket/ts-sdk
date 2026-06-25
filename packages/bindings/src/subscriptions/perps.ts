@@ -1,28 +1,28 @@
 import { z } from 'zod';
 import {
+  PerpsAccountFundingPaymentEntrySchema,
   PerpsBalanceSchema,
   PerpsPortfolioSchema,
-  RawPerpsAccountFundingPaymentEntrySchema,
 } from '../perps/account';
 import {
   PerpsInstrumentIdSchema,
   type PerpsKlineInterval,
 } from '../perps/common';
 import {
-  RawPerpsDepositUpdateSchema,
-  RawPerpsWithdrawalUpdateSchema,
+  PerpsDepositUpdateSchema,
+  PerpsWithdrawalUpdateSchema,
 } from '../perps/funds';
 import {
+  PerpsBboUpdateSchema,
+  PerpsBookUpdateSchema,
   PerpsCandleSchema,
-  RawPerpsBboDataSchema,
-  RawPerpsBookUpdateSchema,
-  RawPerpsPublicTradeResponseSchema,
-  RawPerpsStatisticDataSchema,
-  RawPerpsTickerEntrySchema,
+  PerpsPublicTradeUpdateSchema,
+  PerpsStatisticUpdateSchema,
+  PerpsTickerEntrySchema,
 } from '../perps/market';
 import {
-  RawPerpsAccountFillUpdateSchema,
-  RawPerpsOrderUpdateSchema,
+  PerpsAccountFillUpdateSchema,
+  PerpsOrderUpdateSchema,
 } from '../perps/orders';
 import { EpochMillisecondsSchema } from '../shared';
 
@@ -53,7 +53,7 @@ const PerpsUpdateEnvelopeSchema = z.object({
 
 export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
-  data: RawPerpsPublicTradeResponseSchema,
+  data: PerpsPublicTradeUpdateSchema,
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.trades' as const,
   type: 'trade' as const,
@@ -67,7 +67,7 @@ export type PerpsTradeEvent = z.infer<typeof PerpsTradeEventSchema>;
 
 export const PerpsBboEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BboChannelSchema,
-  data: RawPerpsBboDataSchema,
+  data: PerpsBboUpdateSchema,
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.bbo' as const,
   type: 'bbo' as const,
@@ -81,7 +81,7 @@ export type PerpsBboEvent = z.infer<typeof PerpsBboEventSchema>;
 
 export const PerpsBookEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BookChannelSchema,
-  data: RawPerpsBookUpdateSchema,
+  data: PerpsBookUpdateSchema,
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.book' as const,
   type: 'book' as const,
@@ -98,7 +98,7 @@ export type PerpsBookEvent = z.infer<typeof PerpsBookEventSchema>;
 
 export const PerpsTickerEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TickersChannelSchema,
-  data: RawPerpsTickerEntrySchema,
+  data: PerpsTickerEntrySchema,
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.tickers' as const,
   type: 'ticker' as const,
@@ -112,7 +112,7 @@ export type PerpsTickerEvent = z.infer<typeof PerpsTickerEventSchema>;
 
 export const PerpsStatisticEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: StatisticsChannelSchema,
-  data: RawPerpsStatisticDataSchema,
+  data: PerpsStatisticUpdateSchema,
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.statistics' as const,
   type: 'statistic' as const,
@@ -204,21 +204,21 @@ export type PerpsPortfolioUpdateEvent = z.infer<
 export const PerpsOrderUpdateEventSchema = perpsSessionEventSchema(
   'order',
   'orders',
-  RawPerpsOrderUpdateSchema,
+  PerpsOrderUpdateSchema,
 );
 export type PerpsOrderUpdateEvent = z.infer<typeof PerpsOrderUpdateEventSchema>;
 
 export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
   'fill',
   'fills',
-  RawPerpsAccountFillUpdateSchema,
+  PerpsAccountFillUpdateSchema,
 );
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
 
 export const PerpsFundingUpdateEventSchema = perpsSessionEventSchema(
   'funding',
   'funding',
-  RawPerpsAccountFundingPaymentEntrySchema,
+  PerpsAccountFundingPaymentEntrySchema,
 );
 export type PerpsFundingUpdateEvent = z.infer<
   typeof PerpsFundingUpdateEventSchema
@@ -227,7 +227,7 @@ export type PerpsFundingUpdateEvent = z.infer<
 export const PerpsDepositUpdateEventSchema = perpsSessionEventSchema(
   'deposit',
   'deposits',
-  RawPerpsDepositUpdateSchema,
+  PerpsDepositUpdateSchema,
 );
 export type PerpsDepositUpdateEvent = z.infer<
   typeof PerpsDepositUpdateEventSchema
@@ -236,7 +236,7 @@ export type PerpsDepositUpdateEvent = z.infer<
 export const PerpsWithdrawalUpdateEventSchema = perpsSessionEventSchema(
   'withdrawal',
   'withdrawals',
-  RawPerpsWithdrawalUpdateSchema,
+  PerpsWithdrawalUpdateSchema,
 );
 export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema

@@ -50,47 +50,6 @@ const PerpsAckErrorSchema = z
   .optional()
   .transform(perpsAckError);
 
-export const PerpsPostOrderAckSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ok'),
-    orderId: PerpsOrderIdSchema,
-    clientOrderId: PerpsClientOrderIdSchema.optional(),
-  }),
-  z.object({
-    status: z.literal('err'),
-    error: PerpsAckErrorSchema,
-    clientOrderId: PerpsClientOrderIdSchema.optional(),
-  }),
-]);
-
-export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
-
-export const PerpsModifyOrderAckSchema = z.discriminatedUnion('status', [
-  z.object({ status: z.literal('ok') }),
-  z.object({
-    status: z.literal('err'),
-    error: PerpsAckErrorSchema,
-  }),
-]);
-
-export type PerpsModifyOrderAck = z.infer<typeof PerpsModifyOrderAckSchema>;
-
-export const PerpsCancelOrderAckSchema = z.discriminatedUnion('status', [
-  z.object({
-    status: z.literal('ok'),
-    orderId: PerpsOrderIdSchema.optional(),
-    clientOrderId: PerpsClientOrderIdSchema.optional(),
-  }),
-  z.object({
-    status: z.literal('err'),
-    error: PerpsAckErrorSchema,
-    orderId: PerpsOrderIdSchema.optional(),
-    clientOrderId: PerpsClientOrderIdSchema.optional(),
-  }),
-]);
-
-export type PerpsCancelOrderAck = z.infer<typeof PerpsCancelOrderAckSchema>;
-
 export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('ok') }),
   z.object({
@@ -101,17 +60,17 @@ export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
 
 export type PerpsCommandAck = z.infer<typeof PerpsCommandAckSchema>;
 
-export const RawPerpsPostOrderAckSchema = z
+export const PerpsPostOrderAckSchema = z
   .object({
     status: PerpsCommandStatusSchema,
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
   })
-  .transform((ack, ctx): PerpsPostOrderAck => {
+  .transform((ack, ctx) => {
     if (ack.status === 'err') {
       return {
-        status: 'err',
+        status: 'err' as const,
         error: perpsAckError(ack.error),
         clientOrderId: ack.coid,
       };
@@ -126,36 +85,25 @@ export const RawPerpsPostOrderAckSchema = z
     }
 
     return {
-      status: 'ok',
+      status: 'ok' as const,
       orderId: ack.oid,
       clientOrderId: ack.coid,
     };
   });
 
-export const RawPerpsModifyOrderAckSchema = z
-  .object({
-    status: PerpsCommandStatusSchema,
-    oid: PerpsOrderIdSchema.optional(),
-    error: z.string().optional(),
-  })
-  .transform((ack): PerpsModifyOrderAck => {
-    if (ack.status === 'err') {
-      return { status: 'err', error: perpsAckError(ack.error) };
-    }
-    return { status: 'ok' };
-  });
+export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
 
-export const RawPerpsCancelOrderAckSchema = z
+export const PerpsCancelOrderResultSchema = z
   .object({
     status: PerpsCommandStatusSchema,
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
   })
-  .transform((ack): PerpsCancelOrderAck => {
+  .transform((ack) => {
     if (ack.status === 'err') {
       return {
-        status: 'err',
+        status: 'err' as const,
         error: perpsAckError(ack.error),
         orderId: ack.oid,
         clientOrderId: ack.coid,
@@ -163,11 +111,15 @@ export const RawPerpsCancelOrderAckSchema = z
     }
 
     return {
-      status: 'ok',
+      status: 'ok' as const,
       orderId: ack.oid,
       clientOrderId: ack.coid,
     };
   });
+
+export type PerpsCancelOrderResult = z.infer<
+  typeof PerpsCancelOrderResultSchema
+>;
 
 function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
@@ -211,7 +163,7 @@ export const FetchPerpsOrdersResponseSchema = z.array(PerpsOrderSchema);
 
 export const FetchPerpsOpenOrdersResponseSchema = z.array(PerpsOrderSchema);
 
-export const RawPerpsOrderUpdateSchema = z
+export const PerpsOrderUpdateSchema = z
   .object({
     oid: PerpsOrderIdSchema,
     iid: PerpsInstrumentIdSchema,
@@ -285,7 +237,7 @@ export const ListPerpsFillsResponseSchema = PerpsDataResponseSchema(
   PerpsAccountFillSchema,
 );
 
-export const RawPerpsAccountFillUpdateSchema = z
+export const PerpsAccountFillUpdateSchema = z
   .object({
     tid: PerpsTradeIdSchema,
     oid: PerpsOrderIdSchema,
