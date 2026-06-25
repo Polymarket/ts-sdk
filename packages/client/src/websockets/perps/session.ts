@@ -183,7 +183,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly #eventWaiters = new Set<EventWaiter>();
   readonly #reconnectScheduler = new ReconnectScheduler();
   readonly #sequences = new Map<string, number>();
-  readonly #lastDedupedPayload = new Map<string, string>();
   #nextRequestId = 1;
   #closing: Promise<void> | undefined;
 
@@ -360,7 +359,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.#reconnectScheduler.resetBackoff();
     if (emitResync) {
       this.#sequences.clear();
-      this.#lastDedupedPayload.clear();
       this.#queue.push({
         reason: 'reconnect',
         type: 'resync',
@@ -517,9 +515,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     if (!parsed.success) return;
 
     const event = parsed.data;
-    const shouldSkipDedupedTick = this.#shouldSkipDedupedTick(event);
     this.#pushSequenceGapIfNeeded(event);
-    if (shouldSkipDedupedTick) return;
     this.#emitEvent(event);
   }
 
@@ -571,20 +567,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       pending.reject(error);
     }
     this.#pending.clear();
-  }
-
-  #shouldSkipDedupedTick(event: {
-    channel: string;
-    payload: unknown;
-  }): boolean {
-    if (event.channel !== 'balances' && event.channel !== 'portfolio') {
-      return false;
-    }
-
-    const payload = JSON.stringify(event.payload);
-    const previousPayload = this.#lastDedupedPayload.get(event.channel);
-    this.#lastDedupedPayload.set(event.channel, payload);
-    return payload === previousPayload;
   }
 
   #pushSequenceGapIfNeeded(event: { channel: string; sequence: number }): void {
