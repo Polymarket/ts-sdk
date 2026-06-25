@@ -14,7 +14,7 @@ const OrderResponseAmountSchema = z.preprocess(
   DecimalStringSchema,
 );
 
-export const RawOrderResponseSchema = z.object({
+const OrderResponsePayloadSchema = z.object({
   errorMsg: z.string(),
   makingAmount: OrderResponseAmountSchema,
   orderID: z.string(),
@@ -25,11 +25,7 @@ export const RawOrderResponseSchema = z.object({
   transactionsHashes: z.array(z.string()).default([]),
 });
 
-export type RawOrderResponse = z.infer<typeof RawOrderResponseSchema>;
-
-export const RawOrderResponsesSchema = z.array(RawOrderResponseSchema);
-
-export type RawOrderResponses = z.infer<typeof RawOrderResponsesSchema>;
+type OrderResponsePayload = z.infer<typeof OrderResponsePayloadSchema>;
 
 export enum OrderPostStatus {
   LIVE = 'live',
@@ -91,13 +87,13 @@ export const RejectedOrderResponseSchema = z.object({
   message: z.string().min(1),
 });
 
-export const OrderResponseSchema = RawOrderResponseSchema.transform(
+export const OrderResponseSchema = OrderResponsePayloadSchema.transform(
   normalizeOrderResponse,
 );
 
 export const OrderResponsesSchema = z.array(OrderResponseSchema);
 
-function isAcceptedOrderResponse(response: RawOrderResponse): boolean {
+function isAcceptedOrderResponse(response: OrderResponsePayload): boolean {
   return (
     response.success &&
     response.errorMsg === '' &&
@@ -119,7 +115,7 @@ function parseOrderPostStatus(status: string): OrderPostStatus {
   }
 }
 
-function normalizeOrderResponse(response: RawOrderResponse): OrderResponse {
+function normalizeOrderResponse(response: OrderResponsePayload): OrderResponse {
   if (isAcceptedOrderResponse(response)) {
     return AcceptedOrderResponseSchema.parse({
       makingAmount: response.makingAmount,
@@ -140,7 +136,7 @@ function normalizeOrderResponse(response: RawOrderResponse): OrderResponse {
 }
 
 function inferOrderResponseErrorCode(
-  response: RawOrderResponse,
+  response: OrderResponsePayload,
 ): OrderResponseErrorCode {
   // This is a boundary heuristic over legacy mixed `success`/`status`/`errorMsg`
   // fields. It is intentionally temporary and should be removed once the API

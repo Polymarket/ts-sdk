@@ -101,8 +101,8 @@ describe('Perps integration', () => {
           timeInForce: PerpsTimeInForce.Gtc,
         });
 
-        const cancelAck = await session.cancelOrder({ orderId: order.id });
-        expect(cancelAck.status).toBe('ok');
+        const cancelResult = await session.cancelOrder({ orderId: order.id });
+        expect(cancelResult.status).toBe('ok');
       } finally {
         await session.close();
       }

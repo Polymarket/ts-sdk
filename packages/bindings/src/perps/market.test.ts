@@ -3,7 +3,7 @@ import {
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
   PerpsPublicTradeSchema,
-  RawPerpsPublicTradeResponseSchema,
+  PerpsPublicTradeUpdateSchema,
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
@@ -83,9 +83,9 @@ describe('PerpsPublicTradeSchema', () => {
   });
 });
 
-describe('RawPerpsPublicTradeResponseSchema', () => {
+describe('PerpsPublicTradeUpdateSchema', () => {
   it('normalizes compact placeholder hashes to undefined', () => {
-    const trade = RawPerpsPublicTradeResponseSchema.parse({
+    const trade = PerpsPublicTradeUpdateSchema.parse({
       tid: 1,
       iid: 6,
       side: 'long',

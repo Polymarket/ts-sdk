@@ -3,13 +3,12 @@ import {
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
   type PerpsBalance,
-  type PerpsCancelOrderAck,
+  type PerpsCancelOrderResult,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
-  type PerpsModifyOrderAck,
   type PerpsOrder,
   type PerpsPnlPoint,
   type PerpsPortfolio,
@@ -67,10 +66,6 @@ import {
   type CancelPerpsOrdersRequest,
   cancelPerpsOrder,
   cancelPerpsOrders,
-  type ModifyPerpsOrderRequest,
-  type ModifyPerpsOrdersRequest,
-  modifyPerpsOrder,
-  modifyPerpsOrders,
   type PerpsSignedHttpCommandRequest,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
@@ -128,8 +123,7 @@ type EventWaiter = {
 };
 
 export type {
-  PerpsCancelOrderAck,
-  PerpsModifyOrderAck,
+  PerpsCancelOrderResult,
   PerpsPostOrderAck,
 } from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
@@ -147,8 +141,6 @@ export type {
 export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
-  ModifyPerpsOrderRequest,
-  ModifyPerpsOrdersRequest,
   PlacePerpsOrderRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
@@ -312,27 +304,27 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await postPerpsOrders(this.#tradingTransport(), request);
   }
 
-  async modifyOrder(
-    request: ModifyPerpsOrderRequest,
-  ): Promise<PerpsModifyOrderAck> {
-    return await modifyPerpsOrder(this.#tradingTransport(), request);
-  }
-
-  async modifyOrders(
-    request: ModifyPerpsOrdersRequest,
-  ): Promise<PerpsModifyOrderAck[]> {
-    return await modifyPerpsOrders(this.#tradingTransport(), request);
-  }
-
+  /**
+   * Cancels one Perps order and returns the cancel result.
+   *
+   * @remarks
+   * The returned status reflects whether the cancel happened.
+   */
   async cancelOrder(
     request: CancelPerpsOrderRequest,
-  ): Promise<PerpsCancelOrderAck> {
+  ): Promise<PerpsCancelOrderResult> {
     return await cancelPerpsOrder(this.#tradingTransport(), request);
   }
 
+  /**
+   * Cancels one or more Perps orders and returns one result per requested order.
+   *
+   * @remarks
+   * Each returned status reflects whether that cancel happened.
+   */
   async cancelOrders(
     request: CancelPerpsOrdersRequest,
-  ): Promise<PerpsCancelOrderAck[]> {
+  ): Promise<PerpsCancelOrderResult[]> {
     return await cancelPerpsOrders(this.#tradingTransport(), request);
   }
 

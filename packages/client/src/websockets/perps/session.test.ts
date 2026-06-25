@@ -570,6 +570,38 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('returns rejected cancel results', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'cancelOrdersCOID') {
+          return [
+            {
+              coid: '0123456789abcdef0123456789abcdef',
+              error: 'order not found',
+              status: 'err',
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.cancelOrder({
+            clientOrderId: '0123456789abcdef0123456789abcdef',
+          }),
+        ).resolves.toEqual({
+          clientOrderId: '0123456789abcdef0123456789abcdef',
+          error: 'order not found',
+          status: 'err',
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('throws when margin update is rejected', async () => {
       server.use(
         http.patch(`${production.perps.rest}/v1/trade/margin`, () => {

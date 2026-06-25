@@ -4,17 +4,17 @@ import {
   EpochMillisecondsToIsoDateTimeStringSchema,
 } from '../shared';
 
-export const RawApiKeyCredsSchema = z.object({
-  apiKey: ApiKeySchema,
-  secret: z.string(),
-  passphrase: z.string(),
-});
-
-export const ApiKeyCredsSchema = RawApiKeyCredsSchema.transform((creds) => ({
-  key: creds.apiKey,
-  passphrase: creds.passphrase,
-  secret: creds.secret,
-}));
+export const ApiKeyCredsSchema = z
+  .object({
+    apiKey: ApiKeySchema,
+    secret: z.string(),
+    passphrase: z.string(),
+  })
+  .transform((creds) => ({
+    key: creds.apiKey,
+    passphrase: creds.passphrase,
+    secret: creds.secret,
+  }));
 
 export type ApiKeyCreds = z.infer<typeof ApiKeyCredsSchema>;
 
