@@ -139,7 +139,7 @@ export const PerpsPnlIntervalSchema = z.enum(PerpsPnlInterval);
 
 export const PerpsAssetSchema = z.string().min(1);
 
-export const RawPerpsTxHashSchema = z.preprocess(
+export const PerpsTxHashSchema = z.preprocess(
   (hash) => (hash === '0x' || hash === '' ? undefined : hash),
   TxHashSchema.optional(),
 );

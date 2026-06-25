@@ -9,7 +9,7 @@ import {
   PerpsSideSchema,
   PerpsTimeInForceSchema,
   PerpsTradeIdSchema,
-  RawPerpsTxHashSchema,
+  PerpsTxHashSchema,
 } from './common';
 
 export enum PerpsOrderStatus {
@@ -259,7 +259,7 @@ export const PerpsAccountFillSchema = z
     pnl: DecimalStringSchema,
     liquidation: z.boolean(),
     timestamp: EpochMillisecondsSchema,
-    hash: RawPerpsTxHashSchema,
+    hash: PerpsTxHashSchema,
   })
   .transform((fill) => ({
     tradeId: fill.trade_id,

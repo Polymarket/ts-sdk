@@ -13,7 +13,7 @@ import {
   PerpsInstrumentTypeSchema,
   PerpsSideSchema,
   PerpsTradeIdSchema,
-  RawPerpsTxHashSchema,
+  PerpsTxHashSchema,
 } from './common';
 
 export {
@@ -263,7 +263,7 @@ export const PerpsPublicTradeSchema = z
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     timestamp: EpochMillisecondsSchema,
-    hash: RawPerpsTxHashSchema,
+    hash: PerpsTxHashSchema,
   })
   .transform((trade) => ({
     tradeId: trade.trade_id,
@@ -285,7 +285,7 @@ export const RawPerpsPublicTradeResponseSchema = z
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     ts: EpochMillisecondsSchema,
-    hash: RawPerpsTxHashSchema,
+    hash: PerpsTxHashSchema,
   })
   .transform((trade) => ({
     tradeId: trade.tid,

@@ -191,15 +191,7 @@ const RawPerpsProxyExpirySchema = z
   )
   .pipe(EpochMillisecondsSchema);
 
-export const PerpsProxyKeySchema = z.object({
-  proxy: EvmAddressSchema,
-  label: z.string().optional(),
-  expiresAt: EpochMillisecondsSchema,
-});
-
-export type PerpsProxyKey = z.infer<typeof PerpsProxyKeySchema>;
-
-export const RawPerpsProxyKeySchema = z
+export const PerpsProxyKeySchema = z
   .object({
     proxy: EvmAddressSchema,
     label: z.string().optional(),
@@ -211,21 +203,23 @@ export const RawPerpsProxyKeySchema = z
     expiresAt: key.expiry,
   }));
 
-export const RawPerpsCredentialsResponseSchema = z
+export type PerpsProxyKey = z.infer<typeof PerpsProxyKeySchema>;
+
+export const PerpsCredentialsResponseSchema = z
   .object({
     address: EvmAddressSchema,
-    keys: z.array(RawPerpsProxyKeySchema),
+    keys: z.array(PerpsProxyKeySchema),
   })
   .transform((credentials) => ({
     address: credentials.address,
     keys: credentials.keys,
   }));
 
-export const RawPerpsCreateProxyResponseSchema = z.object({
+export const PerpsCreateProxyResponseSchema = z.object({
   secret: z.string().min(1),
 });
 
-export const RawPerpsDeleteProxyResponseSchema = z.object({
+export const PerpsDeleteProxyResponseSchema = z.object({
   status: z.enum(['ok', 'err']),
   error: z.string().optional(),
 });
