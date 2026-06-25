@@ -1,5 +1,17 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.8
+
+### Patch Changes
+
+- d230d3a: Preserve `groupItemTitle` on normalized market responses.
+- 81114f9: Normalize Perps trading commands to match the rest of the SDK: place and modify orders now use `OrderSide`, place, modify, and cancel return per-item acknowledgement unions, and leverage and margin updates return `void` while throwing `RequestRejectedError` when rejected. Clean up the `PerpsInstrument` type, including a typed `PerpsFundingInterval` string format.
+- 1f27825: Remove Perps modify order methods from the session API, rename Perps cancel order return types from acknowledgements to results, and stop exporting raw response schema names from Perps and CLOB bindings.
+- e2ce4f9: Tighten Perps order request input types and validation for time-in-force-specific price and post-only constraints.
+- 7f7eefe: Rename duplicate Perps raw model and response schemas to the public schema names.
+- Updated dependencies [700acc9]
+  - @polymarket/types@0.1.0-beta.4
+
 ## 0.1.0-beta.7
 
 ### Minor Changes

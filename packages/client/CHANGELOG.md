@@ -1,5 +1,29 @@
 # @polymarket/client
 
+## 0.1.0-beta.9
+
+### Patch Changes
+
+- 638bcc9: Default new Perps sessions to a one-week credential expiry when no custom `expiresIn` is provided.
+- d230d3a: Preserve `groupItemTitle` on normalized market responses.
+- 700acc9: Publish `expectPrivateKey` from `@polymarket/types` and republish the client against the corrected types package.
+- e8c3230: Export `PriceHistoryInterval` from `@polymarket/client`.
+- 81114f9: Normalize Perps trading commands to match the rest of the SDK: place and modify orders now use `OrderSide`, place, modify, and cancel return per-item acknowledgement unions, and leverage and margin updates return `void` while throwing `RequestRejectedError` when rejected. Clean up the `PerpsInstrument` type, including a typed `PerpsFundingInterval` string format.
+- 0f8cb2b: Fix Perps session command signing to match backend MessagePack hashes and surface top-level WebSocket error acknowledgements as request rejections.
+- 1f27825: Remove Perps modify order methods from the session API, rename Perps cancel order return types from acknowledgements to results, and stop exporting raw response schema names from Perps and CLOB bindings.
+- e2ce4f9: Tighten Perps order request input types and validation for time-in-force-specific price and post-only constraints.
+- fc9d5c7: Make Perps session `placeOrder` wait for the first matching orders update, rename ack-only batch placement to `postOrders`, normalize Perps order entity ids as `id`, and type order statuses with `PerpsOrderStatus`.
+- 5708113: Forward repeated Perps balance and portfolio ticks instead of deduplicating unchanged payloads.
+- d37bde4: Add a typed `SearchSort` enum for supported search sort fields and reject unsupported search sort values.
+- Updated dependencies [d230d3a]
+- Updated dependencies [700acc9]
+- Updated dependencies [81114f9]
+- Updated dependencies [1f27825]
+- Updated dependencies [e2ce4f9]
+- Updated dependencies [7f7eefe]
+  - @polymarket/bindings@0.1.0-beta.8
+  - @polymarket/types@0.1.0-beta.4
+
 ## 0.1.0-beta.8
 
 ### Minor Changes

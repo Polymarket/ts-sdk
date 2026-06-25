@@ -1,5 +1,11 @@
 # @polymarket/types
 
+## 0.1.0-beta.4
+
+### Patch Changes
+
+- 700acc9: Publish `expectPrivateKey` from `@polymarket/types` and republish the client against the corrected types package.
+
 ## 0.1.0-beta.3
 
 ### Patch Changes
