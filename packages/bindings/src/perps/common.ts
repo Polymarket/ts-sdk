@@ -85,9 +85,9 @@ export enum PerpsSide {
 }
 
 export enum PerpsTimeInForce {
-  Gtc = 'gtc',
-  Ioc = 'ioc',
-  Fok = 'fok',
+  GTC = 'gtc',
+  IOC = 'ioc',
+  FOK = 'fok',
 }
 
 export enum PerpsDepositStatus {

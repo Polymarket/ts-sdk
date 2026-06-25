@@ -9,14 +9,14 @@ import {
   PerpsClientOrderIdSchema,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
+  type PerpsDecimalInput,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
   PerpsOrderIdSchema,
   type PerpsPostOrderAck,
   PerpsPostOrderAckSchema,
-  type PerpsTimeInForce,
-  PerpsTimeInForceSchema,
+  PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -31,25 +31,102 @@ import {
 import { parseUserInput } from '../../../input';
 import type { PerpsSignableValue, PerpsSignedOp } from '../signing';
 
-type RawPerpsOrderInput = readonly [
-  PerpsInstrumentId,
-  boolean,
-  string | undefined,
-  string,
-  PerpsTimeInForce,
-  boolean,
-  string | undefined,
-];
-
-const PerpsOrderInputSchema = z.object({
+const PerpsOrderBaseInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   side: OrderSideSchema,
-  price: PerpsDecimalInputSchema.optional(),
   quantity: PerpsDecimalInputSchema,
-  timeInForce: PerpsTimeInForceSchema,
-  postOnly: z.boolean().optional(),
   clientOrderId: PerpsClientOrderIdSchema.optional(),
 });
+
+/**
+ * Good-til-cancelled Perps order.
+ */
+export type PerpsPlaceGtcOrderRequest = {
+  /** Perps instrument identifier to trade. */
+  instrumentId: number;
+  /** Trade direction. */
+  side: OrderSide;
+  /** Limit price. */
+  price: PerpsDecimalInput;
+  /** Order quantity. */
+  quantity: PerpsDecimalInput;
+  /** Good-til-cancelled execution. */
+  timeInForce: PerpsTimeInForce.GTC;
+  /** Whether the order must rest instead of taking liquidity. */
+  postOnly?: boolean;
+  /** Optional caller-supplied idempotency identifier. */
+  clientOrderId?: string;
+};
+
+const PerpsPlaceGtcOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
+  price: PerpsDecimalInputSchema,
+  timeInForce: z.literal(PerpsTimeInForce.GTC),
+  postOnly: z.boolean().default(false),
+}) satisfies z.ZodType<PerpsPlaceGtcOrderRequest>;
+
+/**
+ * Immediate-or-cancel Perps order.
+ */
+export type PerpsPlaceIocOrderRequest = {
+  /** Perps instrument identifier to trade. */
+  instrumentId: number;
+  /** Trade direction. */
+  side: OrderSide;
+  /** Optional limit price. Omit for market-style execution. */
+  price?: PerpsDecimalInput;
+  /** Order quantity. */
+  quantity: PerpsDecimalInput;
+  /** Immediate-or-cancel execution. */
+  timeInForce: PerpsTimeInForce.IOC;
+  postOnly?: undefined;
+  /** Optional caller-supplied idempotency identifier. */
+  clientOrderId?: string;
+};
+
+const PerpsPlaceIocOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
+  price: PerpsDecimalInputSchema.optional(),
+  timeInForce: z.literal(PerpsTimeInForce.IOC),
+  postOnly: z.never().optional(),
+}) satisfies z.ZodType<PerpsPlaceIocOrderRequest>;
+
+/**
+ * Fill-or-kill Perps order.
+ */
+export type PerpsPlaceFokOrderRequest = {
+  /** Perps instrument identifier to trade. */
+  instrumentId: number;
+  /** Trade direction. */
+  side: OrderSide;
+  /** Optional limit price. Omit for market-style execution. */
+  price?: PerpsDecimalInput;
+  /** Order quantity. */
+  quantity: PerpsDecimalInput;
+  /** Fill-or-kill execution. */
+  timeInForce: PerpsTimeInForce.FOK;
+  postOnly?: undefined;
+  /** Optional caller-supplied idempotency identifier. */
+  clientOrderId?: string;
+};
+
+const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
+  price: PerpsDecimalInputSchema.optional(),
+  timeInForce: z.literal(PerpsTimeInForce.FOK),
+  postOnly: z.never().optional(),
+}) satisfies z.ZodType<PerpsPlaceFokOrderRequest>;
+
+/**
+ * Request parameters for placing one Perps order.
+ */
+export type PlacePerpsOrderRequest =
+  | PerpsPlaceGtcOrderRequest
+  | PerpsPlaceIocOrderRequest
+  | PerpsPlaceFokOrderRequest;
+
+const PlacePerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
+  PerpsPlaceGtcOrderRequestSchema,
+  PerpsPlaceIocOrderRequestSchema,
+  PerpsPlaceFokOrderRequestSchema,
+]) satisfies z.ZodType<PlacePerpsOrderRequest>;
 
 export type PerpsSignedWsCommandRequest<T> = {
   op: PerpsSignedOp;
@@ -71,20 +148,18 @@ export type PerpsTradingTransport = {
   ): Promise<PerpsCommandAck>;
 };
 
-const PlacePerpsOrderRequestSchema = PerpsOrderInputSchema;
-
-export type PlacePerpsOrderRequest = z.input<
-  typeof PlacePerpsOrderRequestSchema
->;
+/** Request parameters for posting one or more Perps orders. */
+export type PostPerpsOrdersRequest = {
+  /** Orders to post as one command. */
+  orders: PlacePerpsOrderRequest[];
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
 
 const PostPerpsOrdersRequestSchema = z.object({
-  orders: z.array(PerpsOrderInputSchema).min(1),
+  orders: z.array(PlacePerpsOrderRequestSchema).min(1),
   expiresAt: z.number().int().positive().optional(),
-});
-
-export type PostPerpsOrdersRequest = z.input<
-  typeof PostPerpsOrdersRequestSchema
->;
+}) satisfies z.ZodType<PostPerpsOrdersRequest>;
 
 export async function postPerpsOrders(
   transport: PerpsTradingTransport,
@@ -274,8 +349,18 @@ export async function updatePerpsMargin(
   }
 }
 
+type RawPerpsOrderInput = readonly [
+  PerpsInstrumentId,
+  boolean,
+  string | undefined,
+  string,
+  PerpsTimeInForce,
+  boolean,
+  string | undefined,
+];
+
 function toRawPerpsOrder(
-  order: z.output<typeof PerpsOrderInputSchema>,
+  order: z.output<typeof PlacePerpsOrderRequestSchema>,
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,

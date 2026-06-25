@@ -98,7 +98,7 @@ describe('Perps integration', () => {
           price: price.toFixed(instrument.priceDecimals),
           quantity: minimalPerpsOrderQuantity(instrument, price),
           side: OrderSide.BUY,
-          timeInForce: PerpsTimeInForce.Gtc,
+          timeInForce: PerpsTimeInForce.GTC,
         });
 
         const cancelResult = await session.cancelOrder({ orderId: order.id });

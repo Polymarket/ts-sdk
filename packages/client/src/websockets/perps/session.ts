@@ -141,6 +141,9 @@ export type {
 export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  PerpsPlaceFokOrderRequest,
+  PerpsPlaceGtcOrderRequest,
+  PerpsPlaceIocOrderRequest,
   PlacePerpsOrderRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
