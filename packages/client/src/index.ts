@@ -1,7 +1,7 @@
 export type * from '@polymarket/bindings';
 export { OrderSide, OrderType } from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
-export { SignatureType } from '@polymarket/bindings/clob';
+export { PriceHistoryInterval, SignatureType } from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';
 export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
@@ -13,6 +13,7 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsOrderStatus,
   PerpsSide,
   PerpsTimeInForce,
   PerpsWithdrawalStatus,
