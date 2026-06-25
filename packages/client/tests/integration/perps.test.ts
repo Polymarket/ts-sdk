@@ -92,9 +92,8 @@ describe('Perps integration', () => {
       const session = await secureClientWithDepositWallet.openPerpsSession();
       const price = Number(ticker.markPrice) / 2; // ensure the order is not immediately filled
 
-      let orderId: number | undefined;
       try {
-        const ack = await session.placeOrder({
+        const order = await session.placeOrder({
           instrumentId: instrument.id,
           price: price.toFixed(instrument.priceDecimals),
           quantity: minimalPerpsOrderQuantity(instrument, price),
@@ -102,21 +101,10 @@ describe('Perps integration', () => {
           timeInForce: PerpsTimeInForce.Gtc,
         });
 
-        if (ack.status === 'err') {
-          throw new Error(`Failed to place Perps order: ${ack.error}`);
-        }
-
-        orderId = ack.orderId;
-        expect(orderId).toEqual(expect.any(Number));
+        const cancelAck = await session.cancelOrder({ orderId: order.id });
+        expect(cancelAck.status).toBe('ok');
       } finally {
-        try {
-          if (orderId !== undefined) {
-            const cancelAck = await session.cancelOrder({ orderId });
-            expect(cancelAck.status).toBe('ok');
-          }
-        } finally {
-          await session.close();
-        }
+        await session.close();
       }
     },
     6 * 60_000,

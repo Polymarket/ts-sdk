@@ -11,21 +11,28 @@ import {
   type PerpsEquityPoint,
   type PerpsModifyOrderAck,
   type PerpsOrder,
-  type PerpsPlaceOrderAck,
   type PerpsPnlPoint,
   type PerpsPortfolio,
+  type PerpsPostOrderAck,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
+  type PerpsOrderUpdateEvent,
   type PerpsSessionEvent,
   PerpsSessionUpdateEventSchema,
 } from '@polymarket/bindings/subscriptions';
-import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
+import {
+  expectNonEmptyArray,
+  invariant,
+  setNonBlockingTimeout,
+  unwrap,
+} from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
   RequestRejectedError,
   SigningError,
+  TimeoutError,
   TransportError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
@@ -68,9 +75,8 @@ import {
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
   type PlacePerpsOrderRequest,
-  type PlacePerpsOrdersRequest,
-  placePerpsOrder,
-  placePerpsOrders,
+  type PostPerpsOrdersRequest,
+  postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
   type UpdatePerpsMarginRequest,
@@ -81,6 +87,8 @@ import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
+// Purposefully generous: backend order updates are expected in the ~100ms range.
+const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 500;
 const PERPS_SESSION_CHANNELS = [
   'balances',
   'portfolio',
@@ -112,10 +120,17 @@ type PendingResponse = {
   schema: z.ZodType;
 };
 
+type EventWaiter = {
+  predicate(event: PerpsSessionEvent): boolean;
+  reject(error: Error): void;
+  resolve(event: PerpsSessionEvent): void;
+  timeout: ReturnType<typeof setNonBlockingTimeout>;
+};
+
 export type {
   PerpsCancelOrderAck,
   PerpsModifyOrderAck,
-  PerpsPlaceOrderAck,
+  PerpsPostOrderAck,
 } from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
 export type {
@@ -135,7 +150,7 @@ export type {
   ModifyPerpsOrderRequest,
   ModifyPerpsOrdersRequest,
   PlacePerpsOrderRequest,
-  PlacePerpsOrdersRequest,
+  PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
 } from './actions/trading';
@@ -165,6 +180,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   });
   readonly #queue: Pushable<PerpsSessionEvent> = pushable({ objectMode: true });
   readonly #pending = new Map<number, PendingResponse>();
+  readonly #eventWaiters = new Set<EventWaiter>();
   readonly #reconnectScheduler = new ReconnectScheduler();
   readonly #sequences = new Map<string, number>();
   readonly #lastDedupedPayload = new Map<string, string>();
@@ -263,16 +279,38 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return listPerpsPnlHistory(this.#api, request);
   }
 
-  async placeOrder(
-    request: PlacePerpsOrderRequest,
-  ): Promise<PerpsPlaceOrderAck> {
-    return await placePerpsOrder(this.#tradingTransport(), request);
+  /**
+   * Places one Perps order and resolves with the first matching orders update.
+   *
+   * @throws Thrown on failure.
+   */
+  async placeOrder(request: PlacePerpsOrderRequest): Promise<PerpsOrder> {
+    const [acknowledgement] = await postPerpsOrders(this.#tradingTransport(), {
+      orders: [request],
+    }).then(expectNonEmptyArray);
+
+    if (acknowledgement.status === 'err') {
+      throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+    }
+
+    const update = await this.#waitForEvent(
+      (event): event is PerpsOrderUpdateEvent =>
+        event.type === 'order' && event.payload.id === acknowledgement.orderId,
+      ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
+    );
+    return update.payload;
   }
 
-  async placeOrders(
-    request: PlacePerpsOrdersRequest,
-  ): Promise<PerpsPlaceOrderAck[]> {
-    return await placePerpsOrders(this.#tradingTransport(), request);
+  /**
+   * Posts one or more Perps orders and returns queue-entry acknowledgements.
+   *
+   * @remarks
+   * This is a low-level method. Most SDK consumers should prefer `placeOrder`.
+   */
+  async postOrders(
+    request: PostPerpsOrdersRequest,
+  ): Promise<PerpsPostOrderAck[]> {
+    return await postPerpsOrders(this.#tradingTransport(), request);
   }
 
   async modifyOrder(
@@ -466,6 +504,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async #shutdown(): Promise<void> {
     this.#reconnectScheduler.stop();
     this.#rejectPending(new TransportError('Perps session closed.'));
+    this.#rejectEventWaiters(new TransportError('Perps session closed.'));
     this.#queue.end();
     await this.#connection.close();
     this.#onClose(this);
@@ -481,7 +520,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     const shouldSkipDedupedTick = this.#shouldSkipDedupedTick(event);
     this.#pushSequenceGapIfNeeded(event);
     if (shouldSkipDedupedTick) return;
-    this.#queue.push(event);
+    this.#emitEvent(event);
   }
 
   #handleResponse(rawMessage: unknown): boolean {
@@ -516,6 +555,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   #handleClose(): void {
     this.#rejectPending(new TransportError('Perps session connection closed.'));
+    this.#rejectEventWaiters(
+      new TransportError('Perps session connection closed.'),
+    );
     if (this.#closing !== undefined) return;
 
     this.#reconnectScheduler.schedule({
@@ -556,13 +598,68 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       return;
     }
 
-    this.#queue.push({
+    this.#emitEvent({
       channel: event.channel,
       previousSequence,
       reason: 'sequence_gap',
       sequence: event.sequence,
       type: 'resync',
     });
+  }
+
+  #emitEvent(event: PerpsSessionEvent): void {
+    this.#resolveEventWaiters(event);
+    this.#queue.push(event);
+  }
+
+  #waitForEvent<TEvent extends PerpsSessionEvent>(
+    predicate: (event: PerpsSessionEvent) => event is TEvent,
+    timeoutMs: number,
+  ): Promise<TEvent> {
+    return this.#createEventWaiter(predicate, timeoutMs).then(
+      (event) => event as TEvent,
+    );
+  }
+
+  #createEventWaiter(
+    predicate: (event: PerpsSessionEvent) => boolean,
+    timeoutMs: number,
+  ): Promise<PerpsSessionEvent> {
+    let waiter!: EventWaiter;
+    const promise = new Promise<PerpsSessionEvent>((resolve, reject) => {
+      waiter = {
+        predicate,
+        reject,
+        resolve,
+        timeout: setNonBlockingTimeout(() => {
+          this.#removeEventWaiter(waiter);
+          reject(new TimeoutError('Perps event wait timed out.'));
+        }, timeoutMs),
+      };
+    });
+    this.#eventWaiters.add(waiter);
+    return promise;
+  }
+
+  #resolveEventWaiters(event: PerpsSessionEvent): void {
+    for (const waiter of Array.from(this.#eventWaiters)) {
+      if (waiter.predicate(event)) {
+        this.#removeEventWaiter(waiter);
+        waiter.resolve(event);
+      }
+    }
+  }
+
+  #removeEventWaiter(waiter: EventWaiter): void {
+    if (!this.#eventWaiters.delete(waiter)) return;
+    clearTimeout(waiter.timeout);
+  }
+
+  #rejectEventWaiters(error: Error): void {
+    for (const waiter of Array.from(this.#eventWaiters)) {
+      this.#removeEventWaiter(waiter);
+      waiter.reject(error);
+    }
   }
 }
 

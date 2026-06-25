@@ -45,7 +45,7 @@ import type { TransactionHandle } from '../types';
 export type {
   PerpsCancelOrderAck,
   PerpsModifyOrderAck,
-  PerpsPlaceOrderAck,
+  PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionEvent,
 } from '../actions';

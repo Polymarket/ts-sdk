@@ -13,6 +13,7 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsOrderStatus,
   PerpsSide,
   PerpsTimeInForce,
   PerpsWithdrawalStatus,

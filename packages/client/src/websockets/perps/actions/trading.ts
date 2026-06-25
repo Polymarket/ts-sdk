@@ -14,12 +14,12 @@ import {
   type PerpsModifyOrderAck,
   type PerpsOrderId,
   PerpsOrderIdSchema,
-  type PerpsPlaceOrderAck,
+  type PerpsPostOrderAck,
   type PerpsTimeInForce,
   PerpsTimeInForceSchema,
   RawPerpsCancelOrderAckSchema,
   RawPerpsModifyOrderAckSchema,
-  RawPerpsPlaceOrderAckSchema,
+  RawPerpsPostOrderAckSchema,
 } from '@polymarket/bindings/perps';
 import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -80,32 +80,24 @@ export type PlacePerpsOrderRequest = z.input<
   typeof PlacePerpsOrderRequestSchema
 >;
 
-export async function placePerpsOrder(
-  transport: PerpsTradingTransport,
-  request: PlacePerpsOrderRequest,
-): Promise<PerpsPlaceOrderAck> {
-  const [ack] = await placePerpsOrders(transport, { orders: [request] });
-  return expectPresent(ack, 'Expected Perps place order acknowledgement.');
-}
-
-const PlacePerpsOrdersRequestSchema = z.object({
+const PostPerpsOrdersRequestSchema = z.object({
   orders: z.array(PerpsOrderInputSchema).min(1),
   expiresAt: z.number().int().positive().optional(),
 });
 
-export type PlacePerpsOrdersRequest = z.input<
-  typeof PlacePerpsOrdersRequestSchema
+export type PostPerpsOrdersRequest = z.input<
+  typeof PostPerpsOrdersRequestSchema
 >;
 
-export async function placePerpsOrders(
+export async function postPerpsOrders(
   transport: PerpsTradingTransport,
-  request: PlacePerpsOrdersRequest,
-): Promise<PerpsPlaceOrderAck[]> {
-  const params = parseUserInput(request, PlacePerpsOrdersRequestSchema);
+  request: PostPerpsOrdersRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
   return await transport.sendSignedWsCommand({
     op: ['createOrders', params.orders.map(toRawPerpsOrder)],
-    responseSchema: z.array(RawPerpsPlaceOrderAckSchema),
-    timeoutMessage: 'Perps place order acknowledgement timed out.',
+    responseSchema: z.array(RawPerpsPostOrderAckSchema),
+    timeoutMessage: 'Perps post order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
 }

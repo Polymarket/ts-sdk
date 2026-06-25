@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsOrderSchema,
+  PerpsOrderStatus,
   RawPerpsAccountFillSchema,
   RawPerpsCancelOrderAckSchema,
-  RawPerpsPlaceOrderAckSchema,
+  RawPerpsPostOrderAckSchema,
 } from './orders';
 
 const baseFill = {
@@ -33,15 +35,15 @@ describe('RawPerpsAccountFillSchema', () => {
   });
 });
 
-describe('RawPerpsPlaceOrderAckSchema', () => {
-  it('normalizes mixed place order acknowledgements', () => {
+describe('RawPerpsPostOrderAckSchema', () => {
+  it('normalizes mixed post order acknowledgements', () => {
     const acks = [
-      RawPerpsPlaceOrderAckSchema.parse({
+      RawPerpsPostOrderAckSchema.parse({
         coid: '0123456789abcdef0123456789abcdef',
         oid: 123,
         status: 'ok',
       }),
-      RawPerpsPlaceOrderAckSchema.parse({
+      RawPerpsPostOrderAckSchema.parse({
         coid: 'fedcba9876543210fedcba9876543210',
         error: 'insufficient_margin',
         status: 'err',
@@ -62,8 +64,30 @@ describe('RawPerpsPlaceOrderAckSchema', () => {
     ]);
   });
 
-  it('requires order id for accepted place order acknowledgements', () => {
-    expect(() => RawPerpsPlaceOrderAckSchema.parse({ status: 'ok' })).toThrow();
+  it('requires order id for accepted post order acknowledgements', () => {
+    expect(() => RawPerpsPostOrderAckSchema.parse({ status: 'ok' })).toThrow();
+  });
+});
+
+describe('PerpsOrderSchema', () => {
+  it('normalizes typed order statuses', () => {
+    const order = PerpsOrderSchema.parse({
+      buy: true,
+      created_timestamp: 1_700_000_000_000,
+      filled_quantity: '1',
+      instrument_id: 1,
+      order_id: 123,
+      post_only: false,
+      price: '100',
+      quantity: '2',
+      resting_quantity: '1',
+      status: 'partial',
+      tif: 'gtc',
+      updated_timestamp: 1_700_000_000_000,
+    });
+
+    expect(order.id).toBe(123);
+    expect(order.status).toBe(PerpsOrderStatus.Partial);
   });
 });
 
