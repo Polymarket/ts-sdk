@@ -401,6 +401,9 @@ export type DiscoveryActions = {
   /**
    * Runs a public full-text search.
    *
+   * `keepClosedMarkets` is an hour window for including recently closed markets
+   * when searching active events.
+   *
    * @throws {@link SearchError}
    * Thrown on failure.
    *

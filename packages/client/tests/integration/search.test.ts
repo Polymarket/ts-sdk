@@ -1,4 +1,4 @@
-import { UserInputError } from '@polymarket/client';
+import { SearchSort, UserInputError } from '@polymarket/client';
 import { describe, expect, it } from './fixtures';
 
 describe('Search', () => {
@@ -9,6 +9,7 @@ describe('Search', () => {
         pageSize: 1,
         searchProfiles: true,
         searchTags: true,
+        sort: SearchSort.Volume,
       });
       const firstPage = await paginator.firstPage();
 
@@ -38,6 +39,12 @@ describe('Search', () => {
 
     it('rejects whitespace-only queries', ({ publicClient }) => {
       expect(() => publicClient.search({ q: '   ' })).toThrow(UserInputError);
+    });
+
+    it('rejects unsupported sort fields', ({ publicClient }) => {
+      expect(() =>
+        publicClient.search({ q: 'trump', sort: 'recent' as SearchSort }),
+      ).toThrow(UserInputError);
     });
   });
 });

@@ -27,6 +27,16 @@ import {
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
+export enum SearchSort {
+  Volume = 'volume',
+  Volume24Hr = 'volume_24hr',
+  Liquidity = 'liquidity',
+  Competitive = 'competitive',
+  ClosedTime = 'closed_time',
+  StartDate = 'start_date',
+  EndDate = 'end_date',
+}
+
 const SearchRequestSchema = z.object({
   q: z.string().trim().min(1),
   ascending: z.boolean().optional(),
@@ -42,7 +52,7 @@ const SearchRequestSchema = z.object({
   recurrence: z.enum(['daily', 'weekly', 'monthly']).optional(),
   searchProfiles: z.boolean().optional(),
   searchTags: z.boolean().optional(),
-  sort: z.string().min(1).optional(),
+  sort: z.enum(SearchSort).optional(),
 });
 
 export type SearchRequest = z.input<typeof SearchRequestSchema>;
@@ -79,6 +89,8 @@ export const SearchError = makeErrorGuard(
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ * `keepClosedMarkets` is an hour window for including recently closed markets
+ * when searching active events.
  *
  * @throws {@link SearchError}
  * Thrown on failure.
