@@ -11,6 +11,7 @@
 
 ## Required workflow
 
+- Commit messages are mandatory to follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. Use the `type(scope): subject` format, such as `fix(client): handle empty markets`.
 - Before finishing, run:
   - `pnpm lint`
   - `pnpm typecheck`
