@@ -221,7 +221,7 @@ describe('PerpsSession', () => {
             price: '100.00',
             quantity: '1.5',
             side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.Gtc,
+            timeInForce: PerpsTimeInForce.GTC,
           },
         ],
       });
@@ -270,7 +270,7 @@ describe('PerpsSession', () => {
           price: '100.00',
           quantity: '1.5',
           side: OrderSide.BUY,
-          timeInForce: PerpsTimeInForce.Gtc,
+          timeInForce: PerpsTimeInForce.GTC,
         }),
       ).resolves.toMatchObject({
         clientOrderId: '0123456789abcdef0123456789abcdef',
@@ -312,7 +312,7 @@ describe('PerpsSession', () => {
             price: '100.00',
             quantity: '1.5',
             side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.Gtc,
+            timeInForce: PerpsTimeInForce.GTC,
           }),
         ).resolves.toMatchObject({
           clientOrderId: '0123456789abcdef0123456789abcdef',
@@ -347,7 +347,7 @@ describe('PerpsSession', () => {
             price: '100',
             quantity: '1',
             side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.Ioc,
+            timeInForce: PerpsTimeInForce.IOC,
           }),
         ).rejects.toBeInstanceOf(RequestRejectedError);
       } finally {
@@ -382,7 +382,7 @@ describe('PerpsSession', () => {
                 price: '100',
                 quantity: '1',
                 side: OrderSide.BUY,
-                timeInForce: PerpsTimeInForce.Ioc,
+                timeInForce: PerpsTimeInForce.IOC,
               },
             ],
           }),
@@ -419,7 +419,7 @@ describe('PerpsSession', () => {
             price: '100.123',
             quantity: '1',
             side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.Gtc,
+            timeInForce: PerpsTimeInForce.GTC,
           }),
         ).rejects.toThrow(RequestRejectedError);
       } finally {
@@ -456,14 +456,14 @@ describe('PerpsSession', () => {
                 price: '100',
                 quantity: '1',
                 side: OrderSide.BUY,
-                timeInForce: PerpsTimeInForce.Ioc,
+                timeInForce: PerpsTimeInForce.IOC,
               },
               {
                 instrumentId: 1,
                 price: '101',
                 quantity: '2',
                 side: OrderSide.SELL,
-                timeInForce: PerpsTimeInForce.Ioc,
+                timeInForce: PerpsTimeInForce.IOC,
               },
             ],
           }),
