@@ -1,9 +1,5 @@
 import { z } from 'zod';
-import {
-  DecimalStringSchema,
-  EpochMillisecondsSchema,
-  TxHashSchema,
-} from '../shared';
+import { DecimalStringSchema, EpochMillisecondsSchema } from '../shared';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -247,28 +243,7 @@ export const RawPerpsOrderUpdateSchema = z
     clientOrderId: order.coid,
   }));
 
-export const PerpsAccountFillSchema = z.object({
-  tradeId: PerpsTradeIdSchema,
-  orderId: PerpsOrderIdSchema,
-  instrumentId: PerpsInstrumentIdSchema,
-  side: PerpsSideSchema,
-  price: DecimalStringSchema,
-  quantity: DecimalStringSchema,
-  taker: z.boolean(),
-  fee: DecimalStringSchema,
-  feeAsset: PerpsAssetSchema,
-  previousSize: DecimalStringSchema,
-  previousEntryPrice: DecimalStringSchema,
-  pnl: DecimalStringSchema,
-  liquidation: z.boolean(),
-  timestamp: EpochMillisecondsSchema,
-  hash: TxHashSchema.optional(),
-  clientOrderId: z.string().optional(),
-});
-
-export type PerpsAccountFill = z.infer<typeof PerpsAccountFillSchema>;
-
-export const RawPerpsAccountFillSchema = z
+export const PerpsAccountFillSchema = z
   .object({
     trade_id: PerpsTradeIdSchema,
     order_id: PerpsOrderIdSchema,
@@ -304,8 +279,10 @@ export const RawPerpsAccountFillSchema = z
     hash: fill.hash,
   }));
 
+export type PerpsAccountFill = z.infer<typeof PerpsAccountFillSchema>;
+
 export const ListPerpsFillsResponseSchema = PerpsDataResponseSchema(
-  RawPerpsAccountFillSchema,
+  PerpsAccountFillSchema,
 );
 
 export const RawPerpsAccountFillUpdateSchema = z

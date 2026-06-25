@@ -17,22 +17,7 @@ import {
   RawPerpsTxHashSchema,
 } from './common';
 
-export const PerpsDepositSchema = z.object({
-  hash: TxHashSchema,
-  asset: PerpsAssetSchema,
-  amount: BaseUnitsSchema,
-  status: PerpsDepositStatusSchema,
-  from: EvmAddressSchema,
-  to: EvmAddressSchema,
-  confirmations: z.number().int().nonnegative(),
-  requiredConfirmations: z.number().int().nonnegative(),
-  createdTimestamp: EpochMillisecondsSchema,
-  confirmedTimestamp: EpochMillisecondsSchema.optional(),
-});
-
-export type PerpsDeposit = z.infer<typeof PerpsDepositSchema>;
-
-export const RawPerpsDepositSchema = z
+export const PerpsDepositSchema = z
   .object({
     hash: TxHashSchema,
     asset: PerpsAssetSchema,
@@ -58,9 +43,10 @@ export const RawPerpsDepositSchema = z
     confirmedTimestamp: deposit.confirmed_timestamp,
   }));
 
-export const ListPerpsDepositsResponseSchema = PerpsDataResponseSchema(
-  RawPerpsDepositSchema,
-);
+export type PerpsDeposit = z.infer<typeof PerpsDepositSchema>;
+
+export const ListPerpsDepositsResponseSchema =
+  PerpsDataResponseSchema(PerpsDepositSchema);
 
 export const RawPerpsDepositUpdateSchema = z
   .object({
@@ -76,23 +62,7 @@ export const RawPerpsDepositUpdateSchema = z
     status: deposit.status,
   }));
 
-export const PerpsWithdrawalSchema = z.object({
-  withdrawalId: PerpsWithdrawalIdSchema,
-  asset: PerpsAssetSchema,
-  amount: BaseUnitsSchema,
-  fee: DecimalStringSchema,
-  status: PerpsWithdrawalStatusSchema,
-  to: EvmAddressSchema,
-  hash: TxHashSchema.optional(),
-  confirmations: z.number().int().nonnegative(),
-  requiredConfirmations: z.number().int().nonnegative(),
-  createdTimestamp: EpochMillisecondsSchema,
-  confirmedTimestamp: EpochMillisecondsSchema.optional(),
-});
-
-export type PerpsWithdrawal = z.infer<typeof PerpsWithdrawalSchema>;
-
-export const RawPerpsWithdrawalSchema = z
+export const PerpsWithdrawalSchema = z
   .object({
     withdraw_id: PerpsWithdrawalIdSchema,
     asset: PerpsAssetSchema,
@@ -120,8 +90,10 @@ export const RawPerpsWithdrawalSchema = z
     confirmedTimestamp: withdrawal.confirmed_timestamp,
   }));
 
+export type PerpsWithdrawal = z.infer<typeof PerpsWithdrawalSchema>;
+
 export const ListPerpsWithdrawalsResponseSchema = PerpsDataResponseSchema(
-  RawPerpsWithdrawalSchema,
+  PerpsWithdrawalSchema,
 );
 
 export const RawPerpsWithdrawResponseSchema = z
@@ -167,23 +139,3 @@ export const PerpsInternalTransferSchema = z.object({
 });
 
 export type PerpsInternalTransfer = z.infer<typeof PerpsInternalTransferSchema>;
-
-export const RawPerpsInternalTransferSchema = z
-  .object({
-    transfer_id: PerpsInternalTransferIdSchema,
-    asset: PerpsAssetSchema,
-    amount: BaseUnitsSchema,
-    direction: PerpsInternalTransferDirectionSchema,
-    counterparty: EvmAddressSchema,
-    label: z.string().optional(),
-    created_timestamp: EpochMillisecondsSchema,
-  })
-  .transform((transfer) => ({
-    transferId: transfer.transfer_id,
-    asset: transfer.asset,
-    amount: transfer.amount,
-    direction: transfer.direction,
-    counterparty: transfer.counterparty,
-    label: transfer.label,
-    createdTimestamp: transfer.created_timestamp,
-  }));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsWithdrawalSchema,
   RawPerpsDepositUpdateSchema,
-  RawPerpsWithdrawalSchema,
   RawPerpsWithdrawalUpdateSchema,
 } from './funds';
 
@@ -30,9 +30,9 @@ describe('RawPerpsDepositUpdateSchema', () => {
   });
 });
 
-describe('RawPerpsWithdrawalSchema', () => {
+describe('PerpsWithdrawalSchema', () => {
   it('normalizes empty pending hashes to undefined', () => {
-    const withdrawal = RawPerpsWithdrawalSchema.parse({
+    const withdrawal = PerpsWithdrawalSchema.parse({
       ...baseWithdrawal,
       hash: '',
     });

@@ -13,6 +13,7 @@ import {
   FetchPerpsTickersResponseSchema,
   FetchPerpsTradesResponseSchema,
   type PerpsBook,
+  PerpsBookSchema,
   type PerpsCandle,
   type PerpsCredentials,
   type PerpsFeeScheduleEntry,
@@ -27,7 +28,6 @@ import {
   type PerpsTicker,
   PerpsTradeIdSchema,
   type PerpsWithdrawalId,
-  RawPerpsBookSchema,
   RawPerpsCreateProxyResponseSchema,
   RawPerpsCredentialsResponseSchema,
   RawPerpsDeleteProxyResponseSchema,
@@ -314,7 +314,7 @@ export async function fetchPerpsBook(
       .get('/v1/info/book', {
         params: toSearchParams(params, snakeCase()),
       })
-      .andThen(validateWith(RawPerpsBookSchema)),
+      .andThen(validateWith(PerpsBookSchema)),
   );
 }
 

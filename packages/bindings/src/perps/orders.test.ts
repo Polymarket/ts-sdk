@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsAccountFillSchema,
   PerpsOrderSchema,
   PerpsOrderStatus,
-  RawPerpsAccountFillSchema,
   RawPerpsCancelOrderAckSchema,
   RawPerpsPostOrderAckSchema,
 } from './orders';
@@ -24,9 +24,9 @@ const baseFill = {
   timestamp: 1_700_000_000_000,
 };
 
-describe('RawPerpsAccountFillSchema', () => {
+describe('PerpsAccountFillSchema', () => {
   it('normalizes placeholder hashes to undefined', () => {
-    const fill = RawPerpsAccountFillSchema.parse({
+    const fill = PerpsAccountFillSchema.parse({
       ...baseFill,
       hash: '0x',
     });
