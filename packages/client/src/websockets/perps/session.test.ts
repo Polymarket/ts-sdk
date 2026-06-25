@@ -90,7 +90,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('deduplicates balance ticks and emits resync on sequence gaps', async () => {
+    it('emits balance ticks and resync on sequence gaps', async () => {
       const connection = captureConnection(server, perps);
       const session = createSession();
 
@@ -116,6 +116,15 @@ describe('PerpsSession', () => {
         done: false,
         value: {
           channel: 'balances',
+          payload: { asset: 'USDC', balance: '1', value: '1' },
+          sequence: 2,
+          type: 'balance',
+        },
+      });
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'balances',
           previousSequence: 2,
           reason: 'sequence_gap',
           sequence: 4,
@@ -135,7 +144,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('advances sequence tracking when skipping deduped balance ticks', async () => {
+    it('emits repeated balance ticks', async () => {
       const connection = captureConnection(server, perps);
       const session = createSession();
 
@@ -154,14 +163,13 @@ describe('PerpsSession', () => {
 
       const nextEvent = waitForNextEvent(session);
       await connection.send(balanceUpdate({ balance: '1', sequence: 2 }));
-      await connection.send(balanceUpdate({ balance: '2', sequence: 3 }));
 
       await expect(nextEvent).resolves.toMatchObject({
         done: false,
         value: {
           channel: 'balances',
-          payload: { asset: 'USDC', balance: '2', value: '2' },
-          sequence: 3,
+          payload: { asset: 'USDC', balance: '1', value: '1' },
+          sequence: 2,
           type: 'balance',
         },
       });
