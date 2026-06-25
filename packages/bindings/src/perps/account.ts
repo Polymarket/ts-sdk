@@ -20,27 +20,7 @@ export type PerpsBalance = z.infer<typeof PerpsBalanceSchema>;
 
 export const FetchPerpsBalancesResponseSchema = z.array(PerpsBalanceSchema);
 
-export const PerpsPortfolioPositionSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  symbol: z.string().min(1),
-  size: DecimalStringSchema,
-  entryPrice: DecimalStringSchema,
-  leverage: z.number().int().positive(),
-  cross: z.boolean(),
-  initialMargin: DecimalStringSchema,
-  maintenanceMargin: DecimalStringSchema,
-  positionValue: DecimalStringSchema,
-  liquidationPrice: DecimalStringSchema,
-  unrealizedPnl: DecimalStringSchema,
-  returnOnEquity: DecimalStringSchema,
-  cumulativeFunding: DecimalStringSchema,
-});
-
-export type PerpsPortfolioPosition = z.infer<
-  typeof PerpsPortfolioPositionSchema
->;
-
-export const RawPerpsPortfolioPositionSchema = z
+export const PerpsPortfolioPositionSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     symbol: z.string().min(1),
@@ -72,6 +52,10 @@ export const RawPerpsPortfolioPositionSchema = z
     cumulativeFunding: position.cumulative_funding,
   }));
 
+export type PerpsPortfolioPosition = z.infer<
+  typeof PerpsPortfolioPositionSchema
+>;
+
 export const PerpsMarginSummarySchema = z.object({
   totalAccountValue: DecimalStringSchema,
   totalInitialMargin: DecimalStringSchema,
@@ -95,19 +79,9 @@ const RawPerpsMarginSummarySchema = z
     totalPositionValue: margin.total_position_value,
   }));
 
-export const PerpsPortfolioSchema = z.object({
-  positions: z.array(PerpsPortfolioPositionSchema),
-  margin: PerpsMarginSummarySchema,
-  withdrawable: DecimalStringSchema,
-  inLiquidation: z.boolean(),
-  timestamp: EpochMillisecondsSchema,
-});
-
-export type PerpsPortfolio = z.infer<typeof PerpsPortfolioSchema>;
-
-export const RawPerpsPortfolioSchema = z
+export const PerpsPortfolioSchema = z
   .object({
-    positions: z.array(RawPerpsPortfolioPositionSchema),
+    positions: z.array(PerpsPortfolioPositionSchema),
     margin: RawPerpsMarginSummarySchema,
     withdrawable: DecimalStringSchema,
     in_liquidation: z.boolean(),
@@ -121,22 +95,11 @@ export const RawPerpsPortfolioSchema = z
     timestamp: portfolio.timestamp,
   }));
 
-export const FetchPerpsPortfolioResponseSchema = RawPerpsPortfolioSchema;
+export type PerpsPortfolio = z.infer<typeof PerpsPortfolioSchema>;
 
-export const PerpsAccountFundingPaymentSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  size: DecimalStringSchema,
-  fundingRate: DecimalStringSchema,
-  fundingAsset: PerpsAssetSchema,
-  funding: DecimalStringSchema,
-  timestamp: EpochMillisecondsSchema,
-});
+export const FetchPerpsPortfolioResponseSchema = PerpsPortfolioSchema;
 
-export type PerpsAccountFundingPayment = z.infer<
-  typeof PerpsAccountFundingPaymentSchema
->;
-
-export const RawPerpsAccountFundingPaymentSchema = z
+export const PerpsAccountFundingPaymentSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     size: DecimalStringSchema,
@@ -154,8 +117,12 @@ export const RawPerpsAccountFundingPaymentSchema = z
     timestamp: funding.timestamp,
   }));
 
+export type PerpsAccountFundingPayment = z.infer<
+  typeof PerpsAccountFundingPaymentSchema
+>;
+
 export const ListPerpsFundingPaymentsResponseSchema = PerpsDataResponseSchema(
-  RawPerpsAccountFundingPaymentSchema,
+  PerpsAccountFundingPaymentSchema,
 );
 
 export const RawPerpsAccountFundingPaymentEntrySchema = z
@@ -176,15 +143,7 @@ export const RawPerpsAccountFundingPaymentEntrySchema = z
     timestamp: funding.ts,
   }));
 
-export const PerpsAccountConfigSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  leverage: z.number().int().positive(),
-  cross: z.boolean(),
-});
-
-export type PerpsAccountConfig = z.infer<typeof PerpsAccountConfigSchema>;
-
-export const RawPerpsAccountConfigSchema = z
+export const PerpsAccountConfigSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     leverage: z.number().int().positive(),
@@ -196,8 +155,10 @@ export const RawPerpsAccountConfigSchema = z
     cross: config.cross,
   }));
 
+export type PerpsAccountConfig = z.infer<typeof PerpsAccountConfigSchema>;
+
 export const FetchPerpsAccountConfigResponseSchema = z.array(
-  RawPerpsAccountConfigSchema,
+  PerpsAccountConfigSchema,
 );
 
 export const PerpsEquityPointSchema = z
@@ -230,15 +191,7 @@ const RawPerpsProxyExpirySchema = z
   )
   .pipe(EpochMillisecondsSchema);
 
-export const PerpsProxyKeySchema = z.object({
-  proxy: EvmAddressSchema,
-  label: z.string().optional(),
-  expiresAt: EpochMillisecondsSchema,
-});
-
-export type PerpsProxyKey = z.infer<typeof PerpsProxyKeySchema>;
-
-export const RawPerpsProxyKeySchema = z
+export const PerpsProxyKeySchema = z
   .object({
     proxy: EvmAddressSchema,
     label: z.string().optional(),
@@ -250,21 +203,23 @@ export const RawPerpsProxyKeySchema = z
     expiresAt: key.expiry,
   }));
 
-export const RawPerpsCredentialsResponseSchema = z
+export type PerpsProxyKey = z.infer<typeof PerpsProxyKeySchema>;
+
+export const PerpsCredentialsResponseSchema = z
   .object({
     address: EvmAddressSchema,
-    keys: z.array(RawPerpsProxyKeySchema),
+    keys: z.array(PerpsProxyKeySchema),
   })
   .transform((credentials) => ({
     address: credentials.address,
     keys: credentials.keys,
   }));
 
-export const RawPerpsCreateProxyResponseSchema = z.object({
+export const PerpsCreateProxyResponseSchema = z.object({
   secret: z.string().min(1),
 });
 
-export const RawPerpsDeleteProxyResponseSchema = z.object({
+export const PerpsDeleteProxyResponseSchema = z.object({
   status: z.enum(['ok', 'err']),
   error: z.string().optional(),
 });

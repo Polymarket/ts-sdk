@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
+  type DecimalString,
   DecimalStringSchema,
   EpochMillisecondsSchema,
-  TxHashSchema,
 } from '../shared';
 import {
   PerpsAssetSchema,
@@ -13,7 +13,7 @@ import {
   PerpsInstrumentTypeSchema,
   PerpsSideSchema,
   PerpsTradeIdSchema,
-  RawPerpsTxHashSchema,
+  PerpsTxHashSchema,
 } from './common';
 
 export {
@@ -38,28 +38,7 @@ const RawPerpsRiskTierSchema = z
 
 export type PerpsRiskTier = z.infer<typeof PerpsRiskTierSchema>;
 
-export const PerpsInstrumentSchema = z.object({
-  id: PerpsInstrumentIdSchema,
-  category: PerpsInstrumentCategorySchema,
-  symbol: z.string().min(1),
-  baseAsset: PerpsAssetSchema,
-  quoteAsset: PerpsAssetSchema,
-  fundingInterval: PerpsFundingIntervalSchema,
-  quantityDecimals: z.number().int().nonnegative(),
-  priceDecimals: z.number().int().nonnegative(),
-  priceBounds: DecimalStringSchema,
-  liquidationFee: DecimalStringSchema,
-  maxOrderCount: z.number().int().positive(),
-  minNotional: DecimalStringSchema,
-  maxMarketNotional: DecimalStringSchema,
-  maxLimitNotional: DecimalStringSchema,
-  maxLeverage: z.number().int().positive(),
-  riskTiers: z.array(PerpsRiskTierSchema),
-});
-
-export type PerpsInstrument = z.infer<typeof PerpsInstrumentSchema>;
-
-export const RawPerpsInstrumentSchema = z
+export const PerpsInstrumentSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     instrument_type: PerpsInstrumentTypeSchema,
@@ -98,28 +77,13 @@ export const RawPerpsInstrumentSchema = z
     riskTiers: instrument.risk_tiers,
   }));
 
+export type PerpsInstrument = z.infer<typeof PerpsInstrumentSchema>;
+
 export const FetchPerpsInstrumentsResponseSchema = z.array(
-  RawPerpsInstrumentSchema,
+  PerpsInstrumentSchema,
 );
 
-export const PerpsTickerSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  symbol: z.string().min(1),
-  indexPrice: DecimalStringSchema,
-  markPrice: DecimalStringSchema,
-  lastPrice: DecimalStringSchema,
-  midPrice: DecimalStringSchema,
-  openInterest: DecimalStringSchema,
-  fundingRate: DecimalStringSchema,
-  nextFunding: EpochMillisecondsSchema,
-  volume24h: DecimalStringSchema.optional(),
-  openPrice: DecimalStringSchema.optional(),
-  timestamp: EpochMillisecondsSchema.optional(),
-});
-
-export type PerpsTicker = z.infer<typeof PerpsTickerSchema>;
-
-export const RawPerpsTickerSchema = z
+export const PerpsTickerSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     symbol: z.string().min(1),
@@ -145,7 +109,12 @@ export const RawPerpsTickerSchema = z
     timestamp: ticker.timestamp,
   }));
 
-export const FetchPerpsTickersResponseSchema = z.array(RawPerpsTickerSchema);
+export type PerpsTicker = z.infer<typeof PerpsTickerSchema> & {
+  openPrice?: DecimalString;
+  volume24h?: DecimalString;
+};
+
+export const FetchPerpsTickersResponseSchema = z.array(PerpsTickerSchema);
 
 export const RawPerpsTickerEntrySchema = z
   .object({
@@ -191,17 +160,7 @@ export const PerpsCandleSchema = z
 
 export type PerpsCandle = z.infer<typeof PerpsCandleSchema>;
 
-export const PerpsStatisticSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  symbol: z.string().min(1).optional(),
-  volume: DecimalStringSchema,
-  openPrice: DecimalStringSchema,
-  klines: z.array(PerpsCandleSchema),
-});
-
-export type PerpsStatistic = z.infer<typeof PerpsStatisticSchema>;
-
-export const RawPerpsStatisticSchema = z
+export const PerpsStatisticSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     symbol: z.string().min(1).optional(),
@@ -217,9 +176,9 @@ export const RawPerpsStatisticSchema = z
     klines: statistic.klines,
   }));
 
-export const FetchPerpsStatisticsResponseSchema = z.array(
-  RawPerpsStatisticSchema,
-);
+export type PerpsStatistic = z.infer<typeof PerpsStatisticSchema>;
+
+export const FetchPerpsStatisticsResponseSchema = z.array(PerpsStatisticSchema);
 
 export const RawPerpsStatisticDataSchema = z
   .object({
@@ -241,17 +200,7 @@ export const PerpsBookLevelSchema = z
 
 export type PerpsBookLevel = z.infer<typeof PerpsBookLevelSchema>;
 
-export const PerpsBookSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema,
-  bids: z.array(PerpsBookLevelSchema),
-  asks: z.array(PerpsBookLevelSchema),
-  timestamp: EpochMillisecondsSchema,
-  sequence: z.number().int().nonnegative(),
-});
-
-export type PerpsBook = z.infer<typeof PerpsBookSchema>;
-
-export const RawPerpsBookSchema = z
+export const PerpsBookSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
     bids: z.array(PerpsBookLevelSchema),
@@ -266,6 +215,8 @@ export const RawPerpsBookSchema = z
     timestamp: book.timestamp,
     sequence: book.sequence,
   }));
+
+export type PerpsBook = z.infer<typeof PerpsBookSchema>;
 
 export const RawPerpsBookUpdateSchema = z
   .object({
@@ -288,24 +239,6 @@ export const PerpsBboSchema = z.object({
 
 export type PerpsBbo = z.infer<typeof PerpsBboSchema>;
 
-export const RawPerpsBboSchema = z
-  .object({
-    instrument_id: PerpsInstrumentIdSchema,
-    bid_price: DecimalStringSchema,
-    bid_quantity: DecimalStringSchema,
-    ask_price: DecimalStringSchema,
-    ask_quantity: DecimalStringSchema,
-    timestamp: EpochMillisecondsSchema.optional(),
-  })
-  .transform((bbo) => ({
-    instrumentId: bbo.instrument_id,
-    bidPrice: bbo.bid_price,
-    bidQuantity: bbo.bid_quantity,
-    askPrice: bbo.ask_price,
-    askQuantity: bbo.ask_quantity,
-    timestamp: bbo.timestamp,
-  }));
-
 export const RawPerpsBboDataSchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
@@ -322,19 +255,7 @@ export const RawPerpsBboDataSchema = z
     askQuantity: bbo.aq,
   }));
 
-export const PerpsPublicTradeSchema = z.object({
-  tradeId: PerpsTradeIdSchema,
-  instrumentId: PerpsInstrumentIdSchema,
-  side: PerpsSideSchema,
-  price: DecimalStringSchema,
-  quantity: DecimalStringSchema,
-  timestamp: EpochMillisecondsSchema,
-  hash: TxHashSchema.optional(),
-});
-
-export type PerpsPublicTrade = z.infer<typeof PerpsPublicTradeSchema>;
-
-export const RawPerpsPublicTradeSchema = z
+export const PerpsPublicTradeSchema = z
   .object({
     trade_id: PerpsTradeIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
@@ -342,7 +263,7 @@ export const RawPerpsPublicTradeSchema = z
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     timestamp: EpochMillisecondsSchema,
-    hash: RawPerpsTxHashSchema,
+    hash: PerpsTxHashSchema,
   })
   .transform((trade) => ({
     tradeId: trade.trade_id,
@@ -354,6 +275,8 @@ export const RawPerpsPublicTradeSchema = z
     hash: trade.hash,
   }));
 
+export type PerpsPublicTrade = z.infer<typeof PerpsPublicTradeSchema>;
+
 export const RawPerpsPublicTradeResponseSchema = z
   .object({
     tid: PerpsTradeIdSchema,
@@ -362,7 +285,7 @@ export const RawPerpsPublicTradeResponseSchema = z
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     ts: EpochMillisecondsSchema,
-    hash: RawPerpsTxHashSchema,
+    hash: PerpsTxHashSchema,
   })
   .transform((trade) => ({
     tradeId: trade.tid,
@@ -375,17 +298,10 @@ export const RawPerpsPublicTradeResponseSchema = z
   }));
 
 export const FetchPerpsTradesResponseSchema = PerpsDataResponseSchema(
-  RawPerpsPublicTradeSchema,
+  PerpsPublicTradeSchema,
 );
 
-export const PerpsFundingRateSchema = z.object({
-  fundingRate: DecimalStringSchema,
-  timestamp: EpochMillisecondsSchema,
-});
-
-export type PerpsFundingRate = z.infer<typeof PerpsFundingRateSchema>;
-
-export const RawPerpsFundingRateSchema = z
+export const PerpsFundingRateSchema = z
   .object({
     funding_rate: DecimalStringSchema,
     timestamp: EpochMillisecondsSchema,
@@ -395,19 +311,13 @@ export const RawPerpsFundingRateSchema = z
     timestamp: funding.timestamp,
   }));
 
+export type PerpsFundingRate = z.infer<typeof PerpsFundingRateSchema>;
+
 export const FetchPerpsFundingHistoryResponseSchema = PerpsDataResponseSchema(
-  RawPerpsFundingRateSchema,
+  PerpsFundingRateSchema,
 );
 
-export const PerpsFeeScheduleEntrySchema = z.object({
-  category: PerpsInstrumentCategorySchema,
-  takerFeeRate: DecimalStringSchema,
-  makerFeeRate: DecimalStringSchema,
-});
-
-export type PerpsFeeScheduleEntry = z.infer<typeof PerpsFeeScheduleEntrySchema>;
-
-export const RawPerpsFeeScheduleEntrySchema = z
+export const PerpsFeeScheduleEntrySchema = z
   .object({
     instrument_type: PerpsInstrumentTypeSchema,
     category: PerpsInstrumentCategorySchema,
@@ -420,19 +330,19 @@ export const RawPerpsFeeScheduleEntrySchema = z
     makerFeeRate: fee.maker_fee_rate,
   }));
 
-export const PerpsFeesInfoSchema = z.object({
-  feeSchedule: z.array(PerpsFeeScheduleEntrySchema),
-});
+export type PerpsFeeScheduleEntry = z.infer<typeof PerpsFeeScheduleEntrySchema>;
 
-export type PerpsFeesInfo = z.infer<typeof PerpsFeesInfoSchema>;
-
-export const FetchPerpsFeesResponseSchema = z
+export const PerpsFeesInfoSchema = z
   .object({
-    fee_schedule: z.array(RawPerpsFeeScheduleEntrySchema),
+    fee_schedule: z.array(PerpsFeeScheduleEntrySchema),
   })
   .transform((fees) => ({
     feeSchedule: fees.fee_schedule,
   }));
+
+export type PerpsFeesInfo = z.infer<typeof PerpsFeesInfoSchema>;
+
+export const FetchPerpsFeesResponseSchema = PerpsFeesInfoSchema;
 
 export const FetchPerpsCandlesResponseSchema =
   PerpsDataResponseSchema(PerpsCandleSchema);

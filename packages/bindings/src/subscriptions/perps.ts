@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   PerpsBalanceSchema,
+  PerpsPortfolioSchema,
   RawPerpsAccountFundingPaymentEntrySchema,
-  RawPerpsPortfolioSchema,
 } from '../perps/account';
 import {
   PerpsInstrumentIdSchema,
@@ -195,7 +195,7 @@ export type PerpsBalanceUpdateEvent = z.infer<
 export const PerpsPortfolioUpdateEventSchema = perpsSessionEventSchema(
   'portfolio',
   'portfolio',
-  RawPerpsPortfolioSchema,
+  PerpsPortfolioSchema,
 );
 export type PerpsPortfolioUpdateEvent = z.infer<
   typeof PerpsPortfolioUpdateEventSchema

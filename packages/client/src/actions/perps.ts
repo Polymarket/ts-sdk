@@ -13,8 +13,12 @@ import {
   FetchPerpsTickersResponseSchema,
   FetchPerpsTradesResponseSchema,
   type PerpsBook,
+  PerpsBookSchema,
   type PerpsCandle,
+  PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
+  PerpsCredentialsResponseSchema,
+  PerpsDeleteProxyResponseSchema,
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
   type PerpsInstrument,
@@ -27,11 +31,7 @@ import {
   type PerpsTicker,
   PerpsTradeIdSchema,
   type PerpsWithdrawalId,
-  RawPerpsBookSchema,
-  RawPerpsCreateProxyResponseSchema,
-  RawPerpsCredentialsResponseSchema,
-  RawPerpsDeleteProxyResponseSchema,
-  RawPerpsWithdrawResponseSchema,
+  PerpsWithdrawResponseSchema,
 } from '@polymarket/bindings/perps';
 import {
   type EvmAddress,
@@ -314,7 +314,7 @@ export async function fetchPerpsBook(
       .get('/v1/info/book', {
         params: toSearchParams(params, snakeCase()),
       })
-      .andThen(validateWith(RawPerpsBookSchema)),
+      .andThen(validateWith(PerpsBookSchema)),
   );
 }
 
@@ -971,7 +971,7 @@ export async function revokePerpsCredentials(
           ts: timestamp,
         },
       })
-      .andThen(validateWith(RawPerpsDeleteProxyResponseSchema)),
+      .andThen(validateWith(PerpsDeleteProxyResponseSchema)),
   );
 
   if (response.status === 'err') {
@@ -1079,7 +1079,7 @@ export async function withdrawFromPerps(
           ts: timestamp,
         },
       })
-      .andThen(validateWith(RawPerpsWithdrawResponseSchema)),
+      .andThen(validateWith(PerpsWithdrawResponseSchema)),
   );
 
   if (response.status === 'err') {
@@ -1133,7 +1133,7 @@ async function createPerpsCredentials(
   const response = await unwrap(
     client.perps
       .post('/v1/account/proxy', { json: body })
-      .andThen(validateWith(RawPerpsCreateProxyResponseSchema)),
+      .andThen(validateWith(PerpsCreateProxyResponseSchema)),
   );
   const credentials = {
     expiresAt,
@@ -1162,7 +1162,7 @@ async function validatePerpsCredentials(
       .get('/v1/account/credentials', {
         headers: perpsCredentialHeaders(credentials),
       })
-      .andThen(validateWith(RawPerpsCredentialsResponseSchema)),
+      .andThen(validateWith(PerpsCredentialsResponseSchema)),
   );
 
   if (!isSameEvmAddress(response.address, client.account.signer)) {

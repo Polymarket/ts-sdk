@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   PerpsFundingIntervalSchema,
-  RawPerpsInstrumentSchema,
+  PerpsInstrumentSchema,
+  PerpsPublicTradeSchema,
   RawPerpsPublicTradeResponseSchema,
-  RawPerpsPublicTradeSchema,
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
@@ -21,9 +21,9 @@ describe('PerpsFundingIntervalSchema', () => {
   });
 });
 
-describe('RawPerpsInstrumentSchema', () => {
+describe('PerpsInstrumentSchema', () => {
   it('normalizes instrument identifiers without exposing instrument type', () => {
-    const instrument = RawPerpsInstrumentSchema.parse({
+    const instrument = PerpsInstrumentSchema.parse({
       base_asset: 'BTC',
       category: 'crypto',
       funding_interval: '1h',
@@ -53,9 +53,9 @@ describe('RawPerpsInstrumentSchema', () => {
   });
 });
 
-describe('RawPerpsPublicTradeSchema', () => {
+describe('PerpsPublicTradeSchema', () => {
   it('normalizes placeholder hashes to undefined', () => {
-    const trade = RawPerpsPublicTradeSchema.parse({
+    const trade = PerpsPublicTradeSchema.parse({
       trade_id: 1,
       instrument_id: 6,
       side: 'long',
@@ -69,7 +69,7 @@ describe('RawPerpsPublicTradeSchema', () => {
   });
 
   it('preserves valid transaction hashes', () => {
-    const trade = RawPerpsPublicTradeSchema.parse({
+    const trade = PerpsPublicTradeSchema.parse({
       trade_id: 1,
       instrument_id: 6,
       side: 'long',
