@@ -99,11 +99,11 @@ export type {
   ModifyPerpsOrdersRequest,
   PerpsCancelOrderAck,
   PerpsModifyOrderAck,
-  PerpsPlaceOrderAck,
+  PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionEvent,
   PlacePerpsOrderRequest,
-  PlacePerpsOrdersRequest,
+  PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';

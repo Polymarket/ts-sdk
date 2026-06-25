@@ -247,7 +247,7 @@ describe('PerpsSession', () => {
       const session = createSession();
       await session.connect();
 
-      const [ack] = await session.placeOrders({
+      const [ack] = await session.postOrders({
         orders: [
           {
             clientOrderId: '0123456789abcdef0123456789abcdef',
@@ -291,7 +291,106 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('returns rejected order acknowledgements', async () => {
+    it('waits for the matching private order update', async () => {
+      const frames = mockOrderPlacementSession({ status: 'open' });
+      const session = createSession();
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await expect(
+        session.placeOrder({
+          clientOrderId: '0123456789abcdef0123456789abcdef',
+          instrumentId: 1,
+          postOnly: false,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.Gtc,
+        }),
+      ).resolves.toMatchObject({
+        clientOrderId: '0123456789abcdef0123456789abcdef',
+        id: 123,
+        restingQuantity: '1.5',
+        status: 'open',
+      });
+      expect(frames[2]).toMatchObject({
+        op: { type: 'createOrders' },
+        req: 'post',
+      });
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          payload: {
+            id: 123,
+            status: 'open',
+          },
+          type: 'order',
+        },
+      });
+
+      await session.close();
+    });
+
+    it('returns terminal placement updates after the ack', async () => {
+      mockOrderPlacementSession({
+        status: 'post_only_rejected',
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            clientOrderId: '0123456789abcdef0123456789abcdef',
+            instrumentId: 1,
+            postOnly: true,
+            price: '100.00',
+            quantity: '1.5',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.Gtc,
+          }),
+        ).resolves.toMatchObject({
+          clientOrderId: '0123456789abcdef0123456789abcdef',
+          id: 123,
+          status: 'post_only_rejected',
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('throws when place order receives a rejected order acknowledgement', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'createOrders') {
+          return [
+            {
+              error: 'insufficient margin',
+              status: 'err',
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            price: '100',
+            quantity: '1',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.Ioc,
+          }),
+        ).rejects.toBeInstanceOf(RequestRejectedError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('returns rejected post order acknowledgements', async () => {
       mockCommandSession((frame) => {
         if (frame.op?.type === 'createOrders') {
           return [
@@ -310,19 +409,54 @@ describe('PerpsSession', () => {
 
       try {
         await expect(
-          session.placeOrder({
+          session.postOrders({
+            orders: [
+              {
+                clientOrderId: '0123456789abcdef0123456789abcdef',
+                instrumentId: 1,
+                price: '100',
+                quantity: '1',
+                side: OrderSide.BUY,
+                timeInForce: PerpsTimeInForce.Ioc,
+              },
+            ],
+          }),
+        ).resolves.toEqual([
+          {
             clientOrderId: '0123456789abcdef0123456789abcdef',
+            status: 'err',
+            error: 'order would cross post-only book',
+          },
+        ]);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('rejects request-level order errors', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'createOrders') {
+          return {
+            error: 'price exceeds allowed precision',
+            status: 'err',
+          };
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
             instrumentId: 1,
-            price: '100',
+            price: '100.123',
             quantity: '1',
             side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.Ioc,
+            timeInForce: PerpsTimeInForce.Gtc,
           }),
-        ).resolves.toEqual({
-          clientOrderId: '0123456789abcdef0123456789abcdef',
-          status: 'err',
-          error: 'order would cross post-only book',
-        });
+        ).rejects.toThrow(RequestRejectedError);
       } finally {
         await session.close();
       }
@@ -350,7 +484,7 @@ describe('PerpsSession', () => {
 
       try {
         await expect(
-          session.placeOrders({
+          session.postOrders({
             orders: [
               {
                 instrumentId: 1,
@@ -676,6 +810,40 @@ function mockCommandSession(
   return frames;
 }
 
+function mockOrderPlacementSession(request: { status: string }): unknown[] {
+  const frames: unknown[] = [];
+
+  server.use(
+    perps.addEventListener('connection', ({ client }) => {
+      client.addEventListener('message', (event) => {
+        const frame = JSON.parse(String(event.data));
+        frames.push(frame);
+
+        if (frame.op?.type === 'createOrders') {
+          const update = orderUpdate(request.status);
+          client.send(
+            JSON.stringify({
+              id: frame.id,
+              data: responseForFrame(frame),
+            }),
+          );
+          setTimeout(() => client.send(JSON.stringify(update)), 0);
+          return;
+        }
+
+        client.send(
+          JSON.stringify({
+            id: frame.id,
+            data: responseForFrame(frame),
+          }),
+        );
+      });
+    }),
+  );
+
+  return frames;
+}
+
 function responseForFrame(frame: { op?: { type?: string }; req?: string }) {
   if (frame.req === 'sub') return [{ status: 'ok' }];
   switch (frame.op?.type) {
@@ -767,6 +935,30 @@ function balanceUpdate(request: { balance: string; sequence: number }) {
       value: request.balance,
     },
     sq: request.sequence,
+    ts: 1_700_000_000_000,
+  };
+}
+
+function orderUpdate(status: string) {
+  return {
+    ch: 'orders',
+    data: {
+      buy: true,
+      coid: '0123456789abcdef0123456789abcdef',
+      cts: 1_700_000_000_000,
+      fill: status === 'filled' ? '1.5' : '0',
+      iid: 1,
+      oid: 123,
+      p: '100.00',
+      po: false,
+      qty: '1.5',
+      rest: status === 'filled' ? '0' : '1.5',
+      ro: false,
+      status,
+      tif: 'gtc',
+      uts: 1_700_000_000_000,
+    },
+    sq: 1,
     ts: 1_700_000_000_000,
   };
 }

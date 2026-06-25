@@ -14,12 +14,12 @@ import {
   type PerpsModifyOrderAck,
   type PerpsOrderId,
   PerpsOrderIdSchema,
-  type PerpsPlaceOrderAck,
+  type PerpsPostOrderAck,
   type PerpsTimeInForce,
   PerpsTimeInForceSchema,
   RawPerpsCancelOrderAckSchema,
   RawPerpsModifyOrderAckSchema,
-  RawPerpsPlaceOrderAckSchema,
+  RawPerpsPostOrderAckSchema,
 } from '@polymarket/bindings/perps';
 import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -32,7 +32,7 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import type { PerpsSignedOp } from '../signing';
+import type { PerpsSignableValue, PerpsSignedOp } from '../signing';
 
 type RawPerpsOrderInput = readonly [
   PerpsInstrumentId,
@@ -62,7 +62,7 @@ export type PerpsSignedWsCommandRequest<T> = {
 };
 
 export type PerpsSignedHttpCommandRequest = {
-  bodyOp: unknown;
+  bodyOp: PerpsSignableValue;
   op: PerpsSignedOp;
 };
 
@@ -80,32 +80,24 @@ export type PlacePerpsOrderRequest = z.input<
   typeof PlacePerpsOrderRequestSchema
 >;
 
-export async function placePerpsOrder(
-  transport: PerpsTradingTransport,
-  request: PlacePerpsOrderRequest,
-): Promise<PerpsPlaceOrderAck> {
-  const [ack] = await placePerpsOrders(transport, { orders: [request] });
-  return expectPresent(ack, 'Expected Perps place order acknowledgement.');
-}
-
-const PlacePerpsOrdersRequestSchema = z.object({
+const PostPerpsOrdersRequestSchema = z.object({
   orders: z.array(PerpsOrderInputSchema).min(1),
   expiresAt: z.number().int().positive().optional(),
 });
 
-export type PlacePerpsOrdersRequest = z.input<
-  typeof PlacePerpsOrdersRequestSchema
+export type PostPerpsOrdersRequest = z.input<
+  typeof PostPerpsOrdersRequestSchema
 >;
 
-export async function placePerpsOrders(
+export async function postPerpsOrders(
   transport: PerpsTradingTransport,
-  request: PlacePerpsOrdersRequest,
-): Promise<PerpsPlaceOrderAck[]> {
-  const params = parseUserInput(request, PlacePerpsOrdersRequestSchema);
+  request: PostPerpsOrdersRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
   return await transport.sendSignedWsCommand({
     op: ['createOrders', params.orders.map(toRawPerpsOrder)],
-    responseSchema: z.array(RawPerpsPlaceOrderAckSchema),
-    timeoutMessage: 'Perps place order acknowledgement timed out.',
+    responseSchema: z.array(RawPerpsPostOrderAckSchema),
+    timeoutMessage: 'Perps post order acknowledgement timed out.',
     expiresAt: params.expiresAt,
   });
 }
@@ -327,11 +319,11 @@ export async function updatePerpsMargin(
   const ack = await transport.sendSignedHttpCommand('/v1/trade/margin', {
     op: ['updateMargin', [params.instrumentId, amount]],
     bodyOp: {
+      type: 'updateMargin',
       args: {
         amt: amount,
         iid: params.instrumentId,
       },
-      type: 'updateMargin',
     },
   });
   if (ack.status === 'err') {
@@ -361,22 +353,22 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
   switch (type) {
     case 'createOrders':
       return {
-        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
         type,
+        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
       };
     case 'modifyOrders':
       return {
+        type,
         args: (args as Array<readonly [PerpsOrderId, RawPerpsOrderInput]>).map(
           ([orderId, order]) => ({
             oid: orderId,
             order: toPerpsOrderBody(order),
           }),
         ),
-        type,
       };
     case 'cancelOrders':
     case 'cancelOrdersCOID':
-      return { args, type };
+      return { type, args };
     case 'updateLeverage': {
       const [instrumentId, leverage, crossMargin] = args as readonly [
         PerpsInstrumentId,
@@ -384,12 +376,12 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
         boolean,
       ];
       return {
+        type,
         args: {
           cross: crossMargin,
           iid: instrumentId,
           lev: leverage,
         },
-        type,
       };
     }
     default:
@@ -399,13 +391,13 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
 
 function toPerpsOrderBody(order: RawPerpsOrderInput) {
   const body: Record<string, unknown> = {
-    buy: order[1],
     iid: order[0],
-    po: order[5],
-    qty: order[3],
-    tif: order[4],
+    buy: order[1],
   };
   if (order[2] !== undefined) body.p = order[2];
+  body.qty = order[3];
+  if (order[4] !== undefined) body.tif = order[4];
+  body.po = order[5];
   if (order[6] !== undefined) body.c = order[6];
   return body;
 }

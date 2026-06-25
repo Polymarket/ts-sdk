@@ -1,5 +1,15 @@
-import type { PerpsSession, TxHash } from '@polymarket/client';
-import { RequestRejectedError } from '@polymarket/client';
+import type {
+  DecimalString,
+  PerpsInstrument,
+  PerpsSession,
+  TxHash,
+} from '@polymarket/client';
+import {
+  OrderSide,
+  PerpsTimeInForce,
+  RequestRejectedError,
+} from '@polymarket/client';
+import { expectNonEmptyArray } from '@polymarket/types';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
@@ -67,6 +77,37 @@ describe('Perps integration', () => {
 
       await session.close();
     },
+  );
+
+  it.runIf(runMeteredTests)(
+    'places and cancels one Perps order',
+    async ({ secureClientWithDepositWallet }) => {
+      const [instrument] = await secureClientWithDepositWallet
+        .fetchPerpsInstruments()
+        .then(expectNonEmptyArray);
+
+      const ticker = await secureClientWithDepositWallet.fetchPerpsTicker({
+        instrumentId: instrument.id,
+      });
+      const session = await secureClientWithDepositWallet.openPerpsSession();
+      const price = Number(ticker.markPrice) / 2; // ensure the order is not immediately filled
+
+      try {
+        const order = await session.placeOrder({
+          instrumentId: instrument.id,
+          price: price.toFixed(instrument.priceDecimals),
+          quantity: minimalPerpsOrderQuantity(instrument, price),
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.Gtc,
+        });
+
+        const cancelAck = await session.cancelOrder({ orderId: order.id });
+        expect(cancelAck.status).toBe('ok');
+      } finally {
+        await session.close();
+      }
+    },
+    6 * 60_000,
   );
 
   it.runIf(runMeteredTests)(
@@ -159,4 +200,18 @@ async function waitForConfirmedDeposit(
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function minimalPerpsOrderQuantity(
+  instrument: PerpsInstrument,
+  price: number,
+): DecimalString {
+  const quantity =
+    Math.ceil(
+      (Number(instrument.minNotional) / Number(price)) *
+        10 ** instrument.quantityDecimals,
+    ) /
+    10 ** instrument.quantityDecimals;
+
+  return quantity.toFixed(instrument.quantityDecimals) as DecimalString;
 }

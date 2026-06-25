@@ -16,23 +16,35 @@ import {
   RawPerpsTxHashSchema,
 } from './common';
 
-export const PerpsOrderSchema = z.object({
-  orderId: PerpsOrderIdSchema,
-  instrumentId: PerpsInstrumentIdSchema,
-  buy: z.boolean(),
-  price: DecimalStringSchema,
-  quantity: DecimalStringSchema,
-  timeInForce: PerpsTimeInForceSchema,
-  postOnly: z.boolean(),
-  status: z.string().min(1),
-  restingQuantity: DecimalStringSchema,
-  filledQuantity: DecimalStringSchema,
-  createdTimestamp: EpochMillisecondsSchema,
-  updatedTimestamp: EpochMillisecondsSchema,
-  clientOrderId: z.string().optional(),
-});
+export enum PerpsOrderStatus {
+  Accepted = 'accepted',
+  Open = 'open',
+  Partial = 'partial',
+  Filled = 'filled',
+  Cancelled = 'cancelled',
+  AutoCancelled = 'auto_cancelled',
+  PostOnlyRejected = 'post_only_rejected',
+  FokUnfilled = 'fok_unfilled',
+  IocNoFill = 'ioc_no_fill',
+  IocExpired = 'ioc_expired',
+  StpCancelled = 'stp_cancelled',
+  ZeroQuantity = 'zero_quantity',
+  DuplicateOrder = 'duplicate_order',
+  OrderNotFound = 'order_not_found',
+  ReduceOnlyInvalid = 'reduce_only_invalid',
+  ReduceOnlyExpired = 'reduce_only_expired',
+  OrderExpired = 'order_expired',
+  Untriggered = 'untriggered',
+  Armed = 'armed',
+  Triggered = 'triggered',
+  ParentCancelled = 'parent_cancelled',
+  PositionClosed = 'position_closed',
+  PositionFlipped = 'position_flipped',
+  ReduceOnlyInvalidAtTrigger = 'reduce_only_invalid_at_trigger',
+  Expired = 'expired',
+}
 
-export type PerpsOrder = z.infer<typeof PerpsOrderSchema>;
+export const PerpsOrderStatusSchema = z.enum(PerpsOrderStatus);
 
 export const PerpsCommandStatusSchema = z.enum(['ok', 'err']);
 
@@ -42,7 +54,7 @@ const PerpsAckErrorSchema = z
   .optional()
   .transform(perpsAckError);
 
-export const PerpsPlaceOrderAckSchema = z.discriminatedUnion('status', [
+export const PerpsPostOrderAckSchema = z.discriminatedUnion('status', [
   z.object({
     status: z.literal('ok'),
     orderId: PerpsOrderIdSchema,
@@ -55,7 +67,7 @@ export const PerpsPlaceOrderAckSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
-export type PerpsPlaceOrderAck = z.infer<typeof PerpsPlaceOrderAckSchema>;
+export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
 
 export const PerpsModifyOrderAckSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('ok') }),
@@ -93,14 +105,14 @@ export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
 
 export type PerpsCommandAck = z.infer<typeof PerpsCommandAckSchema>;
 
-export const RawPerpsPlaceOrderAckSchema = z
+export const RawPerpsPostOrderAckSchema = z
   .object({
     status: PerpsCommandStatusSchema,
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
   })
-  .transform((ack, ctx): PerpsPlaceOrderAck => {
+  .transform((ack, ctx): PerpsPostOrderAck => {
     if (ack.status === 'err') {
       return {
         status: 'err',
@@ -165,7 +177,7 @@ function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }
 
-export const RawPerpsOrderSchema = z
+export const PerpsOrderSchema = z
   .object({
     order_id: PerpsOrderIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
@@ -174,7 +186,7 @@ export const RawPerpsOrderSchema = z
     quantity: DecimalStringSchema,
     tif: PerpsTimeInForceSchema,
     post_only: z.boolean(),
-    status: z.string().min(1),
+    status: PerpsOrderStatusSchema,
     resting_quantity: DecimalStringSchema,
     filled_quantity: DecimalStringSchema,
     created_timestamp: EpochMillisecondsSchema,
@@ -182,7 +194,7 @@ export const RawPerpsOrderSchema = z
     client_order_id: z.string().optional(),
   })
   .transform((order) => ({
-    orderId: order.order_id,
+    id: order.order_id,
     instrumentId: order.instrument_id,
     buy: order.buy,
     price: order.price,
@@ -197,9 +209,11 @@ export const RawPerpsOrderSchema = z
     clientOrderId: order.client_order_id,
   }));
 
-export const FetchPerpsOrdersResponseSchema = z.array(RawPerpsOrderSchema);
+export type PerpsOrder = z.infer<typeof PerpsOrderSchema>;
 
-export const FetchPerpsOpenOrdersResponseSchema = z.array(RawPerpsOrderSchema);
+export const FetchPerpsOrdersResponseSchema = z.array(PerpsOrderSchema);
+
+export const FetchPerpsOpenOrdersResponseSchema = z.array(PerpsOrderSchema);
 
 export const RawPerpsOrderUpdateSchema = z
   .object({
@@ -210,7 +224,7 @@ export const RawPerpsOrderUpdateSchema = z
     qty: DecimalStringSchema,
     tif: PerpsTimeInForceSchema,
     po: z.boolean(),
-    status: z.string().min(1),
+    status: PerpsOrderStatusSchema,
     rest: DecimalStringSchema,
     fill: DecimalStringSchema,
     cts: EpochMillisecondsSchema,
@@ -218,7 +232,7 @@ export const RawPerpsOrderUpdateSchema = z
     coid: z.string().optional(),
   })
   .transform((order) => ({
-    orderId: order.oid,
+    id: order.oid,
     instrumentId: order.iid,
     buy: order.buy,
     price: order.p,
