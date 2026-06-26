@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { DecimalStringSchema, EpochMillisecondsSchema } from '../shared';
+import {
+  DecimalStringSchema,
+  EpochMillisecondsSchema,
+  OrderSide,
+} from '../shared';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -144,7 +148,7 @@ export const PerpsOrderSchema = z
   .transform((order) => ({
     id: order.order_id,
     instrumentId: order.instrument_id,
-    buy: order.buy,
+    side: order.buy ? OrderSide.BUY : OrderSide.SELL,
     price: order.price,
     quantity: order.quantity,
     timeInForce: order.tif,
@@ -182,7 +186,7 @@ export const PerpsOrderUpdateSchema = z
   .transform((order) => ({
     id: order.oid,
     instrumentId: order.iid,
-    buy: order.buy,
+    side: order.buy ? OrderSide.BUY : OrderSide.SELL,
     price: order.p,
     quantity: order.qty,
     timeInForce: order.tif,
