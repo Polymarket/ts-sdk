@@ -102,15 +102,12 @@ export type {
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionEvent,
+  PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
-  UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
-export {
-  UpdatePerpsLeverageError,
-  UpdatePerpsMarginError,
-} from '../websockets/perps/session';
+export { UpdatePerpsLeverageError } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
 

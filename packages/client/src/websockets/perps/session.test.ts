@@ -498,7 +498,12 @@ describe('PerpsSession', () => {
           instrumentId: 1,
           leverage: 5,
         }),
-      ).resolves.toBeUndefined();
+      ).resolves.toEqual({
+        crossMargin: false,
+        instrumentId: 1,
+        leverage: 5,
+        status: 'ok',
+      });
       expect(frames[2]).toMatchObject({
         id: 3,
         op: {
@@ -600,22 +605,6 @@ describe('PerpsSession', () => {
       } finally {
         await session.close();
       }
-    });
-
-    it('throws when margin update is rejected', async () => {
-      server.use(
-        http.patch(`${production.perps.rest}/v1/trade/margin`, () => {
-          return HttpResponse.json({
-            status: 'err',
-            error: 'invalid margin',
-          });
-        }),
-      );
-      const session = createSession();
-
-      await expect(
-        session.updateMargin({ amount: '1', instrumentId: 1 }),
-      ).rejects.toBeInstanceOf(RequestRejectedError);
     });
   });
 
@@ -855,7 +844,7 @@ function responseForFrame(frame: { op?: { type?: string }; req?: string }) {
         },
       ];
     case 'updateLeverage':
-      return { status: 'ok' };
+      return { status: 'ok', instrument_id: 1, leverage: 5, cross: false };
     case 'cancelOrdersCOID':
       return [
         {

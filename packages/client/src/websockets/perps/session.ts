@@ -13,6 +13,7 @@ import {
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
+  type PerpsUpdateLeverageResult,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
@@ -24,7 +25,6 @@ import {
   expectNonEmptyArray,
   invariant,
   setNonBlockingTimeout,
-  unwrap,
 } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
@@ -35,7 +35,6 @@ import {
   TransportError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
-import { validateWith } from '../../response';
 import { ServiceClient } from '../../ServiceClient';
 import { PerpsWebSocketHeartbeat } from '../heartbeat';
 import { ReconnectScheduler, WebSocketConnection } from '../lifecycle';
@@ -66,7 +65,6 @@ import {
   type CancelPerpsOrdersRequest,
   cancelPerpsOrder,
   cancelPerpsOrders,
-  type PerpsSignedHttpCommandRequest,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
   type PlacePerpsOrderRequest,
@@ -74,9 +72,7 @@ import {
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
-  type UpdatePerpsMarginRequest,
   updatePerpsLeverage,
-  updatePerpsMargin,
 } from './actions/trading';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
@@ -125,6 +121,7 @@ type EventWaiter = {
 export type {
   PerpsCancelOrderResult,
   PerpsPostOrderAck,
+  PerpsUpdateLeverageResult,
 } from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
 export type {
@@ -147,12 +144,8 @@ export type {
   PlacePerpsOrderRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
-  UpdatePerpsMarginRequest,
 } from './actions/trading';
-export {
-  UpdatePerpsLeverageError,
-  UpdatePerpsMarginError,
-} from './actions/trading';
+export { UpdatePerpsLeverageError } from './actions/trading';
 
 export type PerpsSessionOptions = {
   chainId: number;
@@ -331,12 +324,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await cancelPerpsOrders(this.#tradingTransport(), request);
   }
 
-  async updateLeverage(request: UpdatePerpsLeverageRequest): Promise<void> {
+  async updateLeverage(
+    request: UpdatePerpsLeverageRequest,
+  ): Promise<PerpsUpdateLeverageResult> {
     return await updatePerpsLeverage(this.#tradingTransport(), request);
-  }
-
-  async updateMargin(request: UpdatePerpsMarginRequest): Promise<void> {
-    return await updatePerpsMargin(this.#tradingTransport(), request);
   }
 
   async #connect(emitResync: boolean): Promise<void> {
@@ -403,8 +394,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   #tradingTransport(): PerpsTradingTransport {
     return {
       sendSignedWsCommand: (request) => this.#sendSignedWsCommand(request),
-      sendSignedHttpCommand: (path, request) =>
-        this.#sendSignedHttpCommand(path, request),
     };
   }
 
@@ -423,23 +412,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       request.responseSchema,
       ACK_TIMEOUT_MS,
       request.timeoutMessage,
-    );
-  }
-
-  async #sendSignedHttpCommand(
-    path: string,
-    request: PerpsSignedHttpCommandRequest,
-  ): Promise<PerpsCommandAck> {
-    const command = this.#createSignedCommand(request.op);
-    return await unwrap(
-      this.#api
-        .patch(path, {
-          json: {
-            ...command,
-            op: request.bodyOp,
-          },
-        })
-        .andThen(validateWith(PerpsCommandAckSchema)),
     );
   }
 
