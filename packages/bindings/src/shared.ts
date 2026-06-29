@@ -389,7 +389,10 @@ export const OrderTypeSchema = z.enum(OrderType);
 export const PaginationCursorSchema = z
   .string()
   .min(1)
-  .transform(toPaginationCursor);
+  .transform(toPaginationCursor) as unknown as z.ZodType<
+  PaginationCursor,
+  PaginationCursor
+>;
 export const PositionIdSchema = z.string().transform(toPositionId);
 export const QuestionIdSchema = z.string().transform(toQuestionId);
 export const ResolutionRequestIdSchema = z
