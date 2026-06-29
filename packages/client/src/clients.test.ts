@@ -93,9 +93,15 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
+    const legacyWallet = deriveUupsDepositWalletAddress(
+      signerAddress,
+      environment.walletDerivation,
+    );
     mockApiKeys();
-    mockBeaconFactory();
-    mockUndeployedWallet(expectedWallet);
+    mockDepositWalletDeployments([
+      { wallet: legacyWallet, deployed: false },
+      { wallet: expectedWallet, deployed: false },
+    ]);
     const submit = mockDeployDepositWallet();
 
     const client = await createSecureClient({
@@ -113,14 +119,42 @@ describe('secure client gasless wallet setup', () => {
     });
   });
 
-  it('defaults createSecureClient without a wallet to the deterministic deposit wallet', async () => {
+  it('defaults createSecureClient without a wallet param to the beacon deposit wallet', async () => {
     const expectedWallet = deriveBeaconDepositWalletAddress(
       signerAddress,
       environment.walletDerivation,
     );
+    const legacyWallet = deriveUupsDepositWalletAddress(
+      signerAddress,
+      environment.walletDerivation,
+    );
     mockApiKeys();
-    mockBeaconFactory();
-    mockDeployedWallet(expectedWallet);
+    mockDepositWalletDeployments([
+      { wallet: legacyWallet, deployed: false },
+      { wallet: expectedWallet, deployed: true },
+    ]);
+
+    const client = await createSecureClient({
+      apiKey,
+      credentials,
+      environment,
+      signer,
+    });
+
+    expect(client.account).toEqual({
+      signer: signerAddress,
+      wallet: expectedWallet,
+      walletType: WalletType.DEPOSIT_WALLET,
+    });
+  });
+
+  it('defaults createSecureClient without a wallet param to an existing legacy deposit wallet', async () => {
+    const expectedWallet = deriveUupsDepositWalletAddress(
+      signerAddress,
+      environment.walletDerivation,
+    );
+    mockApiKeys();
+    mockDepositWalletDeployments([{ wallet: expectedWallet, deployed: true }]);
 
     const client = await createSecureClient({
       apiKey,
@@ -291,7 +325,6 @@ describe('secure client gasless wallet setup', () => {
       environment.walletDerivation,
     );
     mockApiKeys();
-    mockBeaconFactory();
     mockUndeployedWallet(legacyWallet);
 
     await expect(
@@ -305,22 +338,6 @@ describe('secure client gasless wallet setup', () => {
     ).rejects.toMatchObject({
       message: `Wallet ${legacyWallet} does not match the expected Deposit Wallet ${currentWallet} for this signer, nor a deployed wallet address.`,
       name: 'UserInputError',
-    });
-  });
-
-  it('does not silently fall back when default deposit wallet detection fails generically', async () => {
-    mockFactoryRpcError();
-
-    await expect(
-      createSecureClient({
-        apiKey,
-        credentials,
-        environment,
-        signer,
-      }),
-    ).rejects.toMatchObject({
-      message: 'JSON-RPC eth_call failed: upstream unavailable',
-      name: 'RequestRejectedError',
     });
   });
 
@@ -368,30 +385,6 @@ describe('secure client gasless wallet setup', () => {
   });
 });
 
-function mockBeaconFactory() {
-  server.use(
-    http.post(rpcRoot, () =>
-      HttpResponse.json({
-        jsonrpc: '2.0',
-        id: 1,
-        result: `0x000000000000000000000000${environment.walletDerivation.depositWalletBeacon.slice(2)}`,
-      }),
-    ),
-  );
-}
-
-function mockFactoryRpcError() {
-  server.use(
-    http.post(rpcRoot, () =>
-      HttpResponse.json({
-        jsonrpc: '2.0',
-        id: 1,
-        error: { code: -32_603, message: 'upstream unavailable' },
-      }),
-    ),
-  );
-}
-
 function mockApiKeys() {
   server.use(
     http.get(`${clobRoot}/auth/api-keys`, () =>
@@ -421,6 +414,25 @@ function mockUndeployedWallet(expectedWallet: EvmAddress) {
       expect(url.searchParams.get('type')).toBe('WALLET');
 
       return HttpResponse.json({ deployed: false });
+    }),
+  );
+}
+
+function mockDepositWalletDeployments(
+  deployments: Array<{ wallet: EvmAddress; deployed: boolean }>,
+) {
+  server.use(
+    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+      const url = new URL(request.url);
+      const address = expectEvmAddress(url.searchParams.get('address') ?? '');
+      const deployment = deployments.find(
+        ({ wallet }) => wallet.toLowerCase() === address.toLowerCase(),
+      );
+
+      expect(url.searchParams.get('type')).toBe('WALLET');
+      expect(deployment).toBeDefined();
+
+      return HttpResponse.json({ deployed: deployment?.deployed ?? false });
     }),
   );
 }
