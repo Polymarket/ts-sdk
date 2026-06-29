@@ -48,7 +48,8 @@ import { ServiceClient } from './ServiceClient';
 import type { ApiKeyAuthorization, Signer } from './types';
 import type { AccountIdentity } from './wallet';
 import {
-  deriveCurrentDepositWalletAddress,
+  deriveBeaconDepositWalletAddress,
+  deriveUupsDepositWalletAddress,
   resolveAccountIdentity,
 } from './wallet';
 import {
@@ -984,10 +985,7 @@ export async function createSecureClient(
   );
 }
 
-/**
- * Resolves the wallet address to authenticate as. Defaults to the signer's
- * current deterministic Deposit Wallet when no wallet is provided.
- */
+/** Resolves the wallet address to authenticate as. */
 async function resolveRequestedWallet(
   client: BasePublicClient,
   options: SecureClientOptions,
@@ -997,25 +995,35 @@ async function resolveRequestedWallet(
   }
 
   const signerAddress = expectEvmAddress(await options.signer.getAddress());
+  const legacyDepositWallet = deriveUupsDepositWalletAddress(
+    signerAddress,
+    client.environment.walletDerivation,
+  );
 
-  return deriveCurrentDepositWalletAddress(
-    client.rpc,
+  if (
+    await isWalletDeployed(client, {
+      wallet: legacyDepositWallet,
+      type: WalletType.DEPOSIT_WALLET,
+    })
+  ) {
+    return legacyDepositWallet;
+  }
+
+  return deriveBeaconDepositWalletAddress(
     signerAddress,
     client.environment.walletDerivation,
   );
 }
 
 /**
- * Deploys the signer's current deterministic Deposit Wallet for the secure
- * client. Only the current Deposit Wallet can be deployed: a provided Deposit
- * Wallet that does not match the current deterministic address would deploy a
- * different wallet than the client is bound to, so it is rejected.
+ * Deploys the signer's beacon Deposit Wallet for the secure client. The current
+ * factory only deploys beacon wallets, so legacy UUPS wallets must already be
+ * deployed and cannot be created through this path.
  */
 async function deployDefaultDepositWallet(
   secureClient: SecureClient<PublicActions, SecureActions>,
 ): Promise<void> {
-  const currentDepositWallet = await deriveCurrentDepositWalletAddress(
-    secureClient.rpc,
+  const currentDepositWallet = deriveBeaconDepositWalletAddress(
     secureClient.account.signer,
     secureClient.environment.walletDerivation,
   );
