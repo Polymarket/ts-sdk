@@ -39,6 +39,7 @@
     "fuzzy-hornets-report",
     "harden-rfq-invalid-frames",
     "lazy-trades-fix",
+    "legacy-deposit-wallet-default",
     "lemon-pumas-cheer",
     "list-combo-positions",
     "low-level-action-helpers",
