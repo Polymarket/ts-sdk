@@ -1,5 +1,11 @@
 # @polymarket/client
 
+## 0.1.0-beta.10
+
+### Patch Changes
+
+- f5fa4fd: Clean up Deposit Wallet deployment after the beacon factory upgrade by preserving deployed legacy UUPS wallets and defaulting new deployments to beacon wallets.
+
 ## 0.1.0-beta.9
 
 ### Patch Changes
