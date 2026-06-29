@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { OrderSide } from '../shared';
 import {
   PerpsAccountFillSchema,
   PerpsCancelOrderResultSchema,
   PerpsOrderSchema,
   PerpsOrderStatus,
+  PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
 } from './orders';
 
@@ -70,7 +72,7 @@ describe('PerpsPostOrderAckSchema', () => {
 });
 
 describe('PerpsOrderSchema', () => {
-  it('normalizes typed order statuses', () => {
+  it('normalizes order status and side', () => {
     const order = PerpsOrderSchema.parse({
       buy: true,
       created_timestamp: 1_700_000_000_000,
@@ -87,7 +89,30 @@ describe('PerpsOrderSchema', () => {
     });
 
     expect(order.id).toBe(123);
+    expect(order.side).toBe(OrderSide.BUY);
     expect(order.status).toBe(PerpsOrderStatus.Partial);
+  });
+});
+
+describe('PerpsOrderUpdateSchema', () => {
+  it('normalizes order update side', () => {
+    const order = PerpsOrderUpdateSchema.parse({
+      buy: false,
+      coid: '0123456789abcdef0123456789abcdef',
+      cts: 1_700_000_000_000,
+      fill: '0',
+      iid: 1,
+      oid: 123,
+      p: '100',
+      po: false,
+      qty: '2',
+      rest: '2',
+      status: 'open',
+      tif: 'gtc',
+      uts: 1_700_000_000_000,
+    });
+
+    expect(order.side).toBe(OrderSide.SELL);
   });
 });
 
