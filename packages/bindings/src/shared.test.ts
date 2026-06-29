@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { ComboConditionIdSchema, toComboConditionId } from './shared';
+import {
+  ComboConditionIdSchema,
+  PaginationCursorSchema,
+  toComboConditionId,
+} from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
   '0x032def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000';
@@ -42,6 +46,19 @@ describe('shared ID parsers', () => {
       expect(conditionId).toBe(CANONICAL_COMBO_CONDITION_ID);
       expect(conditionId).toHaveLength(64);
       expect(conditionId).toMatch(COMBO_CONDITION_ID_PATTERN);
+    });
+  });
+
+  describe('PaginationCursorSchema', () => {
+    it('rejects invalid cursors with a custom message', () => {
+      const result = PaginationCursorSchema.safeParse('');
+
+      expect(result.success).toBe(false);
+      expect(result.error?.issues).toEqual([
+        expect.objectContaining({
+          message: 'Expected a non-empty pagination cursor',
+        }),
+      ]);
     });
   });
 });

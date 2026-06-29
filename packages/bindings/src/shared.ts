@@ -386,13 +386,10 @@ export const NotificationIdSchema = z
 export const CommentParentEntityTypeSchema = z.enum(CommentParentEntityType);
 export const OrderSideSchema = z.enum(OrderSide);
 export const OrderTypeSchema = z.enum(OrderType);
-export const PaginationCursorSchema = z
-  .string()
-  .min(1)
-  .transform(toPaginationCursor) as unknown as z.ZodType<
-  PaginationCursor,
-  PaginationCursor
->;
+export const PaginationCursorSchema = z.custom<PaginationCursor>(
+  (value) => typeof value === 'string' && value.length > 0,
+  'Expected a non-empty pagination cursor',
+);
 export const PositionIdSchema = z.string().transform(toPositionId);
 export const QuestionIdSchema = z.string().transform(toQuestionId);
 export const ResolutionRequestIdSchema = z
