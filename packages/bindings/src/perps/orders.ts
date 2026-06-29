@@ -125,6 +125,24 @@ export type PerpsCancelOrderResult = z.infer<
   typeof PerpsCancelOrderResultSchema
 >;
 
+export const PerpsUpdateLeverageResultSchema = z
+  .object({
+    status: z.literal('ok'),
+    instrument_id: PerpsInstrumentIdSchema,
+    leverage: z.number().int().positive(),
+    cross: z.boolean(),
+  })
+  .transform((result) => ({
+    status: result.status,
+    instrumentId: result.instrument_id,
+    leverage: result.leverage,
+    crossMargin: result.cross,
+  }));
+
+export type PerpsUpdateLeverageResult = z.infer<
+  typeof PerpsUpdateLeverageResultSchema
+>;
+
 function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }

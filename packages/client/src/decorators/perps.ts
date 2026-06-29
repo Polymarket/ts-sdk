@@ -47,8 +47,9 @@ export type {
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionEvent,
+  PerpsUpdateLeverageResult,
 } from '../actions';
-export { UpdatePerpsLeverageError, UpdatePerpsMarginError } from '../actions';
+export { UpdatePerpsLeverageError } from '../actions';
 
 export type PublicPerpsActions = {
   /**
