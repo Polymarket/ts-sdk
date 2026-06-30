@@ -251,7 +251,7 @@ export const GammaMarketSchema = z.object({
     .transform(nullishToNull),
   umaEndDate: MixedDateTimeStringSchema.nullish(),
   enableOrderBook: z.boolean().nullish(),
-  orderPriceMinTickSize: TickSizeValueSchema.nullish(),
+  orderPriceMinTickSize: TickSizeValueSchema.nullish().catch(null),
   orderMinSize: DecimalishSchema.nullish(),
   umaResolutionStatus: z
     .preprocess(emptyStringToNull, UmaResolutionStatusSchema.nullish())
