@@ -88,7 +88,7 @@ import { type PerpsSignableValue, signPerpsOp } from './signing';
 const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
 // Purposefully generous: backend order updates are expected in the ~100ms range.
-const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 500;
+const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 1000;
 const PERPS_SESSION_CHANNELS = [
   'balances',
   'portfolio',
