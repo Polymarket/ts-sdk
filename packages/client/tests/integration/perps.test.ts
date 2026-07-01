@@ -97,7 +97,7 @@ describe('Perps integration', () => {
       );
 
       try {
-        const order = await session.placeOrder({
+        const { order } = await session.placeOrder({
           instrumentId: instrument.id,
           price,
           quantity: minimalPerpsOrderQuantity(instrument, Number(price)),
@@ -132,23 +132,19 @@ describe('Perps integration', () => {
       );
 
       try {
-        const result = await session.placeOrderWithTpSl({
-          order: {
-            instrumentId: instrument.id,
-            price,
-            quantity: minimalPerpsOrderQuantity(instrument, Number(price)),
-            side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.GTC,
-          },
+        const result = await session.placeOrder({
+          instrumentId: instrument.id,
+          price,
+          quantity: minimalPerpsOrderQuantity(instrument, Number(price)),
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
           stopLoss: {
-            market: true,
             triggerPrice: formatPerpsPrice(
               markPrice / 4,
               instrument.priceDecimals,
             ),
           },
           takeProfit: {
-            market: true,
             triggerPrice: formatPerpsPrice(
               markPrice * 2,
               instrument.priceDecimals,

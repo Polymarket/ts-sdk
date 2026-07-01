@@ -70,9 +70,11 @@ import {
   type CancelPerpsOrdersRequest,
   cancelPerpsOrder,
   cancelPerpsOrders,
+  hasPerpsTpSl,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
   type PlacePerpsOrderRequest,
+  type PlacePerpsOrderRequestWithOptions,
   type PlacePerpsOrderWithTpSlRequest,
   type PlacePerpsPositionTakeProfitStopLossRequest,
   type PostPerpsOrdersRequest,
@@ -148,6 +150,7 @@ export type {
 export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  PerpsOrderRequest,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
@@ -178,8 +181,11 @@ export type PerpsPlacedTpSlOrders = {
   stopLoss?: PerpsPlacedTpSlOrder;
 };
 
-export type PlacePerpsOrderWithTpSlResult = {
+export type PlacePerpsOrderResult = {
   order: PerpsOrder;
+};
+
+export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
   tpSl: PerpsPlacedTpSlOrders;
 };
 
@@ -302,9 +308,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws Thrown on failure.
    */
-  async placeOrder(request: PlacePerpsOrderRequest): Promise<PerpsOrder> {
+  async placeOrder(
+    request: PlacePerpsOrderWithTpSlRequest,
+  ): Promise<PlacePerpsOrderWithTpSlResult>;
+  async placeOrder(
+    request: PlacePerpsOrderRequest,
+  ): Promise<PlacePerpsOrderResult>;
+  async placeOrder(
+    request: PlacePerpsOrderRequestWithOptions,
+  ): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
+    if (hasPerpsTpSl(request)) {
+      return await this.#placeOrderWithTpSl(request);
+    }
+
     const [acknowledgement] = await postPerpsOrders(this.#tradingTransport(), {
       orders: [request],
+      expiresAt: request.expiresAt,
     }).then(expectNonEmptyArray);
 
     if (acknowledgement.status === 'err') {
@@ -316,7 +335,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         event.type === 'order' && event.payload.id === acknowledgement.orderId,
       ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
     );
-    return update.payload;
+    return { order: update.payload };
   }
 
   /**
@@ -331,7 +350,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await postPerpsOrders(this.#tradingTransport(), request);
   }
 
-  async placeOrderWithTpSl(
+  async #placeOrderWithTpSl(
     request: PlacePerpsOrderWithTpSlRequest,
   ): Promise<PlacePerpsOrderWithTpSlResult> {
     const acknowledgements = await placePerpsOrderWithTpSl(

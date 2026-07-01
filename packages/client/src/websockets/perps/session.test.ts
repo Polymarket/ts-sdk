@@ -276,10 +276,12 @@ describe('PerpsSession', () => {
           timeInForce: PerpsTimeInForce.GTC,
         }),
       ).resolves.toMatchObject({
-        clientOrderId: '0123456789abcdef0123456789abcdef',
-        id: 123,
-        restingQuantity: '1.5',
-        status: 'open',
+        order: {
+          clientOrderId: '0123456789abcdef0123456789abcdef',
+          id: 123,
+          restingQuantity: '1.5',
+          status: 'open',
+        },
       });
       expect(frames[2]).toMatchObject({
         op: { type: 'createOrders' },
@@ -318,9 +320,11 @@ describe('PerpsSession', () => {
             timeInForce: PerpsTimeInForce.GTC,
           }),
         ).resolves.toMatchObject({
-          clientOrderId: '0123456789abcdef0123456789abcdef',
-          id: 123,
-          status: 'post_only_rejected',
+          order: {
+            clientOrderId: '0123456789abcdef0123456789abcdef',
+            id: 123,
+            status: 'post_only_rejected',
+          },
         });
       } finally {
         await session.close();
@@ -497,20 +501,17 @@ describe('PerpsSession', () => {
       await session.connect();
 
       await expect(
-        session.placeOrderWithTpSl({
-          order: {
-            instrumentId: 1,
-            price: '100.00',
-            quantity: '1.5',
-            side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.GTC,
-          },
+        session.placeOrder({
+          instrumentId: 1,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
           stopLoss: {
-            price: '89.50',
+            limitPrice: '89.50',
             triggerPrice: '90.00',
           },
           takeProfit: {
-            market: true,
             triggerPrice: '120.00',
           },
         }),

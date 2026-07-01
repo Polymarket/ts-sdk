@@ -1,6 +1,7 @@
 import { OrderSide } from '@polymarket/bindings';
 import { PerpsTimeInForce } from '@polymarket/bindings/perps';
 import { describe, it } from 'vitest';
+import type { PerpsSession } from '../session';
 import type {
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
@@ -14,6 +15,12 @@ const baseOrder = {
   instrumentId: 1,
   quantity: '1',
   side: OrderSide.BUY,
+} as const;
+
+const gtcOrder = {
+  ...baseOrder,
+  price: '100',
+  timeInForce: PerpsTimeInForce.GTC,
 } as const;
 
 describe('PlacePerpsOrderRequest', () => {
@@ -99,56 +106,41 @@ describe('PlacePerpsOrderRequest', () => {
 });
 
 describe('PlacePerpsOrderWithTpSlRequest', () => {
-  const order = {
-    ...baseOrder,
-    price: '100',
-    timeInForce: PerpsTimeInForce.GTC,
-  } as const;
-
   it('allows market TP/SL triggers without limit prices', () => {
     const request: PlacePerpsOrderWithTpSlRequest = {
-      order,
+      ...gtcOrder,
       stopLoss: {
-        market: true,
         triggerPrice: '90',
       },
       takeProfit: {
-        market: true,
         triggerPrice: '110',
       },
     };
     void request;
   });
 
-  it('allows limit TP/SL triggers with prices', () => {
+  it('allows limit TP/SL triggers with limit prices', () => {
     const request: PlacePerpsOrderWithTpSlRequest = {
-      order,
+      ...gtcOrder,
       stopLoss: {
-        price: '89',
+        limitPrice: '89',
         triggerPrice: '90',
       },
     };
     void request;
   });
 
-  it('rejects triggers without market execution or a limit price', () => {
+  it('rejects backend trigger execution fields', () => {
     const request: PlacePerpsOrderWithTpSlRequest = {
-      order,
-      // @ts-expect-error Order-scoped TP/SL triggers must be market or priced.
+      ...gtcOrder,
       stopLoss: {
-        triggerPrice: '90',
-      },
-    };
-    void request;
-  });
-
-  it('rejects market triggers with limit prices', () => {
-    const request: PlacePerpsOrderWithTpSlRequest = {
-      order,
-      takeProfit: {
+        // @ts-expect-error Market execution is the default when limitPrice is omitted.
         market: true,
-        // @ts-expect-error Market TP/SL triggers must not include a limit price.
-        price: '111',
+        triggerPrice: '90',
+      },
+      takeProfit: {
+        // @ts-expect-error Use limitPrice for limit TP/SL execution.
+        price: '109',
         triggerPrice: '110',
       },
     };
@@ -157,7 +149,27 @@ describe('PlacePerpsOrderWithTpSlRequest', () => {
 
   it('requires at least one TP/SL trigger', () => {
     // @ts-expect-error Expected at least one take-profit or stop-loss trigger.
-    const request: PlacePerpsOrderWithTpSlRequest = { order };
+    const request: PlacePerpsOrderWithTpSlRequest = { ...gtcOrder };
     void request;
+  });
+});
+
+describe('PerpsSession.placeOrder', () => {
+  const session = undefined as unknown as PerpsSession;
+
+  it('returns a stable order wrapper without TP/SL', async () => {
+    const result = await session.placeOrder(gtcOrder);
+    result.order.id;
+    // @ts-expect-error Plain order placements do not include TP/SL metadata.
+    result.tpSl;
+  });
+
+  it('adds TP/SL metadata when TP/SL triggers are present', async () => {
+    const result = await session.placeOrder({
+      ...gtcOrder,
+      takeProfit: { triggerPrice: '110' },
+    });
+    result.order.id;
+    result.tpSl.takeProfit?.orderId;
   });
 });
