@@ -96,6 +96,8 @@ export type {
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
   PerpsCancelOrderResult,
+  PerpsPlacedTpSlOrder,
+  PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
@@ -104,6 +106,9 @@ export type {
   PerpsSessionEvent,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
+  PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsOrderWithTpSlResult,
+  PlacePerpsPositionTakeProfitStopLossRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
 } from '../websockets/perps/session';

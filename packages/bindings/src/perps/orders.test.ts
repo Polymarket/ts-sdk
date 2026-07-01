@@ -137,4 +137,37 @@ describe('PerpsCancelOrderResultSchema', () => {
     expect(result.status).toBe('ok');
     expect(result.orderId).toBeUndefined();
   });
+
+  it('normalizes TP/SL metadata', () => {
+    const order = PerpsOrderSchema.parse({
+      order_id: 123,
+      instrument_id: 1,
+      buy: false,
+      price: '0',
+      quantity: '0',
+      tif: 'ioc',
+      post_only: false,
+      status: 'armed',
+      resting_quantity: '0',
+      filled_quantity: '0',
+      created_timestamp: 1_700_000_000_000,
+      updated_timestamp: 1_700_000_000_001,
+      tpsl: {
+        kind: 'sl',
+        scope: 'position',
+        trp: '90.00',
+        armed_qty: '0',
+        slip_bps: 0,
+      },
+    });
+
+    expect(order.tpSl).toEqual({
+      armedQuantity: '0',
+      kind: 'sl',
+      parentOrderId: undefined,
+      scope: 'position',
+      slippageBps: 0,
+      triggerPrice: '90.00',
+    });
+  });
 });

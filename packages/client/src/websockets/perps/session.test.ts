@@ -2,6 +2,7 @@ import { OrderSide } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
+  PerpsSide,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { expectEvmAddress, expectPrivateKey } from '@polymarket/types';
@@ -83,6 +84,7 @@ describe('PerpsSession', () => {
             'funding',
             'deposits',
             'withdrawals',
+            'tpsl',
           ],
         },
       ]);
@@ -184,6 +186,7 @@ describe('PerpsSession', () => {
                 'funding',
                 'deposits',
                 'withdrawals',
+                'tpsl',
               ],
             },
           ]);
@@ -488,6 +491,122 @@ describe('PerpsSession', () => {
       }
     });
 
+    it('places an order with take-profit and stop-loss triggers', async () => {
+      const frames = mockOrderPlacementSession({ status: 'open' });
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placeOrderWithTpSl({
+          order: {
+            instrumentId: 1,
+            price: '100.00',
+            quantity: '1.5',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          },
+          stopLoss: {
+            price: '89.50',
+            triggerPrice: '90.00',
+          },
+          takeProfit: {
+            market: true,
+            triggerPrice: '120.00',
+          },
+        }),
+      ).resolves.toEqual({
+        order: expect.objectContaining({
+          id: 123,
+          restingQuantity: '1.5',
+          status: 'open',
+        }),
+        tpSl: {
+          takeProfit: { orderId: 124, clientOrderId: undefined },
+          stopLoss: { orderId: 125, clientOrderId: undefined },
+        },
+      });
+
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            {
+              buy: true,
+              iid: 1,
+              p: '100.00',
+              po: false,
+              qty: '1.5',
+              tif: 'gtc',
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '120.00' },
+            },
+            {
+              buy: false,
+              iid: 1,
+              p: '89.50',
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { tpsl: 'sl', trp: '90.00' },
+            },
+          ],
+          grp: 'order',
+          type: 'createOrders',
+        },
+        req: 'post',
+      });
+
+      await session.close();
+    });
+
+    it('places full-position take-profit and stop-loss triggers', async () => {
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placePositionTakeProfitStopLoss({
+          instrumentId: 1,
+          positionSide: PerpsSide.Long,
+          stopLoss: { triggerPrice: '90.00' },
+          takeProfit: { triggerPrice: '120.00' },
+        }),
+      ).resolves.toHaveLength(2);
+
+      expect(frames[2]).toMatchObject({
+        op: {
+          args: [
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '0',
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '120.00' },
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '0',
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trp: '90.00' },
+            },
+          ],
+          grp: 'position',
+          type: 'createOrders',
+        },
+        req: 'post',
+      });
+
+      await session.close();
+    });
+
     it('updates leverage over the session socket', async () => {
       const session = createSession();
       await session.connect();
@@ -605,6 +724,36 @@ describe('PerpsSession', () => {
       } finally {
         await session.close();
       }
+    });
+  });
+
+  describe('TP/SL lifecycle events', () => {
+    it('emits TP/SL lifecycle updates', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'tpsl::1',
+        data: { oid: 123, st: 'armed' },
+        sq: 1,
+        ts: 1_700_000_000_000,
+      });
+
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'tpsl::1',
+          payload: { orderId: 123, status: 'armed' },
+          sequence: 1,
+          type: 'tpsl',
+        },
+      });
+
+      await session.close();
     });
   });
 
@@ -799,7 +948,7 @@ function createSession(): PerpsSession {
 
 function mockCommandSession(
   responder: (frame: {
-    op?: { type?: string };
+    op?: { args?: unknown; type?: string };
     req?: string;
   }) => unknown = responseForFrame,
 ): unknown[] {
@@ -857,19 +1006,28 @@ function mockOrderPlacementSession(request: { status: string }): unknown[] {
   return frames;
 }
 
-function responseForFrame(frame: { op?: { type?: string }; req?: string }) {
+function responseForFrame(frame: {
+  op?: { args?: unknown; type?: string };
+  req?: string;
+}) {
   if (frame.req === 'sub') return [{ status: 'ok' }];
   switch (frame.op?.type) {
     case 'auth':
       return { status: 'ok' };
-    case 'createOrders':
-      return [
-        {
-          coid: '0123456789abcdef0123456789abcdef',
-          oid: 123,
-          status: 'ok',
-        },
-      ];
+    case 'createOrders': {
+      const orders = Array.isArray(frame.op.args) ? frame.op.args : [undefined];
+      return orders.map((order, index) => ({
+        coid:
+          typeof order === 'object' &&
+          order !== null &&
+          'c' in order &&
+          typeof order.c === 'string'
+            ? order.c
+            : undefined,
+        oid: 123 + index,
+        status: 'ok',
+      }));
+    }
     case 'updateLeverage':
       return { status: 'ok', instrument_id: 1, leverage: 5, cross: false };
     case 'cancelOrdersCOID':

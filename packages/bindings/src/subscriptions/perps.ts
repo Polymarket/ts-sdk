@@ -7,6 +7,7 @@ import {
 import {
   PerpsInstrumentIdSchema,
   type PerpsKlineInterval,
+  PerpsOrderIdSchema,
 } from '../perps/common';
 import {
   PerpsDepositUpdateSchema,
@@ -36,6 +37,7 @@ const StatisticsChannelSchema = z.string().regex(/^statistics::(all|\d+)$/);
 const CandlesChannelSchema = z
   .string()
   .regex(/^klines::\d+::(1m|5m|15m|1h|4h|1d|1w)$/);
+const TpslChannelSchema = z.string().regex(/^tpsl::\d+$/);
 const PerpsSessionChannelSchema = z.enum([
   'balances',
   'portfolio',
@@ -242,6 +244,28 @@ export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
 
+const PerpsTpSlLifecycleUpdateSchema = z.object({
+  oid: PerpsOrderIdSchema,
+  st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
+  reason: z.string().optional(),
+});
+
+export const PerpsTpSlUpdateEventSchema = PerpsUpdateEnvelopeSchema.extend({
+  ch: TpslChannelSchema,
+  data: PerpsTpSlLifecycleUpdateSchema.transform((update) => ({
+    orderId: update.oid,
+    status: update.st,
+    reason: update.reason,
+  })),
+}).transform(({ ch, ts, sq, data }) => ({
+  type: 'tpsl' as const,
+  channel: ch,
+  timestamp: ts,
+  sequence: sq,
+  payload: data,
+}));
+export type PerpsTpSlUpdateEvent = z.infer<typeof PerpsTpSlUpdateEventSchema>;
+
 export const PerpsSessionUpdateEventSchema = z.union([
   PerpsBalanceUpdateEventSchema,
   PerpsPortfolioUpdateEventSchema,
@@ -250,6 +274,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,
+  PerpsTpSlUpdateEventSchema,
 ]);
 
 export type PerpsSessionUpdateEvent = z.infer<

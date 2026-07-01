@@ -12,6 +12,8 @@ import {
   PerpsOrderIdSchema,
   PerpsSideSchema,
   PerpsTimeInForceSchema,
+  PerpsTpSlKindSchema,
+  PerpsTpSlScopeSchema,
   PerpsTradeIdSchema,
   PerpsTxHashSchema,
 } from './common';
@@ -43,6 +45,26 @@ export enum PerpsOrderStatus {
   ReduceOnlyInvalidAtTrigger = 'reduce_only_invalid_at_trigger',
   Expired = 'expired',
 }
+
+export const PerpsTpSlOrderFieldsSchema = z
+  .object({
+    kind: PerpsTpSlKindSchema,
+    scope: PerpsTpSlScopeSchema,
+    trp: DecimalStringSchema,
+    parent_oid: PerpsOrderIdSchema.optional(),
+    armed_qty: DecimalStringSchema.optional(),
+    slip_bps: z.number().int().nonnegative().optional(),
+  })
+  .transform((fields) => ({
+    kind: fields.kind,
+    scope: fields.scope,
+    triggerPrice: fields.trp,
+    parentOrderId: fields.parent_oid,
+    armedQuantity: fields.armed_qty,
+    slippageBps: fields.slip_bps,
+  }));
+
+export type PerpsTpSlOrderFields = z.infer<typeof PerpsTpSlOrderFieldsSchema>;
 
 export const PerpsOrderStatusSchema = z.enum(PerpsOrderStatus);
 
@@ -162,6 +184,7 @@ export const PerpsOrderSchema = z
     created_timestamp: EpochMillisecondsSchema,
     updated_timestamp: EpochMillisecondsSchema,
     client_order_id: z.string().optional(),
+    tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
   })
   .transform((order) => ({
     id: order.order_id,
@@ -177,6 +200,7 @@ export const PerpsOrderSchema = z
     createdTimestamp: order.created_timestamp,
     updatedTimestamp: order.updated_timestamp,
     clientOrderId: order.client_order_id,
+    tpSl: order.tpsl ?? undefined,
   }));
 
 export type PerpsOrder = z.infer<typeof PerpsOrderSchema>;
@@ -200,6 +224,7 @@ export const PerpsOrderUpdateSchema = z
     cts: EpochMillisecondsSchema,
     uts: EpochMillisecondsSchema,
     coid: z.string().optional(),
+    tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
   })
   .transform((order) => ({
     id: order.oid,
@@ -215,6 +240,7 @@ export const PerpsOrderUpdateSchema = z
     createdTimestamp: order.cts,
     updatedTimestamp: order.uts,
     clientOrderId: order.coid,
+    tpSl: order.tpsl ?? undefined,
   }));
 
 export const PerpsAccountFillSchema = z

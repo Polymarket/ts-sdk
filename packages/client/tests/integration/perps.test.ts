@@ -13,6 +13,7 @@ import { expectNonEmptyArray } from '@polymarket/types';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
+const MAX_PERPS_PRICE_SIGNIFICANT_FIGURES = 5;
 
 describe('Perps integration', () => {
   it.runIf(runMeteredTests)(
@@ -90,18 +91,77 @@ describe('Perps integration', () => {
         instrumentId: instrument.id,
       });
       const session = await secureClientWithDepositWallet.openPerpsSession();
-      const price = Number(ticker.markPrice) / 2; // ensure the order is not immediately filled
+      const price = formatPerpsPrice(
+        Number(ticker.markPrice) / 2, // ensure the order is not immediately filled
+        instrument.priceDecimals,
+      );
 
       try {
         const order = await session.placeOrder({
           instrumentId: instrument.id,
-          price: price.toFixed(instrument.priceDecimals),
-          quantity: minimalPerpsOrderQuantity(instrument, price),
+          price,
+          quantity: minimalPerpsOrderQuantity(instrument, Number(price)),
           side: OrderSide.BUY,
           timeInForce: PerpsTimeInForce.GTC,
         });
 
         const cancelResult = await session.cancelOrder({ orderId: order.id });
+        expect(cancelResult.status).toBe('ok');
+      } finally {
+        await session.close();
+      }
+    },
+    6 * 60_000,
+  );
+
+  it.runIf(runMeteredTests)(
+    'places and cancels one Perps order with TP/SL',
+    async ({ secureClientWithDepositWallet }) => {
+      const [instrument] = await secureClientWithDepositWallet
+        .fetchPerpsInstruments()
+        .then(expectNonEmptyArray);
+
+      const ticker = await secureClientWithDepositWallet.fetchPerpsTicker({
+        instrumentId: instrument.id,
+      });
+      const session = await secureClientWithDepositWallet.openPerpsSession();
+      const markPrice = Number(ticker.markPrice);
+      const price = formatPerpsPrice(
+        markPrice / 2, // ensure the order is not immediately filled
+        instrument.priceDecimals,
+      );
+
+      try {
+        const result = await session.placeOrderWithTpSl({
+          order: {
+            instrumentId: instrument.id,
+            price,
+            quantity: minimalPerpsOrderQuantity(instrument, Number(price)),
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          },
+          stopLoss: {
+            market: true,
+            triggerPrice: formatPerpsPrice(
+              markPrice / 4,
+              instrument.priceDecimals,
+            ),
+          },
+          takeProfit: {
+            market: true,
+            triggerPrice: formatPerpsPrice(
+              markPrice * 2,
+              instrument.priceDecimals,
+            ),
+          },
+        });
+
+        expect(result.tpSl.takeProfit?.orderId).toEqual(expect.any(Number));
+        expect(result.tpSl.stopLoss?.orderId).toEqual(expect.any(Number));
+
+        const cancelResult = await session.cancelOrder({
+          orderId: result.order.id,
+        });
         expect(cancelResult.status).toBe('ok');
       } finally {
         await session.close();
@@ -200,6 +260,21 @@ async function waitForConfirmedDeposit(
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatPerpsPrice(price: number, priceDecimals: number): DecimalString {
+  const roundedPrice = Number(
+    price.toPrecision(MAX_PERPS_PRICE_SIGNIFICANT_FIGURES),
+  );
+
+  if (Number.isInteger(roundedPrice)) {
+    return roundedPrice.toFixed(0) as DecimalString;
+  }
+
+  return roundedPrice
+    .toFixed(priceDecimals)
+    .replace(/(\.\d*?)0+$/, '$1')
+    .replace(/\.$/, '') as DecimalString;
 }
 
 function minimalPerpsOrderQuantity(

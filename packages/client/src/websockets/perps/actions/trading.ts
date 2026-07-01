@@ -14,7 +14,11 @@ import {
   PerpsOrderIdSchema,
   type PerpsPostOrderAck,
   PerpsPostOrderAckSchema,
+  PerpsSide,
+  PerpsSideSchema,
   PerpsTimeInForce,
+  PerpsTpSlKind,
+  PerpsTpSlScope,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
@@ -127,6 +131,51 @@ const PlacePerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceFokOrderRequestSchema,
 ]) satisfies z.ZodType<PlacePerpsOrderRequest>;
 
+export type PerpsMarketTpSlExit = {
+  triggerPrice: PerpsDecimalInput;
+  market: true;
+  price?: never;
+};
+
+export type PerpsLimitTpSlExit = {
+  triggerPrice: PerpsDecimalInput;
+  price: PerpsDecimalInput;
+  market?: false;
+};
+
+export type PerpsTpSlExit = PerpsMarketTpSlExit | PerpsLimitTpSlExit;
+
+const PerpsMarketTpSlExitSchema = z.object({
+  triggerPrice: PerpsDecimalInputSchema,
+  market: z.literal(true),
+  price: z.never().optional(),
+}) satisfies z.ZodType<PerpsMarketTpSlExit>;
+
+const PerpsLimitTpSlExitSchema = z.object({
+  triggerPrice: PerpsDecimalInputSchema,
+  price: PerpsDecimalInputSchema,
+  market: z.literal(false).optional(),
+}) satisfies z.ZodType<PerpsLimitTpSlExit>;
+
+const PerpsTpSlExitSchema = z.union([
+  PerpsMarketTpSlExitSchema,
+  PerpsLimitTpSlExitSchema,
+]) satisfies z.ZodType<PerpsTpSlExit>;
+
+const PerpsPositionTpSlExitSchema = z.object({
+  triggerPrice: PerpsDecimalInputSchema,
+});
+
+const PerpsTpSlPairSchema = z.object({
+  takeProfit: PerpsTpSlExitSchema.optional(),
+  stopLoss: PerpsTpSlExitSchema.optional(),
+});
+
+const PerpsPositionTpSlPairSchema = z.object({
+  takeProfit: PerpsPositionTpSlExitSchema.optional(),
+  stopLoss: PerpsPositionTpSlExitSchema.optional(),
+});
+
 export type PerpsSignedWsCommandRequest<T> = {
   op: PerpsSignedOp;
   responseSchema: z.ZodType<T>;
@@ -161,6 +210,118 @@ export async function postPerpsOrders(
     responseSchema: z.array(PerpsPostOrderAckSchema),
     timeoutMessage: 'Perps post order acknowledgement timed out.',
     expiresAt: params.expiresAt,
+  });
+}
+
+const PlacePerpsOrderWithTpSlRequestSchema = PerpsTpSlPairSchema.extend({
+  order: PlacePerpsOrderRequestSchema,
+  expiresAt: z.number().int().positive().optional(),
+}).refine(
+  (request) =>
+    request.takeProfit !== undefined || request.stopLoss !== undefined,
+  'Expected at least one take-profit or stop-loss trigger.',
+);
+
+type PerpsTpSlPairRequest =
+  | { takeProfit: PerpsTpSlExit; stopLoss?: PerpsTpSlExit }
+  | { takeProfit?: PerpsTpSlExit; stopLoss: PerpsTpSlExit };
+
+export type PlacePerpsOrderWithTpSlRequest = PerpsTpSlPairRequest & {
+  order: PlacePerpsOrderRequest;
+  expiresAt?: number;
+};
+
+export async function placePerpsOrderWithTpSl(
+  transport: PerpsTradingTransport,
+  request: PlacePerpsOrderWithTpSlRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(request, PlacePerpsOrderWithTpSlRequestSchema);
+  const orders: RawPerpsOrderInput[] = [toRawPerpsOrder(params.order)];
+  const exitBuy = params.order.side === OrderSide.SELL;
+
+  if (params.takeProfit !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: exitBuy,
+        instrumentId: params.order.instrumentId,
+        kind: PerpsTpSlKind.TakeProfit,
+        quantity: toDecimalString(params.order.quantity),
+        trigger: params.takeProfit,
+      }),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: exitBuy,
+        instrumentId: params.order.instrumentId,
+        kind: PerpsTpSlKind.StopLoss,
+        quantity: toDecimalString(params.order.quantity),
+        trigger: params.stopLoss,
+      }),
+    );
+  }
+
+  return await placePerpsOrderGroup(transport, {
+    expiresAt: params.expiresAt,
+    group: PerpsTpSlScope.Order,
+    orders,
+  });
+}
+
+const PlacePerpsPositionTakeProfitStopLossRequestSchema =
+  PerpsPositionTpSlPairSchema.extend({
+    instrumentId: PerpsInstrumentIdSchema,
+    positionSide: PerpsSideSchema,
+    expiresAt: z.number().int().positive().optional(),
+  }).refine(
+    (request) =>
+      request.takeProfit !== undefined || request.stopLoss !== undefined,
+    'Expected at least one take-profit or stop-loss trigger.',
+  );
+
+export type PlacePerpsPositionTakeProfitStopLossRequest = z.input<
+  typeof PlacePerpsPositionTakeProfitStopLossRequestSchema
+>;
+
+export async function placePerpsPositionTakeProfitStopLoss(
+  transport: PerpsTradingTransport,
+  request: PlacePerpsPositionTakeProfitStopLossRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(
+    request,
+    PlacePerpsPositionTakeProfitStopLossRequestSchema,
+  );
+  const orders: RawPerpsOrderInput[] = [];
+  const buy = params.positionSide === PerpsSide.Short;
+
+  if (params.takeProfit !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.TakeProfit,
+        quantity: '0',
+        trigger: { ...params.takeProfit, market: true },
+      }),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.StopLoss,
+        quantity: '0',
+        trigger: { ...params.stopLoss, market: true },
+      }),
+    );
+  }
+
+  return await placePerpsOrderGroup(transport, {
+    expiresAt: params.expiresAt,
+    group: PerpsTpSlScope.Position,
+    orders,
   });
 }
 
@@ -285,9 +446,17 @@ type RawPerpsOrderInput = readonly [
   boolean,
   string | undefined,
   string,
-  PerpsTimeInForce,
+  PerpsTimeInForce | undefined,
   boolean,
+  true | undefined,
   string | undefined,
+  RawPerpsTpSlTriggerInput | undefined,
+];
+
+type RawPerpsTpSlTriggerInput = readonly [
+  boolean | undefined,
+  string,
+  PerpsTpSlKind,
 ];
 
 function toRawPerpsOrder(
@@ -300,18 +469,65 @@ function toRawPerpsOrder(
     toDecimalString(order.quantity),
     order.timeInForce,
     order.postOnly ?? false,
+    undefined,
     order.clientOrderId,
+    undefined,
   ];
 }
 
+function toRawPerpsTpSlOrder(request: {
+  buy: boolean;
+  instrumentId: PerpsInstrumentId;
+  kind: PerpsTpSlKind;
+  quantity: string;
+  trigger: z.output<typeof PerpsTpSlExitSchema>;
+}): RawPerpsOrderInput {
+  return [
+    request.instrumentId,
+    request.buy,
+    request.trigger.price === undefined
+      ? undefined
+      : toDecimalString(request.trigger.price),
+    request.quantity,
+    undefined,
+    false,
+    true,
+    undefined,
+    [
+      request.trigger.market,
+      toDecimalString(request.trigger.triggerPrice),
+      request.kind,
+    ],
+  ];
+}
+
+async function placePerpsOrderGroup(
+  transport: PerpsTradingTransport,
+  request: {
+    orders: RawPerpsOrderInput[];
+    group: PerpsTpSlScope;
+    expiresAt?: number;
+  },
+): Promise<PerpsPostOrderAck[]> {
+  return await transport.sendSignedWsCommand({
+    op: ['createOrders', request.orders, request.group],
+    responseSchema: z.array(PerpsPostOrderAckSchema),
+    timeoutMessage: 'Perps place TP/SL order acknowledgement timed out.',
+    expiresAt: request.expiresAt,
+  });
+}
+
 export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
-  const [type, args] = op;
+  const [type, args, group] = op;
   switch (type) {
     case 'createOrders':
-      return {
-        type,
-        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
-      };
+      return withOptionalGroup(
+        {
+          args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
+          type,
+        },
+        group,
+      );
     case 'cancelOrders':
     case 'cancelOrdersCOID':
       return { type, args };
@@ -339,11 +555,30 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
   const body: Record<string, unknown> = {
     iid: order[0],
     buy: order[1],
+    po: order[5],
+    qty: order[3],
   };
-  if (order[2] !== undefined) body.p = order[2];
-  body.qty = order[3];
   if (order[4] !== undefined) body.tif = order[4];
-  body.po = order[5];
-  if (order[6] !== undefined) body.c = order[6];
+  if (order[6]) body.ro = order[6];
+  if (order[2] !== undefined) body.p = order[2];
+  if (order[7] !== undefined) body.c = order[7];
+  if (order[8] !== undefined) body.tr = toPerpsTpSlTriggerBody(order[8]);
+  return body;
+}
+
+function toPerpsTpSlTriggerBody(trigger: RawPerpsTpSlTriggerInput) {
+  const body: Record<string, unknown> = {
+    tpsl: trigger[2],
+    trp: trigger[1],
+  };
+  if (trigger[0] !== undefined) body.market = trigger[0];
+  return body;
+}
+
+function withOptionalGroup(
+  body: Record<string, unknown>,
+  group: unknown,
+): Record<string, unknown> {
+  if (group !== undefined) body.grp = group;
   return body;
 }

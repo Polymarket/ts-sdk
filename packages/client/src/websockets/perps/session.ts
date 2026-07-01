@@ -5,12 +5,14 @@ import {
   type PerpsAccountStats,
   type PerpsBalance,
   type PerpsCancelOrderResult,
+  type PerpsClientOrderId,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
   type PerpsOrder,
+  type PerpsOrderId,
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
@@ -24,6 +26,7 @@ import {
 } from '@polymarket/bindings/subscriptions';
 import {
   expectNonEmptyArray,
+  expectPresent,
   invariant,
   setNonBlockingTimeout,
 } from '@polymarket/types';
@@ -70,7 +73,11 @@ import {
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
   type PlacePerpsOrderRequest,
+  type PlacePerpsOrderWithTpSlRequest,
+  type PlacePerpsPositionTakeProfitStopLossRequest,
   type PostPerpsOrdersRequest,
+  placePerpsOrderWithTpSl,
+  placePerpsPositionTakeProfitStopLoss,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
@@ -90,6 +97,7 @@ const PERPS_SESSION_CHANNELS = [
   'funding',
   'deposits',
   'withdrawals',
+  'tpsl',
 ] as const;
 
 const PerpsResponseEnvelopeSchema = z
@@ -144,6 +152,8 @@ export type {
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
   PlacePerpsOrderRequest,
+  PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsPositionTakeProfitStopLossRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
 } from './actions/trading';
@@ -156,6 +166,21 @@ export type PerpsSessionOptions = {
   onClose: (session: PerpsSession) => void;
   restUrl: string;
   wsUrl: string;
+};
+
+export type PerpsPlacedTpSlOrder = {
+  orderId: PerpsOrderId;
+  clientOrderId?: PerpsClientOrderId;
+};
+
+export type PerpsPlacedTpSlOrders = {
+  takeProfit?: PerpsPlacedTpSlOrder;
+  stopLoss?: PerpsPlacedTpSlOrder;
+};
+
+export type PlacePerpsOrderWithTpSlResult = {
+  order: PerpsOrder;
+  tpSl: PerpsPlacedTpSlOrders;
 };
 
 export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
@@ -304,6 +329,59 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: PostPerpsOrdersRequest,
   ): Promise<PerpsPostOrderAck[]> {
     return await postPerpsOrders(this.#tradingTransport(), request);
+  }
+
+  async placeOrderWithTpSl(
+    request: PlacePerpsOrderWithTpSlRequest,
+  ): Promise<PlacePerpsOrderWithTpSlResult> {
+    const acknowledgements = await placePerpsOrderWithTpSl(
+      this.#tradingTransport(),
+      request,
+    ).then(expectNonEmptyArray);
+
+    for (const acknowledgement of acknowledgements) {
+      if (acknowledgement.status === 'err') {
+        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+      }
+    }
+
+    const [entryAcknowledgement] = acknowledgements;
+    const entryPlacement = placedOrderFrom(entryAcknowledgement);
+    const update = await this.#waitForEvent(
+      (event): event is PerpsOrderUpdateEvent =>
+        event.type === 'order' && event.payload.id === entryPlacement.orderId,
+      ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
+    );
+
+    let triggerIndex = 1;
+    const tpSl: PerpsPlacedTpSlOrders = {};
+    if (request.takeProfit !== undefined) {
+      tpSl.takeProfit = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex++],
+          'Expected Perps take-profit acknowledgement.',
+        ),
+      );
+    }
+    if (request.stopLoss !== undefined) {
+      tpSl.stopLoss = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex],
+          'Expected Perps stop-loss acknowledgement.',
+        ),
+      );
+    }
+
+    return { order: update.payload, tpSl };
+  }
+
+  async placePositionTakeProfitStopLoss(
+    request: PlacePerpsPositionTakeProfitStopLossRequest,
+  ): Promise<PerpsPostOrderAck[]> {
+    return await placePerpsPositionTakeProfitStopLoss(
+      this.#tradingTransport(),
+      request,
+    );
   }
 
   /**
@@ -647,6 +725,19 @@ function errorAckFrom(value: unknown): { error: string } | undefined {
 
   return {
     error: typeof ack.error === 'string' ? ack.error : 'Perps command failed.',
+  };
+}
+
+function placedOrderFrom(
+  acknowledgement: PerpsPostOrderAck,
+): PerpsPlacedTpSlOrder {
+  if (acknowledgement.status === 'err') {
+    throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+  }
+
+  return {
+    orderId: acknowledgement.orderId,
+    clientOrderId: acknowledgement.clientOrderId,
   };
 }
 
