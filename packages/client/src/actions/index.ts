@@ -8,6 +8,7 @@ export * from './comments';
 export * from './events';
 export * from './gasless';
 export * from './leaderboards';
+export * from './market-clarifications';
 export * from './markets';
 export * from './orders';
 export * from './perps';
