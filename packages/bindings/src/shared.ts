@@ -352,6 +352,8 @@ export const EventIdSchema = z
 export const TickSizeValueSchema = z.union([
   z.literal(0.1),
   z.literal(0.01),
+  z.literal(0.005),
+  z.literal(0.0025),
   z.literal(0.001),
   z.literal(0.0001),
 ]);
