@@ -19,6 +19,7 @@ export type PerpsClientOrderId = Tagged<string, 'PerpsClientOrderId'>;
 export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
 export type PerpsWithdrawalId = Tagged<number, 'PerpsWithdrawalId'>;
 export type PerpsInternalTransferId = Tagged<number, 'PerpsInternalTransferId'>;
+export type PerpsEntityId = Tagged<number, 'PerpsEntityId'>;
 export type PerpsFundingInterval = `${number}h`;
 
 function taggedInteger<T extends number>(value: number): T {
@@ -59,6 +60,12 @@ export const PerpsInternalTransferIdSchema = z
   .int()
   .nonnegative()
   .transform(taggedInteger<PerpsInternalTransferId>);
+
+export const PerpsEntityIdSchema = z
+  .number()
+  .int()
+  .positive()
+  .transform(taggedInteger<PerpsEntityId>);
 
 export const PerpsFundingIntervalSchema = z
   .string()

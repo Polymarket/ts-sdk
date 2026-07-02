@@ -7,6 +7,7 @@ import {
 import {
   PerpsAssetSchema,
   PerpsDataResponseSchema,
+  PerpsEntityIdSchema,
   PerpsInstrumentIdSchema,
 } from './common';
 
@@ -19,6 +20,30 @@ export const PerpsBalanceSchema = z.object({
 export type PerpsBalance = z.infer<typeof PerpsBalanceSchema>;
 
 export const FetchPerpsBalancesResponseSchema = z.array(PerpsBalanceSchema);
+
+export const PerpsAccountStatsSchema = z
+  .object({
+    volume_7d: DecimalStringSchema,
+    taker_volume_7d: DecimalStringSchema,
+    maker_volume_7d: DecimalStringSchema,
+    account_maker_share_7d: DecimalStringSchema,
+    entity_maker_share_7d: DecimalStringSchema.optional(),
+    entity_id: PerpsEntityIdSchema.optional(),
+    entity_name: z.string().min(1).optional(),
+  })
+  .transform((stats) => ({
+    volume7d: stats.volume_7d,
+    takerVolume7d: stats.taker_volume_7d,
+    makerVolume7d: stats.maker_volume_7d,
+    accountMakerShare7d: stats.account_maker_share_7d,
+    entityMakerShare7d: stats.entity_maker_share_7d,
+    entityId: stats.entity_id,
+    entityName: stats.entity_name,
+  }));
+
+export type PerpsAccountStats = z.infer<typeof PerpsAccountStatsSchema>;
+
+export const FetchPerpsAccountStatsResponseSchema = PerpsAccountStatsSchema;
 
 export const PerpsPortfolioPositionSchema = z
   .object({

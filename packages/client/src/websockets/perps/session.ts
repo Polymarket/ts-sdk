@@ -2,6 +2,7 @@ import {
   type PerpsAccountConfig,
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
+  type PerpsAccountStats,
   type PerpsBalance,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
@@ -47,6 +48,7 @@ import {
   fetchPerpsOpenOrders,
   fetchPerpsOrders,
   fetchPerpsPortfolio,
+  fetchPerpsStats,
   type ListPerpsDepositsRequest,
   type ListPerpsEquityHistoryRequest,
   type ListPerpsFillsRequest,
@@ -212,6 +214,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   async fetchPortfolio(): Promise<PerpsPortfolio> {
     return await fetchPerpsPortfolio(this.#api);
+  }
+
+  async fetchStats(): Promise<PerpsAccountStats> {
+    return await fetchPerpsStats(this.#api);
   }
 
   async fetchAccountConfig(
