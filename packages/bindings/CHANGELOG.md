@@ -1,5 +1,14 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.9
+
+### Patch Changes
+
+- 2e091ef: Support CLOB order tick sizes `0.005` and `0.0025`.
+- 6082a3e: Make pagination request cursor inputs infer the branded pagination cursor type.
+- d28b989: Remove unsupported Perps margin updates and return the leverage update result.
+- 91c9e63: Normalize Perps order reads to expose `side: OrderSide` instead of upstream `buy`.
+
 ## 0.1.0-beta.8
 
 ### Patch Changes
