@@ -15,6 +15,10 @@ export function resolveRoundingConfig(tickSize: TickSizeValue): RoundingConfig {
       return { amount: 3, price: 1, size: 2 };
     case 0.01:
       return { amount: 4, price: 2, size: 2 };
+    case 0.005:
+      return { amount: 5, price: 3, size: 2 };
+    case 0.0025:
+      return { amount: 6, price: 4, size: 2 };
     case 0.001:
       return { amount: 5, price: 3, size: 2 };
     case 0.0001:
