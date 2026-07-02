@@ -6,6 +6,7 @@ import {
 } from '@polymarket/bindings';
 import {
   FetchPerpsAccountConfigResponseSchema,
+  FetchPerpsAccountStatsResponseSchema,
   FetchPerpsBalancesResponseSchema,
   FetchPerpsOpenOrdersResponseSchema,
   FetchPerpsOrdersResponseSchema,
@@ -19,6 +20,7 @@ import {
   type PerpsAccountConfig,
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
+  type PerpsAccountStats,
   type PerpsBalance,
   PerpsClientOrderIdSchema,
   type PerpsDeposit,
@@ -126,6 +128,16 @@ export async function fetchPerpsPortfolio(
     api
       .get('/v1/account/portfolio')
       .andThen(validateWith(FetchPerpsPortfolioResponseSchema)),
+  );
+}
+
+export async function fetchPerpsStats(
+  api: ServiceClient,
+): Promise<PerpsAccountStats> {
+  return await unwrap(
+    api
+      .get('/v1/account/stats')
+      .andThen(validateWith(FetchPerpsAccountStatsResponseSchema)),
   );
 }
 

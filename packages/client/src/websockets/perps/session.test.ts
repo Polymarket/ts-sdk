@@ -633,6 +633,33 @@ describe('PerpsSession', () => {
       ]);
     });
 
+    it('fetches account stats', async () => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/stats`, () =>
+          HttpResponse.json({
+            volume_7d: '5000000',
+            taker_volume_7d: '3500000',
+            maker_volume_7d: '1500000',
+            account_maker_share_7d: '0.35',
+            entity_maker_share_7d: '0.40',
+            entity_id: 42,
+            entity_name: 'desk',
+          }),
+        ),
+      );
+      const session = createSession();
+
+      await expect(session.fetchStats()).resolves.toEqual({
+        volume7d: '5000000',
+        takerVolume7d: '3500000',
+        makerVolume7d: '1500000',
+        accountMakerShare7d: '0.35',
+        entityMakerShare7d: '0.40',
+        entityId: 42,
+        entityName: 'desk',
+      });
+    });
+
     it('overlaps and dedupes descending account history pages', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
