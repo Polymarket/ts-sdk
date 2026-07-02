@@ -8,6 +8,7 @@ import type {
   PerpsPlaceIocOrderRequest,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
 } from './trading';
 
@@ -171,5 +172,17 @@ describe('PerpsSession.placeOrder', () => {
     });
     result.order.id;
     result.tpSl.takeProfit?.orderId;
+  });
+});
+
+describe('PlacePerpsPositionTpSlRequest', () => {
+  it('rejects position side', () => {
+    const request: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      // @ts-expect-error Position side is inferred from the current position.
+      positionSide: 'long',
+      stopLoss: { triggerPrice: '90' },
+    };
+    void request;
   });
 });

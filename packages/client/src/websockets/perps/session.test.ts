@@ -2,7 +2,6 @@ import { OrderSide } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
-  PerpsSide,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { expectEvmAddress, expectPrivateKey } from '@polymarket/types';
@@ -522,8 +521,8 @@ describe('PerpsSession', () => {
           status: 'open',
         }),
         tpSl: {
-          takeProfit: { orderId: 124, clientOrderId: undefined },
-          stopLoss: { orderId: 125, clientOrderId: undefined },
+          takeProfit: { orderId: 124 },
+          stopLoss: { orderId: 125 },
         },
       });
 
@@ -567,17 +566,22 @@ describe('PerpsSession', () => {
     });
 
     it('places full-position take-profit and stop-loss triggers', async () => {
+      server.use(mockPortfolioPosition({ size: '1.5' }));
       const session = createSession();
       await session.connect();
 
       await expect(
-        session.placePositionTakeProfitStopLoss({
+        session.placePositionTpSl({
           instrumentId: 1,
-          positionSide: PerpsSide.Long,
           stopLoss: { triggerPrice: '90.00' },
           takeProfit: { triggerPrice: '120.00' },
         }),
-      ).resolves.toHaveLength(2);
+      ).resolves.toEqual({
+        tpSl: {
+          takeProfit: { orderId: 123 },
+          stopLoss: { orderId: 124 },
+        },
+      });
 
       expect(frames[2]).toMatchObject({
         op: {
@@ -603,6 +607,41 @@ describe('PerpsSession', () => {
           type: 'createOrders',
         },
         req: 'post',
+      });
+
+      await session.close();
+    });
+
+    it('infers short position TP/SL exit side', async () => {
+      server.use(mockPortfolioPosition({ size: '-1.5' }));
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placePositionTpSl({
+          instrumentId: 1,
+          stopLoss: { triggerPrice: '110.00' },
+        }),
+      ).resolves.toEqual({
+        tpSl: {
+          stopLoss: { orderId: 123 },
+        },
+      });
+
+      expect(frames[2]).toMatchObject({
+        op: {
+          args: [
+            {
+              buy: true,
+              iid: 1,
+              qty: '0',
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trp: '110.00' },
+            },
+          ],
+          grp: 'position',
+          type: 'createOrders',
+        },
       });
 
       await session.close();
@@ -1153,4 +1192,37 @@ function accountFill(tradeId: number, timestamp: number) {
     timestamp,
     trade_id: tradeId,
   };
+}
+
+function mockPortfolioPosition(request: { size: string }) {
+  return http.get(`${production.perps.rest}/v1/account/portfolio`, () =>
+    HttpResponse.json({
+      positions: [
+        {
+          cross: false,
+          cumulative_funding: '0',
+          entry_price: '100',
+          initial_margin: '30',
+          instrument_id: 1,
+          leverage: 5,
+          liquidation_price: '50',
+          maintenance_margin: '10',
+          position_value: '150',
+          return_on_equity: '0',
+          size: request.size,
+          symbol: 'BTC-PERP',
+          unrealized_pnl: '0',
+        },
+      ],
+      margin: {
+        total_account_value: '1000',
+        total_initial_margin: '30',
+        total_maintenance_margin: '10',
+        total_position_value: '150',
+      },
+      withdrawable: '970',
+      in_liquidation: false,
+      timestamp: 1_700_000_000_000,
+    }),
+  );
 }

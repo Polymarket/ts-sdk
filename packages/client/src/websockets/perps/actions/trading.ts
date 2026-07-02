@@ -14,8 +14,6 @@ import {
   PerpsOrderIdSchema,
   type PerpsPostOrderAck,
   PerpsPostOrderAckSchema,
-  PerpsSide,
-  PerpsSideSchema,
   PerpsTimeInForce,
   PerpsTpSlKind,
   PerpsTpSlScope,
@@ -131,39 +129,38 @@ const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceFokOrderRequestSchema,
 ]) satisfies z.ZodType<PerpsOrderRequest>;
 
-export type PerpsTpSlExit = {
+export type PerpsTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
   limitPrice?: PerpsDecimalInput;
 };
 
-const PerpsTpSlExitSchema = z.object({
+const PerpsTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
   limitPrice: PerpsDecimalInputSchema.optional(),
-}) satisfies z.ZodType<PerpsTpSlExit>;
+}) satisfies z.ZodType<PerpsTpSlTrigger>;
 
-const PerpsPositionTpSlExitSchema = z.object({
+const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
 });
 
+export type PerpsPositionTpSlTrigger = {
+  triggerPrice: PerpsDecimalInput;
+};
+
 type PerpsTpSlPairRequest =
-  | { takeProfit: PerpsTpSlExit; stopLoss?: PerpsTpSlExit }
-  | { takeProfit?: PerpsTpSlExit; stopLoss: PerpsTpSlExit };
+  | { takeProfit: PerpsTpSlTrigger; stopLoss?: PerpsTpSlTrigger }
+  | { takeProfit?: PerpsTpSlTrigger; stopLoss: PerpsTpSlTrigger };
 
 const PerpsTpSlPairSchema = z.union([
   z.object({
-    takeProfit: PerpsTpSlExitSchema,
-    stopLoss: PerpsTpSlExitSchema.optional(),
+    takeProfit: PerpsTpSlTriggerSchema,
+    stopLoss: PerpsTpSlTriggerSchema.optional(),
   }),
   z.object({
-    takeProfit: PerpsTpSlExitSchema.optional(),
-    stopLoss: PerpsTpSlExitSchema,
+    takeProfit: PerpsTpSlTriggerSchema.optional(),
+    stopLoss: PerpsTpSlTriggerSchema,
   }),
 ]) satisfies z.ZodType<PerpsTpSlPairRequest>;
-
-const PerpsPositionTpSlPairSchema = z.object({
-  takeProfit: PerpsPositionTpSlExitSchema.optional(),
-  stopLoss: PerpsPositionTpSlExitSchema.optional(),
-});
 
 export type PerpsSignedWsCommandRequest<T> = {
   op: PerpsSignedOp;
@@ -271,36 +268,70 @@ export async function placePerpsOrderWithTpSl(
   });
 }
 
-const PlacePerpsPositionTakeProfitStopLossRequestSchema =
-  PerpsPositionTpSlPairSchema.extend({
+export type PlacePerpsPositionTpSlRequest =
+  | {
+      /** Perps instrument identifier whose current position should receive TP/SL protection. */
+      instrumentId: number;
+      /** Take-profit trigger to place for the current position. */
+      takeProfit: PerpsPositionTpSlTrigger;
+      /** Optional stop-loss trigger to place alongside the take-profit. */
+      stopLoss?: PerpsPositionTpSlTrigger;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    }
+  | {
+      /** Perps instrument identifier whose current position should receive TP/SL protection. */
+      instrumentId: number;
+      /** Optional take-profit trigger to place alongside the stop-loss. */
+      takeProfit?: PerpsPositionTpSlTrigger;
+      /** Stop-loss trigger to place for the current position. */
+      stopLoss: PerpsPositionTpSlTrigger;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    };
+
+const PerpsPositionTpSlRequiredPairSchema = z.union([
+  z.object({
+    takeProfit: PerpsPositionTpSlTriggerSchema,
+    stopLoss: PerpsPositionTpSlTriggerSchema.optional(),
+  }),
+  z.object({
+    takeProfit: PerpsPositionTpSlTriggerSchema.optional(),
+    stopLoss: PerpsPositionTpSlTriggerSchema,
+  }),
+]);
+
+const PlacePerpsPositionTpSlRequestSchema = z.intersection(
+  PerpsPositionTpSlRequiredPairSchema,
+  z.object({
     instrumentId: PerpsInstrumentIdSchema,
-    positionSide: PerpsSideSchema,
     expiresAt: z.number().int().positive().optional(),
-  }).refine(
-    (request) =>
-      request.takeProfit !== undefined || request.stopLoss !== undefined,
-    'Expected at least one take-profit or stop-loss trigger.',
-  );
+  }),
+) satisfies z.ZodType<PlacePerpsPositionTpSlRequest>;
 
-export type PlacePerpsPositionTakeProfitStopLossRequest = z.input<
-  typeof PlacePerpsPositionTakeProfitStopLossRequestSchema
->;
+const PlacePerpsPositionTpSlCommandRequestSchema = z.intersection(
+  PlacePerpsPositionTpSlRequestSchema,
+  z.object({ buy: z.boolean() }),
+);
 
-export async function placePerpsPositionTakeProfitStopLoss(
+type PlacePerpsPositionTpSlCommandRequest = PlacePerpsPositionTpSlRequest & {
+  buy: boolean;
+};
+
+export async function placePerpsPositionTpSl(
   transport: PerpsTradingTransport,
-  request: PlacePerpsPositionTakeProfitStopLossRequest,
+  request: PlacePerpsPositionTpSlCommandRequest,
 ): Promise<PerpsPostOrderAck[]> {
   const params = parseUserInput(
     request,
-    PlacePerpsPositionTakeProfitStopLossRequestSchema,
+    PlacePerpsPositionTpSlCommandRequestSchema,
   );
   const orders: RawPerpsOrderInput[] = [];
-  const buy = params.positionSide === PerpsSide.Short;
 
   if (params.takeProfit !== undefined) {
     orders.push(
       toRawPerpsTpSlOrder({
-        buy,
+        buy: params.buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: '0',
@@ -311,7 +342,7 @@ export async function placePerpsPositionTakeProfitStopLoss(
   if (params.stopLoss !== undefined) {
     orders.push(
       toRawPerpsTpSlOrder({
-        buy,
+        buy: params.buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: '0',
@@ -482,7 +513,7 @@ function toRawPerpsTpSlOrder(request: {
   instrumentId: PerpsInstrumentId;
   kind: PerpsTpSlKind;
   quantity: string;
-  trigger: z.output<typeof PerpsTpSlExitSchema>;
+  trigger: z.output<typeof PerpsTpSlTriggerSchema>;
 }): RawPerpsOrderInput {
   return [
     request.instrumentId,

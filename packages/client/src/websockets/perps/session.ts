@@ -5,7 +5,6 @@ import {
   type PerpsAccountStats,
   type PerpsBalance,
   type PerpsCancelOrderResult,
-  type PerpsClientOrderId,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
@@ -37,6 +36,7 @@ import {
   SigningError,
   TimeoutError,
   TransportError,
+  UserInputError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
 import { ServiceClient } from '../../ServiceClient';
@@ -76,10 +76,10 @@ import {
   type PlacePerpsOrderRequest,
   type PlacePerpsOrderRequestWithOptions,
   type PlacePerpsOrderWithTpSlRequest,
-  type PlacePerpsPositionTakeProfitStopLossRequest,
+  type PlacePerpsPositionTpSlRequest,
   type PostPerpsOrdersRequest,
   placePerpsOrderWithTpSl,
-  placePerpsPositionTakeProfitStopLoss,
+  placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
@@ -154,9 +154,11 @@ export type {
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
+  PerpsPositionTpSlTrigger,
+  PerpsTpSlTrigger,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
-  PlacePerpsPositionTakeProfitStopLossRequest,
+  PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
 } from './actions/trading';
@@ -173,7 +175,6 @@ export type PerpsSessionOptions = {
 
 export type PerpsPlacedTpSlOrder = {
   orderId: PerpsOrderId;
-  clientOrderId?: PerpsClientOrderId;
 };
 
 export type PerpsPlacedTpSlOrders = {
@@ -186,6 +187,10 @@ export type PlacePerpsOrderResult = {
 };
 
 export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
+  tpSl: PerpsPlacedTpSlOrders;
+};
+
+export type PlacePerpsPositionTpSlResult = {
   tpSl: PerpsPlacedTpSlOrders;
 };
 
@@ -394,13 +399,59 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return { order: update.payload, tpSl };
   }
 
-  async placePositionTakeProfitStopLoss(
-    request: PlacePerpsPositionTakeProfitStopLossRequest,
-  ): Promise<PerpsPostOrderAck[]> {
-    return await placePerpsPositionTakeProfitStopLoss(
+  async placePositionTpSl(
+    request: PlacePerpsPositionTpSlRequest,
+  ): Promise<PlacePerpsPositionTpSlResult> {
+    const acknowledgements = await placePerpsPositionTpSl(
       this.#tradingTransport(),
-      request,
+      {
+        ...request,
+        buy: await this.#positionTpSlExitBuy(request.instrumentId),
+      },
+    ).then(expectNonEmptyArray);
+
+    for (const acknowledgement of acknowledgements) {
+      if (acknowledgement.status === 'err') {
+        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+      }
+    }
+
+    let triggerIndex = 0;
+    const tpSl: PerpsPlacedTpSlOrders = {};
+    if (request.takeProfit !== undefined) {
+      tpSl.takeProfit = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex++],
+          'Expected Perps take-profit acknowledgement.',
+        ),
+      );
+    }
+    if (request.stopLoss !== undefined) {
+      tpSl.stopLoss = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex],
+          'Expected Perps stop-loss acknowledgement.',
+        ),
+      );
+    }
+
+    return { tpSl };
+  }
+
+  async #positionTpSlExitBuy(instrumentId: number): Promise<boolean> {
+    const portfolio = await this.fetchPortfolio();
+    const position = portfolio.positions.find(
+      (item) => item.instrumentId === instrumentId,
     );
+    const sign = position === undefined ? 0 : decimalSign(position.size);
+
+    if (sign === 0) {
+      throw new UserInputError(
+        `No open Perps position for instrument ${instrumentId}.`,
+      );
+    }
+
+    return sign < 0;
   }
 
   /**
@@ -756,8 +807,14 @@ function placedOrderFrom(
 
   return {
     orderId: acknowledgement.orderId,
-    clientOrderId: acknowledgement.clientOrderId,
   };
+}
+
+function decimalSign(value: string): -1 | 0 | 1 {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/^[+-]/, '').replace('.', '');
+  if (/^0*$/.test(digits)) return 0;
+  return trimmed.startsWith('-') ? -1 : 1;
 }
 
 function randomUint32(): number {
