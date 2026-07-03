@@ -11,6 +11,7 @@ import {
   type PerpsDeposit,
   type PerpsEquityPoint,
   type PerpsOrder,
+  type PerpsOrderId,
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
@@ -24,6 +25,7 @@ import {
 } from '@polymarket/bindings/subscriptions';
 import {
   expectNonEmptyArray,
+  expectPresent,
   invariant,
   setNonBlockingTimeout,
 } from '@polymarket/types';
@@ -34,6 +36,7 @@ import {
   SigningError,
   TimeoutError,
   TransportError,
+  UserInputError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
 import { ServiceClient } from '../../ServiceClient';
@@ -67,10 +70,16 @@ import {
   type CancelPerpsOrdersRequest,
   cancelPerpsOrder,
   cancelPerpsOrders,
+  hasPerpsTpSl,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
   type PlacePerpsOrderRequest,
+  type PlacePerpsOrderRequestWithOptions,
+  type PlacePerpsOrderWithTpSlRequest,
+  type PlacePerpsPositionTpSlRequest,
   type PostPerpsOrdersRequest,
+  placePerpsOrderWithTpSl,
+  placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
@@ -81,7 +90,7 @@ import { type PerpsSignableValue, signPerpsOp } from './signing';
 const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
 // Purposefully generous: backend order updates are expected in the ~100ms range.
-const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 500;
+const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 1000;
 const PERPS_SESSION_CHANNELS = [
   'balances',
   'portfolio',
@@ -90,6 +99,7 @@ const PERPS_SESSION_CHANNELS = [
   'funding',
   'deposits',
   'withdrawals',
+  'tpsl',
 ] as const;
 
 const PerpsResponseEnvelopeSchema = z
@@ -140,10 +150,15 @@ export type {
 export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  PerpsOrderRequest,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
+  PerpsPositionTpSlTrigger,
+  PerpsTpSlTrigger,
   PlacePerpsOrderRequest,
+  PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
 } from './actions/trading';
@@ -156,6 +171,27 @@ export type PerpsSessionOptions = {
   onClose: (session: PerpsSession) => void;
   restUrl: string;
   wsUrl: string;
+};
+
+export type PerpsPlacedTpSlOrder = {
+  orderId: PerpsOrderId;
+};
+
+export type PerpsPlacedTpSlOrders = {
+  takeProfit?: PerpsPlacedTpSlOrder;
+  stopLoss?: PerpsPlacedTpSlOrder;
+};
+
+export type PlacePerpsOrderResult = {
+  order: PerpsOrder;
+};
+
+export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
+  tpSl: PerpsPlacedTpSlOrders;
+};
+
+export type PlacePerpsPositionTpSlResult = {
+  tpSl: PerpsPlacedTpSlOrders;
 };
 
 export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
@@ -277,9 +313,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws Thrown on failure.
    */
-  async placeOrder(request: PlacePerpsOrderRequest): Promise<PerpsOrder> {
+  async placeOrder(
+    request: PlacePerpsOrderWithTpSlRequest,
+  ): Promise<PlacePerpsOrderWithTpSlResult>;
+  async placeOrder(
+    request: PlacePerpsOrderRequest,
+  ): Promise<PlacePerpsOrderResult>;
+  async placeOrder(
+    request: PlacePerpsOrderRequestWithOptions,
+  ): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
+    if (hasPerpsTpSl(request)) {
+      return await this.#placeOrderWithTpSl(request);
+    }
+
     const [acknowledgement] = await postPerpsOrders(this.#tradingTransport(), {
       orders: [request],
+      expiresAt: request.expiresAt,
     }).then(expectNonEmptyArray);
 
     if (acknowledgement.status === 'err') {
@@ -291,7 +340,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         event.type === 'order' && event.payload.id === acknowledgement.orderId,
       ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
     );
-    return update.payload;
+    return { order: update.payload };
   }
 
   /**
@@ -304,6 +353,105 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: PostPerpsOrdersRequest,
   ): Promise<PerpsPostOrderAck[]> {
     return await postPerpsOrders(this.#tradingTransport(), request);
+  }
+
+  async #placeOrderWithTpSl(
+    request: PlacePerpsOrderWithTpSlRequest,
+  ): Promise<PlacePerpsOrderWithTpSlResult> {
+    const acknowledgements = await placePerpsOrderWithTpSl(
+      this.#tradingTransport(),
+      request,
+    ).then(expectNonEmptyArray);
+
+    for (const acknowledgement of acknowledgements) {
+      if (acknowledgement.status === 'err') {
+        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+      }
+    }
+
+    const [entryAcknowledgement] = acknowledgements;
+    const entryPlacement = placedOrderFrom(entryAcknowledgement);
+    const update = await this.#waitForEvent(
+      (event): event is PerpsOrderUpdateEvent =>
+        event.type === 'order' && event.payload.id === entryPlacement.orderId,
+      ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
+    );
+
+    let triggerIndex = 1;
+    const tpSl: PerpsPlacedTpSlOrders = {};
+    if (request.takeProfit !== undefined) {
+      tpSl.takeProfit = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex++],
+          'Expected Perps take-profit acknowledgement.',
+        ),
+      );
+    }
+    if (request.stopLoss !== undefined) {
+      tpSl.stopLoss = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex],
+          'Expected Perps stop-loss acknowledgement.',
+        ),
+      );
+    }
+
+    return { order: update.payload, tpSl };
+  }
+
+  async placePositionTpSl(
+    request: PlacePerpsPositionTpSlRequest,
+  ): Promise<PlacePerpsPositionTpSlResult> {
+    const acknowledgements = await placePerpsPositionTpSl(
+      this.#tradingTransport(),
+      {
+        ...request,
+        buy: await this.#positionTpSlExitBuy(request.instrumentId),
+      },
+    ).then(expectNonEmptyArray);
+
+    for (const acknowledgement of acknowledgements) {
+      if (acknowledgement.status === 'err') {
+        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+      }
+    }
+
+    let triggerIndex = 0;
+    const tpSl: PerpsPlacedTpSlOrders = {};
+    if (request.takeProfit !== undefined) {
+      tpSl.takeProfit = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex++],
+          'Expected Perps take-profit acknowledgement.',
+        ),
+      );
+    }
+    if (request.stopLoss !== undefined) {
+      tpSl.stopLoss = placedOrderFrom(
+        expectPresent(
+          acknowledgements[triggerIndex],
+          'Expected Perps stop-loss acknowledgement.',
+        ),
+      );
+    }
+
+    return { tpSl };
+  }
+
+  async #positionTpSlExitBuy(instrumentId: number): Promise<boolean> {
+    const portfolio = await this.fetchPortfolio();
+    const position = portfolio.positions.find(
+      (item) => item.instrumentId === instrumentId,
+    );
+    const sign = position === undefined ? 0 : decimalSign(position.size);
+
+    if (sign === 0) {
+      throw new UserInputError(
+        `No open Perps position for instrument ${instrumentId}.`,
+      );
+    }
+
+    return sign < 0;
   }
 
   /**
@@ -648,6 +796,25 @@ function errorAckFrom(value: unknown): { error: string } | undefined {
   return {
     error: typeof ack.error === 'string' ? ack.error : 'Perps command failed.',
   };
+}
+
+function placedOrderFrom(
+  acknowledgement: PerpsPostOrderAck,
+): PerpsPlacedTpSlOrder {
+  if (acknowledgement.status === 'err') {
+    throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+  }
+
+  return {
+    orderId: acknowledgement.orderId,
+  };
+}
+
+function decimalSign(value: string): -1 | 0 | 1 {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/^[+-]/, '').replace('.', '');
+  if (/^0*$/.test(digits)) return 0;
+  return trimmed.startsWith('-') ? -1 : 1;
 }
 
 function randomUint32(): number {

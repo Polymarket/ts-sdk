@@ -15,6 +15,8 @@ import {
   type PerpsPostOrderAck,
   PerpsPostOrderAckSchema,
   PerpsTimeInForce,
+  PerpsTpSlKind,
+  PerpsTpSlScope,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
@@ -114,18 +116,51 @@ const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
 }) satisfies z.ZodType<PerpsPlaceFokOrderRequest>;
 
 /**
- * Request parameters for placing one Perps order.
+ * Request parameters for one Perps order.
  */
-export type PlacePerpsOrderRequest =
+export type PerpsOrderRequest =
   | PerpsPlaceGtcOrderRequest
   | PerpsPlaceIocOrderRequest
   | PerpsPlaceFokOrderRequest;
 
-const PlacePerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
+const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceGtcOrderRequestSchema,
   PerpsPlaceIocOrderRequestSchema,
   PerpsPlaceFokOrderRequestSchema,
-]) satisfies z.ZodType<PlacePerpsOrderRequest>;
+]) satisfies z.ZodType<PerpsOrderRequest>;
+
+export type PerpsTpSlTrigger = {
+  triggerPrice: PerpsDecimalInput;
+  limitPrice?: PerpsDecimalInput;
+};
+
+const PerpsTpSlTriggerSchema = z.object({
+  triggerPrice: PerpsDecimalInputSchema,
+  limitPrice: PerpsDecimalInputSchema.optional(),
+}) satisfies z.ZodType<PerpsTpSlTrigger>;
+
+const PerpsPositionTpSlTriggerSchema = z.object({
+  triggerPrice: PerpsDecimalInputSchema,
+});
+
+export type PerpsPositionTpSlTrigger = {
+  triggerPrice: PerpsDecimalInput;
+};
+
+type PerpsTpSlPairRequest =
+  | { takeProfit: PerpsTpSlTrigger; stopLoss?: PerpsTpSlTrigger }
+  | { takeProfit?: PerpsTpSlTrigger; stopLoss: PerpsTpSlTrigger };
+
+const PerpsTpSlPairSchema = z.union([
+  z.object({
+    takeProfit: PerpsTpSlTriggerSchema,
+    stopLoss: PerpsTpSlTriggerSchema.optional(),
+  }),
+  z.object({
+    takeProfit: PerpsTpSlTriggerSchema.optional(),
+    stopLoss: PerpsTpSlTriggerSchema,
+  }),
+]) satisfies z.ZodType<PerpsTpSlPairRequest>;
 
 export type PerpsSignedWsCommandRequest<T> = {
   op: PerpsSignedOp;
@@ -141,13 +176,13 @@ export type PerpsTradingTransport = {
 /** Request parameters for posting one or more Perps orders. */
 export type PostPerpsOrdersRequest = {
   /** Orders to post as one command. */
-  orders: PlacePerpsOrderRequest[];
+  orders: PerpsOrderRequest[];
   /** Optional command expiration timestamp in milliseconds. */
   expiresAt?: number;
 };
 
 const PostPerpsOrdersRequestSchema = z.object({
-  orders: z.array(PlacePerpsOrderRequestSchema).min(1),
+  orders: z.array(PerpsOrderRequestSchema).min(1),
   expiresAt: z.number().int().positive().optional(),
 }) satisfies z.ZodType<PostPerpsOrdersRequest>;
 
@@ -161,6 +196,165 @@ export async function postPerpsOrders(
     responseSchema: z.array(PerpsPostOrderAckSchema),
     timeoutMessage: 'Perps post order acknowledgement timed out.',
     expiresAt: params.expiresAt,
+  });
+}
+
+const PlacePerpsOrderWithTpSlRequestSchema = z.intersection(
+  PerpsOrderRequestSchema,
+  z.intersection(
+    PerpsTpSlPairSchema,
+    z.object({
+      expiresAt: z.number().int().positive().optional(),
+    }),
+  ),
+) satisfies z.ZodType<PlacePerpsOrderWithTpSlRequest>;
+
+export type PlacePerpsOrderRequest = PerpsOrderRequest & {
+  expiresAt?: number;
+  stopLoss?: undefined;
+  takeProfit?: undefined;
+};
+
+export type PlacePerpsOrderWithTpSlRequest = PerpsOrderRequest &
+  PerpsTpSlPairRequest & {
+    expiresAt?: number;
+  };
+
+export type PlacePerpsOrderRequestWithOptions =
+  | PlacePerpsOrderRequest
+  | PlacePerpsOrderWithTpSlRequest;
+
+export function hasPerpsTpSl(
+  request: PlacePerpsOrderRequestWithOptions,
+): request is PlacePerpsOrderWithTpSlRequest {
+  return request.takeProfit !== undefined || request.stopLoss !== undefined;
+}
+
+export async function placePerpsOrderWithTpSl(
+  transport: PerpsTradingTransport,
+  request: PlacePerpsOrderWithTpSlRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(request, PlacePerpsOrderWithTpSlRequestSchema);
+  const orders: RawPerpsOrderInput[] = [toRawPerpsOrder(params)];
+  const exitBuy = params.side === OrderSide.SELL;
+
+  if (params.takeProfit !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: exitBuy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.TakeProfit,
+        quantity: toDecimalString(params.quantity),
+        trigger: params.takeProfit,
+      }),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: exitBuy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.StopLoss,
+        quantity: toDecimalString(params.quantity),
+        trigger: params.stopLoss,
+      }),
+    );
+  }
+
+  return await placePerpsOrderGroup(transport, {
+    expiresAt: params.expiresAt,
+    group: PerpsTpSlScope.Order,
+    orders,
+  });
+}
+
+export type PlacePerpsPositionTpSlRequest =
+  | {
+      /** Perps instrument identifier whose current position should receive TP/SL protection. */
+      instrumentId: number;
+      /** Take-profit trigger to place for the current position. */
+      takeProfit: PerpsPositionTpSlTrigger;
+      /** Optional stop-loss trigger to place alongside the take-profit. */
+      stopLoss?: PerpsPositionTpSlTrigger;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    }
+  | {
+      /** Perps instrument identifier whose current position should receive TP/SL protection. */
+      instrumentId: number;
+      /** Optional take-profit trigger to place alongside the stop-loss. */
+      takeProfit?: PerpsPositionTpSlTrigger;
+      /** Stop-loss trigger to place for the current position. */
+      stopLoss: PerpsPositionTpSlTrigger;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    };
+
+const PerpsPositionTpSlRequiredPairSchema = z.union([
+  z.object({
+    takeProfit: PerpsPositionTpSlTriggerSchema,
+    stopLoss: PerpsPositionTpSlTriggerSchema.optional(),
+  }),
+  z.object({
+    takeProfit: PerpsPositionTpSlTriggerSchema.optional(),
+    stopLoss: PerpsPositionTpSlTriggerSchema,
+  }),
+]);
+
+const PlacePerpsPositionTpSlRequestSchema = z.intersection(
+  PerpsPositionTpSlRequiredPairSchema,
+  z.object({
+    instrumentId: PerpsInstrumentIdSchema,
+    expiresAt: z.number().int().positive().optional(),
+  }),
+) satisfies z.ZodType<PlacePerpsPositionTpSlRequest>;
+
+const PlacePerpsPositionTpSlCommandRequestSchema = z.intersection(
+  PlacePerpsPositionTpSlRequestSchema,
+  z.object({ buy: z.boolean() }),
+);
+
+type PlacePerpsPositionTpSlCommandRequest = PlacePerpsPositionTpSlRequest & {
+  buy: boolean;
+};
+
+export async function placePerpsPositionTpSl(
+  transport: PerpsTradingTransport,
+  request: PlacePerpsPositionTpSlCommandRequest,
+): Promise<PerpsPostOrderAck[]> {
+  const params = parseUserInput(
+    request,
+    PlacePerpsPositionTpSlCommandRequestSchema,
+  );
+  const orders: RawPerpsOrderInput[] = [];
+
+  if (params.takeProfit !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: params.buy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.TakeProfit,
+        quantity: '0',
+        trigger: params.takeProfit,
+      }),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    orders.push(
+      toRawPerpsTpSlOrder({
+        buy: params.buy,
+        instrumentId: params.instrumentId,
+        kind: PerpsTpSlKind.StopLoss,
+        quantity: '0',
+        trigger: params.stopLoss,
+      }),
+    );
+  }
+
+  return await placePerpsOrderGroup(transport, {
+    expiresAt: params.expiresAt,
+    group: PerpsTpSlScope.Position,
+    orders,
   });
 }
 
@@ -285,13 +479,21 @@ type RawPerpsOrderInput = readonly [
   boolean,
   string | undefined,
   string,
-  PerpsTimeInForce,
+  PerpsTimeInForce | undefined,
   boolean,
+  true | undefined,
   string | undefined,
+  RawPerpsTpSlTriggerInput | undefined,
+];
+
+type RawPerpsTpSlTriggerInput = readonly [
+  boolean | undefined,
+  string,
+  PerpsTpSlKind,
 ];
 
 function toRawPerpsOrder(
-  order: z.output<typeof PlacePerpsOrderRequestSchema>,
+  order: z.output<typeof PerpsOrderRequestSchema>,
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,
@@ -300,18 +502,65 @@ function toRawPerpsOrder(
     toDecimalString(order.quantity),
     order.timeInForce,
     order.postOnly ?? false,
+    undefined,
     order.clientOrderId,
+    undefined,
   ];
 }
 
+function toRawPerpsTpSlOrder(request: {
+  buy: boolean;
+  instrumentId: PerpsInstrumentId;
+  kind: PerpsTpSlKind;
+  quantity: string;
+  trigger: z.output<typeof PerpsTpSlTriggerSchema>;
+}): RawPerpsOrderInput {
+  return [
+    request.instrumentId,
+    request.buy,
+    request.trigger.limitPrice === undefined
+      ? undefined
+      : toDecimalString(request.trigger.limitPrice),
+    request.quantity,
+    undefined,
+    false,
+    true,
+    undefined,
+    [
+      request.trigger.limitPrice === undefined ? true : undefined,
+      toDecimalString(request.trigger.triggerPrice),
+      request.kind,
+    ],
+  ];
+}
+
+async function placePerpsOrderGroup(
+  transport: PerpsTradingTransport,
+  request: {
+    orders: RawPerpsOrderInput[];
+    group: PerpsTpSlScope;
+    expiresAt?: number;
+  },
+): Promise<PerpsPostOrderAck[]> {
+  return await transport.sendSignedWsCommand({
+    op: ['createOrders', request.orders, request.group],
+    responseSchema: z.array(PerpsPostOrderAckSchema),
+    timeoutMessage: 'Perps place TP/SL order acknowledgement timed out.',
+    expiresAt: request.expiresAt,
+  });
+}
+
 export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
-  const [type, args] = op;
+  const [type, args, group] = op;
   switch (type) {
     case 'createOrders':
-      return {
-        type,
-        args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
-      };
+      return withOptionalGroup(
+        {
+          args: (args as RawPerpsOrderInput[]).map(toPerpsOrderBody),
+          type,
+        },
+        group,
+      );
     case 'cancelOrders':
     case 'cancelOrdersCOID':
       return { type, args };
@@ -339,11 +588,30 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
   const body: Record<string, unknown> = {
     iid: order[0],
     buy: order[1],
+    po: order[5],
+    qty: order[3],
   };
-  if (order[2] !== undefined) body.p = order[2];
-  body.qty = order[3];
   if (order[4] !== undefined) body.tif = order[4];
-  body.po = order[5];
-  if (order[6] !== undefined) body.c = order[6];
+  if (order[6]) body.ro = order[6];
+  if (order[2] !== undefined) body.p = order[2];
+  if (order[7] !== undefined) body.c = order[7];
+  if (order[8] !== undefined) body.tr = toPerpsTpSlTriggerBody(order[8]);
+  return body;
+}
+
+function toPerpsTpSlTriggerBody(trigger: RawPerpsTpSlTriggerInput) {
+  const body: Record<string, unknown> = {
+    tpsl: trigger[2],
+    trp: trigger[1],
+  };
+  if (trigger[0] !== undefined) body.market = trigger[0];
+  return body;
+}
+
+function withOptionalGroup(
+  body: Record<string, unknown>,
+  group: unknown,
+): Record<string, unknown> {
+  if (group !== undefined) body.grp = group;
   return body;
 }

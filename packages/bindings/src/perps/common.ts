@@ -97,6 +97,16 @@ export enum PerpsTimeInForce {
   FOK = 'fok',
 }
 
+export enum PerpsTpSlKind {
+  TakeProfit = 'tp',
+  StopLoss = 'sl',
+}
+
+export enum PerpsTpSlScope {
+  Order = 'order',
+  Position = 'position',
+}
+
 export enum PerpsDepositStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
@@ -136,6 +146,8 @@ export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
 export const PerpsInstrumentCategorySchema = z.enum(PerpsInstrumentCategory);
 export const PerpsSideSchema = z.enum(PerpsSide);
 export const PerpsTimeInForceSchema = z.enum(PerpsTimeInForce);
+export const PerpsTpSlKindSchema = z.enum(PerpsTpSlKind);
+export const PerpsTpSlScopeSchema = z.enum(PerpsTpSlScope);
 export const PerpsDepositStatusSchema = z.enum(PerpsDepositStatus);
 export const PerpsWithdrawalStatusSchema = z.enum(PerpsWithdrawalStatus);
 export const PerpsInternalTransferDirectionSchema = z.enum(
