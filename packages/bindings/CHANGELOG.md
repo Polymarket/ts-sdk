@@ -1,5 +1,12 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.10
+
+### Patch Changes
+
+- 4c7ac45: Add `session.fetchStats()` for Perps account stats.
+- a282c35: Add Perps TP/SL order metadata, lifecycle events, unified `placeOrder` TP/SL placement, and `placePositionTpSl` with position-side inference. Remove unsupported Perps margin updates and return the leverage update result.
+
 ## 0.1.0-beta.9
 
 ### Patch Changes
