@@ -1,5 +1,16 @@
 # @polymarket/client
 
+## 0.1.0-beta.12
+
+### Patch Changes
+
+- 3d4b073: Require GTD limit order expirations to be at least 3 minutes in the future.
+- 4c7ac45: Add `session.fetchStats()` for Perps account stats.
+- a282c35: Add Perps TP/SL order metadata, lifecycle events, unified `placeOrder` TP/SL placement, and `placePositionTpSl` with position-side inference. Remove unsupported Perps margin updates and return the leverage update result.
+- Updated dependencies [4c7ac45]
+- Updated dependencies [a282c35]
+  - @polymarket/bindings@0.1.0-beta.10
+
 ## 0.1.0-beta.11
 
 ### Patch Changes
