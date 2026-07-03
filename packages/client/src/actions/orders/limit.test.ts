@@ -7,13 +7,13 @@ describe('PrepareLimitOrderParamsSchema', () => {
     vi.useRealTimers();
   });
 
-  it('accepts a GTD expiration exactly 60 seconds in the future', () => {
+  it('accepts a GTD expiration exactly 3 minutes in the future', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
     expect(
       PrepareLimitOrderParamsSchema.safeParse({
-        expiration: Math.floor(Date.now() / 1000) + 60,
+        expiration: Math.floor(Date.now() / 1000) + 180,
         price: 0.52,
         side: OrderSide.BUY,
         size: 10,
@@ -22,13 +22,13 @@ describe('PrepareLimitOrderParamsSchema', () => {
     ).toBe(true);
   });
 
-  it('rejects a GTD expiration less than 60 seconds in the future', () => {
+  it('rejects a GTD expiration less than 3 minutes in the future', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
 
     expect(
       PrepareLimitOrderParamsSchema.safeParse({
-        expiration: Math.floor(Date.now() / 1000) + 59,
+        expiration: Math.floor(Date.now() / 1000) + 179,
         price: 0.52,
         side: OrderSide.BUY,
         size: 10,
