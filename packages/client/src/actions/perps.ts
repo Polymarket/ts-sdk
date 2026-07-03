@@ -24,7 +24,6 @@ import {
   type PerpsInstrument,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
-  PerpsInstrumentTypeSchema,
   type PerpsKlineInterval,
   PerpsKlineIntervalSchema,
   type PerpsPublicTrade,
@@ -155,7 +154,6 @@ type PerpsTimeRangeParams = {
 const FetchPerpsInstrumentsRequestSchema = z
   .object({
     instrumentId: PerpsInstrumentIdSchema.optional(),
-    instrumentType: PerpsInstrumentTypeSchema.optional(),
     category: PerpsInstrumentCategorySchema.optional(),
   })
   .default({});
