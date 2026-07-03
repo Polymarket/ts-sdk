@@ -139,7 +139,7 @@ export const CreateLimitOrderError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * GTD expirations must be at least 60 seconds in the future. Add your own
+ * GTD expirations must be at least 3 minutes in the future. Add your own
  * buffer for network latency and clock skew when deriving an expiration from
  * the current time.
  *
@@ -176,7 +176,7 @@ export const PlaceLimitOrderError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * GTD expirations must be at least 60 seconds in the future. Add your own
+ * GTD expirations must be at least 3 minutes in the future. Add your own
  * buffer for network latency and clock skew when deriving an expiration from
  * the current time.
  *

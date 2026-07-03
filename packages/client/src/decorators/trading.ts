@@ -91,7 +91,7 @@ export type SecureTradingActions = {
    * Creates a signed limit order for the authenticated account.
    *
    * @remarks
-   * GTD expirations must be at least 60 seconds in the future. Add your own
+   * GTD expirations must be at least 3 minutes in the future. Add your own
    * buffer for network latency and clock skew when deriving an expiration from
    * the current time.
    *
@@ -114,7 +114,7 @@ export type SecureTradingActions = {
    * Creates and posts a limit order for the authenticated account.
    *
    * @remarks
-   * GTD expirations must be at least 60 seconds in the future. Add your own
+   * GTD expirations must be at least 3 minutes in the future. Add your own
    * buffer for network latency and clock skew when deriving an expiration from
    * the current time.
    *

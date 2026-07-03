@@ -22,6 +22,8 @@ import {
 } from './math';
 import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
+const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
+
 export const PrepareLimitOrderParamsSchema = z
   .strictObject({
     tokenId: TokenIdSchema,
@@ -34,12 +36,13 @@ export const PrepareLimitOrderParamsSchema = z
   })
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
-      const minimumExpiration = Math.floor(Date.now() / 1000) + 60;
+      const minimumExpiration =
+        Math.floor(Date.now() / 1000) + MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS;
 
       if (params.expiration < minimumExpiration) {
         context.addIssue({
           code: 'custom',
-          message: 'Expiration must be at least 60 seconds in the future.',
+          message: 'Expiration must be at least 3 minutes in the future.',
           path: ['expiration'],
         });
       }

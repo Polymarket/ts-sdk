@@ -39,6 +39,7 @@
     "fix-rfq-submission-window-code",
     "fork-environment-configs",
     "fuzzy-hornets-report",
+    "gtd-expiration-3min",
     "harden-rfq-invalid-frames",
     "lazy-trades-fix",
     "legacy-deposit-wallet-default",
