@@ -43,17 +43,80 @@ import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
 export type {
+  CancelPerpsOrderRequest,
+  CancelPerpsOrdersRequest,
+  CreatePerpsSessionRequest,
+  DepositToPerpsRequest,
+  FetchPerpsAccountConfigRequest,
+  FetchPerpsBookRequest,
+  FetchPerpsInstrumentsRequest,
+  FetchPerpsOpenOrdersRequest,
+  FetchPerpsOrdersRequest,
+  FetchPerpsTickerRequest,
+  FetchPerpsTickersRequest,
+  ListPerpsCandlesRequest,
+  ListPerpsDepositsRequest,
+  ListPerpsEquityHistoryRequest,
+  ListPerpsFillsRequest,
+  ListPerpsFundingHistoryRequest,
+  ListPerpsFundingPaymentsRequest,
+  ListPerpsPnlHistoryRequest,
+  ListPerpsTradesRequest,
+  ListPerpsWithdrawalsRequest,
+  OpenPerpsSessionRequest,
+  PerpsBookDepth,
   PerpsCancelOrderResult,
+  PerpsOrderRequest,
+  PerpsPlacedTpSlOrder,
+  PerpsPlacedTpSlOrders,
+  PerpsPlaceFokOrderRequest,
+  PerpsPlaceGtcOrderRequest,
+  PerpsPlaceIocOrderRequest,
+  PerpsPositionTpSlTrigger,
   PerpsPostOrderAck,
   PerpsSession,
+  PerpsSessionAccountError,
   PerpsSessionEvent,
+  PerpsSessionLifecycleError,
+  PerpsSessionTradingError,
+  PerpsTpSlTrigger,
   PerpsUpdateLeverageResult,
+  PlacePerpsOrderRequest,
+  PlacePerpsOrderResult,
+  PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsOrderWithTpSlResult,
+  PlacePerpsPositionTpSlRequest,
+  PlacePerpsPositionTpSlResult,
+  PostPerpsOrdersRequest,
+  ResumePerpsSessionRequest,
+  RevokePerpsCredentialsRequest,
+  UpdatePerpsLeverageRequest,
+  WithdrawFromPerpsRequest,
 } from '../actions';
-export { UpdatePerpsLeverageError } from '../actions';
+export {
+  DepositToPerpsError,
+  FetchPerpsBookError,
+  FetchPerpsFeesError,
+  FetchPerpsInstrumentsError,
+  FetchPerpsTickerError,
+  FetchPerpsTickersError,
+  ListPerpsCandlesError,
+  ListPerpsFundingHistoryError,
+  ListPerpsTradesError,
+  OpenPerpsSessionError,
+  RevokePerpsCredentialsError,
+  UpdatePerpsLeverageError,
+  WithdrawFromPerpsError,
+} from '../actions';
 
 export type PublicPerpsActions = {
   /**
    * Fetches Perps instruments.
+   *
+   * @example
+   * ```ts
+   * const instruments = await client.fetchPerpsInstruments();
+   * ```
    *
    * @throws {@link FetchPerpsInstrumentsError}
    * Thrown on failure.
@@ -65,6 +128,11 @@ export type PublicPerpsActions = {
   /**
    * Fetches the current Perps ticker for an instrument.
    *
+   * @example
+   * ```ts
+   * const ticker = await client.fetchPerpsTicker({ instrumentId: 1 });
+   * ```
+   *
    * @throws {@link FetchPerpsTickerError}
    * Thrown on failure.
    */
@@ -72,6 +140,11 @@ export type PublicPerpsActions = {
 
   /**
    * Fetches current Perps tickers.
+   *
+   * @example
+   * ```ts
+   * const tickers = await client.fetchPerpsTickers();
+   * ```
    *
    * @throws {@link FetchPerpsTickersError}
    * Thrown on failure.
@@ -81,6 +154,11 @@ export type PublicPerpsActions = {
   /**
    * Fetches a Perps order book.
    *
+   * @example
+   * ```ts
+   * const book = await client.fetchPerpsBook({ instrumentId: 1, depth: 100 });
+   * ```
+   *
    * @throws {@link FetchPerpsBookError}
    * Thrown on failure.
    */
@@ -89,6 +167,16 @@ export type PublicPerpsActions = {
   /**
    * Lists Perps candles for an instrument with SDK-owned pagination.
    *
+   * @example
+   * ```ts
+   * for await (const candles of client.listPerpsCandles({
+   *   instrumentId: 1,
+   *   interval: PerpsKlineInterval.OneMinute,
+   * })) {
+   *   console.log(candles);
+   * }
+   * ```
+   *
    * @throws {@link ListPerpsCandlesError}
    * Thrown on failure.
    */
@@ -96,6 +184,15 @@ export type PublicPerpsActions = {
 
   /**
    * Lists Perps funding-rate history for an instrument with SDK-owned pagination.
+   *
+   * @example
+   * ```ts
+   * for await (const rates of client.listPerpsFundingHistory({
+   *   instrumentId: 1,
+   * })) {
+   *   console.log(rates);
+   * }
+   * ```
    *
    * @throws {@link ListPerpsFundingHistoryError}
    * Thrown on failure.
@@ -107,6 +204,13 @@ export type PublicPerpsActions = {
   /**
    * Lists recent Perps trades for an instrument with SDK-owned pagination.
    *
+   * @example
+   * ```ts
+   * for await (const trades of client.listPerpsTrades({ instrumentId: 1 })) {
+   *   console.log(trades);
+   * }
+   * ```
+   *
    * @throws {@link ListPerpsTradesError}
    * Thrown on failure.
    */
@@ -117,6 +221,11 @@ export type PublicPerpsActions = {
   /**
    * Fetches the Perps fee schedule.
    *
+   * @example
+   * ```ts
+   * const fees = await client.fetchPerpsFees();
+   * ```
+   *
    * @throws {@link FetchPerpsFeesError}
    * Thrown on failure.
    */
@@ -126,6 +235,11 @@ export type PublicPerpsActions = {
 export type SecurePerpsActions = PublicPerpsActions & {
   /**
    * Deposits collateral into Perps for the authenticated signer account.
+   *
+   * @example
+   * ```ts
+   * const transaction = await client.depositToPerps({ amount: 100_000_000n });
+   * ```
    *
    * @throws {@link DepositToPerpsError}
    * Thrown on failure.
@@ -141,6 +255,11 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
    *
+   * @example
+   * ```ts
+   * const session = await client.openPerpsSession();
+   * ```
+   *
    * @throws {@link OpenPerpsSessionError}
    * Thrown on failure.
    */
@@ -152,6 +271,11 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * @remarks
    * This can revoke credentials outside the currently open Perps session.
    *
+   * @example
+   * ```ts
+   * await client.revokePerpsCredentials({ proxy: session.credentials.proxy });
+   * ```
+   *
    * @throws {@link RevokePerpsCredentialsError}
    * Thrown on failure.
    */
@@ -159,6 +283,11 @@ export type SecurePerpsActions = PublicPerpsActions & {
 
   /**
    * Requests a Perps withdrawal to the authenticated wallet.
+   *
+   * @example
+   * ```ts
+   * const withdrawalId = await client.withdrawFromPerps({ amount: 100_000_000n });
+   * ```
    *
    * @throws {@link WithdrawFromPerpsError}
    * Thrown on failure.

@@ -22,6 +22,7 @@ import {
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
   type PerpsInstrument,
+  type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
   type PerpsKlineInterval,
@@ -104,7 +105,10 @@ export type {
   PerpsPositionTpSlTrigger,
   PerpsPostOrderAck,
   PerpsSession,
+  PerpsSessionAccountError,
   PerpsSessionEvent,
+  PerpsSessionLifecycleError,
+  PerpsSessionTradingError,
   PerpsTpSlTrigger,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
@@ -156,11 +160,14 @@ const FetchPerpsInstrumentsRequestSchema = z
     instrumentId: PerpsInstrumentIdSchema.optional(),
     category: PerpsInstrumentCategorySchema.optional(),
   })
-  .default({});
+  .default({}) satisfies z.ZodType<FetchPerpsInstrumentsRequest>;
 
-export type FetchPerpsInstrumentsRequest = z.input<
-  typeof FetchPerpsInstrumentsRequestSchema
->;
+export type FetchPerpsInstrumentsRequest = {
+  /** Perps instrument identifier to fetch. */
+  instrumentId?: number;
+  /** Optional instrument category filter. */
+  category?: PerpsInstrumentCategory;
+};
 
 export type FetchPerpsInstrumentsError = PerpsPublicReadError;
 export const FetchPerpsInstrumentsError = PerpsPublicReadError;
@@ -191,11 +198,12 @@ export async function fetchPerpsInstruments(
 
 const FetchPerpsTickerRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
-});
+}) satisfies z.ZodType<FetchPerpsTickerRequest>;
 
-export type FetchPerpsTickerRequest = z.input<
-  typeof FetchPerpsTickerRequestSchema
->;
+export type FetchPerpsTickerRequest = {
+  /** Perps instrument identifier whose ticker should be fetched. */
+  instrumentId: number;
+};
 
 export type FetchPerpsTickerError = PerpsPublicReadError;
 export const FetchPerpsTickerError = PerpsPublicReadError;
@@ -229,11 +237,12 @@ const FetchPerpsTickersRequestSchema = z
   .object({
     instrumentId: PerpsInstrumentIdSchema.optional(),
   })
-  .default({});
+  .default({}) satisfies z.ZodType<FetchPerpsTickersRequest>;
 
-export type FetchPerpsTickersRequest = z.input<
-  typeof FetchPerpsTickersRequestSchema
->;
+export type FetchPerpsTickersRequest = {
+  /** Optional Perps instrument identifier filter. */
+  instrumentId?: number;
+};
 
 export type FetchPerpsTickersError = PerpsPublicReadError;
 export const FetchPerpsTickersError = PerpsPublicReadError;
@@ -292,9 +301,14 @@ const PerpsBookDepthSchema: z.ZodType<PerpsBookDepth> = z.union([
 const FetchPerpsBookRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   depth: PerpsBookDepthSchema.default(100),
-});
+}) satisfies z.ZodType<FetchPerpsBookRequest>;
 
-export type FetchPerpsBookRequest = z.input<typeof FetchPerpsBookRequestSchema>;
+export type FetchPerpsBookRequest = {
+  /** Perps instrument identifier whose order book should be fetched. */
+  instrumentId: number;
+  /** Number of price levels to return on each side. */
+  depth?: PerpsBookDepth;
+};
 
 export type FetchPerpsBookError = PerpsPublicReadError;
 export const FetchPerpsBookError = PerpsPublicReadError;
@@ -323,29 +337,50 @@ export async function fetchPerpsBook(
   );
 }
 
-const PerpsCandlesRequestBaseSchema = z.object({
+const ListPerpsCandlesInitialRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   interval: PerpsKlineIntervalSchema,
   start: TimestampInputSchema.optional(),
   end: TimestampInputSchema.optional(),
-});
+  cursor: PaginationCursorSchema.optional(),
+}) satisfies z.ZodType<
+  Extract<ListPerpsCandlesRequest, { instrumentId: number }>
+>;
+
+const ListPerpsCandlesCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsCandlesRequest, { cursor: PaginationCursor }>
+>;
 
 const ListPerpsCandlesRequestSchema = z.union([
-  PerpsCandlesRequestBaseSchema.extend({
-    cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
+  ListPerpsCandlesInitialRequestSchema.transform(({ cursor, ...request }) => ({
     cursor,
     params: toPerpsCandlesParams(request),
   })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  ListPerpsCandlesCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsCandlesRequest = z.input<
-  typeof ListPerpsCandlesRequestSchema
->;
+export type ListPerpsCandlesRequest =
+  | {
+      /** Perps instrument identifier whose candles should be listed. */
+      instrumentId: number;
+      /** Candle interval. */
+      interval: PerpsKlineInterval;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export type ListPerpsCandlesError = PerpsPublicReadError;
 export const ListPerpsCandlesError = PerpsPublicReadError;
@@ -413,22 +448,60 @@ const TimeRangePerpsRequestBaseSchema = z.object({
   end: TimestampInputSchema.optional(),
 });
 
-const ListPerpsFundingHistoryRequestSchema = z.union([
+const ListPerpsFundingHistoryInitialRequestSchema =
   TimeRangePerpsRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsTimeRangeParams(request),
-  })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  }) satisfies z.ZodType<
+    Extract<ListPerpsFundingHistoryRequest, { instrumentId: number }>
+  >;
+
+const ListPerpsFundingHistoryCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsFundingHistoryRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsFundingHistoryRequestSchema = z.union([
+  ListPerpsFundingHistoryInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsTimeRangeParams(request),
+    }),
+  ),
+  ListPerpsFundingHistoryCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsFundingHistoryRequest = z.input<
-  typeof ListPerpsFundingHistoryRequestSchema
+const ListPerpsTradesInitialRequestSchema =
+  TimeRangePerpsRequestBaseSchema.extend({
+    cursor: PaginationCursorSchema.optional(),
+  }) satisfies z.ZodType<
+    Extract<ListPerpsTradesRequest, { instrumentId: number }>
+  >;
+
+const ListPerpsTradesCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsTradesRequest, { cursor: PaginationCursor }>
 >;
+
+export type ListPerpsFundingHistoryRequest =
+  | {
+      /** Perps instrument identifier whose funding history should be listed. */
+      instrumentId: number;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export type ListPerpsFundingHistoryError = PerpsPublicReadError;
 export const ListPerpsFundingHistoryError = PerpsPublicReadError;
@@ -491,21 +564,31 @@ export function listPerpsFundingHistory(
 }
 
 const ListPerpsTradesRequestSchema = z.union([
-  TimeRangePerpsRequestBaseSchema.extend({
-    cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
+  ListPerpsTradesInitialRequestSchema.transform(({ cursor, ...request }) => ({
     cursor,
     params: toPerpsTimeRangeParams(request),
   })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  ListPerpsTradesCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsTradesRequest = z.input<
-  typeof ListPerpsTradesRequestSchema
->;
+export type ListPerpsTradesRequest =
+  | {
+      /** Perps instrument identifier whose recent trades should be listed. */
+      instrumentId: number;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export type ListPerpsTradesError = PerpsPublicReadError;
 export const ListPerpsTradesError = PerpsPublicReadError;
@@ -639,7 +722,10 @@ type PerpsFundingCursorState = z.infer<typeof PerpsFundingCursorStateSchema>;
 type PerpsTradesCursorState = z.infer<typeof PerpsTradesCursorStateSchema>;
 
 function toPerpsCandlesParams(
-  request: z.output<typeof PerpsCandlesRequestBaseSchema>,
+  request: Omit<
+    z.output<typeof ListPerpsCandlesInitialRequestSchema>,
+    'cursor'
+  >,
 ): PerpsCandlesParams {
   const now = Date.now();
   return {
@@ -779,39 +865,49 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
     .positive()
     .default(DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN),
   label: z.string().min(1).optional(),
-});
+}) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
   credentials: PerpsCredentialsSchema,
-});
+}) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
 const OpenPerpsSessionRequestSchema = z.union([
   CreatePerpsSessionRequestSchema,
   ResumePerpsSessionRequestSchema,
-]);
+]) satisfies z.ZodType<OpenPerpsSessionRequest>;
 
-const RevokePerpsCredentialsRequestSchema = z.object({
-  proxy: z.string().transform((value) => expectEvmAddress(value)),
-});
+const RevokePerpsCredentialsRequestInputSchema = z.object({
+  proxy: z.string(),
+}) satisfies z.ZodType<RevokePerpsCredentialsRequest>;
 
-export type CreatePerpsSessionRequest = z.input<
-  typeof CreatePerpsSessionRequestSchema
->;
+const RevokePerpsCredentialsRequestSchema =
+  RevokePerpsCredentialsRequestInputSchema.transform((request) => ({
+    proxy: expectEvmAddress(request.proxy),
+  }));
+
+export type CreatePerpsSessionRequest = {
+  /** Delegated credential lifetime in milliseconds. */
+  expiresIn?: number;
+  /** Optional label for the delegated credentials. */
+  label?: string;
+};
 type ParsedCreatePerpsSessionRequest = z.output<
   typeof CreatePerpsSessionRequestSchema
 >;
 
-export type ResumePerpsSessionRequest = z.input<
-  typeof ResumePerpsSessionRequestSchema
->;
+export type ResumePerpsSessionRequest = {
+  /** Existing delegated Perps credentials to validate and resume. */
+  credentials: PerpsCredentials;
+};
 
 export type OpenPerpsSessionRequest =
   | CreatePerpsSessionRequest
   | ResumePerpsSessionRequest;
 
-export type RevokePerpsCredentialsRequest = z.input<
-  typeof RevokePerpsCredentialsRequestSchema
->;
+export type RevokePerpsCredentialsRequest = {
+  /** Proxy address whose delegated credentials should be revoked. */
+  proxy: string;
+};
 
 const PerpsBaseUnitAmountSchema = z.bigint().positive().max(MAX_UINT256);
 
@@ -828,17 +924,23 @@ export type PerpsDepositWorkflow = AsyncGenerator<
 const DepositToPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
   metadata: GaslessTransactionMetadataSchema.optional(),
-});
+}) satisfies z.ZodType<DepositToPerpsRequest>;
 
 const WithdrawFromPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
-});
+}) satisfies z.ZodType<WithdrawFromPerpsRequest>;
 
-export type DepositToPerpsRequest = z.input<typeof DepositToPerpsRequestSchema>;
+export type DepositToPerpsRequest = {
+  /** Collateral amount in base units. */
+  amount: bigint;
+  /** Optional wallet-visible metadata for gasless deposit workflows. */
+  metadata?: string;
+};
 
-export type WithdrawFromPerpsRequest = z.input<
-  typeof WithdrawFromPerpsRequestSchema
->;
+export type WithdrawFromPerpsRequest = {
+  /** Collateral amount in base units. */
+  amount: bigint;
+};
 
 export type OpenPerpsSessionError =
   | RateLimitError

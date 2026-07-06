@@ -32,10 +32,12 @@ import {
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
+  type RateLimitError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
   TransportError,
+  type UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
@@ -173,6 +175,21 @@ export type PerpsSessionOptions = {
   wsUrl: string;
 };
 
+export type PerpsSessionLifecycleError = RequestRejectedError | TransportError;
+
+export type PerpsSessionAccountError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+
+export type PerpsSessionTradingError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+
 export type PerpsPlacedTpSlOrder = {
   orderId: PerpsOrderId;
 };
@@ -229,10 +246,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return this.#closing !== undefined;
   }
 
+  /**
+   * Connects and authenticates the session WebSocket.
+   *
+   * @throws {@link PerpsSessionLifecycleError}
+   * Thrown on failure.
+   */
   async connect(): Promise<void> {
     await this.#connect(false);
   }
 
+  /**
+   * Closes the session and releases pending requests.
+   *
+   * @throws {@link PerpsSessionLifecycleError}
+   * Thrown on failure.
+   */
   async close(): Promise<void> {
     if (this.#closing === undefined) {
       this.#closing = this.#shutdown();
@@ -240,68 +269,152 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     await this.#closing;
   }
 
+  /**
+   * Iterates authenticated Perps account events emitted by this session.
+   *
+   * @example
+   * ```ts
+   * for await (const event of session) {
+   *   if (event.type === 'order') {
+   *     console.log(event.payload.id);
+   *   }
+   * }
+   * ```
+   */
   [Symbol.asyncIterator](): AsyncIterator<PerpsSessionEvent> {
     return this.#queue[Symbol.asyncIterator]();
   }
 
+  /**
+   * Fetches current Perps balances for the authenticated account.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchBalances(): Promise<PerpsBalance[]> {
     return await fetchPerpsBalances(this.#api);
   }
 
+  /**
+   * Fetches the current Perps portfolio for the authenticated account.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchPortfolio(): Promise<PerpsPortfolio> {
     return await fetchPerpsPortfolio(this.#api);
   }
 
+  /**
+   * Fetches account-level Perps statistics for the authenticated account.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchStats(): Promise<PerpsAccountStats> {
     return await fetchPerpsStats(this.#api);
   }
 
+  /**
+   * Fetches Perps account configuration, optionally filtered by instrument.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchAccountConfig(
     request?: FetchPerpsAccountConfigRequest,
   ): Promise<PerpsAccountConfig[]> {
     return await fetchPerpsAccountConfig(this.#api, request);
   }
 
+  /**
+   * Fetches currently open Perps orders, optionally filtered by instrument.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchOpenOrders(
     request?: FetchPerpsOpenOrdersRequest,
   ): Promise<PerpsOrder[]> {
     return await fetchPerpsOpenOrders(this.#api, request);
   }
 
+  /**
+   * Fetches Perps orders for the authenticated account.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   async fetchOrders(request?: FetchPerpsOrdersRequest): Promise<PerpsOrder[]> {
     return await fetchPerpsOrders(this.#api, request);
   }
 
+  /**
+   * Lists Perps fills with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listFills(
     request: ListPerpsFillsRequest = {},
   ): Paginated<PerpsAccountFill[]> {
     return listPerpsFills(this.#api, request);
   }
 
+  /**
+   * Lists Perps funding payments with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listFundingPayments(
     request: ListPerpsFundingPaymentsRequest = {},
   ): Paginated<PerpsAccountFundingPayment[]> {
     return listPerpsFundingPayments(this.#api, request);
   }
 
+  /**
+   * Lists Perps deposits with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listDeposits(
     request: ListPerpsDepositsRequest = {},
   ): Paginated<PerpsDeposit[]> {
     return listPerpsDeposits(this.#api, request);
   }
 
+  /**
+   * Lists Perps withdrawals with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listWithdrawals(
     request: ListPerpsWithdrawalsRequest = {},
   ): Paginated<PerpsWithdrawal[]> {
     return listPerpsWithdrawals(this.#api, request);
   }
 
+  /**
+   * Lists Perps equity history with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listEquityHistory(
     request: ListPerpsEquityHistoryRequest,
   ): Paginated<PerpsEquityPoint[]> {
     return listPerpsEquityHistory(this.#api, request);
   }
 
+  /**
+   * Lists Perps PnL history with SDK-owned pagination.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
   listPnlHistory(
     request: ListPerpsPnlHistoryRequest,
   ): Paginated<PerpsPnlPoint[]> {
@@ -311,7 +424,31 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   /**
    * Places one Perps order and resolves with the first matching orders update.
    *
-   * @throws Thrown on failure.
+   * @example
+   * ```ts
+   * const { order } = await session.placeOrder({
+   *   instrumentId: 1,
+   *   price: '100',
+   *   quantity: '1',
+   *   side: OrderSide.BUY,
+   *   timeInForce: PerpsTimeInForce.GTC,
+   * });
+   * ```
+   *
+   * @example
+   * ```ts
+   * const { order, tpSl } = await session.placeOrder({
+   *   instrumentId: 1,
+   *   price: '100',
+   *   quantity: '1',
+   *   side: OrderSide.BUY,
+   *   stopLoss: { triggerPrice: '90' },
+   *   timeInForce: PerpsTimeInForce.GTC,
+   * });
+   * ```
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
    */
   async placeOrder(
     request: PlacePerpsOrderWithTpSlRequest,
@@ -348,6 +485,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * This is a low-level method. Most SDK consumers should prefer `placeOrder`.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
    */
   async postOrders(
     request: PostPerpsOrdersRequest,
@@ -399,6 +539,27 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return { order: update.payload, tpSl };
   }
 
+  /**
+   * Places take-profit and/or stop-loss protection for the current position.
+   *
+   * @remarks
+   * The exit side is inferred from the current position for the requested
+   * instrument.
+   *
+   * @example
+   * ```ts
+   * const { tpSl } = await session.placePositionTpSl({
+   *   instrumentId: 1,
+   *   stopLoss: { triggerPrice: '90' },
+   * });
+   * ```
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown when the current position cannot be read.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown when the TP/SL command fails.
+   */
   async placePositionTpSl(
     request: PlacePerpsPositionTpSlRequest,
   ): Promise<PlacePerpsPositionTpSlResult> {
@@ -459,6 +620,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * The returned status reflects whether the cancel happened.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
    */
   async cancelOrder(
     request: CancelPerpsOrderRequest,
@@ -471,6 +635,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * Each returned status reflects whether that cancel happened.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
    */
   async cancelOrders(
     request: CancelPerpsOrdersRequest,
@@ -478,6 +645,21 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await cancelPerpsOrders(this.#tradingTransport(), request);
   }
 
+  /**
+   * Updates Perps leverage and margin mode for an instrument.
+   *
+   * @example
+   * ```ts
+   * await session.updateLeverage({
+   *   crossMargin: true,
+   *   instrumentId: 1,
+   *   leverage: 2,
+   * });
+   * ```
+   *
+   * @throws {@link UpdatePerpsLeverageError}
+   * Thrown on failure.
+   */
   async updateLeverage(
     request: UpdatePerpsLeverageRequest,
   ): Promise<PerpsUpdateLeverageResult> {
