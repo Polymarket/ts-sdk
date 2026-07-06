@@ -24,16 +24,19 @@ import {
   type PerpsBalance,
   PerpsClientOrderIdSchema,
   type PerpsDeposit,
+  type PerpsDepositStatus,
   PerpsDepositStatusSchema,
   type PerpsEquityPoint,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
   type PerpsOrder,
   PerpsOrderIdSchema,
+  type PerpsPnlInterval,
   PerpsPnlIntervalSchema,
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsWithdrawal,
+  type PerpsWithdrawalStatus,
   PerpsWithdrawalStatusSchema,
 } from '@polymarket/bindings/perps';
 import { invariant, unwrap } from '@polymarket/types';
@@ -145,11 +148,12 @@ const FetchPerpsAccountConfigRequestSchema = z
   .object({
     instrumentId: PerpsInstrumentIdSchema.optional(),
   })
-  .default({});
+  .default({}) satisfies z.ZodType<FetchPerpsAccountConfigRequest>;
 
-export type FetchPerpsAccountConfigRequest = z.input<
-  typeof FetchPerpsAccountConfigRequestSchema
->;
+export type FetchPerpsAccountConfigRequest = {
+  /** Optional Perps instrument identifier filter. */
+  instrumentId?: number;
+};
 
 export async function fetchPerpsAccountConfig(
   api: ServiceClient,
@@ -169,11 +173,12 @@ const FetchPerpsOpenOrdersRequestSchema = z
   .object({
     instrumentId: PerpsInstrumentIdSchema.optional(),
   })
-  .default({});
+  .default({}) satisfies z.ZodType<FetchPerpsOpenOrdersRequest>;
 
-export type FetchPerpsOpenOrdersRequest = z.input<
-  typeof FetchPerpsOpenOrdersRequestSchema
->;
+export type FetchPerpsOpenOrdersRequest = {
+  /** Optional Perps instrument identifier filter. */
+  instrumentId?: number;
+};
 
 export async function fetchPerpsOpenOrders(
   api: ServiceClient,
@@ -189,7 +194,7 @@ export async function fetchPerpsOpenOrders(
   );
 }
 
-const FetchPerpsOrdersRequestSchema = z
+const FetchPerpsOrdersRequestInputSchema = z
   .object({
     orderId: PerpsOrderIdSchema.optional(),
     clientOrderId: PerpsClientOrderIdSchema.optional(),
@@ -197,16 +202,29 @@ const FetchPerpsOrdersRequestSchema = z
     start: TimestampInputSchema.optional(),
     end: TimestampInputSchema.optional(),
   })
-  .default({})
-  .transform(({ end, start, ...request }) => ({
-    ...request,
-    endTimestamp: end,
-    startTimestamp: start,
-  }));
+  .default({}) satisfies z.ZodType<FetchPerpsOrdersRequest>;
 
-export type FetchPerpsOrdersRequest = z.input<
-  typeof FetchPerpsOrdersRequestSchema
->;
+const FetchPerpsOrdersRequestSchema =
+  FetchPerpsOrdersRequestInputSchema.transform(
+    ({ end, start, ...request }) => ({
+      ...request,
+      endTimestamp: end,
+      startTimestamp: start,
+    }),
+  );
+
+export type FetchPerpsOrdersRequest = {
+  /** Optional order identifier filter. */
+  orderId?: number;
+  /** Optional caller-supplied idempotency identifier filter. */
+  clientOrderId?: string;
+  /** Optional Perps instrument identifier filter. */
+  instrumentId?: number;
+  /** Inclusive start timestamp in milliseconds. */
+  start?: number;
+  /** Inclusive end timestamp in milliseconds. */
+  end?: number;
+};
 
 export async function fetchPerpsOrders(
   api: ServiceClient,
@@ -222,20 +240,44 @@ export async function fetchPerpsOrders(
   );
 }
 
-const ListPerpsFillsRequestSchema = z.union([
-  PerpsHistoryRequestBaseSchema.extend({
+const ListPerpsFillsInitialRequestSchema = PerpsHistoryRequestBaseSchema.extend(
+  {
     cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
+  },
+) satisfies z.ZodType<
+  Exclude<ListPerpsFillsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsFillsCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsFillsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsFillsRequestSchema = z.union([
+  ListPerpsFillsInitialRequestSchema.transform(({ cursor, ...request }) => ({
     cursor,
     params: toPerpsHistoryParams(request, ONE_DAY_MS),
   })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  ListPerpsFillsCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsFillsRequest = z.input<typeof ListPerpsFillsRequestSchema>;
+export type ListPerpsFillsRequest =
+  | {
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsFills(
   api: ServiceClient,
@@ -280,23 +322,48 @@ export function listPerpsFills(
   }, cursor);
 }
 
-const ListPerpsFundingPaymentsRequestSchema = z.union([
+const ListPerpsFundingPaymentsInitialRequestSchema =
   PerpsHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
     instrumentId: PerpsInstrumentIdSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsHistoryParams(request, ONE_DAY_MS),
-  })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsFundingPaymentsRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsFundingPaymentsCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsFundingPaymentsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsFundingPaymentsRequestSchema = z.union([
+  ListPerpsFundingPaymentsInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsHistoryParams(request, ONE_DAY_MS),
+    }),
+  ),
+  ListPerpsFundingPaymentsCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsFundingPaymentsRequest = z.input<
-  typeof ListPerpsFundingPaymentsRequestSchema
->;
+export type ListPerpsFundingPaymentsRequest =
+  | {
+      /** Optional Perps instrument identifier filter. */
+      instrumentId?: number;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsFundingPayments(
   api: ServiceClient,
@@ -348,24 +415,49 @@ export function listPerpsFundingPayments(
   }, cursor);
 }
 
-const ListPerpsDepositsRequestSchema = z.union([
+const ListPerpsDepositsInitialRequestSchema =
   PerpsHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
     depositStatus: PerpsDepositStatusSchema.optional(),
     hash: TxHashSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsDepositsRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsDepositsCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsDepositsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsDepositsRequestSchema = z.union([
+  ListPerpsDepositsInitialRequestSchema.transform(({ cursor, ...request }) => ({
     cursor,
     params: toPerpsHistoryParams(request, NINETY_DAYS_MS),
   })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  ListPerpsDepositsCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsDepositsRequest = z.input<
-  typeof ListPerpsDepositsRequestSchema
->;
+export type ListPerpsDepositsRequest =
+  | {
+      /** Optional deposit status filter. */
+      depositStatus?: PerpsDepositStatus;
+      /** Optional transaction hash filter. */
+      hash?: string;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsDeposits(
   api: ServiceClient,
@@ -410,24 +502,51 @@ export function listPerpsDeposits(
   }, cursor);
 }
 
-const ListPerpsWithdrawalsRequestSchema = z.union([
+const ListPerpsWithdrawalsInitialRequestSchema =
   PerpsHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
     withdrawalStatus: PerpsWithdrawalStatusSchema.optional(),
     hash: TxHashSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsHistoryParams(request, NINETY_DAYS_MS),
-  })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsWithdrawalsRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsWithdrawalsCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsWithdrawalsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsWithdrawalsRequestSchema = z.union([
+  ListPerpsWithdrawalsInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsHistoryParams(request, NINETY_DAYS_MS),
+    }),
+  ),
+  ListPerpsWithdrawalsCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsWithdrawalsRequest = z.input<
-  typeof ListPerpsWithdrawalsRequestSchema
->;
+export type ListPerpsWithdrawalsRequest =
+  | {
+      /** Optional withdrawal status filter. */
+      withdrawalStatus?: PerpsWithdrawalStatus;
+      /** Optional transaction hash filter. */
+      hash?: string;
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsWithdrawals(
   api: ServiceClient,
@@ -475,22 +594,47 @@ export function listPerpsWithdrawals(
   }, cursor);
 }
 
-const ListPerpsEquityHistoryRequestSchema = z.union([
+const ListPerpsEquityHistoryInitialRequestSchema =
   PerpsIntervalHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsIntervalHistoryParams(request),
-  })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsEquityHistoryRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsEquityHistoryCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsEquityHistoryRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsEquityHistoryRequestSchema = z.union([
+  ListPerpsEquityHistoryInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsIntervalHistoryParams(request),
+    }),
+  ),
+  ListPerpsEquityHistoryCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsEquityHistoryRequest = z.input<
-  typeof ListPerpsEquityHistoryRequestSchema
->;
+export type ListPerpsEquityHistoryRequest =
+  | {
+      /** History interval. */
+      interval: PerpsPnlInterval;
+      /** Inclusive start timestamp in milliseconds. */
+      start: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsEquityHistory(
   api: ServiceClient,
@@ -544,22 +688,47 @@ export function listPerpsEquityHistory(
   }, cursor);
 }
 
-const ListPerpsPnlHistoryRequestSchema = z.union([
+const ListPerpsPnlHistoryInitialRequestSchema =
   PerpsIntervalHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
-  }).transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsIntervalHistoryParams(request),
-  })),
-  z.object({ cursor: PaginationCursorSchema }).transform(({ cursor }) => ({
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsPnlHistoryRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsPnlHistoryCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsPnlHistoryRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsPnlHistoryRequestSchema = z.union([
+  ListPerpsPnlHistoryInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsIntervalHistoryParams(request),
+    }),
+  ),
+  ListPerpsPnlHistoryCursorRequestSchema.transform(({ cursor }) => ({
     cursor,
     params: undefined,
   })),
 ]);
 
-export type ListPerpsPnlHistoryRequest = z.input<
-  typeof ListPerpsPnlHistoryRequestSchema
->;
+export type ListPerpsPnlHistoryRequest =
+  | {
+      /** History interval. */
+      interval: PerpsPnlInterval;
+      /** Inclusive start timestamp in milliseconds. */
+      start: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
 
 export function listPerpsPnlHistory(
   api: ServiceClient,

@@ -79,7 +79,7 @@ export type PerpsPlaceIocOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Immediate-or-cancel execution. */
   timeInForce: PerpsTimeInForce.IOC;
-  postOnly?: undefined;
+  postOnly?: never;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
 };
@@ -104,7 +104,7 @@ export type PerpsPlaceFokOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Fill-or-kill execution. */
   timeInForce: PerpsTimeInForce.FOK;
-  postOnly?: undefined;
+  postOnly?: never;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
 };
@@ -141,7 +141,7 @@ const PerpsTpSlTriggerSchema = z.object({
 
 const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
-});
+}) satisfies z.ZodType<PerpsPositionTpSlTrigger>;
 
 export type PerpsPositionTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
@@ -209,16 +209,195 @@ const PlacePerpsOrderWithTpSlRequestSchema = z.intersection(
   ),
 ) satisfies z.ZodType<PlacePerpsOrderWithTpSlRequest>;
 
-export type PlacePerpsOrderRequest = PerpsOrderRequest & {
-  expiresAt?: number;
-  stopLoss?: undefined;
-  takeProfit?: undefined;
-};
+export type PlacePerpsOrderRequest =
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-til-cancelled execution. */
+      timeInForce: PerpsTimeInForce.GTC;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      takeProfit?: never;
+      stopLoss?: never;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Immediate-or-cancel execution. */
+      timeInForce: PerpsTimeInForce.IOC;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      takeProfit?: never;
+      stopLoss?: never;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Fill-or-kill execution. */
+      timeInForce: PerpsTimeInForce.FOK;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      takeProfit?: never;
+      stopLoss?: never;
+    };
 
-export type PlacePerpsOrderWithTpSlRequest = PerpsOrderRequest &
-  PerpsTpSlPairRequest & {
-    expiresAt?: number;
-  };
+export type PlacePerpsOrderWithTpSlRequest =
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-til-cancelled execution. */
+      timeInForce: PerpsTimeInForce.GTC;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Take-profit trigger to place with the entry order. */
+      takeProfit: PerpsTpSlTrigger;
+      /** Optional stop-loss trigger to place with the entry order. */
+      stopLoss?: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-til-cancelled execution. */
+      timeInForce: PerpsTimeInForce.GTC;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Optional take-profit trigger to place with the entry order. */
+      takeProfit?: PerpsTpSlTrigger;
+      /** Stop-loss trigger to place with the entry order. */
+      stopLoss: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Immediate-or-cancel execution. */
+      timeInForce: PerpsTimeInForce.IOC;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Take-profit trigger to place with the entry order. */
+      takeProfit: PerpsTpSlTrigger;
+      /** Optional stop-loss trigger to place with the entry order. */
+      stopLoss?: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Immediate-or-cancel execution. */
+      timeInForce: PerpsTimeInForce.IOC;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Optional take-profit trigger to place with the entry order. */
+      takeProfit?: PerpsTpSlTrigger;
+      /** Stop-loss trigger to place with the entry order. */
+      stopLoss: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Fill-or-kill execution. */
+      timeInForce: PerpsTimeInForce.FOK;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Take-profit trigger to place with the entry order. */
+      takeProfit: PerpsTpSlTrigger;
+      /** Optional stop-loss trigger to place with the entry order. */
+      stopLoss?: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Optional limit price. Omit for market-style execution. */
+      price?: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Fill-or-kill execution. */
+      timeInForce: PerpsTimeInForce.FOK;
+      postOnly?: never;
+      /** Optional caller-supplied idempotency identifier. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Optional take-profit trigger to place with the entry order. */
+      takeProfit?: PerpsTpSlTrigger;
+      /** Stop-loss trigger to place with the entry order. */
+      stopLoss: PerpsTpSlTrigger;
+    };
 
 export type PlacePerpsOrderRequestWithOptions =
   | PlacePerpsOrderRequest
@@ -369,11 +548,23 @@ const CancelPerpsOrderRequestSchema = z.union([
     orderId: z.undefined().optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
-]);
+]) satisfies z.ZodType<CancelPerpsOrderRequest>;
 
-export type CancelPerpsOrderRequest = z.input<
-  typeof CancelPerpsOrderRequestSchema
->;
+export type CancelPerpsOrderRequest =
+  | {
+      /** Order identifier to cancel. */
+      orderId: number;
+      clientOrderId?: never;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    }
+  | {
+      /** Caller-supplied idempotency identifier to cancel. */
+      clientOrderId: string;
+      orderId?: never;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    };
 
 export async function cancelPerpsOrder(
   transport: PerpsTradingTransport,
@@ -404,11 +595,23 @@ const CancelPerpsOrdersRequestSchema = z.union([
     orderIds: z.undefined().optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
-]);
+]) satisfies z.ZodType<CancelPerpsOrdersRequest>;
 
-export type CancelPerpsOrdersRequest = z.input<
-  typeof CancelPerpsOrdersRequestSchema
->;
+export type CancelPerpsOrdersRequest =
+  | {
+      /** Order identifiers to cancel. */
+      orderIds: number[];
+      clientOrderIds?: never;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    }
+  | {
+      /** Caller-supplied idempotency identifiers to cancel. */
+      clientOrderIds: string[];
+      orderIds?: never;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+    };
 
 export async function cancelPerpsOrders(
   transport: PerpsTradingTransport,
@@ -435,11 +638,16 @@ const UpdatePerpsLeverageRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   leverage: z.number().int().positive(),
   crossMargin: z.boolean(),
-});
+}) satisfies z.ZodType<UpdatePerpsLeverageRequest>;
 
-export type UpdatePerpsLeverageRequest = z.input<
-  typeof UpdatePerpsLeverageRequestSchema
->;
+export type UpdatePerpsLeverageRequest = {
+  /** Perps instrument identifier whose leverage should be updated. */
+  instrumentId: number;
+  /** Target leverage multiplier. */
+  leverage: number;
+  /** Whether the instrument should use cross margin. */
+  crossMargin: boolean;
+};
 
 export type UpdatePerpsLeverageError =
   | RequestRejectedError

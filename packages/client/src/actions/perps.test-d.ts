@@ -1,5 +1,38 @@
 import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
-import { describe, it } from 'vitest';
+import { describe, expectTypeOf, it } from 'vitest';
+import type {
+  CancelPerpsOrderRequest,
+  CancelPerpsOrdersRequest,
+  DepositToPerpsRequest,
+  FetchPerpsAccountConfigRequest,
+  FetchPerpsBookRequest,
+  FetchPerpsOpenOrdersRequest,
+  FetchPerpsOrdersRequest,
+  FetchPerpsTickerRequest,
+  FetchPerpsTickersRequest,
+  ListPerpsCandlesRequest,
+  ListPerpsDepositsRequest,
+  ListPerpsEquityHistoryRequest,
+  ListPerpsFillsRequest,
+  ListPerpsFundingHistoryRequest,
+  ListPerpsFundingPaymentsRequest,
+  ListPerpsPnlHistoryRequest,
+  ListPerpsTradesRequest,
+  ListPerpsWithdrawalsRequest,
+  OpenPerpsSessionRequest,
+  PerpsSessionAccountError,
+  PerpsSessionLifecycleError,
+  PerpsSessionTradingError,
+  PlacePerpsOrderRequest,
+  PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsPositionTpSlRequest,
+  PostPerpsOrdersRequest,
+  RevokePerpsCredentialsRequest,
+  FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  UpdatePerpsLeverageRequest,
+  WithdrawFromPerpsRequest,
+} from '../index';
+import { FetchPerpsTickerError } from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
@@ -18,5 +51,55 @@ describe('FetchPerpsInstrumentsRequest', () => {
       instrumentType: 'perpetual',
     };
     void request;
+  });
+});
+
+describe('public Perps exports', () => {
+  it('exports Perps request types from the root entry point', () => {
+    expectTypeOf<RootFetchPerpsInstrumentsRequest>().toEqualTypeOf<FetchPerpsInstrumentsRequest>();
+    expectTypeOf<FetchPerpsTickerRequest>().toEqualTypeOf<{
+      instrumentId: number;
+    }>();
+
+    type RootPerpsRequests = [
+      FetchPerpsTickersRequest,
+      FetchPerpsBookRequest,
+      ListPerpsCandlesRequest,
+      ListPerpsFundingHistoryRequest,
+      ListPerpsTradesRequest,
+      DepositToPerpsRequest,
+      OpenPerpsSessionRequest,
+      RevokePerpsCredentialsRequest,
+      WithdrawFromPerpsRequest,
+      FetchPerpsAccountConfigRequest,
+      FetchPerpsOpenOrdersRequest,
+      FetchPerpsOrdersRequest,
+      ListPerpsFillsRequest,
+      ListPerpsFundingPaymentsRequest,
+      ListPerpsDepositsRequest,
+      ListPerpsWithdrawalsRequest,
+      ListPerpsEquityHistoryRequest,
+      ListPerpsPnlHistoryRequest,
+      PlacePerpsOrderRequest,
+      PlacePerpsOrderWithTpSlRequest,
+      PostPerpsOrdersRequest,
+      PlacePerpsPositionTpSlRequest,
+      CancelPerpsOrderRequest,
+      CancelPerpsOrdersRequest,
+      UpdatePerpsLeverageRequest,
+    ];
+
+    expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
+  });
+
+  it('exports Perps error helpers from the root entry point', () => {
+    type RootPerpsSessionErrors = [
+      PerpsSessionAccountError,
+      PerpsSessionLifecycleError,
+      PerpsSessionTradingError,
+    ];
+
+    expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
+    void FetchPerpsTickerError;
   });
 });
