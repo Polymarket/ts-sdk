@@ -864,10 +864,7 @@ class GaslessTransactionHandle implements TransactionHandle {
         transactionId: this.transactionId,
       });
 
-      if (
-        transaction.state === RelayerTransactionState.STATE_MINED ||
-        transaction.state === RelayerTransactionState.STATE_CONFIRMED
-      ) {
+      if (transaction.state === RelayerTransactionState.STATE_CONFIRMED) {
         const transactionHash =
           transaction.transactionHash ?? this.transactionHash;
 
