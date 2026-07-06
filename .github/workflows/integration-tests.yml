@@ -2,6 +2,29 @@ name: Integration Tests
 
 on:
   workflow_call:
+    inputs:
+      test_file_pattern:
+        description: Optional integration test file pattern
+        required: false
+        default: ''
+        type: string
+      test_name_pattern:
+        description: Optional Vitest test name pattern
+        required: false
+        default: ''
+        type: string
+  workflow_dispatch:
+    inputs:
+      test_file_pattern:
+        description: Optional integration test file pattern
+        required: false
+        default: ''
+        type: string
+      test_name_pattern:
+        description: Optional Vitest test name pattern
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -19,7 +42,24 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Run
-        run: pnpm test:client:integration
+        run: |
+          test_file_pattern='${{ inputs.test_file_pattern }}'
+          test_name_pattern='${{ inputs.test_name_pattern }}'
+          args=()
+
+          if [ -n "$test_file_pattern" ]; then
+            args+=("$test_file_pattern")
+          fi
+
+          if [ -n "$test_name_pattern" ]; then
+            args+=("-t" "$test_name_pattern")
+          fi
+
+          if [ "${#args[@]}" -gt 0 ]; then
+            pnpm test:client:integration "${args[@]}"
+          else
+            pnpm test:client:integration
+          fi
         env:
           POLYMARKET_RUN_METERED_TESTS: '1'
           PRIVY_TEST_APP_ID: ${{ vars.PRIVY_TEST_APP_ID }}
