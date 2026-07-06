@@ -112,6 +112,7 @@ describe('secure client gasless wallet setup', () => {
     });
 
     expect(submit.called).toBe(true);
+    expect(submit.transactionFetches).toBe(2);
     expect(client.account).toEqual({
       signer: signerAddress,
       wallet: expectedWallet,
@@ -438,7 +439,7 @@ function mockDepositWalletDeployments(
 }
 
 function mockDeployDepositWallet() {
-  const state = { called: false };
+  const state = { called: false, transactionFetches: 0 };
   const transactionId = '00000000-0000-0000-0000-000000000001';
   const transactionHash = `0x${'1'.repeat(64)}`;
 
@@ -452,13 +453,16 @@ function mockDeployDepositWallet() {
         transactionID: transactionId,
       });
     }),
-    http.get(`${relayerRoot}/v1/account/transactions/${transactionId}`, () =>
-      HttpResponse.json({
-        state: 'STATE_MINED',
+    http.get(`${relayerRoot}/v1/account/transactions/${transactionId}`, () => {
+      state.transactionFetches += 1;
+
+      return HttpResponse.json({
+        state:
+          state.transactionFetches === 1 ? 'STATE_MINED' : 'STATE_CONFIRMED',
         transaction_hash: transactionHash,
         transaction_id: transactionId,
-      }),
-    ),
+      });
+    }),
   );
 
   return state;
