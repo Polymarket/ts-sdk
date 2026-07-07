@@ -79,6 +79,42 @@ describe('JsonRpcClient', () => {
     ).resolves.toEqual(['0xaaaa', '0xbbbb']);
   });
 
+  it('performs eth_estimateGas requests', async () => {
+    const from = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000002');
+    server.use(
+      http.post(root, async ({ request }) => {
+        await expect(request.json()).resolves.toEqual({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'eth_estimateGas',
+          params: [
+            {
+              data: '0x12345678',
+              from,
+              to,
+            },
+          ],
+        });
+
+        return HttpResponse.json({
+          jsonrpc: '2.0',
+          id: 1,
+          result: '0x15650',
+        });
+      }),
+    );
+    const client = new JsonRpcClient({ url: root });
+
+    await expect(
+      client.ethEstimateGas({
+        data: '0x12345678',
+        from,
+        to,
+      }),
+    ).resolves.toBe(87_632n);
+  });
+
   it('recovers failed eth_call batches while preserving result order', async () => {
     const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
     let requestCount = 0;

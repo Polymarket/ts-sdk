@@ -92,14 +92,12 @@ export const it: TestAPI<IntegrationFixtures> =
       await use(secureClient);
     },
 
-    depositWalletSigner: async ({ skip }, use) => {
-      await use(
-        createTestSigner(loadPrivateKey('POLYMARKET_PRIVATE_KEY', skip)),
-      );
-    },
-
     depositWalletPrivateKey: async ({ skip }, use) => {
       await use(loadPrivateKey('POLYMARKET_PRIVATE_KEY', skip));
+    },
+
+    depositWalletSigner: async ({ depositWalletPrivateKey }, use) => {
+      await use(createTestSigner(depositWalletPrivateKey));
     },
 
     safeWalletSigner: async ({ skip }, use) => {
