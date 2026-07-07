@@ -1,4 +1,4 @@
-import { OrderSide } from '@polymarket/bindings';
+import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
@@ -18,7 +18,7 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { RequestRejectedError } from '../../errors';
+import { RequestRejectedError, UserInputError } from '../../errors';
 import { captureConnection, waitForNextEvent } from '../testing';
 import { PerpsSession } from './session';
 
@@ -846,6 +846,26 @@ describe('PerpsSession', () => {
         entityMakerShare7d: '0.40',
         entityId: 42,
         entityName: 'desk',
+      });
+    });
+
+    it('throws user input errors for invalid account pagination cursors', () => {
+      const cursor = toPaginationCursor(
+        btoa(JSON.stringify({ kind: 'perpsTrades' })),
+      );
+      const session = createSession();
+
+      let thrown: unknown;
+      try {
+        session.listFills({ cursor }).firstPage();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(UserInputError);
+      expect(thrown).toMatchObject({
+        message: 'Invalid Perps account pagination cursor',
+        cause: expect.any(Error),
       });
     });
 

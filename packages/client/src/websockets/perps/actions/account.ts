@@ -42,7 +42,7 @@ import {
 import { invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { snakeCase, toSearchParams } from '../../../actions/params';
-import { TransportError } from '../../../errors';
+import { UserInputError } from '../../../errors';
 import { parseUserInput } from '../../../input';
 import { type Page, type Paginated, paginate } from '../../../pagination';
 import { validateWith } from '../../../response';
@@ -812,7 +812,7 @@ function decodePerpsAccountCursor<T>(
   try {
     return schema.parse(JSON.parse(atob(cursor)));
   } catch (error) {
-    throw new TransportError('Invalid Perps account pagination cursor', {
+    throw new UserInputError('Invalid Perps account pagination cursor', {
       cause: error,
     });
   }
