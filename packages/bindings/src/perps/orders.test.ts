@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { OrderSide } from '../shared';
 import {
   PerpsAccountFillSchema,
   PerpsCancelOrderResultSchema,
   PerpsOrderSchema,
-  PerpsOrderStatus,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
 } from './orders';
@@ -83,14 +81,31 @@ describe('PerpsOrderSchema', () => {
       price: '100',
       quantity: '2',
       resting_quantity: '1',
+      ro: true,
       status: 'partial',
       tif: 'gtc',
       updated_timestamp: 1_700_000_000_000,
     });
 
-    expect(order.id).toBe(123);
-    expect(order.side).toBe(OrderSide.BUY);
-    expect(order.status).toBe(PerpsOrderStatus.Partial);
+    expect(order).toMatchInlineSnapshot(`
+      {
+        "clientOrderId": undefined,
+        "createdTimestamp": 1700000000000,
+        "filledQuantity": "1",
+        "id": 123,
+        "instrumentId": 1,
+        "postOnly": false,
+        "price": "100",
+        "quantity": "2",
+        "reduceOnly": true,
+        "restingQuantity": "1",
+        "side": "BUY",
+        "status": "partial",
+        "timeInForce": "gtc",
+        "tpSl": undefined,
+        "updatedTimestamp": 1700000000000,
+      }
+    `);
   });
 });
 
@@ -107,12 +122,31 @@ describe('PerpsOrderUpdateSchema', () => {
       po: false,
       qty: '2',
       rest: '2',
+      ro: true,
       status: 'open',
       tif: 'gtc',
       uts: 1_700_000_000_000,
     });
 
-    expect(order.side).toBe(OrderSide.SELL);
+    expect(order).toMatchInlineSnapshot(`
+      {
+        "clientOrderId": "0123456789abcdef0123456789abcdef",
+        "createdTimestamp": 1700000000000,
+        "filledQuantity": "0",
+        "id": 123,
+        "instrumentId": 1,
+        "postOnly": false,
+        "price": "100",
+        "quantity": "2",
+        "reduceOnly": true,
+        "restingQuantity": "2",
+        "side": "SELL",
+        "status": "open",
+        "timeInForce": "gtc",
+        "tpSl": undefined,
+        "updatedTimestamp": 1700000000000,
+      }
+    `);
   });
 });
 
@@ -147,6 +181,7 @@ describe('PerpsCancelOrderResultSchema', () => {
       quantity: '0',
       tif: 'ioc',
       post_only: false,
+      ro: true,
       status: 'armed',
       resting_quantity: '0',
       filled_quantity: '0',
@@ -161,13 +196,15 @@ describe('PerpsCancelOrderResultSchema', () => {
       },
     });
 
-    expect(order.tpSl).toEqual({
-      armedQuantity: '0',
-      kind: 'sl',
-      parentOrderId: undefined,
-      scope: 'position',
-      slippageBps: 0,
-      triggerPrice: '90.00',
-    });
+    expect(order.tpSl).toMatchInlineSnapshot(`
+      {
+        "armedQuantity": "0",
+        "kind": "sl",
+        "parentOrderId": undefined,
+        "scope": "position",
+        "slippageBps": 0,
+        "triggerPrice": "90.00",
+      }
+    `);
   });
 });

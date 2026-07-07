@@ -36,6 +36,7 @@ const PerpsOrderBaseInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   side: OrderSideSchema,
   quantity: PerpsDecimalInputSchema,
+  reduceOnly: z.boolean().default(false),
   clientOrderId: PerpsClientOrderIdSchema.optional(),
 });
 
@@ -55,6 +56,8 @@ export type PerpsPlaceGtcOrderRequest = {
   timeInForce: PerpsTimeInForce.GTC;
   /** Whether the order must rest instead of taking liquidity. */
   postOnly?: boolean;
+  /** Whether the order may only reduce or close an existing position. */
+  reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
 };
@@ -80,6 +83,8 @@ export type PerpsPlaceIocOrderRequest = {
   /** Immediate-or-cancel execution. */
   timeInForce: PerpsTimeInForce.IOC;
   postOnly?: never;
+  /** Whether the order may only reduce or close an existing position. */
+  reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
 };
@@ -105,6 +110,8 @@ export type PerpsPlaceFokOrderRequest = {
   /** Fill-or-kill execution. */
   timeInForce: PerpsTimeInForce.FOK;
   postOnly?: never;
+  /** Whether the order may only reduce or close an existing position. */
+  reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
 };
@@ -223,6 +230,8 @@ export type PlacePerpsOrderRequest =
       timeInForce: PerpsTimeInForce.GTC;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -242,6 +251,8 @@ export type PlacePerpsOrderRequest =
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -261,6 +272,8 @@ export type PlacePerpsOrderRequest =
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -283,6 +296,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       timeInForce: PerpsTimeInForce.GTC;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -305,6 +320,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       timeInForce: PerpsTimeInForce.GTC;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -326,6 +343,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -347,6 +366,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -368,6 +389,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -389,6 +412,8 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
       postOnly?: never;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
@@ -710,7 +735,7 @@ function toRawPerpsOrder(
     toDecimalString(order.quantity),
     order.timeInForce,
     order.postOnly ?? false,
-    undefined,
+    order.reduceOnly === true ? true : undefined,
     order.clientOrderId,
     undefined,
   ];
