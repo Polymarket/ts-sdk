@@ -4,6 +4,7 @@ import {
   toDecimalString,
 } from '@polymarket/bindings';
 import {
+  PerpsCancelAllOrdersResponseSchema,
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
   PerpsClientOrderIdSchema,
@@ -20,7 +21,7 @@ import {
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
-import { expectPresent, invariant } from '@polymarket/types';
+import { expectPresent, invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
   makeErrorGuard,
@@ -30,6 +31,8 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
+import { validateWith } from '../../../response';
+import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
 
 const PerpsOrderBaseInputSchema = z.object({
@@ -179,6 +182,11 @@ export type PerpsSignedWsCommandRequest<T> = {
 export type PerpsTradingTransport = {
   sendSignedWsCommand<T>(request: PerpsSignedWsCommandRequest<T>): Promise<T>;
 };
+
+export type SignPerpsRestCommand = (
+  op: PerpsSignedOp,
+  expiresAt?: number,
+) => Record<string, unknown>;
 
 /** Request parameters for posting one or more Perps orders. */
 export type PostPerpsOrdersRequest = {
@@ -659,6 +667,44 @@ export async function cancelPerpsOrders(
   });
 }
 
+const CancelAllPerpsOrdersRequestSchema = z
+  .object({
+    instrumentId: PerpsInstrumentIdSchema.optional(),
+    expiresAt: z.number().int().positive().optional(),
+  })
+  .default({}) satisfies z.ZodType<CancelAllPerpsOrdersRequest>;
+
+export type CancelAllPerpsOrdersRequest = {
+  /** Optional Perps instrument identifier to scope cancellation. */
+  instrumentId?: number;
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
+
+export async function cancelAllOrders(
+  client: ServiceClient,
+  signCommand: SignPerpsRestCommand,
+  request?: CancelAllPerpsOrdersRequest,
+): Promise<void> {
+  const params = parseUserInput(request, CancelAllPerpsOrdersRequestSchema);
+  const op = [
+    'cancelAll',
+    params.instrumentId === undefined ? [] : [params.instrumentId],
+  ] as const satisfies PerpsSignedOp;
+  const command = signCommand(op, params.expiresAt);
+
+  await unwrap(
+    client
+      .del('/v1/trade/orders/all', {
+        json: {
+          ...command,
+          op: toPerpsCommandBodyOp(op),
+        },
+      })
+      .andThen(validateWith(PerpsCancelAllOrdersResponseSchema)),
+  );
+}
+
 const UpdatePerpsLeverageRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   leverage: z.number().int().positive(),
@@ -797,6 +843,13 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
     case 'cancelOrders':
     case 'cancelOrdersCOID':
       return { type, args };
+    case 'cancelAll': {
+      const [instrumentId] = args as readonly [PerpsInstrumentId | undefined];
+      return {
+        type,
+        args: instrumentId === undefined ? {} : { iid: instrumentId },
+      };
+    }
     case 'updateLeverage': {
       const [instrumentId, leverage, crossMargin] = args as readonly [
         PerpsInstrumentId,

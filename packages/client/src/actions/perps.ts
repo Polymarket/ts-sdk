@@ -84,6 +84,7 @@ import {
 } from './gasless';
 
 export type {
+  CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   FetchPerpsAccountConfigRequest,
