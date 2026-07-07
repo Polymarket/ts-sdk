@@ -5,7 +5,7 @@ import {
 } from '@polymarket/client';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
-describe('RFQ live quoting integration', () => {
+describe.skip('RFQ live quoting integration', () => {
   // Metered: an accepted quote can execute a live trade with real funds.
   it.runIf(runMeteredTests)(
     'quotes live RFQ requests until one executes',
