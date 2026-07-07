@@ -1,5 +1,12 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.11
+
+### Patch Changes
+
+- d731b5b: Add `listMarketClarifications` for reading market clarification text, with SDK-owned offset pagination and market/event/state/question/tx filters.
+- cf34be0: Add Perps session support for cancelling all open orders.
+
 ## 0.1.0-beta.10
 
 ### Patch Changes

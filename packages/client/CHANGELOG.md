@@ -1,5 +1,25 @@
 # @polymarket/client
 
+## 0.1.0-beta.13
+
+### Minor Changes
+
+- 9b0e018: Add reduce-only support for normal Perps orders.
+
+### Patch Changes
+
+- 1182ebb: Improve the Perps public SDK surface with explicit request types, root exports, and TSDoc examples.
+- d731b5b: Add `listMarketClarifications` for reading market clarification text, with SDK-owned offset pagination and market/event/state/question/tx filters.
+- 766d709: Fix legacy Proxy wallet gasless execution and add live Safe and Proxy wallet coverage.
+- d8f3aed: Align Perps session account pagination cursor decode failures with the rest of the SDK by throwing `UserInputError`.
+- cf34be0: Add Perps session support for cancelling all open orders.
+- 578890d: Remove the degenerate `instrumentType` filter from `fetchPerpsInstruments` requests.
+- 5b81c3d: Resolve closed markets when preparing market position redemptions.
+- c056ec6: Wait for gasless relayer transactions to reach confirmed state before resolving transaction handles.
+- Updated dependencies [d731b5b]
+- Updated dependencies [cf34be0]
+  - @polymarket/bindings@0.1.0-beta.11
+
 ## 0.1.0-beta.12
 
 ### Patch Changes
