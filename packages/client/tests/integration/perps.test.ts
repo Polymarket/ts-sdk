@@ -15,7 +15,7 @@ import { describe, expect, it, runMeteredTests } from './fixtures';
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 const MAX_PERPS_PRICE_SIGNIFICANT_FIGURES = 5;
 
-describe.skip('Perps integration', () => {
+describe('Perps integration', () => {
   it.runIf(runMeteredTests)(
     'deposits and withdraws the same Perps amount',
     async ({ secureClientWithDepositWallet }) => {
