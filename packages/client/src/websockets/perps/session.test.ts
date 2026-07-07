@@ -765,6 +765,58 @@ describe('PerpsSession', () => {
         await session.close();
       }
     });
+
+    it('cancels all orders through the signed REST endpoint', async () => {
+      const requests: Array<{
+        body: unknown;
+        proxy: string | null;
+        secret: string | null;
+      }> = [];
+      server.use(
+        http.delete(
+          `${production.perps.rest}/v1/trade/orders/all`,
+          async ({ request }) => {
+            requests.push({
+              body: await request.json(),
+              proxy: request.headers.get('polymarket-proxy'),
+              secret: request.headers.get('polymarket-secret'),
+            });
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+
+      await session.cancelAllOrders({
+        expiresAt: 1_700_000_005_000,
+        instrumentId: 1,
+      });
+      await session.cancelAllOrders();
+
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({
+        proxy: credentials.proxy,
+        secret: credentials.secret,
+        body: {
+          exp: 1_700_000_005_000,
+          op: { args: { iid: 1 }, type: 'cancelAll' },
+          salt: expect.any(Number),
+          sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
+          ts: expect.any(Number),
+        },
+      });
+      expect(requests[1]).toMatchObject({
+        proxy: credentials.proxy,
+        secret: credentials.secret,
+        body: {
+          op: { args: {}, type: 'cancelAll' },
+          salt: expect.any(Number),
+          sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
+          ts: expect.any(Number),
+        },
+      });
+      expect(requests[1]?.body).not.toHaveProperty('exp');
+    });
   });
 
   describe('TP/SL lifecycle events', () => {

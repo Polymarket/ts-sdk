@@ -147,6 +147,14 @@ export type PerpsCancelOrderResult = z.infer<
   typeof PerpsCancelOrderResultSchema
 >;
 
+export const PerpsCancelAllOrdersResponseSchema = z.object({
+  status: z.literal('ok'),
+});
+
+export type PerpsCancelAllOrdersResponse = z.infer<
+  typeof PerpsCancelAllOrdersResponseSchema
+>;
+
 export const PerpsUpdateLeverageResultSchema = z
   .object({
     status: z.literal('ok'),

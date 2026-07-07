@@ -43,6 +43,7 @@ import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
 export type {
+  CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   CreatePerpsSessionRequest,

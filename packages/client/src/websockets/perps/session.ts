@@ -68,8 +68,10 @@ import {
   listPerpsWithdrawals,
 } from './actions/account';
 import {
+  type CancelAllPerpsOrdersRequest,
   type CancelPerpsOrderRequest,
   type CancelPerpsOrdersRequest,
+  cancelAllOrders,
   cancelPerpsOrder,
   cancelPerpsOrders,
   hasPerpsTpSl,
@@ -150,6 +152,7 @@ export type {
   ListPerpsWithdrawalsRequest,
 } from './actions/account';
 export type {
+  CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   PerpsOrderRequest,
@@ -185,9 +188,11 @@ export type PerpsSessionAccountError =
   | UserInputError;
 
 export type PerpsSessionTradingError =
+  | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
+  | UnexpectedResponseError
   | UserInputError;
 
 export type PerpsPlacedTpSlOrder = {
@@ -643,6 +648,25 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: CancelPerpsOrdersRequest,
   ): Promise<PerpsCancelOrderResult[]> {
     return await cancelPerpsOrders(this.#tradingTransport(), request);
+  }
+
+  /**
+   * Cancels all open Perps orders for the authenticated account.
+   *
+   * @remarks
+   * Omit `instrumentId` to cancel open orders across all instruments. The
+   * endpoint returns once the cancel-all request is accepted; individual orders
+   * can still race with fills or other cancels.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
+   */
+  async cancelAllOrders(request?: CancelAllPerpsOrdersRequest): Promise<void> {
+    await cancelAllOrders(
+      this.#api,
+      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
+      request,
+    );
   }
 
   /**

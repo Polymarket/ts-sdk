@@ -1,6 +1,7 @@
 import type {
   DecimalString,
   PerpsInstrument,
+  PerpsOrderId,
   PerpsSession,
   TxHash,
 } from '@polymarket/client';
@@ -10,10 +11,24 @@ import {
   RequestRejectedError,
 } from '@polymarket/client';
 import { expectNonEmptyArray } from '@polymarket/types';
-import { describe, expect, it, runMeteredTests } from './fixtures';
+import { vi } from 'vitest';
+import {
+  describe,
+  expect,
+  it,
+  publicClient,
+  runMeteredTests,
+} from './fixtures';
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 const MAX_PERPS_PRICE_SIGNIFICANT_FIGURES = 5;
+
+const [instrument] = await publicClient
+  .fetchPerpsInstruments()
+  .then(expectNonEmptyArray);
+const [ticker] = await publicClient
+  .fetchPerpsTickers({ instrumentId: instrument.id })
+  .then(expectNonEmptyArray);
 
 describe('Perps integration', () => {
   it.runIf(runMeteredTests)(
@@ -83,13 +98,6 @@ describe('Perps integration', () => {
   it.runIf(runMeteredTests)(
     'places and cancels one Perps order',
     async ({ secureClientWithDepositWallet }) => {
-      const [instrument] = await secureClientWithDepositWallet
-        .fetchPerpsInstruments()
-        .then(expectNonEmptyArray);
-
-      const ticker = await secureClientWithDepositWallet.fetchPerpsTicker({
-        instrumentId: instrument.id,
-      });
       const session = await secureClientWithDepositWallet.openPerpsSession();
       const price = formatPerpsPrice(
         Number(ticker.markPrice) / 2, // ensure the order is not immediately filled
@@ -115,15 +123,57 @@ describe('Perps integration', () => {
   );
 
   it.runIf(runMeteredTests)(
+    'places and cancels all Perps orders for one instrument',
+    async ({ secureClientWithDepositWallet }) => {
+      const session = await secureClientWithDepositWallet.openPerpsSession();
+      const orderIds: PerpsOrderId[] = [];
+
+      try {
+        const price = formatPerpsPrice(
+          Number(ticker.markPrice) / 2,
+          instrument.priceDecimals,
+        );
+        const quantity = minimalPerpsOrderQuantity(instrument, Number(price));
+
+        for (let index = 0; index < 2; index++) {
+          const { order } = await session.placeOrder({
+            instrumentId: instrument.id,
+            price,
+            quantity,
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          });
+          orderIds.push(order.id);
+        }
+
+        await session.cancelAllOrders({ instrumentId: instrument.id });
+        await vi.waitFor(
+          async () => {
+            const openOrderIds = (
+              await session.fetchOpenOrders({
+                instrumentId: instrument.id,
+              })
+            ).map((order) => order.id);
+
+            for (const orderId of orderIds) {
+              expect(openOrderIds).not.toContain(orderId);
+            }
+          },
+          { interval: 1_000, timeout: 30_000 },
+        );
+      } finally {
+        if (orderIds.length > 0) {
+          await session.cancelOrders({ orderIds }).catch(() => undefined);
+        }
+        await session.close();
+      }
+    },
+    6 * 60_000,
+  );
+
+  it.runIf(runMeteredTests)(
     'places and cancels one Perps order with TP/SL',
     async ({ secureClientWithDepositWallet }) => {
-      const [instrument] = await secureClientWithDepositWallet
-        .fetchPerpsInstruments()
-        .then(expectNonEmptyArray);
-
-      const ticker = await secureClientWithDepositWallet.fetchPerpsTicker({
-        instrumentId: instrument.id,
-      });
       const session = await secureClientWithDepositWallet.openPerpsSession();
       const markPrice = Number(ticker.markPrice);
       const price = formatPerpsPrice(

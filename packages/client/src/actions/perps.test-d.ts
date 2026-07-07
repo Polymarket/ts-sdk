@@ -1,6 +1,7 @@
 import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   DepositToPerpsRequest,
@@ -84,6 +85,7 @@ describe('public Perps exports', () => {
       PlacePerpsOrderWithTpSlRequest,
       PostPerpsOrdersRequest,
       PlacePerpsPositionTpSlRequest,
+      CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
       UpdatePerpsLeverageRequest,
