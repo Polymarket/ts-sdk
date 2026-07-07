@@ -2,6 +2,7 @@ import type {
   Comment,
   Event,
   Market,
+  MarketClarification,
   PublicProfile,
   RelatedTag,
   Series,
@@ -38,6 +39,7 @@ import {
   type ListCommentsByUserAddressRequest,
   type ListCommentsRequest,
   type ListEventsRequest,
+  type ListMarketClarificationsRequest,
   type ListMarketsRequest,
   type ListSeriesRequest,
   type ListTagsRequest,
@@ -46,6 +48,7 @@ import {
   listComments,
   listCommentsByUserAddress,
   listEvents,
+  listMarketClarifications,
   listMarkets,
   listSeries,
   listSports,
@@ -315,6 +318,28 @@ export type DiscoveryActions = {
    * ```
    */
   fetchSeries(request: FetchSeriesRequest): Promise<Series>;
+
+  /**
+   * Lists market clarifications — notes that resolve ambiguity in how a market
+   * settles.
+   *
+   * @throws {@link ListMarketClarificationsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const paginator = client.listMarketClarifications({
+   *   marketId: '512038',
+   * });
+   *
+   * for await (const page of paginator) {
+   *   // page.items: MarketClarification[]
+   * }
+   * ```
+   */
+  listMarketClarifications(
+    request?: ListMarketClarificationsRequest,
+  ): Paginated<MarketClarification[]>;
 
   /**
    * Lists tags.
@@ -615,6 +640,7 @@ export function discoveryActions(client: BaseClient): DiscoveryActions {
     fetchMarketTags: fetchMarketTags.bind(null, client),
     listSeries: listSeries.bind(null, client),
     fetchSeries: fetchSeries.bind(null, client),
+    listMarketClarifications: listMarketClarifications.bind(null, client),
     listTags: listTags.bind(null, client),
     fetchTag: fetchTag.bind(null, client),
     fetchRelatedTags: fetchRelatedTags.bind(null, client),
