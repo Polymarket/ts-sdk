@@ -447,17 +447,17 @@ async function* prepareProxyWalletGaslessTransaction(
   const to = client.environment.walletDerivation.proxyFactory;
   const data = encodeProxyCall(params.calls);
   const relayerFee = '0';
-  // gasPrice is included in the signed hash but the relayer only validates
-  // that it is non-empty — it does not use this value when submitting the
-  // transaction on-chain (it applies its own gas pricing). Any non-empty
-  // string satisfies the protocol.
+  // Signed RelayHub parameter; the relayer applies its own execution gas price.
   const gasPrice = '0';
-  // gasLimit is likewise part of the signed hash but is not used by the
-  // relayer when executing the transaction — the relayer applies its own
-  // gas estimation at submission time. The validator only checks non-empty.
-  const gasLimit = '10000000';
+  const gasLimit = (
+    await client.rpc.ethEstimateGas({
+      data,
+      from: client.account.signer,
+      to,
+    })
+  ).toString();
   const relayHub = client.environment.contracts.relayHub;
-  const relay = ZERO_ADDRESS;
+  const relay = executeParams.address;
 
   const hash = buildProxyTransactionHash(
     client.account.signer,

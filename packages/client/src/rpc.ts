@@ -11,6 +11,14 @@ export type EthCallRequest = {
   data: HexString;
 };
 
+export type EthEstimateGasRequest = {
+  data?: HexString;
+  from?: EvmAddress;
+  gasPrice?: bigint;
+  to: EvmAddress;
+  value?: bigint;
+};
+
 export type JsonRpcError = {
   code: number;
   message: string;
@@ -81,6 +89,42 @@ export class JsonRpcClient {
     }
 
     return this.#ethCallBatchWithSplit(requests);
+  }
+
+  async ethEstimateGas(request: EthEstimateGasRequest): Promise<bigint> {
+    const call: Record<string, string> = { to: request.to };
+
+    if (request.data !== undefined) {
+      call.data = request.data;
+    }
+
+    if (request.from !== undefined) {
+      call.from = request.from;
+    }
+
+    if (request.gasPrice !== undefined) {
+      call.gasPrice = toRpcQuantity(request.gasPrice);
+    }
+
+    if (request.value !== undefined) {
+      call.value = toRpcQuantity(request.value);
+    }
+
+    const response = await this.#post<HexString>({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'eth_estimateGas',
+      params: [call],
+    });
+
+    if ('error' in response) {
+      throw new RequestRejectedError(
+        `JSON-RPC eth_estimateGas failed: ${response.error.message}`,
+        { cause: response.error, status: 200 },
+      );
+    }
+
+    return BigInt(expectRpcHexResult(response.result, 'eth_estimateGas'));
   }
 
   async #ethCallBatchWithSplit(
@@ -293,14 +337,18 @@ function isRpcHexString(value: string): value is HexString {
   return /^0x[a-fA-F0-9]*$/.test(value);
 }
 
-function expectRpcHexResult(value: unknown): HexString {
+function expectRpcHexResult(value: unknown, method = 'eth_call'): HexString {
   if (typeof value !== 'string' || !isRpcHexString(value)) {
     throw new UnexpectedResponseError(
-      'Expected JSON-RPC eth_call result to be a hex string',
+      `Expected JSON-RPC ${method} result to be a hex string`,
     );
   }
 
   return value;
+}
+
+function toRpcQuantity(value: bigint): HexString {
+  return `0x${value.toString(16)}` as HexString;
 }
 
 function stringifyJsonRpcErrorData(data: unknown): string {
