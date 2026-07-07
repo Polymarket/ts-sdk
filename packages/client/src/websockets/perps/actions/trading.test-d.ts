@@ -39,11 +39,13 @@ describe('PlacePerpsOrderRequest', () => {
   it('allows IOC and FOK orders without prices', () => {
     const iocRequest: PerpsPlaceIocOrderRequest = {
       ...baseOrder,
+      reduceOnly: true,
       timeInForce: PerpsTimeInForce.IOC,
     };
 
     const fokRequest: PerpsPlaceFokOrderRequest = {
       ...baseOrder,
+      reduceOnly: true,
       timeInForce: PerpsTimeInForce.FOK,
     };
     const iocUnionRequest: PlacePerpsOrderRequest = iocRequest;
@@ -123,6 +125,7 @@ describe('PlacePerpsOrderWithTpSlRequest', () => {
   it('allows limit TP/SL triggers with limit prices', () => {
     const request: PlacePerpsOrderWithTpSlRequest = {
       ...gtcOrder,
+      reduceOnly: true,
       stopLoss: {
         limitPrice: '89',
         triggerPrice: '90',

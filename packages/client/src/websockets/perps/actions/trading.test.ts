@@ -61,5 +61,43 @@ describe('Perps trading actions', () => {
         }),
       ).resolves.toMatchObject([{ orderId: 123, status: 'ok' }]);
     });
+
+    it('serializes reduce-only entry orders', async () => {
+      const transport: PerpsTradingTransport = {
+        async sendSignedWsCommand(request) {
+          expect(toPerpsCommandBodyOp(request.op)).toEqual({
+            args: [
+              {
+                buy: false,
+                iid: 1,
+                p: '100.50',
+                po: false,
+                qty: '10',
+                ro: true,
+                tif: 'ioc',
+              },
+            ],
+            type: 'createOrders',
+          });
+
+          return request.responseSchema.parse([{ oid: 123, status: 'ok' }]);
+        },
+      };
+
+      await expect(
+        postPerpsOrders(transport, {
+          orders: [
+            {
+              instrumentId: 1,
+              price: '100.50',
+              quantity: '10',
+              reduceOnly: true,
+              side: OrderSide.SELL,
+              timeInForce: PerpsTimeInForce.IOC,
+            },
+          ],
+        }),
+      ).resolves.toMatchObject([{ orderId: 123, status: 'ok' }]);
+    });
   });
 });
