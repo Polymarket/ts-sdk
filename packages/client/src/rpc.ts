@@ -1,8 +1,4 @@
-import {
-  type EvmAddress,
-  type HexString,
-  isHexString,
-} from '@polymarket/types';
+import type { EvmAddress, HexString } from '@polymarket/types';
 import ky from 'ky';
 import {
   RequestRejectedError,
@@ -76,7 +72,7 @@ export class JsonRpcClient {
       );
     }
 
-    if (!isHexString(response.result)) {
+    if (!isRpcHexString(response.result)) {
       throw new UnexpectedResponseError(
         'Expected JSON-RPC eth_call result to be a hex string',
       );
@@ -337,8 +333,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
+function isRpcHexString(value: string): value is HexString {
+  return /^0x[a-fA-F0-9]*$/.test(value);
+}
+
 function expectRpcHexResult(value: unknown, method = 'eth_call'): HexString {
-  if (typeof value !== 'string' || !isHexString(value)) {
+  if (typeof value !== 'string' || !isRpcHexString(value)) {
     throw new UnexpectedResponseError(
       `Expected JSON-RPC ${method} result to be a hex string`,
     );
