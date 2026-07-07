@@ -872,8 +872,8 @@ export async function prepareRedeemMarketPositions(
   const context = await resolveMarketClobContext(
     client,
     params.conditionId !== undefined
-      ? { conditionId: params.conditionId }
-      : { marketId: params.marketId },
+      ? { conditionId: params.conditionId, closed: true }
+      : { marketId: params.marketId, closed: true },
   );
   const call = ctfRedeemPositionsCall(
     context.adapterAddress,
@@ -1056,8 +1056,8 @@ type MarketClobContext = {
 };
 
 type ResolveMarketClobContextRequest =
-  | { conditionId: CtfConditionId; marketId?: never }
-  | { marketId: MarketId; conditionId?: never };
+  | { conditionId: CtfConditionId; marketId?: never; closed?: boolean }
+  | { marketId: MarketId; conditionId?: never; closed?: boolean };
 
 async function resolveMarketClobContext(
   client: BaseSecureClient,
@@ -1070,8 +1070,16 @@ async function resolveMarketClobContext(
   const page = await listMarkets(
     client,
     request.conditionId !== undefined
-      ? { conditionIds: [request.conditionId], pageSize: 1 }
-      : { ids: [parseMarketId(request.marketId)], pageSize: 1 },
+      ? {
+          conditionIds: [request.conditionId],
+          closed: request.closed,
+          pageSize: 1,
+        }
+      : {
+          ids: [parseMarketId(request.marketId)],
+          closed: request.closed,
+          pageSize: 1,
+        },
   ).firstPage();
   const [market] = page.items;
 

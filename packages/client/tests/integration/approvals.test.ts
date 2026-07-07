@@ -4,7 +4,7 @@ import {
   WalletType,
 } from '@polymarket/client';
 import { ZERO_ADDRESS } from '@polymarket/types';
-import { describe, expect, it } from './fixtures';
+import { describe, expect, it, runMeteredTests } from './fixtures';
 
 describe('Approvals', () => {
   describe('SecureClient.approveErc20', () => {
@@ -96,5 +96,23 @@ describe('Approvals', () => {
         },
       );
     });
+
+    it.runIf(runMeteredTests)(
+      'submits a combined trading-setup approval workflow for a new Deposit Wallet',
+      async ({ builderAuthentication, randomEoaSigner }) => {
+        const secureClient = await createSecureClient({
+          apiKey: builderAuthentication,
+          signer: randomEoaSigner,
+        });
+
+        expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+
+        await expect(
+          secureClient.setupTradingApprovals(),
+        ).resolves.toMatchObject({
+          wait: expect.any(Function),
+        });
+      },
+    );
   });
 });
