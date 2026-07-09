@@ -92,19 +92,19 @@ describe('Activity', () => {
           transactionAt: expect.any(String),
           transactionHash: expect.any(String),
           type: expect.any(String),
-          userAddress: TEST_USER,
+          wallet: TEST_USER,
         }),
       );
 
       if (item.type === ComboActivityType.Redeem) {
-        expect(item).toHaveProperty('payoutUsdc');
+        expect(item).toHaveProperty('payout');
         expect(item).toEqual(
           expect.objectContaining({
             positionId: expect.any(String),
           }),
         );
       } else {
-        expect(item).not.toHaveProperty('payoutUsdc');
+        expect(item).not.toHaveProperty('payout');
         expect(item).not.toHaveProperty('positionId');
       }
     });

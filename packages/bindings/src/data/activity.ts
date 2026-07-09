@@ -241,16 +241,14 @@ type ComboActivityBase = {
   id: string;
   /** Normalized lifecycle activity type. */
   type: ComboActivityType;
-  /** Module label returned by the activity service. */
-  moduleKind: string;
   /** Wallet address whose account history contains this activity. */
-  userAddress: Address;
+  wallet: Address;
   /** Combo condition id involved in this activity. */
   conditionId: ComboConditionId;
   /** Combo module id. */
   moduleId: number;
-  /** USDC amount associated with the lifecycle event. */
-  amountUsdc: DecimalString | null;
+  /** Amount associated with the lifecycle event in USD. */
+  amount: DecimalString | null;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Activity transaction time as an ISO date-time string. */
@@ -293,8 +291,8 @@ export type ComboRedeemActivity = ComboActivityBase & {
   type: ComboActivityType.Redeem;
   /** Redeemed Combo position id. Only redeem rows carry a source position id. */
   positionId: PositionId;
-  /** USDC payout from the redemption. Only redeem rows carry payout semantics. */
-  payoutUsdc: DecimalString | null;
+  /** Payout from the redemption in USD. Only redeem rows carry payout semantics. */
+  payout: DecimalString | null;
 };
 
 export type ComboActivity =
@@ -459,7 +457,7 @@ function normalizeComboActivity(activity: RawComboActivity): ComboActivity {
         ...base,
         type: ComboActivityType.Redeem,
         positionId: activity.combo_position_id,
-        payoutUsdc: activity.payout_usdc,
+        payout: activity.payout_usdc,
       };
   }
 }
@@ -470,11 +468,10 @@ function normalizeComboActivityBase(
   return {
     id: activity.id,
     type: activity.side,
-    moduleKind: activity.module_kind,
-    userAddress: activity.user_address,
+    wallet: activity.user_address,
     conditionId: activity.combo_condition_id,
     moduleId: activity.module_id,
-    amountUsdc: activity.amount_usdc,
+    amount: activity.amount_usdc,
     timestamp: activity.timestamp,
     transactionAt: activity.tx_dttm,
     transactionHash: activity.tx_hash,
