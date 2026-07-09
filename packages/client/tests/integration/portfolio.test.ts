@@ -90,7 +90,7 @@ describe('Portfolio', () => {
           conditionId: expect.any(String),
           positionId: expect.any(String),
           redeemable: expect.any(Boolean),
-          userAddress: TEST_USER,
+          wallet: TEST_USER,
           realizedPayoutUsdc: expect.any(String),
           totalCostUsdc: expect.any(String),
         }),

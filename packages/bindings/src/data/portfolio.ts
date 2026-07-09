@@ -247,7 +247,7 @@ export const ComboPositionSchema = z
       positionId: combo_position_id,
       outcome: side,
       moduleId: module_id,
-      userAddress: user_address,
+      wallet: user_address,
       shares: shares_balance,
       entryAvgPriceUsdc: entry_avg_price_usdc,
       entryCostUsdc: entry_cost_usdc,
