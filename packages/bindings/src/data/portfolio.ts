@@ -23,6 +23,13 @@ export enum ComboPositionStatus {
 
 export const ComboPositionStatusSchema = z.enum(ComboPositionStatus);
 
+export enum ComboPositionOutcome {
+  Yes = 'YES',
+  No = 'NO',
+}
+
+export const ComboPositionOutcomeSchema = z.enum(ComboPositionOutcome);
+
 export const PositionSchema = z
   .object({
     proxyWallet: AddressSchema.nullish(),
@@ -197,14 +204,19 @@ export const ComboPositionSchema = z
   .object({
     combo_condition_id: ComboConditionIdSchema,
     combo_position_id: PositionIdSchema,
+    side: ComboPositionOutcomeSchema,
     module_id: z.number().int(),
     user_address: AddressSchema,
     shares_balance: DecimalishSchema,
     entry_avg_price_usdc: DecimalishSchema.nullish(),
     entry_cost_usdc: DecimalishSchema.nullish(),
+    realized_payout_usdc: DecimalishSchema.nullish(),
+    total_cost_usdc: DecimalishSchema.nullish(),
     status: ComboPositionStatusSchema,
+    redeemable: z.boolean(),
     first_entry_at: IsoDateTimeStringSchema,
     resolved_at: IsoDateTimeStringSchema.nullish(),
+    updated_at: IsoDateTimeStringSchema.optional(),
     legs_total: z.number().int(),
     legs_resolved: z.number().int(),
     legs_pending: z.number().int(),
@@ -214,13 +226,17 @@ export const ComboPositionSchema = z
     ({
       combo_condition_id,
       combo_position_id,
+      side,
       module_id,
       user_address,
       shares_balance,
       entry_avg_price_usdc,
       entry_cost_usdc,
+      realized_payout_usdc,
+      total_cost_usdc,
       first_entry_at,
       resolved_at,
+      updated_at,
       legs_total,
       legs_resolved,
       legs_pending,
@@ -229,13 +245,17 @@ export const ComboPositionSchema = z
       ...rest,
       conditionId: combo_condition_id,
       positionId: combo_position_id,
+      outcome: side,
       moduleId: module_id,
       userAddress: user_address,
       shares: shares_balance,
       entryAvgPriceUsdc: entry_avg_price_usdc,
       entryCostUsdc: entry_cost_usdc,
+      realizedPayoutUsdc: realized_payout_usdc,
+      totalCostUsdc: total_cost_usdc,
       firstEntryAt: first_entry_at,
       resolvedAt: resolved_at,
+      updatedAt: updated_at,
       legsTotal: legs_total,
       legsResolved: legs_resolved,
       legsPending: legs_pending,

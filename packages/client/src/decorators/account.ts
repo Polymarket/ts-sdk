@@ -5,6 +5,7 @@ import type {
 import type {
   Activity,
   ClosedPosition,
+  ComboActivity,
   ComboPosition,
   MetaMarketPosition,
   Position,
@@ -26,12 +27,14 @@ import {
   type ListAccountTradesRequest,
   type ListActivityRequest,
   type ListClosedPositionsRequest,
+  type ListComboActivityRequest,
   type ListComboPositionsRequest,
   type ListMarketPositionsRequest,
   type ListPositionsRequest,
   listAccountTrades,
   listActivity,
   listClosedPositions,
+  listComboActivity,
   listComboPositions,
   listMarketPositions,
   listPositions,
@@ -68,6 +71,8 @@ export type SecureDownloadAccountingSnapshotRequest =
   DefaultAccountWallet<DownloadAccountingSnapshotRequest>;
 export type SecureListActivityRequest =
   DefaultAccountWallet<ListActivityRequest>;
+export type SecureListComboActivityRequest =
+  DefaultAccountWallet<ListComboActivityRequest>;
 
 type CommonAccountActions = {
   /**
@@ -288,6 +293,26 @@ export type PublicAccountActions = Prettify<
      * ```
      */
     listActivity(request: ListActivityRequest): Paginated<Activity[]>;
+    /**
+     * Lists combo lifecycle activity for a wallet.
+     *
+     * @throws {@link ListComboActivityError}
+     * Thrown on failure.
+     *
+     * @example
+     * Fetch the first page of results:
+     * ```ts
+     * const paginator = client.listComboActivity({
+     *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+     *   pageSize: 10,
+     * });
+     *
+     * const firstPage = await paginator.firstPage();
+     * ```
+     */
+    listComboActivity(
+      request: ListComboActivityRequest,
+    ): Paginated<ComboActivity[]>;
   }
 >;
 
@@ -377,6 +402,17 @@ export type SecureAccountActions = Prettify<
      */
     listActivity(request?: SecureListActivityRequest): Paginated<Activity[]>;
     /**
+     * Lists combo lifecycle activity for a wallet.
+     *
+     * Defaults to the authenticated account's wallet when `user` is omitted.
+     *
+     * @throws {@link ListComboActivityError}
+     * Thrown on failure.
+     */
+    listComboActivity(
+      request?: SecureListComboActivityRequest,
+    ): Paginated<ComboActivity[]>;
+    /**
      * Lists trades for the authenticated account across all pages.
      *
      * @throws {@link ListAccountTradesError}
@@ -463,6 +499,7 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
     downloadAccountingSnapshot: downloadAccountingSnapshot.bind(null, client),
     listMarketPositions: listMarketPositions.bind(null, client),
     listActivity: listActivity.bind(null, client),
+    listComboActivity: listComboActivity.bind(null, client),
   };
 }
 
@@ -504,6 +541,8 @@ export function accountActions(
     ) => downloadAccountingSnapshot(client, withAccountWallet(client, request)),
     listActivity: (request?: SecureListActivityRequest) =>
       listActivity(client, withAccountWallet(client, request)),
+    listComboActivity: (request?: SecureListComboActivityRequest) =>
+      listComboActivity(client, withAccountWallet(client, request)),
     listAccountTrades: listAccountTrades.bind(null, client),
     fetchNotifications: fetchNotifications.bind(null, client),
     dropNotifications: dropNotifications.bind(null, client),
@@ -524,8 +563,14 @@ export {
   ListAccountTradesError,
   ListActivityError,
   ListClosedPositionsError,
+  ListComboActivityError,
   ListComboPositionsError,
   ListMarketPositionsError,
   ListPositionsError,
 } from '../actions';
-export { ComboPositionStatus } from '../actions/portfolio';
+export { ComboActivityType } from '../actions/activity';
+export {
+  ComboPositionOutcome,
+  ComboPositionSort,
+  ComboPositionStatus,
+} from '../actions/portfolio';

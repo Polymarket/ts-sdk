@@ -1,7 +1,7 @@
-import { ActivityType } from '@polymarket/client';
+import { ActivityType, ComboActivityType } from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
-import { expectNonEmptyPage } from './helpers';
+import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
 
@@ -69,6 +69,44 @@ describe('Activity', () => {
       expect(expectPresent(result.items[0]).wallet).toSatisfy((wallet) =>
         isSameEvmAddress(wallet, depositWalletAddress),
       );
+    });
+  });
+
+  describe('listComboActivity', () => {
+    it('lists combo lifecycle activity for a wallet', async ({
+      publicClient,
+    }) => {
+      const paginator = publicClient.listComboActivity({
+        user: TEST_USER,
+        pageSize: 1,
+      });
+      const result = await paginator.firstPage().then(expectNonEmptyPage);
+      const item = expectPresent(result.items[0]);
+
+      await expectPageWindow(paginator, result, 1);
+      expect(Object.values(ComboActivityType)).toContain(item.type);
+      expect(item).toEqual(
+        expect.objectContaining({
+          conditionId: expect.any(String),
+          timestamp: expect.any(Number),
+          transactionAt: expect.any(String),
+          transactionHash: expect.any(String),
+          type: expect.any(String),
+          userAddress: TEST_USER,
+        }),
+      );
+
+      if (item.type === ComboActivityType.Redeem) {
+        expect(item).toHaveProperty('payoutUsdc');
+        expect(item).toEqual(
+          expect.objectContaining({
+            positionId: expect.any(String),
+          }),
+        );
+      } else {
+        expect(item).not.toHaveProperty('payoutUsdc');
+        expect(item).not.toHaveProperty('positionId');
+      }
     });
   });
 });
