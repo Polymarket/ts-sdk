@@ -1,3 +1,4 @@
+import { ComboPositionOutcome, ComboPositionSort } from '@polymarket/client';
 import { isSameEvmAddress } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
@@ -68,6 +69,43 @@ describe('Portfolio', () => {
       expect(result.items[0]?.wallet).toSatisfy((wallet) =>
         isSameEvmAddress(wallet, depositWalletAddress),
       );
+    });
+  });
+
+  describe('listComboPositions', () => {
+    it('lists combo positions for a wallet', async ({ publicClient }) => {
+      const paginator = publicClient.listComboPositions({
+        user: TEST_USER,
+        pageSize: 1,
+        sort: ComboPositionSort.FirstEntryDesc,
+      });
+      const result = await paginator.firstPage().then(expectNonEmptyPage);
+
+      await expectPageWindow(paginator, result, 1);
+      expect(Object.values(ComboPositionOutcome)).toContain(
+        result.items[0].outcome,
+      );
+      expect(result.items[0]).toEqual(
+        expect.objectContaining({
+          conditionId: expect.any(String),
+          positionId: expect.any(String),
+          redeemable: expect.any(Boolean),
+          userAddress: TEST_USER,
+          realizedPayoutUsdc: expect.any(String),
+          totalCostUsdc: expect.any(String),
+        }),
+      );
+
+      const filtered = await publicClient
+        .listComboPositions({
+          user: TEST_USER,
+          pageSize: 1,
+          conditionId: result.items[0].conditionId,
+        })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      expect(filtered.items[0].conditionId).toBe(result.items[0].conditionId);
     });
   });
 

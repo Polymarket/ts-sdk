@@ -9,6 +9,9 @@ import {
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   emptyStringToNull,
+  type IsoDateTimeString,
+  IsoDateTimeStringSchema,
+  PaginationCursorSchema,
   type PositionId,
   PositionIdSchema,
   type TokenId,
@@ -24,6 +27,41 @@ import {
   type Side,
   SideSchema,
 } from './common';
+import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
+
+export enum ComboActivityType {
+  Split = 'SPLIT',
+  Merge = 'MERGE',
+  Convert = 'CONVERT',
+  Compress = 'COMPRESS',
+  Wrap = 'WRAP',
+  Unwrap = 'UNWRAP',
+  Redeem = 'REDEEM',
+}
+
+enum UpstreamComboActivityType {
+  Split = 'Split',
+  Merge = 'Merge',
+  Convert = 'Convert',
+  Compress = 'Compress',
+  Wrap = 'Wrap',
+  Unwrap = 'Unwrap',
+  Redeem = 'Redeem',
+}
+
+const ComboActivityTypeByUpstream = {
+  [UpstreamComboActivityType.Split]: ComboActivityType.Split,
+  [UpstreamComboActivityType.Merge]: ComboActivityType.Merge,
+  [UpstreamComboActivityType.Convert]: ComboActivityType.Convert,
+  [UpstreamComboActivityType.Compress]: ComboActivityType.Compress,
+  [UpstreamComboActivityType.Wrap]: ComboActivityType.Wrap,
+  [UpstreamComboActivityType.Unwrap]: ComboActivityType.Unwrap,
+  [UpstreamComboActivityType.Redeem]: ComboActivityType.Redeem,
+} satisfies Record<UpstreamComboActivityType, ComboActivityType>;
+
+const UpstreamComboActivityTypeSchema = z
+  .enum(UpstreamComboActivityType)
+  .transform((value) => ComboActivityTypeByUpstream[value]);
 
 export type ActivityBase = {
   /** Wallet address whose account history contains this activity. */
@@ -198,6 +236,97 @@ export type Activity =
   | ReferralRewardActivity
   | YieldActivity;
 
+type ComboActivityBase = {
+  /** Stable row id derived from the transaction hash and log index. */
+  id: string;
+  /** Normalized lifecycle activity type. */
+  type: ComboActivityType;
+  /** Module label returned by the activity service. */
+  moduleKind: string;
+  /** Wallet address whose account history contains this activity. */
+  userAddress: Address;
+  /** Combo condition id involved in this activity. */
+  conditionId: ComboConditionId;
+  /** Combo module id. */
+  moduleId: number;
+  /** USDC amount associated with the lifecycle event. */
+  amountUsdc: DecimalString | null;
+  /** Activity time as Unix epoch milliseconds. */
+  timestamp: EpochMilliseconds;
+  /** Activity transaction time as an ISO date-time string. */
+  transactionAt: IsoDateTimeString;
+  /** Polygon transaction hash that produced this activity. */
+  transactionHash: TxHash;
+  /** Log index within the transaction. */
+  logIndex: number;
+  /** Polygon block number. */
+  blockNumber: number;
+  /** Combo legs enriched with market metadata at read time. */
+  legs: ComboPositionLeg[];
+};
+
+export type ComboSplitActivity = ComboActivityBase & {
+  type: ComboActivityType.Split;
+};
+
+export type ComboMergeActivity = ComboActivityBase & {
+  type: ComboActivityType.Merge;
+};
+
+export type ComboConvertActivity = ComboActivityBase & {
+  type: ComboActivityType.Convert;
+};
+
+export type ComboCompressActivity = ComboActivityBase & {
+  type: ComboActivityType.Compress;
+};
+
+export type ComboWrapActivity = ComboActivityBase & {
+  type: ComboActivityType.Wrap;
+};
+
+export type ComboUnwrapActivity = ComboActivityBase & {
+  type: ComboActivityType.Unwrap;
+};
+
+export type ComboRedeemActivity = ComboActivityBase & {
+  type: ComboActivityType.Redeem;
+  /** Redeemed Combo position id. Only redeem rows carry a source position id. */
+  positionId: PositionId;
+  /** USDC payout from the redemption. Only redeem rows carry payout semantics. */
+  payoutUsdc: DecimalString | null;
+};
+
+export type ComboActivity =
+  | ComboSplitActivity
+  | ComboMergeActivity
+  | ComboConvertActivity
+  | ComboCompressActivity
+  | ComboWrapActivity
+  | ComboUnwrapActivity
+  | ComboRedeemActivity;
+
+const RawComboActivitySchema = z.object({
+  id: z.string(),
+  side: UpstreamComboActivityTypeSchema,
+  module_kind: z.string(),
+  user_address: AddressSchema,
+  combo_condition_id: ComboConditionIdSchema,
+  combo_position_id: PositionIdSchema,
+  module_id: z.number().int(),
+  amount_usdc: DecimalishSchema.nullable(),
+  payout_usdc: DecimalishSchema.nullable(),
+  timestamp: EpochSecondsToMillisecondsSchema,
+  tx_dttm: IsoDateTimeStringSchema,
+  tx_hash: TxHashSchema,
+  log_index: z.number().int(),
+  block_number: z.number().int(),
+  legs: z.array(ComboPositionLegSchema),
+});
+
+export const ComboActivitySchema: z.ZodType<ComboActivity> =
+  RawComboActivitySchema.transform(normalizeComboActivity);
+
 const OptionalTextSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().optional(),
@@ -278,13 +407,82 @@ export const TradedSchema = z.object({
 
 export const ListTradesResponseSchema = z.array(TradeSchema);
 export const ListActivityResponseSchema = z.array(ActivitySchema);
+export const ListComboActivityResponseSchema = z
+  .object({
+    activity: z.array(ComboActivitySchema),
+    pagination: z.object({
+      limit: z.number().int(),
+      offset: z.number().int(),
+      has_more: z.boolean(),
+      next_cursor: PaginationCursorSchema.nullish(),
+    }),
+  })
+  .transform(({ pagination, ...rest }) => ({
+    ...rest,
+    pagination: {
+      limit: pagination.limit,
+      offset: pagination.offset,
+      hasMore: pagination.has_more,
+      nextCursor: pagination.next_cursor,
+    },
+  }));
 
 export type Trade = z.infer<typeof TradeSchema>;
 export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;
+export type ListComboActivityResponse = z.infer<
+  typeof ListComboActivityResponseSchema
+>;
 
+type RawComboActivity = z.infer<typeof RawComboActivitySchema>;
 type RawActivity = z.infer<typeof RawActivitySchema>;
+
+function normalizeComboActivity(activity: RawComboActivity): ComboActivity {
+  const base = normalizeComboActivityBase(activity);
+
+  switch (activity.side) {
+    case ComboActivityType.Split:
+      return { ...base, type: ComboActivityType.Split };
+    case ComboActivityType.Merge:
+      return { ...base, type: ComboActivityType.Merge };
+    case ComboActivityType.Convert:
+      return { ...base, type: ComboActivityType.Convert };
+    case ComboActivityType.Compress:
+      return { ...base, type: ComboActivityType.Compress };
+    case ComboActivityType.Wrap:
+      return { ...base, type: ComboActivityType.Wrap };
+    case ComboActivityType.Unwrap:
+      return { ...base, type: ComboActivityType.Unwrap };
+    case ComboActivityType.Redeem:
+      return {
+        ...base,
+        type: ComboActivityType.Redeem,
+        positionId: activity.combo_position_id,
+        payoutUsdc: activity.payout_usdc,
+      };
+  }
+}
+
+function normalizeComboActivityBase(
+  activity: RawComboActivity,
+): ComboActivityBase {
+  return {
+    id: activity.id,
+    type: activity.side,
+    moduleKind: activity.module_kind,
+    userAddress: activity.user_address,
+    conditionId: activity.combo_condition_id,
+    moduleId: activity.module_id,
+    amountUsdc: activity.amount_usdc,
+    timestamp: activity.timestamp,
+    transactionAt: activity.tx_dttm,
+    transactionHash: activity.tx_hash,
+    logIndex: activity.log_index,
+    blockNumber: activity.block_number,
+    legs: activity.legs,
+  };
+}
 
 function normalizeActivity(activity: RawActivity): Activity {
   const base = normalizeActivityBase(activity);

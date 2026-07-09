@@ -1,8 +1,13 @@
-import { PaginationCursorSchema } from '@polymarket/bindings';
+import {
+  ComboConditionIdSchema,
+  PaginationCursorSchema,
+} from '@polymarket/bindings';
 import {
   type Activity,
   ActivityTypeSchema,
+  type ComboActivity,
   ListActivityResponseSchema,
+  ListComboActivityResponseSchema,
   ListTradesResponseSchema,
   SideSchema,
   type Trade,
@@ -26,10 +31,10 @@ import {
   paginate,
 } from '../pagination';
 import { validateWith } from '../response';
-import { toDataSearchParams } from './params';
+import { snakeCase, toDataSearchParams, toSearchParams } from './params';
 
-const ActivitySortBySchema = z.enum(['TIMESTAMP', 'TOKENS', 'CASH']);
-const SortDirectionSchema = z.enum(['ASC', 'DESC']);
+export { ComboActivityType } from '@polymarket/bindings/data';
+
 const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 
 const ListTradesRequestSchema = z
@@ -43,6 +48,8 @@ const ListTradesRequestSchema = z
     eventId: z.array(z.number().int()).optional(),
     user: z.string().optional(),
     side: SideSchema.optional(),
+    start: z.number().int().min(0).optional(),
+    end: z.number().int().min(0).optional(),
   })
   .refine((value) => !(value.market && value.eventId), {
     message: 'Provide market or eventId, not both',
@@ -57,28 +64,7 @@ const ListTradesRequestSchema = z
     },
   );
 
-const ListActivityRequestSchema = z
-  .object({
-    cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
-    user: z.string(),
-    market: z.array(z.string()).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    type: z.array(ActivityTypeSchema).optional(),
-    start: z.number().int().optional(),
-    end: z.number().int().optional(),
-    sortBy: ActivitySortBySchema.optional(),
-    sortDirection: SortDirectionSchema.optional(),
-    side: SideSchema.optional(),
-  })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
-    path: ['eventId'],
-  });
-
 export type ListTradesRequest = z.input<typeof ListTradesRequestSchema>;
-export type ListActivityRequest = z.input<typeof ListActivityRequestSchema>;
-
 export type ListTradesError =
   | RateLimitError
   | RequestRejectedError
@@ -169,6 +155,30 @@ export function listTrades(
   }, cursor);
 }
 
+const ActivitySortBySchema = z.enum(['TIMESTAMP', 'TOKENS', 'CASH']);
+const SortDirectionSchema = z.enum(['ASC', 'DESC']);
+
+const ListActivityRequestSchema = z
+  .object({
+    cursor: PaginationCursorSchema.optional(),
+    pageSize: PageSizeSchema.default(20),
+    user: z.string(),
+    market: z.array(z.string()).optional(),
+    eventId: z.array(z.number().int()).optional(),
+    type: z.array(ActivityTypeSchema).optional(),
+    start: z.number().int().min(0).optional(),
+    end: z.number().int().min(0).optional(),
+    sortBy: ActivitySortBySchema.optional(),
+    sortDirection: SortDirectionSchema.optional(),
+    side: SideSchema.optional(),
+  })
+  .refine((value) => !(value.market && value.eventId), {
+    message: 'Provide market or eventId, not both',
+    path: ['eventId'],
+  });
+
+export type ListActivityRequest = z.input<typeof ListActivityRequestSchema>;
+
 export type ListActivityError =
   | RateLimitError
   | RequestRejectedError
@@ -257,4 +267,111 @@ export function listActivity(
         };
       });
   }, cursor);
+}
+
+const ComboConditionIdFilterSchema = z.union([
+  ComboConditionIdSchema,
+  z.array(ComboConditionIdSchema),
+]);
+
+const ListComboActivityRequestSchema = z.object({
+  cursor: PaginationCursorSchema.optional(),
+  pageSize: PageSizeSchema.default(50),
+  user: z.string(),
+  conditionId: ComboConditionIdFilterSchema.optional(),
+});
+
+export type ListComboActivityRequest = z.input<
+  typeof ListComboActivityRequestSchema
+>;
+
+export type ListComboActivityError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListComboActivityError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists combo lifecycle activity for a wallet.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link ListComboActivityError}
+ * Thrown on failure.
+ *
+ * @example
+ * Fetch the first page of results:
+ * ```ts
+ * const result = listComboActivity(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   pageSize: 10,
+ * });
+ *
+ * const firstPage = await result.firstPage();
+ *
+ * // Optionally, fetch additional pages:
+ * for await (const page of result.from(firstPage.nextCursor)) {
+ *   // page.items: ComboActivity[]
+ * }
+ * ```
+ */
+export function listComboActivity(
+  client: BaseClient,
+  request: ListComboActivityRequest,
+): Paginated<ComboActivity[]> {
+  const { cursor, pageSize, conditionId, ...params } = parseUserInput(
+    request,
+    ListComboActivityRequestSchema,
+  );
+
+  return paginate((cursor) => {
+    const searchParams = toSearchParams(
+      {
+        ...params,
+        limit: pageSize,
+        cursor,
+      },
+      snakeCase(),
+    );
+
+    appendConditionId(searchParams, conditionId);
+
+    return client.data
+      .get('/v1/activity/combos', {
+        params: searchParams,
+      })
+      .andThen(validateWith(ListComboActivityResponseSchema))
+      .map((response) => {
+        const nextCursor = response.pagination.nextCursor ?? undefined;
+
+        return {
+          items: response.activity,
+          hasMore: nextCursor !== undefined,
+          nextCursor,
+        };
+      });
+  }, cursor);
+}
+
+function appendConditionId(
+  searchParams: URLSearchParams,
+  conditionId: z.output<typeof ComboConditionIdFilterSchema> | undefined,
+): void {
+  if (conditionId === undefined) {
+    return;
+  }
+
+  searchParams.append(
+    'market_id',
+    Array.isArray(conditionId) ? conditionId.join(',') : conditionId,
+  );
 }

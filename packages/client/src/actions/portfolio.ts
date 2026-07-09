@@ -1,7 +1,6 @@
 import {
   ComboConditionIdSchema,
   PaginationCursorSchema,
-  PositionIdSchema,
 } from '@polymarket/bindings';
 import {
   type ClosedPosition,
@@ -38,7 +37,18 @@ import {
 import { readBlob, validateWith } from '../response';
 import { snakeCase, toDataSearchParams, toSearchParams } from './params';
 
-export { ComboPositionStatus } from '@polymarket/bindings/data';
+export {
+  ComboPositionOutcome,
+  ComboPositionStatus,
+} from '@polymarket/bindings/data';
+
+export enum ComboPositionSort {
+  CurrentValueDesc = 'current_value_desc',
+  FirstEntryDesc = 'first_entry_desc',
+  EntryCostDesc = 'entry_cost_desc',
+  ResolvedAtDesc = 'resolved_at_desc',
+  UpdatedAsc = 'updated_asc',
+}
 
 const PositionSortBySchema = z.enum([
   'CURRENT',
@@ -53,14 +63,6 @@ const PositionSortBySchema = z.enum([
 ]);
 
 const PositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
-
-const ClosedPositionSortBySchema = z.enum([
-  'REALIZEDPNL',
-  'TITLE',
-  'PRICE',
-  'AVGPRICE',
-  'TIMESTAMP',
-]);
 
 const ListPositionsRequestSchema = z
   .object({
@@ -81,60 +83,7 @@ const ListPositionsRequestSchema = z
     path: ['eventId'],
   });
 
-const ListClosedPositionsRequestSchema = z
-  .object({
-    cursor: PaginationCursorSchema.optional(),
-    user: z.string(),
-    market: z.array(z.string()).optional(),
-    title: z.string().max(100).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    pageSize: PageSizeSchema.default(20),
-    sortBy: ClosedPositionSortBySchema.optional(),
-    sortDirection: PositionSortDirectionSchema.optional(),
-  })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
-    path: ['eventId'],
-  });
-
-const ListComboPositionsRequestSchema = z.object({
-  cursor: PaginationCursorSchema.optional(),
-  user: z.string(),
-  pageSize: PageSizeSchema.default(20),
-  status: ComboPositionStatusSchema.optional(),
-  conditionId: ComboConditionIdSchema.optional(),
-  positionId: PositionIdSchema.optional(),
-});
-
-const FetchPortfolioValueRequestSchema = z.object({
-  user: z.string(),
-  market: z.array(z.string()).optional(),
-});
-
-const FetchTradedMarketCountRequestSchema = z.object({
-  user: z.string(),
-});
-
-const DownloadAccountingSnapshotRequestSchema = z.object({
-  user: z.string(),
-});
-
 export type ListPositionsRequest = z.input<typeof ListPositionsRequestSchema>;
-export type ListClosedPositionsRequest = z.input<
-  typeof ListClosedPositionsRequestSchema
->;
-export type ListComboPositionsRequest = z.input<
-  typeof ListComboPositionsRequestSchema
->;
-export type FetchPortfolioValueRequest = z.input<
-  typeof FetchPortfolioValueRequestSchema
->;
-export type FetchTradedMarketCountRequest = z.input<
-  typeof FetchTradedMarketCountRequestSchema
->;
-export type DownloadAccountingSnapshotRequest = z.input<
-  typeof DownloadAccountingSnapshotRequestSchema
->;
 
 export type ListPositionsError =
   | RateLimitError
@@ -226,6 +175,34 @@ export function listPositions(
   }, cursor);
 }
 
+const ClosedPositionSortBySchema = z.enum([
+  'REALIZEDPNL',
+  'TITLE',
+  'PRICE',
+  'AVGPRICE',
+  'TIMESTAMP',
+]);
+
+const ListClosedPositionsRequestSchema = z
+  .object({
+    cursor: PaginationCursorSchema.optional(),
+    user: z.string(),
+    market: z.array(z.string()).optional(),
+    title: z.string().max(100).optional(),
+    eventId: z.array(z.number().int()).optional(),
+    pageSize: PageSizeSchema.default(20),
+    sortBy: ClosedPositionSortBySchema.optional(),
+    sortDirection: PositionSortDirectionSchema.optional(),
+  })
+  .refine((value) => !(value.market && value.eventId), {
+    message: 'Provide market or eventId, not both',
+    path: ['eventId'],
+  });
+
+export type ListClosedPositionsRequest = z.input<
+  typeof ListClosedPositionsRequestSchema
+>;
+
 export type ListClosedPositionsError =
   | RateLimitError
   | RequestRejectedError
@@ -233,20 +210,6 @@ export type ListClosedPositionsError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListClosedPositionsError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-export type ListComboPositionsError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const ListComboPositionsError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -330,6 +293,42 @@ export function listClosedPositions(
   }, cursor);
 }
 
+const ComboPositionSortSchema = z.enum(ComboPositionSort);
+
+const ComboConditionIdFilterSchema = z.union([
+  ComboConditionIdSchema,
+  z.array(ComboConditionIdSchema),
+]);
+
+const ListComboPositionsRequestSchema = z.object({
+  cursor: PaginationCursorSchema.optional(),
+  user: z.string(),
+  pageSize: PageSizeSchema.default(20),
+  status: ComboPositionStatusSchema.optional(),
+  sort: ComboPositionSortSchema.optional(),
+  conditionId: ComboConditionIdFilterSchema.optional(),
+  updatedAfter: z.number().int().min(0).optional(),
+  updatedBefore: z.number().int().min(0).optional(),
+});
+
+export type ListComboPositionsRequest = z.input<
+  typeof ListComboPositionsRequestSchema
+>;
+
+export type ListComboPositionsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListComboPositionsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 /**
  * Lists combo positions for a wallet.
  *
@@ -363,50 +362,81 @@ export function listClosedPositions(
  *   status: ComboPositionStatus.Open,
  * });
  * ```
+ *
+ * @example
+ * Incrementally sync changed combo positions:
+ * ```ts
+ * const result = listComboPositions(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   updatedAfter: 1_797_360_000,
+ *   sort: ComboPositionSort.UpdatedAsc,
+ *   pageSize: 1000,
+ * });
+ * ```
  */
 export function listComboPositions(
   client: BaseClient,
   request: ListComboPositionsRequest,
 ): Paginated<ComboPosition[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+  const { cursor, pageSize, conditionId, ...params } = parseUserInput(
     request,
     ListComboPositionsRequestSchema,
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const searchParams = toSearchParams(
+      {
+        ...params,
+        limit: pageSize,
+        cursor,
+      },
+      snakeCase({
+        updatedAfter: 'updatedAfter',
+        updatedBefore: 'updatedBefore',
+      }),
+    );
+
+    appendConditionId(searchParams, conditionId);
 
     return client.data
       .get('/v1/positions/combos', {
-        params: toSearchParams(
-          {
-            ...params,
-            limit: decoded.pageSize + 1,
-            offset: decoded.offset,
-          },
-          snakeCase({
-            conditionId: 'combo_condition_id',
-            positionId: 'combo_position_id',
-          }),
-        ),
+        params: searchParams,
       })
       .andThen(validateWith(ListComboPositionsResponseSchema))
       .map((response) => {
-        const hasMore = response.combos.length > decoded.pageSize;
+        const nextCursor = response.pagination.nextCursor ?? undefined;
 
         return {
-          items: response.combos.slice(0, decoded.pageSize),
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
+          items: response.combos,
+          hasMore: nextCursor !== undefined,
+          nextCursor,
         };
       });
   }, cursor);
 }
+
+function appendConditionId(
+  searchParams: URLSearchParams,
+  conditionId: z.output<typeof ComboConditionIdFilterSchema> | undefined,
+): void {
+  if (conditionId === undefined) {
+    return;
+  }
+
+  searchParams.append(
+    'market_id',
+    Array.isArray(conditionId) ? conditionId.join(',') : conditionId,
+  );
+}
+
+const FetchPortfolioValueRequestSchema = z.object({
+  user: z.string(),
+  market: z.array(z.string()).optional(),
+});
+
+export type FetchPortfolioValueRequest = z.input<
+  typeof FetchPortfolioValueRequestSchema
+>;
 
 export type FetchPortfolioValueError =
   | RateLimitError
@@ -455,6 +485,14 @@ export async function fetchPortfolioValue(
   );
 }
 
+const FetchTradedMarketCountRequestSchema = z.object({
+  user: z.string(),
+});
+
+export type FetchTradedMarketCountRequest = z.input<
+  typeof FetchTradedMarketCountRequestSchema
+>;
+
 export type FetchTradedMarketCountError =
   | RateLimitError
   | RequestRejectedError
@@ -501,6 +539,14 @@ export async function fetchTradedMarketCount(
       .andThen(validateWith(TradedSchema)),
   );
 }
+
+const DownloadAccountingSnapshotRequestSchema = z.object({
+  user: z.string(),
+});
+
+export type DownloadAccountingSnapshotRequest = z.input<
+  typeof DownloadAccountingSnapshotRequestSchema
+>;
 
 export type DownloadAccountingSnapshotError =
   | RateLimitError
