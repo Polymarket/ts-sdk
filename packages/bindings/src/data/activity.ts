@@ -41,29 +41,7 @@ export enum ComboActivityType {
   Redeem = 'REDEEM',
 }
 
-enum UpstreamComboActivityType {
-  Split = 'Split',
-  Merge = 'Merge',
-  Convert = 'Convert',
-  Compress = 'Compress',
-  Wrap = 'Wrap',
-  Unwrap = 'Unwrap',
-  Redeem = 'Redeem',
-}
-
-const ComboActivityTypeByUpstream = {
-  [UpstreamComboActivityType.Split]: ComboActivityType.Split,
-  [UpstreamComboActivityType.Merge]: ComboActivityType.Merge,
-  [UpstreamComboActivityType.Convert]: ComboActivityType.Convert,
-  [UpstreamComboActivityType.Compress]: ComboActivityType.Compress,
-  [UpstreamComboActivityType.Wrap]: ComboActivityType.Wrap,
-  [UpstreamComboActivityType.Unwrap]: ComboActivityType.Unwrap,
-  [UpstreamComboActivityType.Redeem]: ComboActivityType.Redeem,
-} satisfies Record<UpstreamComboActivityType, ComboActivityType>;
-
-const UpstreamComboActivityTypeSchema = z
-  .enum(UpstreamComboActivityType)
-  .transform((value) => ComboActivityTypeByUpstream[value]);
+const ComboActivityTypeSchema = z.enum(ComboActivityType);
 
 export type ActivityBase = {
   /** Wallet address whose account history contains this activity. */
@@ -308,8 +286,7 @@ export type ComboActivity =
 
 const RawComboActivitySchema = z.object({
   id: ComboActivityIdSchema,
-  side: UpstreamComboActivityTypeSchema,
-  module_kind: z.string(),
+  type: ComboActivityTypeSchema,
   user_address: AddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
@@ -441,7 +418,7 @@ type RawActivity = z.infer<typeof RawActivitySchema>;
 function normalizeComboActivity(activity: RawComboActivity): ComboActivity {
   const base = normalizeComboActivityBase(activity);
 
-  switch (activity.side) {
+  switch (activity.type) {
     case ComboActivityType.Split:
       return { ...base, type: ComboActivityType.Split };
     case ComboActivityType.Merge:
@@ -469,7 +446,7 @@ function normalizeComboActivityBase(
 ): ComboActivityBase {
   return {
     id: activity.id,
-    type: activity.side,
+    type: activity.type,
     wallet: activity.user_address,
     conditionId: activity.combo_condition_id,
     moduleId: activity.module_id,
