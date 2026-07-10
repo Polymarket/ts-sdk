@@ -1,5 +1,15 @@
 # @polymarket/client
 
+## 0.1.0-beta.14
+
+### Patch Changes
+
+- 9233e69: Add Combo activity pagination with normalized activity types, server-cursor Combo position pagination, Combo position sync request fields, and Combo position outcome/redeemable fields.
+- b2e487f: Normalize Combo data field names to use wallet, amount, and payout consistently with the existing activity and portfolio surfaces, and brand Combo activity row IDs.
+- Updated dependencies [9233e69]
+- Updated dependencies [b2e487f]
+  - @polymarket/bindings@0.1.0-beta.12
+
 ## 0.1.0-beta.13
 
 ### Minor Changes
