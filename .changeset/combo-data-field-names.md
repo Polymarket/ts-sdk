@@ -3,4 +3,4 @@
 "@polymarket/client": patch
 ---
 
-Normalize Combo data field names to use wallet, amount, and payout consistently with the existing activity and portfolio surfaces.
+Normalize Combo data field names to use wallet, amount, and payout consistently with the existing activity and portfolio surfaces, and brand Combo activity row IDs.

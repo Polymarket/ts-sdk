@@ -47,6 +47,7 @@ export type CategoryId = Tagged<string, 'CategoryId'>;
 export type ChatId = Tagged<string, 'ChatId'>;
 export type ClobRewardId = Tagged<string, 'ClobRewardId'>;
 export type CommentId = Tagged<string, 'CommentId'>;
+export type ComboActivityId = Tagged<string, 'ComboActivityId'>;
 export type ComboConditionId = Tagged<HexString, 'ComboConditionId'>;
 export type CtfConditionId = Tagged<HexString, 'CtfConditionId'>;
 /** @deprecated Use {@link CtfConditionId}. */
@@ -118,6 +119,10 @@ export function toClobRewardId(value: string): ClobRewardId {
 
 export function toCommentId(value: string): CommentId {
   return toTaggedString<CommentId>(value);
+}
+
+export function toComboActivityId(value: string): ComboActivityId {
+  return toTaggedString<ComboActivityId>(value);
 }
 
 export function toCtfConditionId(value: string): CtfConditionId {
@@ -282,6 +287,7 @@ export const ApiKeySchema = z.string().transform(toApiKey);
 export const BuilderCodeSchema = z.string().transform(toBuilderCode);
 export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
+export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
 export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
 export const CtfConditionIdSchema = z.string().transform(toCtfConditionId);
 export const OptionalCtfConditionIdSchema = z.preprocess(
