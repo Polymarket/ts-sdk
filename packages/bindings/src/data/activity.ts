@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  type ComboActivityId,
+  ComboActivityIdSchema,
   type ComboConditionId,
   ComboConditionIdSchema,
   type CtfConditionId,
@@ -238,7 +240,7 @@ export type Activity =
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
-  id: string;
+  id: ComboActivityId;
   /** Normalized lifecycle activity type. */
   type: ComboActivityType;
   /** Wallet address whose account history contains this activity. */
@@ -305,7 +307,7 @@ export type ComboActivity =
   | ComboRedeemActivity;
 
 const RawComboActivitySchema = z.object({
-  id: z.string(),
+  id: ComboActivityIdSchema,
   side: UpstreamComboActivityTypeSchema,
   module_kind: z.string(),
   user_address: AddressSchema,
