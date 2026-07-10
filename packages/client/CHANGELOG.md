@@ -1,5 +1,13 @@
 # @polymarket/client
 
+## 0.1.0-beta.15
+
+### Patch Changes
+
+- 7649a5e: Parse Combo lifecycle activity from the canonical API `type` field instead of the legacy `side` verb.
+- Updated dependencies [7649a5e]
+  - @polymarket/bindings@0.1.0-beta.13
+
 ## 0.1.0-beta.14
 
 ### Patch Changes
