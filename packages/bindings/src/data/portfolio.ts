@@ -17,6 +17,7 @@ import { AddressSchema } from './common';
 export enum ComboPositionStatus {
   Open = 'OPEN',
   Partial = 'PARTIAL',
+  ResolvedPartial = 'RESOLVED_PARTIAL',
   ResolvedWin = 'RESOLVED_WIN',
   ResolvedLoss = 'RESOLVED_LOSS',
 }
