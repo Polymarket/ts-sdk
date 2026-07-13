@@ -1,5 +1,11 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.14
+
+### Patch Changes
+
+- b982460: Add `RESOLVED_PARTIAL` to `ComboPositionStatus`. The data API emits this terminal status for combo positions that fully resolve at a fractional on-chain payout (e.g. a voided/50-50 leg). Without it, the zod schema rejected the response and combo-positions parsing failed.
+
 ## 0.1.0-beta.13
 
 ### Patch Changes
