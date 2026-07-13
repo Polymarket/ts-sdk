@@ -139,6 +139,9 @@ export class PerpsSubscriptionManager
   }
 
   #onConnectionMessage(message: unknown): void {
+    // Trade frames carry a batch of trades in `data`, so they parse into an
+    // array of events. Try that shape first, then fall back to the
+    // single-event schemas that cover every other channel.
     const trades = PerpsTradeBatchEventSchema.safeParse(message);
     if (trades.success) {
       for (const event of trades.data) {

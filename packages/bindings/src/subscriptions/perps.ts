@@ -68,10 +68,9 @@ export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
 export type PerpsTradeEvent = z.infer<typeof PerpsTradeEventSchema>;
 
 /**
- * A `trades::<instrumentId>` frame carries a batch of trades in `data`, unlike
- * the single-object payloads on the book and bbo channels. This schema
- * validates that batch envelope and fans it out into one {@link PerpsTradeEvent}
- * per trade so consumers observe individual trades.
+ * Validates a `trades::<instrumentId>` frame, whose `data` is an array of
+ * trades, and fans it out into one {@link PerpsTradeEvent} per trade so
+ * consumers observe individual trades.
  */
 export const PerpsTradeBatchEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
