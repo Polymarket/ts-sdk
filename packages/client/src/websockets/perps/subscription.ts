@@ -1,6 +1,7 @@
 import {
   type PerpsMarketDataEvent,
   PerpsMarketDataEventSchema,
+  PerpsTradeBatchEventSchema,
 } from '@polymarket/bindings/subscriptions';
 import { invariant } from '@polymarket/types';
 import type {
@@ -138,6 +139,14 @@ export class PerpsSubscriptionManager
   }
 
   #onConnectionMessage(message: unknown): void {
+    const trades = PerpsTradeBatchEventSchema.safeParse(message);
+    if (trades.success) {
+      for (const event of trades.data) {
+        this.#subscriptions.dispatch(event);
+      }
+      return;
+    }
+
     const parsed = PerpsMarketDataEventSchema.safeParse(message);
     if (!parsed.success) return;
     this.#subscriptions.dispatch(parsed.data);
