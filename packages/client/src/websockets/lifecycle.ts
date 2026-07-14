@@ -22,7 +22,7 @@ export type ScheduleReconnectOptions = {
 
 export type WebSocketConnectionOptions<TContext = undefined> = {
   headers?: Record<string, string>;
-  onClose: () => void;
+  onClose: (event: CloseEvent) => void;
   onError: () => void;
   onMessage: (message: unknown) => void;
   onOpen: (context: TContext) => void;
@@ -176,10 +176,10 @@ export class WebSocketConnection {
         }
         options.onMessage(raw);
       });
-      socket.addEventListener('close', () => {
+      socket.addEventListener('close', (event) => {
         if (this.#socket !== socket) return;
         this.#clearCurrentSocket();
-        options.onClose();
+        options.onClose(event);
       });
       socket.addEventListener('error', () => options.onError());
     });

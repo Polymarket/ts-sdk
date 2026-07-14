@@ -211,7 +211,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     try {
       await this.#connection.connect({
         headers: this.#headers,
-        onClose: () => this.#handleClose(),
+        onClose: (event) => this.#handleClose(event),
         onError: () => undefined,
         onMessage: (message) => this.#handleMessage(message),
         onOpen: () => this.#sendAuthMessage(),
@@ -243,7 +243,10 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   async #shutdown(): Promise<void> {
     const error = new TransportError('RFQ quoter websocket closed.');
-    await this.#shutdownWithError(error);
+    this.#failPending(error);
+    this.#queue.end();
+    await this.#connection.close();
+    this.#onClose();
   }
 
   async #fail(error: Error): Promise<void> {
@@ -255,7 +258,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   async #shutdownWithError(error: Error): Promise<void> {
     this.#failPending(error);
-    this.#queue.end();
+    this.#queue.end(error);
     await this.#connection.close();
     this.#onClose();
   }
@@ -330,9 +333,14 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     );
   }
 
-  #handleClose(): void {
-    this.#onClose();
-    void this.close();
+  #handleClose(event: CloseEvent): void {
+    const suffix = event.reason === '' ? '' : `: ${event.reason}`;
+    void this.#fail(
+      new TransportError(
+        `RFQ quoter websocket closed with code ${event.code}${suffix}.`,
+        { cause: event },
+      ),
+    );
   }
 
   // Unsupported RFQ_ERROR request types are ignored for forward compatibility.

@@ -87,9 +87,11 @@ export enum RfqErrorCode {
   LegMetadataUnavailable = 'LEG_METADATA_UNAVAILABLE',
   MakerAlreadyResponded = 'MAKER_ALREADY_RESPONDED',
   MakerNotRequired = 'MAKER_NOT_REQUIRED',
+  MakerQuoteLimited = 'MAKER_QUOTE_LIMITED',
   PreExecutionBalanceReservationFailed = 'PRE_EXECUTION_BALANCE_RESERVATION_FAILED',
   QuoteMismatch = 'QUOTE_MISMATCH',
   QuoteUnavailable = 'QUOTE_UNAVAILABLE',
+  QuoteValidationTimeoutInternal = 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
   RateLimited = 'RATE_LIMITED',
   RequestFailed = 'REQUEST_FAILED',
   ServiceUnavailable = 'SERVICE_UNAVAILABLE',
@@ -106,6 +108,13 @@ export const RfqConfirmationDecisionSchema = z.enum(RfqConfirmationDecision);
 export const RfqExecutionStatusSchema = z.enum(RfqExecutionStatus);
 export const RfqRequestedSizeUnitSchema = z.enum(RfqRequestedSizeUnit);
 export const RfqErrorCodeSchema = z.enum(RfqErrorCode);
+
+// Error codes evolve independently of released clients. Unknown codes remain
+// operation-level failures instead of invalidating a long-lived RFQ session.
+const RfqWireErrorCodeSchema = z.string().transform((value) => {
+  const parsed = RfqErrorCodeSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+});
 
 export type ComboMarket = {
   id: MarketId;
@@ -471,7 +480,7 @@ export const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
   request_type: z.string().optional(),
   rfq_id: RfqIdSchema.optional(),
   quote_id: RfqQuoteIdSchema.optional(),
-  code: RfqErrorCodeSchema,
+  code: RfqWireErrorCodeSchema,
   error: z.string(),
   request: z.unknown().optional(),
 }).transform((message) => ({
