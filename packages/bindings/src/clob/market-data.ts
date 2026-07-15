@@ -29,13 +29,13 @@ export const PriceSchema = z.object({
 });
 export type Price = z.infer<typeof PriceSchema>;
 
-const PricesBySideSchema = z.record(
+const PricesBySideSchema = z.partialRecord(
   OrderSideSchema,
-  DecimalStringSchema.optional(),
+  DecimalStringSchema,
 );
 export type PricesBySide = z.infer<typeof PricesBySideSchema>;
 
-export const PricesSchema = z.record(z.string(), PricesBySideSchema);
+export const PricesSchema = z.record(TokenIdSchema, PricesBySideSchema);
 export type Prices = z.infer<typeof PricesSchema>;
 
 export const SpreadSchema = z.object({

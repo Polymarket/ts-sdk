@@ -508,7 +508,7 @@ export const FetchPricesError = makeErrorGuard(
 );
 
 /**
- * Fetches quoted prices for multiple tokens.
+ * Fetches quoted prices for multiple tokens as a token ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
