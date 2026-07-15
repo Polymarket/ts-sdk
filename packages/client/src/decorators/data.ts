@@ -107,7 +107,7 @@ export type DataActions = {
    */
   fetchPrice(request: FetchPriceRequest): Promise<DecimalString>;
   /**
-   * Fetches quoted prices for multiple tokens.
+   * Fetches quoted prices for multiple tokens as a token ID keyed lookup.
    *
    * @throws {@link FetchPricesError}
    * Thrown on failure.

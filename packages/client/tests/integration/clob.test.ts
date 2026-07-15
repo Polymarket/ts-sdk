@@ -1,11 +1,11 @@
-import { OrderSide } from '@polymarket/bindings';
+import { OrderSide, type TokenId } from '@polymarket/bindings';
 import { PriceHistoryInterval } from '@polymarket/bindings/clob';
 import type { PublicClient } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectPageWindow } from './helpers';
 
-let liquidClobTokenIdPromise: Promise<string> | undefined;
+let liquidClobTokenIdPromise: Promise<TokenId> | undefined;
 
 describe('CLOB', () => {
   describe('fetchOrderBook', () => {
@@ -94,7 +94,9 @@ describe('CLOB', () => {
         },
       ]);
 
+      expect(Object.keys(result)).toContain(tokenId);
       expect(result[tokenId]?.BUY).toEqual(expect.any(String));
+      expect(result[tokenId]?.SELL).toBeUndefined();
     });
   });
 
@@ -230,7 +232,7 @@ describe('CLOB', () => {
 
 async function selectLiquidClobTokenId(
   publicClient: PublicClient,
-): Promise<string> {
+): Promise<TokenId> {
   liquidClobTokenIdPromise ??= findLiquidClobTokenId(publicClient);
 
   return liquidClobTokenIdPromise;

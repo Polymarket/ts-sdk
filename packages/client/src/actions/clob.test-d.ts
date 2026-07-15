@@ -1,11 +1,12 @@
-import type { DecimalString } from '@polymarket/bindings';
-import type { Midpoints, Spreads } from '@polymarket/bindings/clob';
+import type { DecimalString, OrderSide, TokenId } from '@polymarket/bindings';
+import type { Midpoints, Prices, Spreads } from '@polymarket/bindings/clob';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
 import type {
   fetchMidpoint,
   fetchMidpoints,
   fetchPrice,
+  fetchPrices,
   fetchSpread,
   fetchSpreads,
 } from './index';
@@ -46,6 +47,23 @@ describe('public CLOB price read types', () => {
     >();
     expectTypeOf<ReturnType<typeof actions.fetchSpreads>>().toEqualTypeOf<
       Promise<Spreads>
+    >();
+  });
+
+  it('models fetchPrices results as token ID keyed partial side records', () => {
+    expectTypeOf<Prices>().toEqualTypeOf<
+      Record<TokenId, Partial<Record<OrderSide, DecimalString>>>
+    >();
+  });
+
+  it('preserves fetchPrices return type on actions and decorators', () => {
+    const actions = {} as DataActions;
+
+    expectTypeOf<ReturnType<typeof fetchPrices>>().toEqualTypeOf<
+      Promise<Prices>
+    >();
+    expectTypeOf<ReturnType<typeof actions.fetchPrices>>().toEqualTypeOf<
+      Promise<Prices>
     >();
   });
 });
