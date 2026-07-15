@@ -4,7 +4,7 @@ import {
   DecimalStringSchema,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
-  emptyStringToNull,
+  OptionalDecimalStringSchema,
   type OrderSide,
   OrderSideSchema,
   OrderTypeSchema,
@@ -14,12 +14,8 @@ import {
 
 // The websocket serializes absent optional decimals as an empty string (for
 // example `fee_rate_bps` on a trade with no fee, or `best_bid`/`best_ask` when
-// there is none). Normalize to null so consumers never see '' as a
-// DecimalString, matching the maker-order normalization in `clob/account.ts`.
-const OptionalDecimalStringSchema = z.preprocess(
-  emptyStringToNull,
-  DecimalStringSchema.nullish(),
-);
+// there is none), so optional decimal fields in these schemas use the
+// ''-normalizing OptionalDecimalStringSchema.
 
 const NormalizedOrderSideSchema: z.ZodType<OrderSide> = z.preprocess(
   (value) => (typeof value === 'string' ? value.toUpperCase() : value),
