@@ -2,6 +2,7 @@ import {
   BuilderCodeSchema,
   type CtfConditionId,
   CtfConditionIdSchema,
+  type DecimalString,
   OrderSideSchema,
   PaginationCursorSchema,
   type TickSizeValue,
@@ -24,6 +25,7 @@ import {
   type MarketInfo,
   type MarketReward,
   MidpointSchema,
+  type Midpoints,
   MidpointsSchema,
   type OrderBook,
   OrderBooksSchema,
@@ -37,6 +39,7 @@ import {
   PricesSchema,
   ResolveConditionByTokenResponseSchema,
   SpreadSchema,
+  type Spreads,
   SpreadsSchema,
 } from '@polymarket/bindings/clob';
 import { unwrap } from '@polymarket/types';
@@ -76,7 +79,7 @@ export const FetchMidpointError = makeErrorGuard(
 );
 
 /**
- * Fetches the midpoint price for a token.
+ * Fetches the midpoint price for a token as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -98,7 +101,7 @@ export const FetchMidpointError = makeErrorGuard(
 export async function fetchMidpoint(
   client: BaseClient,
   request: FetchMidpointRequest,
-): Promise<string> {
+): Promise<DecimalString> {
   const params = parseUserInput(request, FetchMidpointRequestSchema);
   const response = await unwrap(
     client.clob
@@ -136,7 +139,7 @@ export const FetchMidpointsError = makeErrorGuard(
 );
 
 /**
- * Fetches midpoint prices for multiple tokens.
+ * Fetches midpoint prices for multiple tokens as decimal strings.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -160,7 +163,7 @@ export const FetchMidpointsError = makeErrorGuard(
 export async function fetchMidpoints(
   client: BaseClient,
   request: FetchMidpointsRequest,
-): Promise<Record<string, string>> {
+): Promise<Midpoints> {
   const params = parseUserInput(request, FetchMidpointsRequestSchema);
 
   return unwrap(
@@ -446,7 +449,7 @@ export const FetchPriceError = makeErrorGuard(
 );
 
 /**
- * Fetches the current quoted price for a token and side.
+ * Fetches the current quoted price for a token and side as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -469,7 +472,7 @@ export const FetchPriceError = makeErrorGuard(
 export async function fetchPrice(
   client: BaseClient,
   request: FetchPriceRequest,
-): Promise<string> {
+): Promise<DecimalString> {
   const params = parseUserInput(request, FetchPriceRequestSchema);
   const response = await unwrap(
     client.clob
@@ -682,7 +685,7 @@ export const FetchSpreadError = makeErrorGuard(
 );
 
 /**
- * Fetches the spread for a token.
+ * Fetches the spread for a token as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -704,7 +707,7 @@ export const FetchSpreadError = makeErrorGuard(
 export async function fetchSpread(
   client: BaseClient,
   request: FetchSpreadRequest,
-): Promise<string> {
+): Promise<DecimalString> {
   const params = parseUserInput(request, FetchSpreadRequestSchema);
   const response = await unwrap(
     client.clob
@@ -742,7 +745,7 @@ export const FetchSpreadsError = makeErrorGuard(
 );
 
 /**
- * Fetches spreads for multiple tokens.
+ * Fetches spreads for multiple tokens as decimal strings.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -766,7 +769,7 @@ export const FetchSpreadsError = makeErrorGuard(
 export async function fetchSpreads(
   client: BaseClient,
   request: FetchSpreadsRequest,
-): Promise<Record<string, string>> {
+): Promise<Spreads> {
   const params = parseUserInput(request, FetchSpreadsRequestSchema);
 
   return unwrap(

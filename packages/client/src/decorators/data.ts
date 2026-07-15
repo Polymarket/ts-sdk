@@ -1,9 +1,12 @@
+import type { DecimalString } from '@polymarket/bindings';
 import type {
   LastTradePrice,
   LastTradePriceForToken,
+  Midpoints,
   OrderBook,
   PriceHistoryPoint,
   Prices,
+  Spreads,
 } from '@polymarket/bindings/clob';
 import type {
   LiveVolume,
@@ -68,7 +71,7 @@ export type DataActions = {
     request: FetchEventLiveVolumeRequest,
   ): Promise<LiveVolume[]>;
   /**
-   * Fetches the midpoint price for a token.
+   * Fetches the midpoint price for a token as a decimal string.
    *
    * @throws {@link FetchMidpointError}
    * Thrown on failure.
@@ -78,9 +81,9 @@ export type DataActions = {
    * const midpoint = await client.fetchMidpoint({ tokenId: '123' });
    * ```
    */
-  fetchMidpoint(request: FetchMidpointRequest): Promise<string>;
+  fetchMidpoint(request: FetchMidpointRequest): Promise<DecimalString>;
   /**
-   * Fetches midpoint prices for multiple tokens.
+   * Fetches midpoint prices for multiple tokens as decimal strings.
    *
    * @throws {@link FetchMidpointsError}
    * Thrown on failure.
@@ -90,11 +93,9 @@ export type DataActions = {
    * const midpoints = await client.fetchMidpoints([{ tokenId: '123' }]);
    * ```
    */
-  fetchMidpoints(
-    request: FetchMidpointsRequest,
-  ): Promise<Record<string, string>>;
+  fetchMidpoints(request: FetchMidpointsRequest): Promise<Midpoints>;
   /**
-   * Fetches the current quoted price for a token and side.
+   * Fetches the current quoted price for a token and side as a decimal string.
    *
    * @throws {@link FetchPriceError}
    * Thrown on failure.
@@ -104,7 +105,7 @@ export type DataActions = {
    * const price = await client.fetchPrice({ tokenId: '123', side: OrderSide.BUY });
    * ```
    */
-  fetchPrice(request: FetchPriceRequest): Promise<string>;
+  fetchPrice(request: FetchPriceRequest): Promise<DecimalString>;
   /**
    * Fetches quoted prices for multiple tokens.
    *
@@ -142,7 +143,7 @@ export type DataActions = {
    */
   fetchOrderBooks(request: FetchOrderBooksRequest): Promise<OrderBook[]>;
   /**
-   * Fetches the spread for a token.
+   * Fetches the spread for a token as a decimal string.
    *
    * @throws {@link FetchSpreadError}
    * Thrown on failure.
@@ -152,9 +153,9 @@ export type DataActions = {
    * const spread = await client.fetchSpread({ tokenId: '123' });
    * ```
    */
-  fetchSpread(request: FetchSpreadRequest): Promise<string>;
+  fetchSpread(request: FetchSpreadRequest): Promise<DecimalString>;
   /**
-   * Fetches spreads for multiple tokens.
+   * Fetches spreads for multiple tokens as decimal strings.
    *
    * @throws {@link FetchSpreadsError}
    * Thrown on failure.
@@ -164,7 +165,7 @@ export type DataActions = {
    * const spreads = await client.fetchSpreads([{ tokenId: '123' }]);
    * ```
    */
-  fetchSpreads(request: FetchSpreadsRequest): Promise<Record<string, string>>;
+  fetchSpreads(request: FetchSpreadsRequest): Promise<Spreads>;
   /**
    * Fetches the last traded price for a token.
    *
