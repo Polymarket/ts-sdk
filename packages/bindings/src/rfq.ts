@@ -67,7 +67,7 @@ export enum RfqRequestedSizeUnit {
   Shares = 'shares',
 }
 
-export enum RfqErrorCode {
+export enum RfqKnownErrorCode {
   AddressMismatch = 'ADDRESS_MISMATCH',
   AllowanceValidationFailed = 'ALLOWANCE_VALIDATION_FAILED',
   BalanceValidationFailed = 'BALANCE_VALIDATION_FAILED',
@@ -102,19 +102,27 @@ export enum RfqErrorCode {
   UnknownRfq = 'UNKNOWN_RFQ',
 }
 
-export const RfqDirectionSchema = z.enum(RfqDirection);
-export const RfqSideSchema = z.literal(RfqSide.Yes);
-export const RfqConfirmationDecisionSchema = z.enum(RfqConfirmationDecision);
-export const RfqExecutionStatusSchema = z.enum(RfqExecutionStatus);
-export const RfqRequestedSizeUnitSchema = z.enum(RfqRequestedSizeUnit);
-export const RfqErrorCodeSchema = z.enum(RfqErrorCode);
+/**
+ * An RFQ error code. Known codes are enumerated in {@link RfqKnownErrorCode};
+ * newly introduced codes flow through as plain strings so they can be handled
+ * before a client release that enumerates them.
+ */
+export type RfqErrorCode = RfqKnownErrorCode | (string & {});
 
-// Error codes evolve independently of released clients. Unknown codes remain
-// operation-level failures instead of invalidating a long-lived RFQ session.
-const RfqWireErrorCodeSchema = z.string().transform((value) => {
-  const parsed = RfqErrorCodeSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-});
+/**
+ * @deprecated Use {@link RfqKnownErrorCode} instead. This alias will be
+ * removed at the end of the beta phase.
+ */
+export const RfqErrorCode = RfqKnownErrorCode;
+
+const RfqDirectionSchema = z.enum(RfqDirection);
+const RfqSideSchema = z.literal(RfqSide.Yes);
+const RfqConfirmationDecisionSchema = z.enum(RfqConfirmationDecision);
+const RfqExecutionStatusSchema = z.enum(RfqExecutionStatus);
+
+// Error codes evolve independently of released clients. Codes not yet
+// enumerated in RfqKnownErrorCode must still parse and flow through as-is.
+const RfqErrorCodeSchema = z.string().transform((value): RfqErrorCode => value);
 
 export type ComboMarket = {
   id: MarketId;
@@ -138,7 +146,7 @@ export type ComboMarketOutcomes = {
   no: ComboMarketOutcome;
 };
 
-export const ComboMarketSchema = z
+const ComboMarketSchema = z
   .object({
     id: MarketIdSchema,
     condition_id: CtfConditionIdSchema,
@@ -291,21 +299,19 @@ export const RfqKnownInboundMessageSchema = z.object({
   type: z.enum(RfqKnownInboundType),
 });
 
-export const RfqAuthResponseMessageSchema = RfqKnownInboundMessageSchema.extend(
-  {
-    type: z.literal(RfqKnownInboundType.Auth),
-    success: z.boolean(),
-    address: EvmAddressSchema.optional(),
-    role: z.string().optional(),
-    error: z.string().optional(),
-  },
-);
+const RfqAuthResponseMessageSchema = RfqKnownInboundMessageSchema.extend({
+  type: z.literal(RfqKnownInboundType.Auth),
+  success: z.boolean(),
+  address: EvmAddressSchema.optional(),
+  role: z.string().optional(),
+  error: z.string().optional(),
+});
 
 export type RfqAuthResponseMessage = z.infer<
   typeof RfqAuthResponseMessageSchema
 >;
 
-export const RfqQuoteRequestSchema = RfqKnownInboundMessageSchema.extend({
+const RfqQuoteRequestSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.QuoteRequest),
   rfq_id: RfqIdSchema,
   requestor_public_id: RfqRequestorPublicIdSchema,
@@ -349,7 +355,7 @@ export type RfqQuoteCancelMessage = {
   maker_address: EvmAddress;
 };
 
-export const RfqQuoteAckSchema = RfqKnownInboundMessageSchema.extend({
+const RfqQuoteAckSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.QuoteAck),
   rfq_id: RfqIdSchema,
   quote_id: RfqQuoteIdSchema,
@@ -361,7 +367,7 @@ export const RfqQuoteAckSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqQuoteAck = z.infer<typeof RfqQuoteAckSchema>;
 
-export const RfqQuoteCancelAckSchema = RfqKnownInboundMessageSchema.extend({
+const RfqQuoteCancelAckSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.QuoteCancelAck),
   rfq_id: RfqIdSchema,
   quote_id: RfqQuoteIdSchema,
@@ -373,25 +379,23 @@ export const RfqQuoteCancelAckSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqQuoteCancelAck = z.infer<typeof RfqQuoteCancelAckSchema>;
 
-export const RfqConfirmationRequestSchema = RfqKnownInboundMessageSchema.extend(
-  {
-    type: z.literal(RfqKnownInboundType.ConfirmationRequest),
-    rfq_id: RfqIdSchema,
-    quote_id: RfqQuoteIdSchema,
-    signer_address: EvmAddressSchema,
-    maker_address: EvmAddressSchema,
-    signature_type: SignatureTypeSchema,
-    leg_position_ids: z.array(PositionIdSchema),
-    condition_id: ComboConditionIdSchema,
-    yes_position_id: PositionIdSchema,
-    no_position_id: PositionIdSchema,
-    direction: RfqDirectionSchema,
-    side: RfqSideSchema,
-    fill_size_e6: E6BigIntStringToDecimalStringSchema,
-    price_e6: E6BigIntStringToDecimalStringSchema,
-    confirm_by: EpochMillisecondsSchema,
-  },
-).transform((message) => ({
+const RfqConfirmationRequestSchema = RfqKnownInboundMessageSchema.extend({
+  type: z.literal(RfqKnownInboundType.ConfirmationRequest),
+  rfq_id: RfqIdSchema,
+  quote_id: RfqQuoteIdSchema,
+  signer_address: EvmAddressSchema,
+  maker_address: EvmAddressSchema,
+  signature_type: SignatureTypeSchema,
+  leg_position_ids: z.array(PositionIdSchema),
+  condition_id: ComboConditionIdSchema,
+  yes_position_id: PositionIdSchema,
+  no_position_id: PositionIdSchema,
+  direction: RfqDirectionSchema,
+  side: RfqSideSchema,
+  fill_size_e6: E6BigIntStringToDecimalStringSchema,
+  price_e6: E6BigIntStringToDecimalStringSchema,
+  confirm_by: EpochMillisecondsSchema,
+}).transform((message) => ({
   conditionId: message.condition_id,
   confirmBy: message.confirm_by,
   direction: message.direction,
@@ -420,7 +424,7 @@ export type RfqConfirmationResponseMessage = {
   decision: RfqConfirmationDecision;
 };
 
-export const RfqConfirmationAckSchema = RfqKnownInboundMessageSchema.extend({
+const RfqConfirmationAckSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.ConfirmationAck),
   rfq_id: RfqIdSchema,
   quote_id: RfqQuoteIdSchema,
@@ -434,7 +438,7 @@ export const RfqConfirmationAckSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqConfirmationAck = z.infer<typeof RfqConfirmationAckSchema>;
 
-export const RfqExecutionUpdateSchema = RfqKnownInboundMessageSchema.extend({
+const RfqExecutionUpdateSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.ExecutionUpdate),
   rfq_id: RfqIdSchema,
   status: RfqExecutionStatusSchema,
@@ -448,7 +452,7 @@ export const RfqExecutionUpdateSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqExecutionUpdate = z.infer<typeof RfqExecutionUpdateSchema>;
 
-export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
+const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.Trade),
   rfq_id: RfqIdSchema,
   requester_id: RfqRequestorPublicIdSchema,
@@ -474,13 +478,13 @@ export const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
 
 export type RfqTrade = z.infer<typeof RfqTradeSchema>;
 
-export const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
+const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
   type: z.literal(RfqKnownInboundType.Error),
   error_id: z.string().optional(),
   request_type: z.string().optional(),
   rfq_id: RfqIdSchema.optional(),
   quote_id: RfqQuoteIdSchema.optional(),
-  code: RfqWireErrorCodeSchema,
+  code: RfqErrorCodeSchema,
   error: z.string(),
   request: z.unknown().optional(),
 }).transform((message) => ({

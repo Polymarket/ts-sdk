@@ -1,9 +1,9 @@
 import {
+  ConnectionLostError,
   production,
-  RfqErrorCode,
+  RfqKnownErrorCode,
   SignatureType,
   TimeoutError,
-  TransportError,
   UserInputError,
 } from '@polymarket/client';
 import { ws } from 'msw';
@@ -691,7 +691,7 @@ describe('RFQ sessions', () => {
             const quote = event.quote({ price: 0.45 });
 
             await expect(quote).rejects.toMatchObject({
-              code: RfqErrorCode.QuoteValidationTimeoutInternal,
+              code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
               errorId: 'reqerr-1',
               message: 'quote validation timed out',
               name: 'RfqQuoteRejectedError',
@@ -752,7 +752,7 @@ describe('RFQ sessions', () => {
 
           if (requests === 1) {
             await expect(event.quote({ price: 0.45 })).rejects.toMatchObject({
-              code: undefined,
+              code: 'FUTURE_ERROR_CODE',
               message: 'future quote rejection',
               name: 'RfqQuoteRejectedError',
             });
@@ -1297,7 +1297,7 @@ describe('RFQ sessions', () => {
     });
   });
 
-  describe('when the connection closes before quote acknowledgement', () => {
+  describe('when the connection is lost before quote acknowledgement', () => {
     beforeEach(() => {
       server.resetHandlers();
       server.use(
@@ -1329,8 +1329,11 @@ describe('RFQ sessions', () => {
         for await (const event of session) {
           if (event.type === 'quote_request') {
             const quote = event.quote({ price: 0.45 });
+            // The server closes with a normal closure code (1000), but an
+            // unsolicited close is still a connection loss for the session:
+            // in-flight operations must not hang.
             const quoteRejection =
-              expect(quote).rejects.toBeInstanceOf(TransportError);
+              expect(quote).rejects.toBeInstanceOf(ConnectionLostError);
 
             await vi.waitFor(() => {
               expect(outboundFrames).toContainEqual(
@@ -1408,7 +1411,7 @@ describe('RFQ sessions', () => {
     });
   });
 
-  describe('when the connection closes before confirmation acknowledgement', () => {
+  describe('when the connection is lost before confirmation acknowledgement', () => {
     beforeEach(() => {
       server.resetHandlers();
       server.use(
@@ -1455,7 +1458,7 @@ describe('RFQ sessions', () => {
           if (event.type === 'confirmation_request') {
             const confirmation = event.confirm();
             const confirmationRejection =
-              expect(confirmation).rejects.toBeInstanceOf(TransportError);
+              expect(confirmation).rejects.toBeInstanceOf(ConnectionLostError);
 
             await vi.waitFor(() => {
               expect(outboundFrames).toContainEqual(

@@ -2,7 +2,11 @@ import {
   setNonBlockingInterval,
   setNonBlockingTimeout,
 } from '@polymarket/types';
-import { TransportError } from '../errors';
+import {
+  TransportError,
+  type WebSocketCloseCode,
+  WebSocketKnownCloseCode,
+} from '../errors';
 
 export type WebSocketHeartbeat = {
   handleMessage(message: string): boolean;
@@ -20,9 +24,14 @@ export type ScheduleReconnectOptions = {
   reconnect: () => Promise<unknown>;
 };
 
+export type WebSocketCloseInfo = {
+  code: WebSocketCloseCode;
+  reason: string;
+};
+
 export type WebSocketConnectionOptions<TContext = undefined> = {
   headers?: Record<string, string>;
-  onClose: (event: CloseEvent) => void;
+  onConnectionLost: (info: WebSocketCloseInfo) => void;
   onError: () => void;
   onMessage: (message: unknown) => void;
   onOpen: (context: TContext) => void;
@@ -179,7 +188,10 @@ export class WebSocketConnection {
       socket.addEventListener('close', (event) => {
         if (this.#socket !== socket) return;
         this.#clearCurrentSocket();
-        options.onClose(event);
+        options.onConnectionLost({
+          code: event.code || WebSocketKnownCloseCode.NoStatusReceived,
+          reason: event.reason ?? '',
+        });
       });
       socket.addEventListener('error', () => options.onError());
     });

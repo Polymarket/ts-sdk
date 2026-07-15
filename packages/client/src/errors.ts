@@ -66,6 +66,61 @@ export class TransportError extends PolymarketError {
   }
 }
 
+/**
+ * WebSocket close codes defined by RFC 6455 and the IANA WebSocket Close Code
+ * Number registry. Codes 4000-4999 are reserved for application use and are
+ * intentionally not modeled here.
+ */
+export enum WebSocketKnownCloseCode {
+  NormalClosure = 1000,
+  GoingAway = 1001,
+  ProtocolError = 1002,
+  UnsupportedData = 1003,
+  /** Synthesized locally when the peer closed without a status code. */
+  NoStatusReceived = 1005,
+  /** Synthesized locally when the connection dropped without a close frame. */
+  AbnormalClosure = 1006,
+  InvalidFramePayload = 1007,
+  PolicyViolation = 1008,
+  MessageTooBig = 1009,
+  InternalError = 1011,
+  ServiceRestart = 1012,
+  TryAgainLater = 1013,
+}
+
+/**
+ * A WebSocket close code. Codes enumerated in
+ * {@link WebSocketKnownCloseCode} are defined by RFC 6455; other values, such
+ * as application-defined 4000-4999 codes, flow through as plain numbers.
+ */
+export type WebSocketCloseCode = WebSocketKnownCloseCode | (number & {});
+
+export type ConnectionLostErrorOptions = {
+  /** WebSocket close code reported for the lost connection. */
+  code: WebSocketCloseCode;
+  /** Close reason provided by the peer. Empty when none was sent. */
+  reason: string;
+};
+
+/**
+ * Error thrown when a live connection ends without the SDK requesting it.
+ */
+export class ConnectionLostError extends PolymarketError {
+  override name = 'ConnectionLostError' as const;
+
+  readonly code: WebSocketCloseCode;
+  readonly reason: string;
+
+  constructor(
+    message: string,
+    options: ErrorOptions & ConnectionLostErrorOptions,
+  ) {
+    super(message, options);
+    this.code = options.code;
+    this.reason = options.reason;
+  }
+}
+
 export type RequestRejectedErrorOptions = {
   status: number;
 };

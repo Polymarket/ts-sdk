@@ -24,10 +24,10 @@ import {
   RfqConfirmationRejectedError,
   RfqQuoteRejectedError,
 } from '../../actions/rfq';
-import { TransportError } from '../../errors';
+import { ConnectionLostError, TransportError } from '../../errors';
 import type { Signer } from '../../types';
 import type { AccountIdentity } from '../../wallet';
-import { WebSocketConnection } from '../lifecycle';
+import { type WebSocketCloseInfo, WebSocketConnection } from '../lifecycle';
 import {
   type RfqEventController,
   toConfirmationAck,
@@ -211,7 +211,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     try {
       await this.#connection.connect({
         headers: this.#headers,
-        onClose: (event) => this.#handleClose(event),
+        onConnectionLost: (info) => this.#handleConnectionLost(info),
         onError: () => undefined,
         onMessage: (message) => this.#handleMessage(message),
         onOpen: () => this.#sendAuthMessage(),
@@ -333,13 +333,9 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     );
   }
 
-  #handleClose(event: CloseEvent): void {
-    const suffix = event.reason === '' ? '' : `: ${event.reason}`;
+  #handleConnectionLost(info: WebSocketCloseInfo): void {
     void this.#fail(
-      new TransportError(
-        `RFQ quoter websocket closed with code ${event.code}${suffix}.`,
-        { cause: event },
-      ),
+      new ConnectionLostError('RFQ quoter connection lost.', info),
     );
   }
 
