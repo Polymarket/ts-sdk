@@ -3,4 +3,4 @@
 "@polymarket/client": patch
 ---
 
-Strengthen the `fetchPrices` result type so price lookups are keyed by `TokenId` with partial `OrderSide` records containing decimal strings.
+Strengthen CLOB batch price read result types so midpoint, price, and spread lookups are keyed by `TokenId`. `fetchPrices` now returns partial `OrderSide` records containing decimal strings, while `fetchMidpoints` and `fetchSpreads` return token ID keyed decimal strings.

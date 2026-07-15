@@ -139,7 +139,7 @@ export const FetchMidpointsError = makeErrorGuard(
 );
 
 /**
- * Fetches midpoint prices for multiple tokens as decimal strings.
+ * Fetches midpoint prices for multiple tokens as a token ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -745,7 +745,7 @@ export const FetchSpreadsError = makeErrorGuard(
 );
 
 /**
- * Fetches spreads for multiple tokens as decimal strings.
+ * Fetches spreads for multiple tokens as a token ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

@@ -12,6 +12,14 @@ import type {
 } from './index';
 
 describe('public CLOB price read types', () => {
+  it('models batch price reads as token ID keyed decimal records', () => {
+    expectTypeOf<Midpoints>().toEqualTypeOf<Record<TokenId, DecimalString>>();
+    expectTypeOf<Prices>().toEqualTypeOf<
+      Record<TokenId, Partial<Record<OrderSide, DecimalString>>>
+    >();
+    expectTypeOf<Spreads>().toEqualTypeOf<Record<TokenId, DecimalString>>();
+  });
+
   it('preserves branded decimal action return types', () => {
     expectTypeOf<ReturnType<typeof fetchMidpoint>>().toEqualTypeOf<
       Promise<DecimalString>
@@ -47,12 +55,6 @@ describe('public CLOB price read types', () => {
     >();
     expectTypeOf<ReturnType<typeof actions.fetchSpreads>>().toEqualTypeOf<
       Promise<Spreads>
-    >();
-  });
-
-  it('models fetchPrices results as token ID keyed partial side records', () => {
-    expectTypeOf<Prices>().toEqualTypeOf<
-      Record<TokenId, Partial<Record<OrderSide, DecimalString>>>
     >();
   });
 

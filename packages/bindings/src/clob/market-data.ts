@@ -21,7 +21,7 @@ export const MidpointSchema = z.object({
 });
 export type Midpoint = z.infer<typeof MidpointSchema>;
 
-export const MidpointsSchema = z.record(z.string(), DecimalStringSchema);
+export const MidpointsSchema = z.record(TokenIdSchema, DecimalStringSchema);
 export type Midpoints = z.infer<typeof MidpointsSchema>;
 
 export const PriceSchema = z.object({
@@ -43,7 +43,7 @@ export const SpreadSchema = z.object({
 });
 export type Spread = z.infer<typeof SpreadSchema>;
 
-export const SpreadsSchema = z.record(z.string(), DecimalStringSchema);
+export const SpreadsSchema = z.record(TokenIdSchema, DecimalStringSchema);
 export type Spreads = z.infer<typeof SpreadsSchema>;
 
 export const LastTradePriceSchema = z.object({

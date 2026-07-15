@@ -62,6 +62,7 @@ describe('CLOB', () => {
 
       const result = await publicClient.fetchMidpoints([{ tokenId }]);
 
+      expect(Object.keys(result)).toContain(tokenId);
       expect(result[tokenId]).toEqual(expect.any(String));
     });
   });
@@ -118,6 +119,7 @@ describe('CLOB', () => {
 
       const result = await publicClient.fetchSpreads([{ tokenId }]);
 
+      expect(Object.keys(result)).toContain(tokenId);
       expect(result[tokenId]).toEqual(expect.any(String));
     });
   });

@@ -83,7 +83,7 @@ export type DataActions = {
    */
   fetchMidpoint(request: FetchMidpointRequest): Promise<DecimalString>;
   /**
-   * Fetches midpoint prices for multiple tokens as decimal strings.
+   * Fetches midpoint prices for multiple tokens as a token ID keyed lookup.
    *
    * @throws {@link FetchMidpointsError}
    * Thrown on failure.
@@ -155,7 +155,7 @@ export type DataActions = {
    */
   fetchSpread(request: FetchSpreadRequest): Promise<DecimalString>;
   /**
-   * Fetches spreads for multiple tokens as decimal strings.
+   * Fetches spreads for multiple tokens as a token ID keyed lookup.
    *
    * @throws {@link FetchSpreadsError}
    * Thrown on failure.
