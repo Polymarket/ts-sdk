@@ -16,6 +16,7 @@ import type {
 import { PolymarketError } from '@polymarket/types';
 import type { BaseSecureClient } from '../clients';
 import {
+  ConnectionLostError,
   makeErrorGuard,
   SigningError,
   TimeoutError,
@@ -28,6 +29,7 @@ export {
   RfqDirection,
   RfqErrorCode,
   RfqExecutionStatus,
+  RfqKnownErrorCode,
   RfqRequestedSizeUnit,
   RfqSide,
 } from '@polymarket/bindings/rfq';
@@ -122,12 +124,14 @@ export class RfqQuoteRejectedError extends PolymarketError {
 }
 
 export type RfqQuoteError =
+  | ConnectionLostError
   | RfqQuoteRejectedError
   | SigningError
   | TimeoutError
   | TransportError
   | UserInputError;
 export const RfqQuoteError = makeErrorGuard(
+  ConnectionLostError,
   RfqQuoteRejectedError,
   SigningError,
   TimeoutError,
@@ -170,10 +174,12 @@ export class RfqCancelQuoteRejectedError extends PolymarketError {
 }
 
 export type RfqCancelQuoteError =
+  | ConnectionLostError
   | RfqCancelQuoteRejectedError
   | TimeoutError
   | TransportError;
 export const RfqCancelQuoteError = makeErrorGuard(
+  ConnectionLostError,
   RfqCancelQuoteRejectedError,
   TimeoutError,
   TransportError,
@@ -214,10 +220,12 @@ export class RfqConfirmationRejectedError extends PolymarketError {
 }
 
 export type RfqConfirmationError =
+  | ConnectionLostError
   | RfqConfirmationRejectedError
   | TimeoutError
   | TransportError;
 export const RfqConfirmationError = makeErrorGuard(
+  ConnectionLostError,
   RfqConfirmationRejectedError,
   TimeoutError,
   TransportError,
@@ -331,8 +339,11 @@ export interface RfqSession extends AsyncIterable<RfqEvent> {
   close(): Promise<void>;
 }
 
-export type OpenRfqSessionError = TransportError;
-export const OpenRfqSessionError = makeErrorGuard(TransportError);
+export type OpenRfqSessionError = ConnectionLostError | TransportError;
+export const OpenRfqSessionError = makeErrorGuard(
+  ConnectionLostError,
+  TransportError,
+);
 
 /**
  * Opens an RFQ event session.

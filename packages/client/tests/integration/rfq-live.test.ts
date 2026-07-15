@@ -1,6 +1,6 @@
 import {
-  RfqErrorCode,
   RfqExecutionStatus,
+  RfqKnownErrorCode,
   RfqQuoteRejectedError,
 } from '@polymarket/client';
 import { describe, expect, it, runMeteredTests } from './fixtures';
@@ -49,8 +49,8 @@ describe('RFQ live quoting integration', () => {
 
                 if (
                   error instanceof RfqQuoteRejectedError &&
-                  (error.code === RfqErrorCode.SubmissionWindowClosed ||
-                    error.code === RfqErrorCode.UnknownRfq)
+                  (error.code === RfqKnownErrorCode.SubmissionWindowClosed ||
+                    error.code === RfqKnownErrorCode.UnknownRfq)
                 ) {
                   return;
                 }

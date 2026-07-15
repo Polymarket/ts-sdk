@@ -126,7 +126,7 @@ export class ClobMarketWebSocketManager
 
   #connect(): Promise<WebSocketConnectionResult> {
     return this.#connection.connect({
-      onClose: () => this.#onConnectionClose(),
+      onConnectionLost: () => this.#onConnectionLost(),
       onError: () => this.#onConnectionError(),
       onMessage: (message) => this.#onConnectionMessage(message),
       onOpen: () => this.#onConnectionOpen(),
@@ -149,7 +149,7 @@ export class ClobMarketWebSocketManager
     }
   }
 
-  #onConnectionClose(): void {
+  #onConnectionLost(): void {
     if (this.#subscriptions.hasActiveSubscriptions()) {
       this.#scheduleReconnect();
     }
