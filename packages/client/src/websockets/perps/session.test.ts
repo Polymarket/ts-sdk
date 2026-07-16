@@ -161,6 +161,30 @@ describe('PerpsSession', () => {
         validFrame: balanceUpdate({ balance: '1', sequence: 1 }),
       });
     });
+
+    it('emits one event for a batched fill frame', async () => {
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      await connection.send(fillsUpdate({ sequence: 1, tradeIds: [1, 2] }));
+
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'fills',
+          payload: [
+            { instrumentId: 1, side: 'long', tradeId: 1 },
+            { instrumentId: 1, side: 'long', tradeId: 2 },
+          ],
+          sequence: 1,
+          type: 'fill',
+        },
+      });
+
+      await session.close();
+    });
   });
 
   describe('reconnects', () => {
@@ -1272,6 +1296,31 @@ function balanceUpdate(request: { balance: string; sequence: number }) {
       balance: request.balance,
       value: request.balance,
     },
+    sq: request.sequence,
+    ts: 1_700_000_000_000,
+  };
+}
+
+function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
+  return {
+    ch: 'fills',
+    data: request.tradeIds.map((tid) => ({
+      coid: '550e8400e29b41d4a716446655440000',
+      fea: 'USDC',
+      fee: '1.25',
+      iid: 1,
+      liq: false,
+      oid: 123,
+      p: '100.00',
+      pep: '100.00',
+      pnl: '100.00',
+      psz: '26.86',
+      qty: '10.00',
+      side: 'long',
+      taker: true,
+      tid,
+      ts: 1_700_000_000_000,
+    })),
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };

@@ -55,7 +55,7 @@ const PerpsUpdateEnvelopeSchema = z.object({
 
 export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
-  data: PerpsPublicTradeUpdateSchema,
+  data: z.array(PerpsPublicTradeUpdateSchema),
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.trades' as const,
   type: 'trade' as const,
@@ -213,7 +213,7 @@ export type PerpsOrderUpdateEvent = z.infer<typeof PerpsOrderUpdateEventSchema>;
 export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
   'fill',
   'fills',
-  PerpsAccountFillUpdateSchema,
+  z.array(PerpsAccountFillUpdateSchema),
 );
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
 
