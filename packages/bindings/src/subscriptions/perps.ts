@@ -213,7 +213,7 @@ export type PerpsOrderUpdateEvent = z.infer<typeof PerpsOrderUpdateEventSchema>;
 export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
   'fill',
   'fills',
-  PerpsAccountFillUpdateSchema,
+  z.array(PerpsAccountFillUpdateSchema),
 );
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
 
