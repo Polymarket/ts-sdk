@@ -1,5 +1,4 @@
 import { PerpsKlineInterval } from '@polymarket/bindings/perps';
-import type { PerpsMarketDataEvent } from '@polymarket/bindings/subscriptions';
 import { ws } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -121,7 +120,7 @@ describe('PerpsSubscriptionManager', () => {
     });
   });
 
-  it('fans out batched trade frames into one event per trade', async () => {
+  it('emits one event for a batched trade frame', async () => {
     const connection = captureConnection(server, perpsSubscriptions);
 
     const handle = await manager.subscribe({
@@ -155,24 +154,18 @@ describe('PerpsSubscriptionManager', () => {
       ts: 1_700_000_000_002,
     });
 
-    const trades: PerpsMarketDataEvent[] = [];
     for await (const event of handle) {
-      trades.push(event);
-      if (trades.length === 2) break;
+      expect(event).toMatchObject({
+        payload: [
+          { instrumentId: 1, price: '100', side: 'long', tradeId: 1 },
+          { instrumentId: 1, price: '101', side: 'short', tradeId: 2 },
+        ],
+        sequence: 5,
+        topic: 'perps.trades',
+        type: 'trade',
+      });
+      break;
     }
-
-    expect(trades).toMatchObject([
-      {
-        payload: { instrumentId: 1, price: '100', side: 'long', tradeId: 1 },
-        topic: 'perps.trades',
-        type: 'trade',
-      },
-      {
-        payload: { instrumentId: 1, price: '101', side: 'short', tradeId: 2 },
-        topic: 'perps.trades',
-        type: 'trade',
-      },
-    ]);
   });
 
   it('reconnects and resubscribes active channels after an unexpected close', {

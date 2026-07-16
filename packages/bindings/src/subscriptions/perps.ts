@@ -55,7 +55,7 @@ const PerpsUpdateEnvelopeSchema = z.object({
 
 export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
-  data: PerpsPublicTradeUpdateSchema,
+  data: z.array(PerpsPublicTradeUpdateSchema),
 }).transform(({ ch, ts, sq, data }) => ({
   topic: 'perps.trades' as const,
   type: 'trade' as const,
@@ -66,25 +66,6 @@ export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
 }));
 
 export type PerpsTradeEvent = z.infer<typeof PerpsTradeEventSchema>;
-
-/**
- * Validates a `trades::<instrumentId>` frame, whose `data` is an array of
- * trades, and fans it out into one {@link PerpsTradeEvent} per trade so
- * consumers observe individual trades.
- */
-export const PerpsTradeBatchEventSchema = PerpsUpdateEnvelopeSchema.extend({
-  ch: TradesChannelSchema,
-  data: z.array(PerpsPublicTradeUpdateSchema),
-}).transform(({ ch, ts, sq, data }) =>
-  data.map<PerpsTradeEvent>((payload) => ({
-    topic: 'perps.trades' as const,
-    type: 'trade' as const,
-    channel: ch,
-    timestamp: ts,
-    sequence: sq,
-    payload,
-  })),
-);
 
 export const PerpsBboEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BboChannelSchema,

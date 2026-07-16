@@ -1,7 +1,6 @@
 import {
   type PerpsMarketDataEvent,
   PerpsMarketDataEventSchema,
-  PerpsTradeBatchEventSchema,
 } from '@polymarket/bindings/subscriptions';
 import { invariant } from '@polymarket/types';
 import type {
@@ -139,17 +138,6 @@ export class PerpsSubscriptionManager
   }
 
   #onConnectionMessage(message: unknown): void {
-    // Trade frames carry a batch of trades in `data`, so they parse into an
-    // array of events. Try that shape first, then fall back to the
-    // single-event schemas that cover every other channel.
-    const trades = PerpsTradeBatchEventSchema.safeParse(message);
-    if (trades.success) {
-      for (const event of trades.data) {
-        this.#subscriptions.dispatch(event);
-      }
-      return;
-    }
-
     const parsed = PerpsMarketDataEventSchema.safeParse(message);
     if (!parsed.success) return;
     this.#subscriptions.dispatch(parsed.data);
@@ -285,6 +273,9 @@ function matcherFor(
 ): (event: PerpsMarketDataEvent) => boolean {
   switch (subscription.topic) {
     case 'perps.trades':
+      return (event) =>
+        event.topic === 'perps.trades' &&
+        event.channel === `trades::${subscription.instrumentId}`;
     case 'perps.bbo':
     case 'perps.book':
       return (event) =>
