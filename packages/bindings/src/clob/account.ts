@@ -46,7 +46,7 @@ export const OpenOrderSchema = z
     expiration: OptionalEpochMillisecondsToIsoDateTimeStringSchema,
     id: z.string(),
     maker_address: z.string(),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     order_type: z.string(),
     original_size: DecimalStringSchema,
     outcome: z.string(),
@@ -63,6 +63,7 @@ export const OpenOrderSchema = z
       created_at,
       expiration,
       maker_address,
+      market,
       order_type,
       original_size,
       size_matched,
@@ -70,6 +71,8 @@ export const OpenOrderSchema = z
     }) => {
       const transformed = {
         ...rest,
+        market,
+        conditionId: market,
         tokenId: asset_id,
         associateTrades: associate_trades,
         createdAt: created_at,
@@ -136,7 +139,7 @@ export const ClobTradeSchema = z
     last_update: EpochLikeToIsoDateTimeStringSchema,
     maker_address: z.string(),
     maker_orders: z.array(MakerOrderSchema),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     match_time: EpochLikeToIsoDateTimeStringSchema,
     outcome: z.string(),
     owner: z.string(),
@@ -156,6 +159,7 @@ export const ClobTradeSchema = z
       last_update,
       maker_address,
       maker_orders,
+      market,
       match_time,
       taker_order_id,
       trader_side,
@@ -163,6 +167,8 @@ export const ClobTradeSchema = z
       ...rest
     }) => ({
       ...rest,
+      market,
+      conditionId: market,
       tokenId: asset_id,
       bucketIndex: bucket_index,
       feeRateBps: fee_rate_bps,

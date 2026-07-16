@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  CtfConditionIdSchema,
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
@@ -13,7 +14,7 @@ export const BuilderTradeSchema = z
     tradeType: z.string(),
     takerOrderHash: z.string(),
     builder: z.string(),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     assetId: TokenIdSchema,
     side: OrderSideSchema,
     size: DecimalStringSchema,
@@ -33,8 +34,10 @@ export const BuilderTradeSchema = z
     createdAt: EpochMillisecondsToIsoDateTimeStringSchema.optional(),
     updatedAt: EpochMillisecondsToIsoDateTimeStringSchema.optional(),
   })
-  .transform(({ err_msg, assetId, matchTime, ...rest }) => ({
+  .transform(({ err_msg, assetId, market, matchTime, ...rest }) => ({
     ...rest,
+    market,
+    conditionId: market,
     tokenId: assetId,
     errMsg: err_msg,
     matchedAt: matchTime,
