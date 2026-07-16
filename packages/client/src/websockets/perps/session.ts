@@ -19,7 +19,6 @@ import {
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
-  PerpsFillBatchEventSchema,
   type PerpsOrderUpdateEvent,
   type PerpsSessionEvent,
   PerpsSessionUpdateEventSchema,
@@ -838,20 +837,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   #handleMessage(rawMessage: unknown): void {
     if (this.#handleResponse(rawMessage)) return;
-
-    const fills = PerpsFillBatchEventSchema.safeParse(rawMessage);
-    if (fills.success) {
-      const [first] = fills.data;
-      if (first !== undefined) {
-        // Every fill in the batch shares the frame's channel and sequence, so
-        // the gap check runs once for the frame, not per fanned-out event.
-        this.#pushSequenceGapIfNeeded(first);
-        for (const event of fills.data) {
-          this.#emitEvent(event);
-        }
-      }
-      return;
-    }
 
     const parsed = PerpsSessionUpdateEventSchema.safeParse(rawMessage);
     if (!parsed.success) return;

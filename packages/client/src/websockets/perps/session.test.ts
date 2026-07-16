@@ -135,7 +135,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('fans out batched fill frames into one event per fill', async () => {
+    it('emits one event for a batched fill frame', async () => {
       const connection = captureConnection(server, perps);
       const session = createSession();
 
@@ -147,16 +147,10 @@ describe('PerpsSession', () => {
         done: false,
         value: {
           channel: 'fills',
-          payload: { instrumentId: 1, side: 'long', tradeId: 1 },
-          sequence: 1,
-          type: 'fill',
-        },
-      });
-      await expect(waitForNextEvent(session)).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'fills',
-          payload: { instrumentId: 1, side: 'long', tradeId: 2 },
+          payload: [
+            { instrumentId: 1, side: 'long', tradeId: 1 },
+            { instrumentId: 1, side: 'long', tradeId: 2 },
+          ],
           sequence: 1,
           type: 'fill',
         },

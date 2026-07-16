@@ -213,29 +213,9 @@ export type PerpsOrderUpdateEvent = z.infer<typeof PerpsOrderUpdateEventSchema>;
 export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
   'fill',
   'fills',
-  PerpsAccountFillUpdateSchema,
+  z.array(PerpsAccountFillUpdateSchema),
 );
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
-
-/**
- * A `fills` frame carries every fill produced by a single match event as a
- * batch in `data`, unlike the single-object payloads on the other session
- * channels. This schema validates that batch envelope and fans it out into one
- * {@link PerpsFillUpdateEvent} per fill so consumers observe individual fills.
- */
-export const PerpsFillBatchEventSchema =
-  PerpsSessionUpdateEnvelopeSchema.extend({
-    ch: z.literal('fills'),
-    data: z.array(PerpsAccountFillUpdateSchema),
-  }).transform(({ ch, ts, sq, data }) =>
-    data.map<PerpsFillUpdateEvent>((payload) => ({
-      type: 'fill' as const,
-      channel: ch,
-      timestamp: ts,
-      sequence: sq,
-      payload,
-    })),
-  );
 
 export const PerpsFundingUpdateEventSchema = perpsSessionEventSchema(
   'funding',
