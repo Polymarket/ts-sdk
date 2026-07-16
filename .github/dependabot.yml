@@ -50,6 +50,20 @@ updates:
     commit-message:
       prefix: "chore(ci)"
     groups:
-      github-actions:
+      # Routine action bumps in one PR, to cut noise.
+      github-actions-minor-and-patch:
+        applies-to: version-updates
         patterns:
           - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Major action bumps in their own PR for migration-note review
+      # (kept grouped so they stay within the open-PR limit, but separate
+      # from routine bumps since majors can change runner/input contracts).
+      github-actions-major:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"
