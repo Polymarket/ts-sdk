@@ -244,9 +244,27 @@ export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
 
+export enum PerpsKnownTpSlStatus {
+  Untriggered = 'untriggered',
+  Armed = 'armed',
+  Cancelled = 'cancelled',
+  Expired = 'expired',
+}
+
+/**
+ * A TP/SL lifecycle status. Known statuses are enumerated in
+ * {@link PerpsKnownTpSlStatus}; newly introduced statuses flow through as
+ * plain strings so they can be handled before a client release that
+ * enumerates them.
+ */
+export type PerpsTpSlStatus = PerpsKnownTpSlStatus | (string & {});
+
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
-  st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
+  // TP/SL statuses evolve independently of released clients. Statuses not yet
+  // enumerated in PerpsKnownTpSlStatus must still parse and flow through
+  // as-is.
+  st: z.string().transform((value): PerpsTpSlStatus => value),
   reason: z.string().optional(),
 });
 

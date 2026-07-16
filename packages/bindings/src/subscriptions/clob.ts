@@ -22,7 +22,7 @@ const NormalizedOrderSideSchema: z.ZodType<OrderSide> = z.preprocess(
   OrderSideSchema,
 );
 
-export enum TradeStatus {
+export enum KnownTradeStatus {
   Matched = 'TRADE_STATUS_MATCHED',
   MatchedNotBroadcasted = 'TRADE_STATUS_MATCHED_NOT_BROADCASTED',
   Mined = 'TRADE_STATUS_MINED',
@@ -31,19 +31,37 @@ export enum TradeStatus {
   Failed = 'TRADE_STATUS_FAILED',
 }
 
-const TradeStatusSchema = z.preprocess((value) => {
-  if (typeof value !== 'string' || value.startsWith('TRADE_STATUS_')) {
-    return value;
-  }
+/**
+ * A trade status. Known statuses are enumerated in {@link KnownTradeStatus};
+ * newly introduced statuses flow through as plain strings so they can be
+ * handled before a client release that enumerates them.
+ */
+export type TradeStatus = KnownTradeStatus | (string & {});
 
-  const normalized = Object.values(TradeStatus).find(
-    (status) => status.slice('TRADE_STATUS_'.length) === value,
-  );
+/**
+ * @deprecated Use {@link KnownTradeStatus} instead. This alias will be
+ * removed at the end of the beta phase.
+ */
+export const TradeStatus = KnownTradeStatus;
 
-  return normalized ?? value;
-}, z.enum(TradeStatus));
+// Trade statuses evolve independently of released clients. Statuses not yet
+// enumerated in KnownTradeStatus must still parse and flow through as-is.
+const TradeStatusSchema = z.preprocess(
+  (value) => {
+    if (typeof value !== 'string' || value.startsWith('TRADE_STATUS_')) {
+      return value;
+    }
 
-export enum UserOrderStatus {
+    const normalized = Object.values(KnownTradeStatus).find(
+      (status) => status.slice('TRADE_STATUS_'.length) === value,
+    );
+
+    return normalized ?? value;
+  },
+  z.string().transform((value): TradeStatus => value),
+);
+
+export enum KnownUserOrderStatus {
   Live = 'LIVE',
   Matched = 'MATCHED',
   Delayed = 'DELAYED',
@@ -51,7 +69,25 @@ export enum UserOrderStatus {
   Canceled = 'CANCELED',
 }
 
-const UserOrderStatusSchema = z.enum(UserOrderStatus);
+/**
+ * A user order status. Known statuses are enumerated in
+ * {@link KnownUserOrderStatus}; newly introduced statuses flow through as
+ * plain strings so they can be handled before a client release that
+ * enumerates them.
+ */
+export type UserOrderStatus = KnownUserOrderStatus | (string & {});
+
+/**
+ * @deprecated Use {@link KnownUserOrderStatus} instead. This alias will be
+ * removed at the end of the beta phase.
+ */
+export const UserOrderStatus = KnownUserOrderStatus;
+
+// Order statuses evolve independently of released clients. Statuses not yet
+// enumerated in KnownUserOrderStatus must still parse and flow through as-is.
+const UserOrderStatusSchema = z
+  .string()
+  .transform((value): UserOrderStatus => value);
 
 const OrderBookLevelSchema = z.object({
   price: DecimalStringSchema,
@@ -360,13 +396,32 @@ export const MarketResolvedEventSchema = z
 
 export type MarketResolvedEvent = z.infer<typeof MarketResolvedEventSchema>;
 
-export enum UserOrderEventType {
+export enum KnownUserOrderEventType {
   Placement = 'PLACEMENT',
   Update = 'UPDATE',
   Cancellation = 'CANCELLATION',
 }
 
-const UserOrderEventTypeSchema = z.enum(UserOrderEventType);
+/**
+ * A user order event type. Known types are enumerated in
+ * {@link KnownUserOrderEventType}; newly introduced types flow through as
+ * plain strings so they can be handled before a client release that
+ * enumerates them.
+ */
+export type UserOrderEventType = KnownUserOrderEventType | (string & {});
+
+/**
+ * @deprecated Use {@link KnownUserOrderEventType} instead. This alias will be
+ * removed at the end of the beta phase.
+ */
+export const UserOrderEventType = KnownUserOrderEventType;
+
+// Order event types evolve independently of released clients. Types not yet
+// enumerated in KnownUserOrderEventType must still parse and flow through
+// as-is.
+const UserOrderEventTypeSchema = z
+  .string()
+  .transform((value): UserOrderEventType => value);
 
 export const UserOrderEventSchema = z
   .object({
