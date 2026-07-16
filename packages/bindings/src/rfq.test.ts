@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RfqQuoterInboundMessageSchema } from './rfq';
+import { RfqKnownErrorCode, RfqQuoterInboundMessageSchema } from './rfq';
 
 describe('RFQ quoter inbound messages', () => {
   it('parses confirmed trade broadcasts without maker identity', () => {
@@ -26,5 +26,35 @@ describe('RFQ quoter inbound messages', () => {
     });
     expect(message).not.toHaveProperty('makerAddress');
     expect(message).not.toHaveProperty('txHash');
+  });
+
+  it('parses known RFQ error codes', () => {
+    const message = RfqQuoterInboundMessageSchema.parse({
+      type: 'RFQ_ERROR',
+      request_type: 'RFQ_QUOTE',
+      rfq_id: 'rfq-1',
+      code: 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
+      error: 'quote validation timed out',
+    });
+
+    expect(message).toMatchObject({
+      code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
+      type: 'rfq_error',
+    });
+  });
+
+  it('passes unknown RFQ error codes through as strings', () => {
+    const message = RfqQuoterInboundMessageSchema.parse({
+      type: 'RFQ_ERROR',
+      request_type: 'RFQ_QUOTE',
+      rfq_id: 'rfq-1',
+      code: 'FUTURE_ERROR_CODE',
+      error: 'future request failed',
+    });
+
+    expect(message).toMatchObject({
+      code: 'FUTURE_ERROR_CODE',
+      type: 'rfq_error',
+    });
   });
 });

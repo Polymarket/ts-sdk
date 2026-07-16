@@ -33,6 +33,7 @@ export {
   RfqDirection,
   RfqErrorCode,
   RfqExecutionStatus,
+  RfqKnownErrorCode,
   RfqQuoteError,
   RfqQuoteRejectedError,
   RfqRequestedSizeUnit,
