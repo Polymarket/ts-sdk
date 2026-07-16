@@ -120,6 +120,54 @@ describe('PerpsSubscriptionManager', () => {
     });
   });
 
+  it('emits one event for a batched trade frame', async () => {
+    const connection = captureConnection(server, perpsSubscriptions);
+
+    const handle = await manager.subscribe({
+      instrumentId: 1,
+      topic: 'perps.trades',
+    });
+
+    await connection.send({
+      ch: 'trades::1',
+      data: [
+        {
+          tid: 1,
+          iid: 1,
+          side: 'long',
+          p: '100',
+          qty: '1',
+          ts: 1_700_000_000_000,
+          hash: `0x${'a'.repeat(64)}`,
+        },
+        {
+          tid: 2,
+          iid: 1,
+          side: 'short',
+          p: '101',
+          qty: '2',
+          ts: 1_700_000_000_001,
+          hash: `0x${'b'.repeat(64)}`,
+        },
+      ],
+      sq: 5,
+      ts: 1_700_000_000_002,
+    });
+
+    for await (const event of handle) {
+      expect(event).toMatchObject({
+        payload: [
+          { instrumentId: 1, price: '100', side: 'long', tradeId: 1 },
+          { instrumentId: 1, price: '101', side: 'short', tradeId: 2 },
+        ],
+        sequence: 5,
+        topic: 'perps.trades',
+        type: 'trade',
+      });
+      break;
+    }
+  });
+
   it('reconnects and resubscribes active channels after an unexpected close', {
     timeout: 5_000,
   }, async () => {

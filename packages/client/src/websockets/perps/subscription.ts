@@ -273,6 +273,9 @@ function matcherFor(
 ): (event: PerpsMarketDataEvent) => boolean {
   switch (subscription.topic) {
     case 'perps.trades':
+      return (event) =>
+        event.topic === 'perps.trades' &&
+        event.channel === `trades::${subscription.instrumentId}`;
     case 'perps.bbo':
     case 'perps.book':
       return (event) =>
