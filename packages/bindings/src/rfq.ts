@@ -91,7 +91,6 @@ export enum RfqKnownErrorCode {
   PreExecutionBalanceReservationFailed = 'PRE_EXECUTION_BALANCE_RESERVATION_FAILED',
   QuoteMismatch = 'QUOTE_MISMATCH',
   QuoteUnavailable = 'QUOTE_UNAVAILABLE',
-  QuoteValidationTimeoutInternal = 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
   RateLimited = 'RATE_LIMITED',
   RequestFailed = 'REQUEST_FAILED',
   ServiceUnavailable = 'SERVICE_UNAVAILABLE',
