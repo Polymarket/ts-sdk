@@ -39,7 +39,7 @@ describe('WebSocketConnection', () => {
 
     await connection.connect({
       headers: { 'x-preprod-access': 'token' },
-      onClose: () => undefined,
+      onConnectionLost: () => undefined,
       onError: () => undefined,
       onMessage: () => undefined,
       onOpen: () => undefined,

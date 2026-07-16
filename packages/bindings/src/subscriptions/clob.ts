@@ -4,12 +4,18 @@ import {
   DecimalStringSchema,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  OptionalDecimalStringSchema,
   type OrderSide,
   OrderSideSchema,
   OrderTypeSchema,
   TokenIdSchema,
   toIsoDateTimeString,
 } from '../shared';
+
+// The websocket serializes absent optional decimals as an empty string (for
+// example `fee_rate_bps` on a trade with no fee, or `best_bid`/`best_ask` when
+// there is none), so optional decimal fields in these schemas use the
+// ''-normalizing OptionalDecimalStringSchema.
 
 const NormalizedOrderSideSchema: z.ZodType<OrderSide> = z.preprocess(
   (value) => (typeof value === 'string' ? value.toUpperCase() : value),
@@ -79,10 +85,10 @@ export const MarketBookEventSchema = z
     asks: z.array(OrderBookLevelSchema),
     hash: z.string().nullish(),
     timestamp: EpochMillisecondsStringSchema.nullish(),
-    min_order_size: DecimalStringSchema.nullish(),
-    tick_size: DecimalStringSchema.nullish(),
+    min_order_size: OptionalDecimalStringSchema,
+    tick_size: OptionalDecimalStringSchema,
     neg_risk: z.boolean().nullish(),
-    last_trade_price: DecimalStringSchema.nullish(),
+    last_trade_price: OptionalDecimalStringSchema,
   })
   .transform(
     ({
@@ -119,8 +125,8 @@ const PriceChangeSchema = z
     size: DecimalStringSchema,
     side: NormalizedOrderSideSchema,
     hash: z.string().nullish(),
-    best_bid: DecimalStringSchema.nullish(),
-    best_ask: DecimalStringSchema.nullish(),
+    best_bid: OptionalDecimalStringSchema,
+    best_ask: OptionalDecimalStringSchema,
   })
   .transform(({ asset_id, best_bid, best_ask, ...rest }) => ({
     ...rest,
@@ -160,8 +166,8 @@ export const MarketLastTradePriceEventSchema = z
     market: z.string(),
     asset_id: TokenIdSchema,
     price: DecimalStringSchema,
-    size: DecimalStringSchema.nullish(),
-    fee_rate_bps: DecimalStringSchema.nullish(),
+    size: OptionalDecimalStringSchema,
+    fee_rate_bps: OptionalDecimalStringSchema,
     side: NormalizedOrderSideSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
     transaction_hash: z.string().nullish(),
@@ -191,7 +197,7 @@ export const MarketTickSizeChangeEventSchema = z
     event_type: z.literal('tick_size_change'),
     market: z.string(),
     asset_id: TokenIdSchema,
-    old_tick_size: DecimalStringSchema.nullish(),
+    old_tick_size: OptionalDecimalStringSchema,
     new_tick_size: DecimalStringSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
   })
@@ -220,9 +226,9 @@ export const MarketBestBidAskEventSchema = z
     event_type: z.literal('best_bid_ask'),
     market: z.string(),
     asset_id: TokenIdSchema,
-    best_bid: DecimalStringSchema.nullish(),
-    best_ask: DecimalStringSchema.nullish(),
-    spread: DecimalStringSchema.nullish(),
+    best_bid: OptionalDecimalStringSchema,
+    best_ask: OptionalDecimalStringSchema,
+    spread: OptionalDecimalStringSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
   })
   .transform(({ event_type, asset_id, best_bid, best_ask, ...rest }) => {
@@ -268,11 +274,11 @@ export const NewMarketEventSchema = z
     active: z.boolean().nullish(),
     clob_token_ids: z.array(z.string()).nullish(),
     sports_market_type: z.string().nullish(),
-    line: DecimalStringSchema.nullish(),
+    line: OptionalDecimalStringSchema,
     game_start_time: EpochMillisecondsToIsoDateTimeStringSchema.nullish(),
-    order_price_min_tick_size: DecimalStringSchema.nullish(),
+    order_price_min_tick_size: OptionalDecimalStringSchema,
     group_item_title: z.string().nullish(),
-    taker_base_fee: DecimalStringSchema.nullish(),
+    taker_base_fee: OptionalDecimalStringSchema,
     fees_enabled: z.boolean().nullish(),
     fee_schedule: z.unknown().nullish(),
   })
@@ -429,7 +435,7 @@ const TradeMakerOrderSchema = z
     maker_address: z.string().nullish(),
     matched_amount: DecimalStringSchema,
     price: DecimalStringSchema,
-    fee_rate_bps: DecimalStringSchema.nullish(),
+    fee_rate_bps: OptionalDecimalStringSchema,
     asset_id: TokenIdSchema,
     outcome: z.string().nullish(),
     outcome_index: z.number().int().nullish(),
@@ -467,7 +473,7 @@ export const UserTradeEventSchema = z
     asset_id: TokenIdSchema,
     side: NormalizedOrderSideSchema,
     size: DecimalStringSchema,
-    fee_rate_bps: DecimalStringSchema.nullish(),
+    fee_rate_bps: OptionalDecimalStringSchema,
     price: DecimalStringSchema,
     status: TradeStatusSchema,
     match_time: EpochSecondsStringToIsoDateTimeStringSchema.nullish(),

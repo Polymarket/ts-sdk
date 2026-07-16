@@ -1,8 +1,9 @@
 import {
+  ConnectionLostError,
   production,
+  RfqKnownErrorCode,
   SignatureType,
   TimeoutError,
-  TransportError,
   UserInputError,
 } from '@polymarket/client';
 import { ws } from 'msw';
@@ -666,9 +667,9 @@ describe('RFQ sessions', () => {
               quoteAmounts(frame);
               socket.send(
                 rfqErrorMessage({
-                  code: 'SUBMISSION_WINDOW_CLOSED',
+                  code: 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
                   errorId: 'reqerr-1',
-                  error: 'submission window closed',
+                  error: 'quote validation timed out',
                   requestType: 'RFQ_QUOTE',
                   rfqId: RFQ_ID,
                 }),
@@ -690,9 +691,9 @@ describe('RFQ sessions', () => {
             const quote = event.quote({ price: 0.45 });
 
             await expect(quote).rejects.toMatchObject({
-              code: 'SUBMISSION_WINDOW_CLOSED',
+              code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
               errorId: 'reqerr-1',
-              message: 'submission window closed',
+              message: 'quote validation timed out',
               name: 'RfqQuoteRejectedError',
               rfqId: event.rfqId,
             });
@@ -700,6 +701,67 @@ describe('RFQ sessions', () => {
             await session.close();
             break;
           }
+        }
+      } finally {
+        await secureClientWithDepositWallet.closeSubscriptions();
+      }
+    });
+  });
+
+  describe('when the server rejects a quote with a future error code', () => {
+    beforeEach(() => {
+      server.resetHandlers();
+      server.use(
+        rfq.addEventListener('connection', ({ client: socket }) => {
+          socket.addEventListener('message', (event) => {
+            const frame = recordOutboundFrame(event.data, outboundFrames);
+
+            if (frame.type === 'auth') {
+              socket.send(authAckMessage());
+              socket.send(quoteRequestMessage());
+              return;
+            }
+
+            if (frame.type === 'RFQ_QUOTE') {
+              quoteAmounts(frame);
+              socket.send(
+                rfqErrorMessage({
+                  code: 'FUTURE_ERROR_CODE',
+                  error: 'future quote rejection',
+                  requestType: 'RFQ_QUOTE',
+                  rfqId: RFQ_ID,
+                }),
+              );
+              socket.send(quoteRequestMessage());
+            }
+          });
+        }),
+      );
+    });
+
+    it('rejects only the quote and keeps the session open', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const session = await secureClientWithDepositWallet.openRfqSession();
+      let requests = 0;
+
+      try {
+        for await (const event of session) {
+          if (event.type !== 'quote_request') continue;
+          requests += 1;
+
+          if (requests === 1) {
+            await expect(event.quote({ price: 0.45 })).rejects.toMatchObject({
+              code: 'FUTURE_ERROR_CODE',
+              message: 'future quote rejection',
+              name: 'RfqQuoteRejectedError',
+            });
+            continue;
+          }
+
+          expect(requests).toBe(2);
+          await session.close();
+          break;
         }
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();
@@ -1195,7 +1257,7 @@ describe('RFQ sessions', () => {
       );
     });
 
-    it('fails the session and ends the event stream', async ({
+    it('fails the session and surfaces the error through the event stream', async ({
       secureClientWithDepositWallet,
     }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
@@ -1218,20 +1280,24 @@ describe('RFQ sessions', () => {
           });
         }
 
-        let eventsAfterFailure = 0;
-        for await (const _event of session) {
-          eventsAfterFailure += 1;
+        async function consumeAfterFailure() {
+          for await (const _event of session) {
+            throw new Error('Expected the failed RFQ session to stay closed.');
+          }
         }
 
         expect(quoteFailed).toBe(true);
-        expect(eventsAfterFailure).toBe(0);
+        await expect(consumeAfterFailure()).rejects.toMatchObject({
+          message: 'Invalid RFQ quoter message.',
+          name: 'TransportError',
+        });
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();
       }
     });
   });
 
-  describe('when the connection closes before quote acknowledgement', () => {
+  describe('when the connection is lost before quote acknowledgement', () => {
     beforeEach(() => {
       server.resetHandlers();
       server.use(
@@ -1263,8 +1329,11 @@ describe('RFQ sessions', () => {
         for await (const event of session) {
           if (event.type === 'quote_request') {
             const quote = event.quote({ price: 0.45 });
+            // The server closes with a normal closure code (1000), but an
+            // unsolicited close is still a connection loss for the session:
+            // in-flight operations must not hang.
             const quoteRejection =
-              expect(quote).rejects.toBeInstanceOf(TransportError);
+              expect(quote).rejects.toBeInstanceOf(ConnectionLostError);
 
             await vi.waitFor(() => {
               expect(outboundFrames).toContainEqual(
@@ -1342,7 +1411,7 @@ describe('RFQ sessions', () => {
     });
   });
 
-  describe('when the connection closes before confirmation acknowledgement', () => {
+  describe('when the connection is lost before confirmation acknowledgement', () => {
     beforeEach(() => {
       server.resetHandlers();
       server.use(
@@ -1389,7 +1458,7 @@ describe('RFQ sessions', () => {
           if (event.type === 'confirmation_request') {
             const confirmation = event.confirm();
             const confirmationRejection =
-              expect(confirmation).rejects.toBeInstanceOf(TransportError);
+              expect(confirmation).rejects.toBeInstanceOf(ConnectionLostError);
 
             await vi.waitFor(() => {
               expect(outboundFrames).toContainEqual(

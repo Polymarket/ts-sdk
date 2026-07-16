@@ -106,7 +106,7 @@ export class SportsWebSocketManager
 
   #connect(): Promise<WebSocketConnectionResult> {
     return this.#connection.connect({
-      onClose: () => this.#onConnectionClose(),
+      onConnectionLost: () => this.#onConnectionLost(),
       onError: () => this.#onConnectionError(),
       onMessage: (message) => this.#onConnectionMessage(message),
       onOpen: () => this.#onConnectionOpen(),
@@ -125,7 +125,7 @@ export class SportsWebSocketManager
     this.#subscriptions.dispatch(parsed.data);
   }
 
-  #onConnectionClose(): void {
+  #onConnectionLost(): void {
     if (this.#subscriptions.hasActiveSubscriptions()) {
       this.#scheduleReconnect();
     }

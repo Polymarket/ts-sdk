@@ -693,7 +693,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   async #connect(emitResync: boolean): Promise<void> {
     await this.#connection.connect({
-      onClose: () => this.#handleClose(),
+      onConnectionLost: () => this.#handleConnectionLost(),
       onError: () => undefined,
       onMessage: (message) => this.#handleMessage(message),
       onOpen: () => undefined,
@@ -891,7 +891,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return true;
   }
 
-  #handleClose(): void {
+  #handleConnectionLost(): void {
     this.#rejectPending(new TransportError('Perps session connection closed.'));
     this.#rejectEventWaiters(
       new TransportError('Perps session connection closed.'),

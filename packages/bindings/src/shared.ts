@@ -450,6 +450,16 @@ export function emptyStringToNull(value: unknown): unknown {
   return value === '' ? null : value;
 }
 
+/**
+ * Optional decimal field whose upstream serialization uses an empty string
+ * for missing values. Normalizes `''` to `null` so consumers never receive
+ * an empty `DecimalString`; populated values parse as `DecimalStringSchema`.
+ */
+export const OptionalDecimalStringSchema = z.preprocess(
+  emptyStringToNull,
+  DecimalStringSchema.nullish(),
+);
+
 function toEvmAddress(value: string): EvmAddress {
   return expectEvmAddress(value);
 }
