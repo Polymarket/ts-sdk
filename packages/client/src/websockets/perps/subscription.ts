@@ -3,6 +3,7 @@ import {
   PerpsMarketDataEventSchema,
 } from '@polymarket/bindings/subscriptions';
 import { invariant } from '@polymarket/types';
+import { z } from 'zod';
 import type {
   PerpsMarketDataSubscription,
   SubscriptionHandle,
@@ -19,7 +20,10 @@ import {
   type SubscriptionRegistryChange,
   type SubscriptionRegistryEntry,
 } from '../registry';
-import type { WebSocketSubscriptionManager } from '../types';
+import type {
+  OnUnknownWebSocketFrame,
+  WebSocketSubscriptionManager,
+} from '../types';
 
 type PerpsSubscriptionEntry = SubscriptionRegistryEntry<
   PerpsMarketDataSubscription,
@@ -30,8 +34,14 @@ type PerpsSubscriptionServerState = Set<string>;
 
 export type PerpsSubscriptionManagerOptions = {
   headers?: Record<string, string>;
+  onUnknownFrame?: OnUnknownWebSocketFrame;
   url: string;
 };
+
+// Responses to client requests (subscribe/unsubscribe acknowledgements and
+// heartbeat pongs) echo the request `id`. They are expected control frames on
+// this stream, not unknown events.
+const PerpsRequestResponseSchema = z.object({ id: z.number().int() });
 
 /**
  * Perps public subscription WebSocket manager.
@@ -48,6 +58,7 @@ export class PerpsSubscriptionManager
     >
 {
   readonly #headers: Record<string, string> | undefined;
+  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #url: string;
   #closing: Promise<void> | undefined;
   #nextRequestId = 1;
@@ -63,6 +74,7 @@ export class PerpsSubscriptionManager
 
   constructor(options: PerpsSubscriptionManagerOptions) {
     this.#headers = options.headers;
+    this.#onUnknownFrame = options.onUnknownFrame;
     this.#url = options.url;
   }
 
@@ -139,7 +151,17 @@ export class PerpsSubscriptionManager
 
   #onConnectionMessage(message: unknown): void {
     const parsed = PerpsMarketDataEventSchema.safeParse(message);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      // Servers may introduce frame types ahead of a client release that
+      // understands them. Surface the frame and keep the stream open.
+      if (!PerpsRequestResponseSchema.safeParse(message).success) {
+        this.#onUnknownFrame?.({
+          frame: message,
+          stream: 'perpsSubscriptions',
+        });
+      }
+      return;
+    }
     this.#subscriptions.dispatch(parsed.data);
   }
 

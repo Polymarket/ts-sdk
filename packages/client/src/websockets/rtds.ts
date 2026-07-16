@@ -23,7 +23,10 @@ import {
   type SubscriptionRegistryChange,
   type SubscriptionRegistryEntry,
 } from './registry';
-import type { WebSocketSubscriptionManager } from './types';
+import type {
+  OnUnknownWebSocketFrame,
+  WebSocketSubscriptionManager,
+} from './types';
 
 type RtdsSpec =
   | CommentsSubscription
@@ -44,6 +47,7 @@ type RtdsServerState = Map<string, RtdsServerSubscription>;
 
 export type RtdsWebSocketManagerOptions = {
   headers?: Record<string, string>;
+  onUnknownFrame?: OnUnknownWebSocketFrame;
   url: string;
 };
 
@@ -58,6 +62,7 @@ export class RtdsWebSocketManager
   implements WebSocketSubscriptionManager<RtdsSpec, RtdsEvent>
 {
   readonly #headers: Record<string, string> | undefined;
+  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #url: string;
   #closing: Promise<void> | undefined;
   readonly #connection = new WebSocketConnection({
@@ -72,6 +77,7 @@ export class RtdsWebSocketManager
 
   constructor(options: RtdsWebSocketManagerOptions) {
     this.#headers = options.headers;
+    this.#onUnknownFrame = options.onUnknownFrame;
     this.#url = options.url;
   }
 
@@ -151,7 +157,12 @@ export class RtdsWebSocketManager
 
   #onConnectionMessage(message: unknown): void {
     const parsed = RealtimeEventSchema.safeParse(message);
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      // Servers may introduce frame types ahead of a client release that
+      // understands them. Surface the frame and keep the stream open.
+      this.#onUnknownFrame?.({ frame: message, stream: 'rtds' });
+      return;
+    }
     this.#subscriptions.dispatch(parsed.data);
   }
 

@@ -11,7 +11,12 @@ import {
 } from 'vitest';
 import { production } from '../environments';
 import { RtdsWebSocketManager } from './rtds';
-import { captureConnection, collectFrames, waitForNextEvent } from './testing';
+import {
+  captureConnection,
+  collectFrames,
+  expectSurfacesUnknownFrame,
+  waitForNextEvent,
+} from './testing';
 
 const rtds = ws.link(production.rtds.ws);
 const server = setupServer();
@@ -73,6 +78,38 @@ describe('RtdsWebSocketManager', () => {
       value: {
         payload: { symbol: 'ethusdt', value: '200' },
         topic: 'prices.crypto.binance',
+        type: 'update',
+      },
+    });
+  });
+
+  it('surfaces unknown frames without closing the shared socket', async () => {
+    await expectSurfacesUnknownFrame({
+      expectedEvent: { topic: 'prices.crypto.binance', type: 'update' },
+      link: rtds,
+      server,
+      stream: 'rtds',
+      subscribe: async (onUnknownFrame) => {
+        const observedManager = new RtdsWebSocketManager({
+          onUnknownFrame,
+          url: production.rtds.ws,
+        });
+        const events = await observedManager.subscribe({
+          topic: 'prices.crypto.binance',
+          symbols: ['btcusdt'],
+        });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: {
+        payload: { hello: 'world' },
+        timestamp: 1,
+        topic: 'future_topic',
+        type: 'update',
+      },
+      validFrame: {
+        payload: { symbol: 'btcusdt', timestamp: 1, value: 100 },
+        timestamp: 1,
+        topic: 'crypto_prices',
         type: 'update',
       },
     });

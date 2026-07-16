@@ -21,6 +21,46 @@ import type { PerpsSessionManager } from './perps/manager';
 import type { RfqQuoterWebSocketManager } from './rfq';
 
 /**
+ * Identifies the websocket stream surface that received a frame. Values match
+ * the manager keys exposed on the client's `webSockets` surfaces, plus
+ * per-session surfaces such as `perpsSession`.
+ */
+export type WebSocketStream =
+  | 'clobMarket'
+  | 'clobUser'
+  | 'perpsSession'
+  | 'perpsSubscriptions'
+  | 'rfqQuoter'
+  | 'rtds'
+  | 'sports';
+
+/**
+ * A websocket frame the SDK does not recognize.
+ *
+ * Servers may introduce new frame types ahead of a client release that
+ * understands them. The SDK ignores such frames instead of failing the
+ * stream, and reports each one through {@link OnUnknownWebSocketFrame} so
+ * consumers can observe them.
+ */
+export type UnknownWebSocketFrame = {
+  /** The raw frame as received, JSON-parsed but otherwise unvalidated. */
+  frame: unknown;
+
+  /** The stream surface that received the frame. */
+  stream: WebSocketStream;
+};
+
+/**
+ * Observer invoked when a websocket stream receives a frame the SDK does not
+ * recognize. Unknown frames never close the connection or end active
+ * subscriptions; the SDK does not log them, so whether and how to record
+ * them is up to the consumer.
+ */
+export type OnUnknownWebSocketFrame = (
+  unknownFrame: UnknownWebSocketFrame,
+) => void;
+
+/**
  * An authenticated bidirectional WebSocket session.
  *
  * The session is an async iterable of server-initiated events and also exposes

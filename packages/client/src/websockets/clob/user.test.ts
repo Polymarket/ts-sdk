@@ -11,7 +11,12 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { captureConnection, collectFrames, waitForNextEvent } from '../testing';
+import {
+  captureConnection,
+  collectFrames,
+  expectSurfacesUnknownFrame,
+  waitForNextEvent,
+} from '../testing';
 import { ClobUserWebSocketManager } from './user';
 
 const clobUser = ws.link(production.clob.user.ws);
@@ -183,6 +188,76 @@ describe('ClobUserWebSocketManager', () => {
         },
         topic: 'user',
         type: 'trade',
+      },
+    });
+  });
+
+  it('delivers trade events with statuses introduced after this client release', async () => {
+    const connection = captureConnection(server, clobUser);
+    const handle = await manager.subscribe({ topic: 'user' });
+    const next = waitForNextEvent(handle);
+
+    await connection.send({
+      asset_id: 'token-a',
+      event_type: 'trade',
+      fee_rate_bps: '0',
+      id: 'trade-a',
+      last_update: '1710000000',
+      maker_address: '0x0000000000000000000000000000000000000001',
+      market: 'market-a',
+      match_time: '1710000000',
+      owner: 'test-owner',
+      price: '0.5',
+      side: 'BUY',
+      size: '1',
+      status: 'TRADE_STATUS_FUTURE_STATUS',
+      taker_order_id: 'order-a',
+      timestamp: '1710000000000',
+      trade_owner: 'test-owner',
+      type: 'TRADE',
+    });
+
+    await expect(next).resolves.toMatchObject({
+      done: false,
+      value: {
+        payload: { id: 'trade-a', status: 'TRADE_STATUS_FUTURE_STATUS' },
+        topic: 'user',
+        type: 'trade',
+      },
+    });
+  });
+
+  it('surfaces unknown frames without closing the shared socket', async () => {
+    await expectSurfacesUnknownFrame({
+      expectedEvent: { topic: 'user', type: 'order' },
+      link: clobUser,
+      server,
+      stream: 'clobUser',
+      subscribe: async (onUnknownFrame) => {
+        const observedManager = new ClobUserWebSocketManager({
+          credentials,
+          onUnknownFrame,
+          url: production.clob.user.ws,
+        });
+        const events = await observedManager.subscribe({
+          markets: ['market-a'],
+          topic: 'user',
+        });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: { event_type: 'future_event', payload: 'new' },
+      validFrame: {
+        asset_id: 'token-a',
+        event_type: 'order',
+        id: 'order-a',
+        market: 'market-a',
+        original_size: '1',
+        owner: 'test-owner',
+        price: '0.5',
+        side: 'BUY',
+        size_matched: '0',
+        timestamp: '1',
+        type: 'PLACEMENT',
       },
     });
   });

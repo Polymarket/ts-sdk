@@ -1,5 +1,8 @@
 import { SignatureType } from '@polymarket/bindings/clob';
-import { RfqExecutionStatus } from '@polymarket/bindings/rfq';
+import {
+  type RfqExecutionStatus,
+  RfqKnownExecutionStatus,
+} from '@polymarket/bindings/rfq';
 import { invariant } from '@polymarket/types';
 
 export const RFQ_ID = 'rfq-1';
@@ -170,17 +173,19 @@ export function unknownRfqMessage() {
   });
 }
 
-function executionUpdateFrame() {
+function executionUpdateFrame(status: RfqExecutionStatus) {
   return {
     rfq_id: RFQ_ID,
-    status: RfqExecutionStatus.Confirmed,
+    status,
     tx_hash: TX_HASH,
     type: 'RFQ_EXECUTION_UPDATE',
   };
 }
 
-export function executionUpdateMessage() {
-  return JSON.stringify(executionUpdateFrame());
+export function executionUpdateMessage(
+  status: RfqExecutionStatus = RfqKnownExecutionStatus.Confirmed,
+) {
+  return JSON.stringify(executionUpdateFrame(status));
 }
 
 function tradeFrame() {

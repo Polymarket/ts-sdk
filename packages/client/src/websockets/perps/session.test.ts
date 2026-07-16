@@ -19,7 +19,11 @@ import {
 } from 'vitest';
 import { production } from '../../environments';
 import { RequestRejectedError, UserInputError } from '../../errors';
-import { captureConnection, waitForNextEvent } from '../testing';
+import {
+  captureConnection,
+  expectSurfacesUnknownFrame,
+  waitForNextEvent,
+} from '../testing';
 import { PerpsSession } from './session';
 
 const perps = ws.link(production.perps.ws);
@@ -133,6 +137,29 @@ describe('PerpsSession', () => {
       });
 
       await session.close();
+    });
+
+    it('surfaces unknown frames without closing the session', async () => {
+      await expectSurfacesUnknownFrame({
+        expectedEvent: { channel: 'balances', type: 'balance' },
+        link: perps,
+        server,
+        stream: 'perpsSession',
+        subscribe: async (onUnknownFrame) => {
+          const session = new PerpsSession({
+            chainId: production.chainId,
+            credentials,
+            onClose: () => undefined,
+            onUnknownFrame,
+            restUrl: production.perps.rest,
+            wsUrl: production.perps.ws,
+          });
+          await session.connect();
+          return { close: () => session.close(), events: session };
+        },
+        unknownFrame: { ch: 'future_channel', data: { hello: 'world' } },
+        validFrame: balanceUpdate({ balance: '1', sequence: 1 }),
+      });
     });
   });
 
@@ -840,6 +867,34 @@ describe('PerpsSession', () => {
         value: {
           channel: 'tpsl::1',
           payload: { orderId: 123, status: 'armed' },
+          sequence: 1,
+          type: 'tpsl',
+        },
+      });
+
+      await session.close();
+    });
+
+    it('delivers TP/SL updates with statuses introduced after this client release', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'tpsl::1',
+        data: { oid: 123, st: 'future_status' },
+        sq: 1,
+        ts: 1_700_000_000_000,
+      });
+
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'tpsl::1',
+          payload: { orderId: 123, status: 'future_status' },
           sequence: 1,
           type: 'tpsl',
         },

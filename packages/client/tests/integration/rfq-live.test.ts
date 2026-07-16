@@ -1,6 +1,6 @@
 import {
-  RfqExecutionStatus,
   RfqKnownErrorCode,
+  RfqKnownExecutionStatus,
   RfqQuoteRejectedError,
 } from '@polymarket/client';
 import { describe, expect, it, runMeteredTests } from './fixtures';
@@ -72,7 +72,7 @@ describe('RFQ live quoting integration', () => {
 
           if (
             event.type === 'execution_update' &&
-            event.status === RfqExecutionStatus.Confirmed
+            event.status === RfqKnownExecutionStatus.Confirmed
           ) {
             expect(event.txHash).toBeDefined();
             confirmedExecution = true;

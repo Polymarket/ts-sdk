@@ -1,5 +1,6 @@
 import {
   ConnectionLostError,
+  createSecureClient,
   production,
   RfqKnownErrorCode,
   SignatureType,
@@ -1221,6 +1222,96 @@ describe('RFQ sessions', () => {
             expect(confirmation).toEqual({
               quoteId: event.quoteId,
               rfqId: event.rfqId,
+            });
+
+            await session.close();
+            break;
+          }
+        }
+      } finally {
+        await secureClientWithDepositWallet.closeSubscriptions();
+      }
+    });
+
+    it('surfaces unknown frames through onUnknownFrame without closing the session', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      relayerAuthentication,
+    }) => {
+      const onUnknownFrame = vi.fn();
+      const client = await createSecureClient({
+        apiKey: relayerAuthentication,
+        onUnknownFrame,
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
+      const session = await client.openRfqSession();
+
+      try {
+        for await (const event of session) {
+          if (event.type === 'quote_request') {
+            await event.quote({ price: 0.45 });
+            continue;
+          }
+
+          if (event.type === 'confirmation_request') {
+            await event.confirm();
+            await session.close();
+            break;
+          }
+        }
+
+        expect(onUnknownFrame).toHaveBeenCalledWith({
+          frame: { payload: 'ignored', type: 'RFQ_FUTURE_MESSAGE' },
+          stream: 'rfqQuoter',
+        });
+      } finally {
+        await client.closeSubscriptions();
+      }
+    });
+  });
+
+  describe('when the server sends execution updates with statuses introduced after this client release', () => {
+    beforeEach(() => {
+      server.resetHandlers();
+      server.use(
+        rfq.addEventListener('connection', ({ client: socket }) => {
+          socket.addEventListener('message', (event) => {
+            const frame = recordOutboundFrame(event.data, outboundFrames);
+
+            if (frame.type === 'auth') {
+              socket.send(authAckMessage());
+              socket.send(quoteRequestMessage());
+              return;
+            }
+
+            if (frame.type === 'RFQ_QUOTE') {
+              quoteAmounts(frame);
+              socket.send(quoteAckMessage());
+              socket.send(executionUpdateMessage('FUTURE_STATUS'));
+            }
+          });
+        }),
+      );
+    });
+
+    it('keeps the session open and delivers the update with the new status', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const session = await secureClientWithDepositWallet.openRfqSession();
+
+      try {
+        for await (const event of session) {
+          if (event.type === 'quote_request') {
+            await event.quote({ price: 0.45 });
+            continue;
+          }
+
+          if (event.type === 'execution_update') {
+            expect(event).toMatchObject({
+              rfqId: RFQ_ID,
+              status: 'FUTURE_STATUS',
+              txHash: TX_HASH,
             });
 
             await session.close();

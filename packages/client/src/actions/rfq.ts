@@ -30,6 +30,7 @@ export {
   RfqErrorCode,
   RfqExecutionStatus,
   RfqKnownErrorCode,
+  RfqKnownExecutionStatus,
   RfqRequestedSizeUnit,
   RfqSide,
 } from '@polymarket/bindings/rfq';
