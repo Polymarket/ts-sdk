@@ -667,9 +667,9 @@ describe('RFQ sessions', () => {
               quoteAmounts(frame);
               socket.send(
                 rfqErrorMessage({
-                  code: 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
+                  code: 'MAKER_QUOTE_LIMITED',
                   errorId: 'reqerr-1',
-                  error: 'quote validation timed out',
+                  error: 'maker quote limited',
                   requestType: 'RFQ_QUOTE',
                   rfqId: RFQ_ID,
                 }),
@@ -691,9 +691,9 @@ describe('RFQ sessions', () => {
             const quote = event.quote({ price: 0.45 });
 
             await expect(quote).rejects.toMatchObject({
-              code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
+              code: RfqKnownErrorCode.MakerQuoteLimited,
               errorId: 'reqerr-1',
-              message: 'quote validation timed out',
+              message: 'maker quote limited',
               name: 'RfqQuoteRejectedError',
               rfqId: event.rfqId,
             });
