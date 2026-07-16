@@ -1341,49 +1341,50 @@ describe('RFQ sessions', () => {
             if (frame.type === 'RFQ_QUOTE') {
               quoteAmounts(frame);
               socket.send(malformedQuoteAckMessage());
-              socket.send(quoteRequestMessage());
+              socket.send(quoteAckMessage());
             }
           });
         }),
       );
     });
 
-    it('fails the session and surfaces the error through the event stream', async ({
-      secureClientWithDepositWallet,
+    it('surfaces the frame as unknown and keeps the session open', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      relayerAuthentication,
     }) => {
-      const session = await secureClientWithDepositWallet.openRfqSession();
+      const onUnknownFrame = vi.fn();
+      const client = await createSecureClient({
+        apiKey: relayerAuthentication,
+        onUnknownFrame,
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
+      const session = await client.openRfqSession();
 
       try {
-        let quoteFailed = false;
+        for await (const event of session) {
+          if (event.type !== 'quote_request') continue;
 
-        try {
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          // The valid acknowledgement sent after the malformed one still
+          // correlates, proving the session survived.
+          const quote = await event.quote({ price: 0.45 });
 
-            await event.quote({ price: 0.45 });
-            throw new Error('Expected RFQ session failure.');
-          }
-        } catch (error) {
-          quoteFailed = true;
-          expect(error).toMatchObject({
-            message: 'Invalid RFQ quoter message.',
-            name: 'TransportError',
+          expect(quote).toEqual({
+            quoteId: QUOTE_ID,
+            rfqId: event.rfqId,
           });
+
+          await session.close();
+          break;
         }
 
-        async function consumeAfterFailure() {
-          for await (const _event of session) {
-            throw new Error('Expected the failed RFQ session to stay closed.');
-          }
-        }
-
-        expect(quoteFailed).toBe(true);
-        await expect(consumeAfterFailure()).rejects.toMatchObject({
-          message: 'Invalid RFQ quoter message.',
-          name: 'TransportError',
+        expect(onUnknownFrame).toHaveBeenCalledWith({
+          frame: { rfq_id: RFQ_ID, type: 'ACK_RFQ_QUOTE' },
+          stream: 'rfqQuoter',
         });
       } finally {
-        await secureClientWithDepositWallet.closeSubscriptions();
+        await client.closeSubscriptions();
       }
     });
   });

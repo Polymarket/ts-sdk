@@ -3,7 +3,6 @@ import {
   type RfqConfirmationDecision,
   type RfqErrorMessage,
   type RfqId,
-  RfqKnownInboundMessageSchema,
   type RfqQuoteId,
   type RfqQuoteRequest,
   RfqQuoterInboundMessageSchema,
@@ -282,19 +281,14 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   #handleMessage(rawMessage: unknown): void {
     if (this.#closing !== undefined) return;
-    if (!RfqKnownInboundMessageSchema.safeParse(rawMessage).success) {
-      // Servers may introduce message types ahead of a client release that
-      // understands them. Surface the frame and keep the session open.
-      this.#onUnknownFrame?.({ frame: rawMessage, stream: 'rfqQuoter' });
-      return;
-    }
 
     const parsed = RfqQuoterInboundMessageSchema.safeParse(rawMessage);
     if (!parsed.success) {
-      const error = new TransportError('Invalid RFQ quoter message.', {
-        cause: parsed.error,
-      });
-      void this.#fail(error);
+      // Servers may introduce message types or payload shapes ahead of a
+      // client release that understands them. Surface the frame and keep the
+      // session open; callers waiting on an unreadable acknowledgement fail
+      // through their acknowledgement timeout instead.
+      this.#onUnknownFrame?.({ frame: rawMessage, stream: 'rfqQuoter' });
       return;
     }
 
