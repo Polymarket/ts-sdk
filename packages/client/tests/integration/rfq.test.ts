@@ -1,6 +1,7 @@
 import {
   ConnectionLostError,
   production,
+  RfqExecutionStatus,
   RfqKnownErrorCode,
   SignatureType,
   TimeoutError,
@@ -1251,6 +1252,63 @@ describe('RFQ sessions', () => {
     });
   });
 
+  describe('when the server sends execution updates with statuses introduced after this client release', () => {
+    beforeEach(() => {
+      server.resetHandlers();
+      server.use(
+        rfq.addEventListener('connection', ({ client: socket }) => {
+          socket.addEventListener('message', (event) => {
+            const frame = recordOutboundFrame(event.data, outboundFrames);
+
+            if (frame.type === 'auth') {
+              socket.send(authAckMessage());
+              socket.send(quoteRequestMessage());
+              return;
+            }
+
+            if (frame.type === 'RFQ_QUOTE') {
+              quoteAmounts(frame);
+              socket.send(quoteAckMessage());
+              socket.send(executionUpdateMessage('FUTURE_STATUS'));
+              socket.send(executionUpdateMessage());
+            }
+          });
+        }),
+      );
+    });
+
+    it('drops the unrecognized update and keeps the session open', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const session = await secureClientWithDepositWallet.openRfqSession();
+
+      try {
+        for await (const event of session) {
+          if (event.type === 'quote_request') {
+            await event.quote({ price: 0.45 });
+            continue;
+          }
+
+          if (event.type === 'execution_update') {
+            // The first execution update carried the unrecognized status and
+            // was dropped; the CONFIRMED update sent afterwards arriving as
+            // the next event proves the session survived.
+            expect(event).toMatchObject({
+              rfqId: RFQ_ID,
+              status: RfqExecutionStatus.Confirmed,
+              txHash: TX_HASH,
+            });
+
+            await session.close();
+            break;
+          }
+        }
+      } finally {
+        await secureClientWithDepositWallet.closeSubscriptions();
+      }
+    });
+  });
+
   describe('when the server sends a malformed known RFQ frame', () => {
     beforeEach(() => {
       server.resetHandlers();
@@ -1268,46 +1326,34 @@ describe('RFQ sessions', () => {
             if (frame.type === 'RFQ_QUOTE') {
               quoteAmounts(frame);
               socket.send(malformedQuoteAckMessage());
-              socket.send(quoteRequestMessage());
+              socket.send(quoteAckMessage());
             }
           });
         }),
       );
     });
 
-    it('fails the session and surfaces the error through the event stream', async ({
+    it('drops the malformed frame and keeps the session open', async ({
       secureClientWithDepositWallet,
     }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
 
       try {
-        let quoteError: unknown;
+        for await (const event of session) {
+          if (event.type !== 'quote_request') continue;
 
-        async function consume(): Promise<void> {
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          // The valid acknowledgement sent after the malformed one still
+          // correlates, proving the malformed frame was dropped and the
+          // session survived.
+          const quote = await event.quote({ price: 0.45 });
 
-            try {
-              await event.quote({ price: 0.45 });
-            } catch (error) {
-              quoteError = error;
-            }
-          }
-        }
+          expect(quote).toEqual({
+            quoteId: QUOTE_ID,
+            rfqId: event.rfqId,
+          });
 
-        await expect(consume()).rejects.toMatchObject({
-          message: 'Invalid RFQ quoter message.',
-          name: 'TransportError',
-        });
-        expect(quoteError).toMatchObject({
-          message: 'Invalid RFQ quoter message.',
-          name: 'TransportError',
-        });
-
-        // The terminal error surfaces once, to the active consumer. Iterating
-        // the failed session again ends immediately without new events.
-        for await (const _event of session) {
-          throw new Error('Expected the failed RFQ session to stay closed.');
+          await session.close();
+          break;
         }
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();

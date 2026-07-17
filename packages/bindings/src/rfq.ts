@@ -294,11 +294,7 @@ export enum RfqKnownInboundType {
   Error = 'RFQ_ERROR',
 }
 
-export const RfqKnownInboundMessageSchema = z.object({
-  type: z.enum(RfqKnownInboundType),
-});
-
-const RfqAuthResponseMessageSchema = RfqKnownInboundMessageSchema.extend({
+const RfqAuthResponseMessageSchema = z.object({
   type: z.literal(RfqKnownInboundType.Auth),
   success: z.boolean(),
   address: EvmAddressSchema.optional(),
@@ -310,31 +306,33 @@ export type RfqAuthResponseMessage = z.infer<
   typeof RfqAuthResponseMessageSchema
 >;
 
-const RfqQuoteRequestSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.QuoteRequest),
-  rfq_id: RfqIdSchema,
-  requestor_public_id: RfqRequestorPublicIdSchema,
-  leg_position_ids: z.array(PositionIdSchema),
-  condition_id: ComboConditionIdSchema,
-  yes_position_id: PositionIdSchema,
-  no_position_id: PositionIdSchema,
-  direction: RfqDirectionSchema,
-  side: RfqSideSchema,
-  requested_size: RfqRequestedSizeSchema,
-  submission_deadline: EpochMillisecondsSchema,
-}).transform((message) => ({
-  conditionId: message.condition_id,
-  direction: message.direction,
-  legPositionIds: message.leg_position_ids,
-  noPositionId: message.no_position_id,
-  requestorPublicId: message.requestor_public_id,
-  requestedSize: message.requested_size,
-  rfqId: message.rfq_id,
-  side: message.side,
-  submissionDeadline: message.submission_deadline,
-  type: 'quote_request' as const,
-  yesPositionId: message.yes_position_id,
-}));
+const RfqQuoteRequestSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.QuoteRequest),
+    rfq_id: RfqIdSchema,
+    requestor_public_id: RfqRequestorPublicIdSchema,
+    leg_position_ids: z.array(PositionIdSchema),
+    condition_id: ComboConditionIdSchema,
+    yes_position_id: PositionIdSchema,
+    no_position_id: PositionIdSchema,
+    direction: RfqDirectionSchema,
+    side: RfqSideSchema,
+    requested_size: RfqRequestedSizeSchema,
+    submission_deadline: EpochMillisecondsSchema,
+  })
+  .transform((message) => ({
+    conditionId: message.condition_id,
+    direction: message.direction,
+    legPositionIds: message.leg_position_ids,
+    noPositionId: message.no_position_id,
+    requestorPublicId: message.requestor_public_id,
+    requestedSize: message.requested_size,
+    rfqId: message.rfq_id,
+    side: message.side,
+    submissionDeadline: message.submission_deadline,
+    type: 'quote_request' as const,
+    yesPositionId: message.yes_position_id,
+  }));
 
 export type RfqQuoteRequest = z.infer<typeof RfqQuoteRequestSchema>;
 
@@ -354,63 +352,69 @@ export type RfqQuoteCancelMessage = {
   maker_address: EvmAddress;
 };
 
-const RfqQuoteAckSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.QuoteAck),
-  rfq_id: RfqIdSchema,
-  quote_id: RfqQuoteIdSchema,
-}).transform((message) => ({
-  quoteId: message.quote_id,
-  rfqId: message.rfq_id,
-  type: 'quote_ack' as const,
-}));
+const RfqQuoteAckSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.QuoteAck),
+    rfq_id: RfqIdSchema,
+    quote_id: RfqQuoteIdSchema,
+  })
+  .transform((message) => ({
+    quoteId: message.quote_id,
+    rfqId: message.rfq_id,
+    type: 'quote_ack' as const,
+  }));
 
 export type RfqQuoteAck = z.infer<typeof RfqQuoteAckSchema>;
 
-const RfqQuoteCancelAckSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.QuoteCancelAck),
-  rfq_id: RfqIdSchema,
-  quote_id: RfqQuoteIdSchema,
-}).transform((message) => ({
-  quoteId: message.quote_id,
-  rfqId: message.rfq_id,
-  type: 'quote_cancel_ack' as const,
-}));
+const RfqQuoteCancelAckSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.QuoteCancelAck),
+    rfq_id: RfqIdSchema,
+    quote_id: RfqQuoteIdSchema,
+  })
+  .transform((message) => ({
+    quoteId: message.quote_id,
+    rfqId: message.rfq_id,
+    type: 'quote_cancel_ack' as const,
+  }));
 
 export type RfqQuoteCancelAck = z.infer<typeof RfqQuoteCancelAckSchema>;
 
-const RfqConfirmationRequestSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.ConfirmationRequest),
-  rfq_id: RfqIdSchema,
-  quote_id: RfqQuoteIdSchema,
-  signer_address: EvmAddressSchema,
-  maker_address: EvmAddressSchema,
-  signature_type: SignatureTypeSchema,
-  leg_position_ids: z.array(PositionIdSchema),
-  condition_id: ComboConditionIdSchema,
-  yes_position_id: PositionIdSchema,
-  no_position_id: PositionIdSchema,
-  direction: RfqDirectionSchema,
-  side: RfqSideSchema,
-  fill_size_e6: E6BigIntStringToDecimalStringSchema,
-  price_e6: E6BigIntStringToDecimalStringSchema,
-  confirm_by: EpochMillisecondsSchema,
-}).transform((message) => ({
-  conditionId: message.condition_id,
-  confirmBy: message.confirm_by,
-  direction: message.direction,
-  fillSize: message.fill_size_e6,
-  legPositionIds: message.leg_position_ids,
-  makerAddress: message.maker_address,
-  noPositionId: message.no_position_id,
-  price: message.price_e6,
-  quoteId: message.quote_id,
-  rfqId: message.rfq_id,
-  side: message.side,
-  signatureType: message.signature_type,
-  signerAddress: message.signer_address,
-  type: 'confirmation_request' as const,
-  yesPositionId: message.yes_position_id,
-}));
+const RfqConfirmationRequestSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.ConfirmationRequest),
+    rfq_id: RfqIdSchema,
+    quote_id: RfqQuoteIdSchema,
+    signer_address: EvmAddressSchema,
+    maker_address: EvmAddressSchema,
+    signature_type: SignatureTypeSchema,
+    leg_position_ids: z.array(PositionIdSchema),
+    condition_id: ComboConditionIdSchema,
+    yes_position_id: PositionIdSchema,
+    no_position_id: PositionIdSchema,
+    direction: RfqDirectionSchema,
+    side: RfqSideSchema,
+    fill_size_e6: E6BigIntStringToDecimalStringSchema,
+    price_e6: E6BigIntStringToDecimalStringSchema,
+    confirm_by: EpochMillisecondsSchema,
+  })
+  .transform((message) => ({
+    conditionId: message.condition_id,
+    confirmBy: message.confirm_by,
+    direction: message.direction,
+    fillSize: message.fill_size_e6,
+    legPositionIds: message.leg_position_ids,
+    makerAddress: message.maker_address,
+    noPositionId: message.no_position_id,
+    price: message.price_e6,
+    quoteId: message.quote_id,
+    rfqId: message.rfq_id,
+    side: message.side,
+    signatureType: message.signature_type,
+    signerAddress: message.signer_address,
+    type: 'confirmation_request' as const,
+    yesPositionId: message.yes_position_id,
+  }));
 
 export type RfqConfirmationRequest = z.infer<
   typeof RfqConfirmationRequestSchema
@@ -423,78 +427,86 @@ export type RfqConfirmationResponseMessage = {
   decision: RfqConfirmationDecision;
 };
 
-const RfqConfirmationAckSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.ConfirmationAck),
-  rfq_id: RfqIdSchema,
-  quote_id: RfqQuoteIdSchema,
-  decision: RfqConfirmationDecisionSchema,
-}).transform((message) => ({
-  decision: message.decision,
-  quoteId: message.quote_id,
-  rfqId: message.rfq_id,
-  type: 'confirmation_ack' as const,
-}));
+const RfqConfirmationAckSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.ConfirmationAck),
+    rfq_id: RfqIdSchema,
+    quote_id: RfqQuoteIdSchema,
+    decision: RfqConfirmationDecisionSchema,
+  })
+  .transform((message) => ({
+    decision: message.decision,
+    quoteId: message.quote_id,
+    rfqId: message.rfq_id,
+    type: 'confirmation_ack' as const,
+  }));
 
 export type RfqConfirmationAck = z.infer<typeof RfqConfirmationAckSchema>;
 
-const RfqExecutionUpdateSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.ExecutionUpdate),
-  rfq_id: RfqIdSchema,
-  status: RfqExecutionStatusSchema,
-  tx_hash: TxHashSchema.optional(),
-}).transform((message) => ({
-  rfqId: message.rfq_id,
-  status: message.status,
-  ...(message.tx_hash === undefined ? {} : { txHash: message.tx_hash }),
-  type: 'execution_update' as const,
-}));
+const RfqExecutionUpdateSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.ExecutionUpdate),
+    rfq_id: RfqIdSchema,
+    status: RfqExecutionStatusSchema,
+    tx_hash: TxHashSchema.optional(),
+  })
+  .transform((message) => ({
+    rfqId: message.rfq_id,
+    status: message.status,
+    ...(message.tx_hash === undefined ? {} : { txHash: message.tx_hash }),
+    type: 'execution_update' as const,
+  }));
 
 export type RfqExecutionUpdate = z.infer<typeof RfqExecutionUpdateSchema>;
 
-const RfqTradeSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.Trade),
-  rfq_id: RfqIdSchema,
-  requester_id: RfqRequestorPublicIdSchema,
-  condition_id: ComboConditionIdSchema,
-  leg_position_ids: z.array(PositionIdSchema),
-  direction: RfqDirectionSchema,
-  side: RfqSideSchema,
-  price_e6: E6BigIntStringToDecimalStringSchema,
-  size_e6: E6BigIntStringToDecimalStringSchema,
-  executed_at: EpochMillisecondsSchema,
-}).transform((message) => ({
-  conditionId: message.condition_id,
-  direction: message.direction,
-  executedAt: message.executed_at,
-  legPositionIds: message.leg_position_ids,
-  price: message.price_e6,
-  requesterId: message.requester_id,
-  rfqId: message.rfq_id,
-  side: message.side,
-  size: message.size_e6,
-  type: 'trade' as const,
-}));
+const RfqTradeSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.Trade),
+    rfq_id: RfqIdSchema,
+    requester_id: RfqRequestorPublicIdSchema,
+    condition_id: ComboConditionIdSchema,
+    leg_position_ids: z.array(PositionIdSchema),
+    direction: RfqDirectionSchema,
+    side: RfqSideSchema,
+    price_e6: E6BigIntStringToDecimalStringSchema,
+    size_e6: E6BigIntStringToDecimalStringSchema,
+    executed_at: EpochMillisecondsSchema,
+  })
+  .transform((message) => ({
+    conditionId: message.condition_id,
+    direction: message.direction,
+    executedAt: message.executed_at,
+    legPositionIds: message.leg_position_ids,
+    price: message.price_e6,
+    requesterId: message.requester_id,
+    rfqId: message.rfq_id,
+    side: message.side,
+    size: message.size_e6,
+    type: 'trade' as const,
+  }));
 
 export type RfqTrade = z.infer<typeof RfqTradeSchema>;
 
-const RfqErrorMessageSchema = RfqKnownInboundMessageSchema.extend({
-  type: z.literal(RfqKnownInboundType.Error),
-  error_id: z.string().optional(),
-  request_type: z.string().optional(),
-  rfq_id: RfqIdSchema.optional(),
-  quote_id: RfqQuoteIdSchema.optional(),
-  code: RfqErrorCodeSchema,
-  error: z.string(),
-  request: z.unknown().optional(),
-}).transform((message) => ({
-  code: message.code,
-  errorId: message.error_id,
-  message: message.error,
-  quoteId: message.quote_id,
-  requestType: message.request_type,
-  rfqId: message.rfq_id,
-  type: 'rfq_error' as const,
-}));
+const RfqErrorMessageSchema = z
+  .object({
+    type: z.literal(RfqKnownInboundType.Error),
+    error_id: z.string().optional(),
+    request_type: z.string().optional(),
+    rfq_id: RfqIdSchema.optional(),
+    quote_id: RfqQuoteIdSchema.optional(),
+    code: RfqErrorCodeSchema,
+    error: z.string(),
+    request: z.unknown().optional(),
+  })
+  .transform((message) => ({
+    code: message.code,
+    errorId: message.error_id,
+    message: message.error,
+    quoteId: message.quote_id,
+    requestType: message.request_type,
+    rfqId: message.rfq_id,
+    type: 'rfq_error' as const,
+  }));
 
 export type RfqErrorMessage = z.infer<typeof RfqErrorMessageSchema>;
 

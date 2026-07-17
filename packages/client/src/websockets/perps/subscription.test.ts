@@ -11,7 +11,12 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { captureConnection, collectFrames, waitForNextEvent } from '../testing';
+import {
+  captureConnection,
+  collectFrames,
+  expectDropsUnknownFrame,
+  waitForNextEvent,
+} from '../testing';
 import { PerpsSubscriptionManager } from './subscription';
 
 const perpsSubscriptions = ws.link(production.perps.ws);
@@ -116,6 +121,42 @@ describe('PerpsSubscriptionManager', () => {
         timestamp: 1_700_000_000_000,
         topic: 'perps.book',
         type: 'book',
+      },
+    });
+  });
+
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
+      // Request acknowledgements echo the request id and are expected
+      // control frames; they must not produce events either.
+      expectedControlFrames: [{ id: 7, ret: 'ok' }],
+      expectedEvent: { topic: 'perps.book', type: 'book' },
+      link: perpsSubscriptions,
+      server,
+      subscribe: async () => {
+        const observedManager = new PerpsSubscriptionManager({
+          url: production.perps.ws,
+        });
+        const events = await observedManager.subscribe({
+          instrumentId: 1,
+          topic: 'perps.book',
+        });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: {
+        ch: 'future_channel::1',
+        data: { hello: 'world' },
+        sq: 1,
+        ts: 1_700_000_000_000,
+      },
+      validFrame: {
+        ch: 'book::1',
+        data: {
+          a: [['101', '2']],
+          b: [['100', '1']],
+        },
+        sq: 10,
+        ts: 1_700_000_000_000,
       },
     });
   });

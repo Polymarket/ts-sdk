@@ -3,7 +3,6 @@ import {
   type RfqConfirmationDecision,
   type RfqErrorMessage,
   type RfqId,
-  RfqKnownInboundMessageSchema,
   type RfqQuoteId,
   type RfqQuoteRequest,
   RfqQuoterInboundMessageSchema,
@@ -274,16 +273,9 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   #handleMessage(rawMessage: unknown): void {
     if (this.#closing !== undefined) return;
-    if (!RfqKnownInboundMessageSchema.safeParse(rawMessage).success) return;
 
     const parsed = RfqQuoterInboundMessageSchema.safeParse(rawMessage);
-    if (!parsed.success) {
-      const error = new TransportError('Invalid RFQ quoter message.', {
-        cause: parsed.error,
-      });
-      void this.#fail(error);
-      return;
-    }
+    if (!parsed.success) return;
 
     const message = parsed.data;
     switch (message.type) {
