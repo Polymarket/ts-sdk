@@ -21,6 +21,7 @@ import {
   PerpsStatisticUpdateSchema,
   PerpsTickerEntrySchema,
 } from '../perps/market';
+import { PerpsNotificationSchema } from '../perps/notifications';
 import {
   PerpsAccountFillUpdateSchema,
   PerpsOrderUpdateSchema,
@@ -46,6 +47,7 @@ const PerpsSessionChannelSchema = z.enum([
   'funding',
   'deposits',
   'withdrawals',
+  'notifications',
 ]);
 
 const PerpsUpdateEnvelopeSchema = z.object({
@@ -244,6 +246,35 @@ export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
 
+export const PerpsNotificationUpdateEventSchema = perpsSessionEventSchema(
+  'notification',
+  'notifications',
+  PerpsNotificationSchema,
+);
+export type PerpsNotificationUpdateEvent = z.infer<
+  typeof PerpsNotificationUpdateEventSchema
+>;
+
+/**
+ * Backpressure control frame on the `notifications` channel. The server sends
+ * it when one or more notification data frames were dropped; `sq` is the
+ * highest engine sequence among the dropped notifications.
+ */
+export const PerpsNotificationsResyncFrameSchema = z
+  .object({
+    ch: z.literal('notifications'),
+    ts: EpochMillisecondsSchema,
+    sq: SequenceSchema,
+    type: z.literal('resync'),
+  })
+  .transform(({ ch, ts, sq }) => ({
+    type: 'resync' as const,
+    reason: 'server' as const,
+    channel: ch,
+    timestamp: ts,
+    sequence: sq,
+  }));
+
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
   st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
@@ -274,6 +305,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,
+  PerpsNotificationUpdateEventSchema,
   PerpsTpSlUpdateEventSchema,
 ]);
 
@@ -281,12 +313,20 @@ export type PerpsSessionUpdateEvent = z.infer<
   typeof PerpsSessionUpdateEventSchema
 >;
 
+/**
+ * Signals that channel events may have been missed and channel state should
+ * be re-read. `reconnect` and `sequence_gap` resyncs are synthesized locally;
+ * `server` resyncs relay a server-sent `notifications` backpressure frame
+ * whose `sequence` is the highest engine sequence among the dropped
+ * notifications.
+ */
 export type PerpsResyncEvent = {
   type: 'resync';
-  reason: 'reconnect' | 'sequence_gap';
+  reason: 'reconnect' | 'sequence_gap' | 'server';
   channel?: string;
   previousSequence?: number;
   sequence?: number;
+  timestamp?: number;
 };
 
 export type PerpsSessionEvent = PerpsSessionUpdateEvent | PerpsResyncEvent;

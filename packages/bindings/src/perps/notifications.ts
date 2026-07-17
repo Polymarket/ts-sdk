@@ -1,0 +1,231 @@
+import { z } from 'zod';
+import { DecimalStringSchema, EpochMillisecondsSchema } from '../shared';
+import {
+  PerpsInstrumentIdSchema,
+  PerpsNotificationIdSchema,
+  PerpsSideSchema,
+} from './common';
+
+export enum PerpsNotificationType {
+  PositionOpened = 'position_opened',
+  PositionIncreased = 'position_increased',
+  PositionReduced = 'position_reduced',
+  PositionClosed = 'position_closed',
+  LimitOrderCanceled = 'limit_order_canceled',
+  LiquidationWarning = 'liquidation_warning',
+  PositionLiquidated = 'position_liquidated',
+}
+
+export const PerpsNotificationTypeSchema = z.enum(PerpsNotificationType);
+
+/**
+ * Kind of order whose execution produced a fill-driven position notification.
+ * A TP/SL-triggered order reports the trigger that fired it whether it
+ * aggressed or rested; otherwise an aggressor submitted without a limit price
+ * is `market` and everything else, including a maker's resting order, is
+ * `limit`.
+ */
+export enum PerpsNotificationOrderType {
+  Market = 'market',
+  Limit = 'limit',
+  TakeProfit = 'take_profit',
+  StopLoss = 'stop_loss',
+}
+
+export const PerpsNotificationOrderTypeSchema = z.enum(
+  PerpsNotificationOrderType,
+);
+
+export enum PerpsMarginType {
+  Cross = 'cross',
+  Isolated = 'isolated',
+}
+
+export const PerpsMarginTypeSchema = z.enum(PerpsMarginType);
+
+export const PerpsPositionChangeNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.enum([
+      PerpsNotificationType.PositionOpened,
+      PerpsNotificationType.PositionIncreased,
+      PerpsNotificationType.PositionReduced,
+    ]),
+    instrument_id: PerpsInstrumentIdSchema,
+    side: PerpsSideSchema,
+    size: DecimalStringSchema,
+    avg_price: DecimalStringSchema,
+    leverage: z.number().int().positive(),
+    order_type: PerpsNotificationOrderTypeSchema.optional(),
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    instrumentId: notification.instrument_id,
+    side: notification.side,
+    size: notification.size,
+    avgPrice: notification.avg_price,
+    leverage: notification.leverage,
+    orderType: notification.order_type,
+  }));
+
+export type PerpsPositionChangeNotification = z.infer<
+  typeof PerpsPositionChangeNotificationSchema
+>;
+
+export const PerpsPositionClosedNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.PositionClosed),
+    instrument_id: PerpsInstrumentIdSchema,
+    side: PerpsSideSchema,
+    size: DecimalStringSchema,
+    avg_price: DecimalStringSchema,
+    pnl: DecimalStringSchema,
+    order_type: PerpsNotificationOrderTypeSchema.optional(),
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    instrumentId: notification.instrument_id,
+    side: notification.side,
+    size: notification.size,
+    avgPrice: notification.avg_price,
+    pnl: notification.pnl,
+    orderType: notification.order_type,
+  }));
+
+export type PerpsPositionClosedNotification = z.infer<
+  typeof PerpsPositionClosedNotificationSchema
+>;
+
+export const PerpsLimitOrderCanceledNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.LimitOrderCanceled),
+    instrument_id: PerpsInstrumentIdSchema,
+    side: PerpsSideSchema,
+    size: DecimalStringSchema,
+    price: DecimalStringSchema,
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    instrumentId: notification.instrument_id,
+    side: notification.side,
+    size: notification.size,
+    price: notification.price,
+  }));
+
+export type PerpsLimitOrderCanceledNotification = z.infer<
+  typeof PerpsLimitOrderCanceledNotificationSchema
+>;
+
+const PerpsIsolatedLiquidationWarningNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.LiquidationWarning),
+    margin_type: z.literal(PerpsMarginType.Isolated),
+    instrument_id: PerpsInstrumentIdSchema,
+    mark_price: DecimalStringSchema,
+    liq_price: DecimalStringSchema,
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    marginType: notification.margin_type,
+    instrumentId: notification.instrument_id,
+    markPrice: notification.mark_price,
+    liquidationPrice: notification.liq_price,
+  }));
+
+const PerpsCrossLiquidationWarningNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.LiquidationWarning),
+    margin_type: z.literal(PerpsMarginType.Cross),
+    instrument_id: z.null(),
+    mark_price: DecimalStringSchema,
+    affected_instruments: z.array(PerpsInstrumentIdSchema),
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    marginType: notification.margin_type,
+    markPrice: notification.mark_price,
+    affectedInstruments: notification.affected_instruments,
+  }));
+
+export const PerpsLiquidationWarningNotificationSchema = z.union([
+  PerpsIsolatedLiquidationWarningNotificationSchema,
+  PerpsCrossLiquidationWarningNotificationSchema,
+]);
+
+export type PerpsLiquidationWarningNotification = z.infer<
+  typeof PerpsLiquidationWarningNotificationSchema
+>;
+
+export const PerpsPositionLiquidatedNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.PositionLiquidated),
+    instrument_id: PerpsInstrumentIdSchema,
+    side: PerpsSideSchema,
+    size_closed: DecimalStringSchema,
+    pnl: DecimalStringSchema.nullable(),
+    margin_type: PerpsMarginTypeSchema,
+    via_backstop: z.boolean(),
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    instrumentId: notification.instrument_id,
+    side: notification.side,
+    sizeClosed: notification.size_closed,
+    pnl: notification.pnl,
+    marginType: notification.margin_type,
+    viaBackstop: notification.via_backstop,
+  }));
+
+export type PerpsPositionLiquidatedNotification = z.infer<
+  typeof PerpsPositionLiquidatedNotificationSchema
+>;
+
+export const PerpsNotificationSchema = z.union([
+  PerpsPositionChangeNotificationSchema,
+  PerpsPositionClosedNotificationSchema,
+  PerpsLimitOrderCanceledNotificationSchema,
+  PerpsLiquidationWarningNotificationSchema,
+  PerpsPositionLiquidatedNotificationSchema,
+]);
+
+export type PerpsNotification = z.infer<typeof PerpsNotificationSchema>;
+
+export const PerpsNotificationEntrySchema = z
+  .object({
+    notification: PerpsNotificationSchema,
+    read_at: EpochMillisecondsSchema.nullable(),
+    ts: EpochMillisecondsSchema,
+  })
+  .transform((entry) => ({
+    notification: entry.notification,
+    readAt: entry.read_at,
+    timestamp: entry.ts,
+  }));
+
+export type PerpsNotificationEntry = z.infer<
+  typeof PerpsNotificationEntrySchema
+>;
+
+export const ListPerpsNotificationsResponseSchema = z.object({
+  items: z.array(PerpsNotificationEntrySchema),
+  unread: z.number().int().nonnegative(),
+  durable_source_seq: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+  next_cursor: z.string().nullable(),
+});
+
+export const MarkPerpsNotificationsReadResponseSchema = z.object({
+  status: z.enum(['ok', 'err']),
+  error: z.string().optional(),
+});
