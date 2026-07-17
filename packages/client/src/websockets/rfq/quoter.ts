@@ -27,7 +27,6 @@ import { ConnectionLostError, TransportError } from '../../errors';
 import type { Signer } from '../../types';
 import type { AccountIdentity } from '../../wallet';
 import { type WebSocketCloseInfo, WebSocketConnection } from '../lifecycle';
-import type { OnUnknownWebSocketFrame } from '../types';
 import {
   type RfqEventController,
   toConfirmationAck,
@@ -56,7 +55,6 @@ export type RfqQuoterWebSocketManagerOptions = {
   credentials: ApiKeyCreds;
   exchange: EvmAddress;
   headers?: Record<string, string>;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   signer: Signer;
   url: string;
 };
@@ -67,7 +65,6 @@ export class RfqQuoterWebSocketManager {
   readonly #credentials: ApiKeyCreds;
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #signer: Signer;
   readonly #url: string;
   #session: RfqWebSocketSession | undefined;
@@ -81,7 +78,6 @@ export class RfqQuoterWebSocketManager {
     this.#credentials = options.credentials;
     this.#exchange = options.exchange;
     this.#headers = options.headers;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#signer = options.signer;
     this.#url = options.url;
   }
@@ -104,7 +100,6 @@ export class RfqQuoterWebSocketManager {
       exchange: this.#exchange,
       headers: this.#headers,
       onClose: () => this.#clearSession(session),
-      onUnknownFrame: this.#onUnknownFrame,
       signer: this.#signer,
       url: this.#url,
     });
@@ -171,7 +166,6 @@ type RfqWebSocketSessionConfig = {
   exchange: EvmAddress;
   headers?: Record<string, string>;
   onClose: () => void;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   signer: Signer;
   url: string;
 };
@@ -183,7 +177,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
   readonly #onClose: () => void;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #signer: Signer;
   readonly #url: string;
   readonly #connection = new WebSocketConnection();
@@ -199,7 +192,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     this.#exchange = options.exchange;
     this.#headers = options.headers;
     this.#onClose = options.onClose;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#signer = options.signer;
     this.#url = options.url;
   }
@@ -285,10 +277,11 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     const parsed = RfqQuoterInboundMessageSchema.safeParse(rawMessage);
     if (!parsed.success) {
       // Servers may introduce message types or payload shapes ahead of a
-      // client release that understands them. Surface the frame and keep the
-      // session open; callers waiting on an unreadable acknowledgement fail
-      // through their acknowledgement timeout instead.
-      this.#onUnknownFrame?.({ frame: rawMessage, stream: 'rfqQuoter' });
+      // client release that understands them. Drop the frame and keep the
+      // session open; unknown frames are not exposed so consumers do not
+      // couple to shapes the SDK has not modeled yet. Callers waiting on an
+      // unreadable acknowledgement fail through their acknowledgement timeout
+      // instead.
       return;
     }
 

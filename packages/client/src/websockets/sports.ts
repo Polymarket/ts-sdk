@@ -17,10 +17,7 @@ import {
   SubscriptionRegistry,
   type SubscriptionRegistryEntry,
 } from './registry';
-import type {
-  OnUnknownWebSocketFrame,
-  WebSocketSubscriptionManager,
-} from './types';
+import type { WebSocketSubscriptionManager } from './types';
 
 type SportsSubscriptionEntry = SubscriptionRegistryEntry<
   SportsSubscription,
@@ -29,7 +26,6 @@ type SportsSubscriptionEntry = SubscriptionRegistryEntry<
 
 export type SportsWebSocketManagerOptions = {
   headers?: Record<string, string>;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   url: string;
 };
 
@@ -44,7 +40,6 @@ export class SportsWebSocketManager
   implements WebSocketSubscriptionManager<SportsSubscription, SportsEvent>
 {
   readonly #headers: Record<string, string> | undefined;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #url: string;
   #closing: Promise<void> | undefined;
   readonly #connection = new WebSocketConnection({
@@ -58,7 +53,6 @@ export class SportsWebSocketManager
 
   constructor(options: SportsWebSocketManagerOptions) {
     this.#headers = options.headers;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#url = options.url;
   }
 
@@ -129,8 +123,9 @@ export class SportsWebSocketManager
     const parsed = SportsResultEventSchema.safeParse(message);
     if (!parsed.success) {
       // Servers may introduce frame types ahead of a client release that
-      // understands them. Surface the frame and keep the stream open.
-      this.#onUnknownFrame?.({ frame: message, stream: 'sports' });
+      // understands them. Drop the frame and keep the stream open; unknown
+      // frames are not exposed so consumers do not couple to shapes the SDK
+      // has not modeled yet.
       return;
     }
     this.#subscriptions.dispatch(parsed.data);

@@ -1,12 +1,10 @@
 import type { PerpsCredentials } from '@polymarket/bindings/perps';
 import { TransportError } from '../../errors';
-import type { OnUnknownWebSocketFrame } from '../types';
 import { PerpsSession } from './session';
 
 export type PerpsSessionManagerOptions = {
   chainId: number;
   headers?: Record<string, string>;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   restUrl: string;
   wsUrl: string;
 };
@@ -14,7 +12,6 @@ export type PerpsSessionManagerOptions = {
 export class PerpsSessionManager {
   readonly #chainId: number;
   readonly #headers: Record<string, string> | undefined;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #restUrl: string;
   readonly #wsUrl: string;
   readonly #sessions = new Set<PerpsSession>();
@@ -25,7 +22,6 @@ export class PerpsSessionManager {
   constructor(options: PerpsSessionManagerOptions) {
     this.#chainId = options.chainId;
     this.#headers = options.headers;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#restUrl = options.restUrl;
     this.#wsUrl = options.wsUrl;
   }
@@ -42,7 +38,6 @@ export class PerpsSessionManager {
       credentials,
       headers: this.#headers,
       onClose: (closedSession) => this.#clearSession(closedSession),
-      onUnknownFrame: this.#onUnknownFrame,
       restUrl: this.#restUrl,
       wsUrl: this.#wsUrl,
     });

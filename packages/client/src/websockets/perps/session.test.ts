@@ -21,7 +21,7 @@ import { production } from '../../environments';
 import { RequestRejectedError, UserInputError } from '../../errors';
 import {
   captureConnection,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
 import { PerpsSession } from './session';
@@ -139,18 +139,16 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('surfaces unknown frames without closing the session', async () => {
-      await expectSurfacesUnknownFrame({
+    it('drops unknown frames without closing the session', async () => {
+      await expectDropsUnknownFrame({
         expectedEvent: { channel: 'balances', type: 'balance' },
         link: perps,
         server,
-        stream: 'perpsSession',
-        subscribe: async (onUnknownFrame) => {
+        subscribe: async () => {
           const session = new PerpsSession({
             chainId: production.chainId,
             credentials,
             onClose: () => undefined,
-            onUnknownFrame,
             restUrl: production.perps.rest,
             wsUrl: production.perps.ws,
           });
@@ -899,7 +897,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('delivers TP/SL updates with statuses introduced after this client release', async () => {
+    it('drops TP/SL updates with unrecognized statuses without closing the session', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
@@ -913,13 +911,21 @@ describe('PerpsSession', () => {
         sq: 1,
         ts: 1_700_000_000_000,
       });
+      await connection.send({
+        ch: 'tpsl::1',
+        data: { oid: 123, st: 'armed' },
+        sq: 2,
+        ts: 1_700_000_000_000,
+      });
 
+      // The unrecognized-status frame is dropped; the valid update sent
+      // afterwards arriving as the next event proves the session survived.
       await expect(nextEvent).resolves.toMatchObject({
         done: false,
         value: {
           channel: 'tpsl::1',
-          payload: { orderId: 123, status: 'future_status' },
-          sequence: 1,
+          payload: { orderId: 123, status: 'armed' },
+          sequence: 2,
           type: 'tpsl',
         },
       });

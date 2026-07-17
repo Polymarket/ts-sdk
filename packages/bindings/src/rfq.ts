@@ -54,27 +54,13 @@ export enum RfqConfirmationDecision {
   Decline = 'DECLINE',
 }
 
-export enum RfqKnownExecutionStatus {
+export enum RfqExecutionStatus {
   Matched = 'MATCHED',
   Mined = 'MINED',
   Confirmed = 'CONFIRMED',
   Retrying = 'RETRYING',
   Failed = 'FAILED',
 }
-
-/**
- * An RFQ execution status. Known statuses are enumerated in
- * {@link RfqKnownExecutionStatus}; newly introduced statuses flow through as
- * plain strings so they can be handled before a client release that
- * enumerates them.
- */
-export type RfqExecutionStatus = RfqKnownExecutionStatus | (string & {});
-
-/**
- * @deprecated Use {@link RfqKnownExecutionStatus} instead. This alias will be
- * removed at the end of the beta phase.
- */
-export const RfqExecutionStatus = RfqKnownExecutionStatus;
 
 export enum RfqRequestedSizeUnit {
   Notional = 'notional',
@@ -132,12 +118,7 @@ export const RfqErrorCode = RfqKnownErrorCode;
 const RfqDirectionSchema = z.enum(RfqDirection);
 const RfqSideSchema = z.literal(RfqSide.Yes);
 const RfqConfirmationDecisionSchema = z.enum(RfqConfirmationDecision);
-// Execution statuses evolve independently of released clients. Statuses not
-// yet enumerated in RfqKnownExecutionStatus must still parse and flow through
-// as-is.
-const RfqExecutionStatusSchema = z
-  .string()
-  .transform((value): RfqExecutionStatus => value);
+const RfqExecutionStatusSchema = z.enum(RfqExecutionStatus);
 
 // Error codes evolve independently of released clients. Codes not yet
 // enumerated in RfqKnownErrorCode must still parse and flow through as-is.

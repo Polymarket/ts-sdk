@@ -55,7 +55,6 @@ import {
 import {
   ClobMarketWebSocketManager,
   ClobUserWebSocketManager,
-  type OnUnknownWebSocketFrame,
   PerpsSessionManager,
   PerpsSubscriptionManager,
   type PublicWebSocketManagers,
@@ -64,13 +63,6 @@ import {
   type SecureWebSocketManagers,
   SportsWebSocketManager,
 } from './websockets';
-
-export type {
-  OnUnknownWebSocketFrame,
-  UnknownWebSocketFrame,
-  WebSocketStream,
-} from './websockets';
-
 import {
   type AuthenticationWorkflow,
   authenticateWith,
@@ -82,8 +74,6 @@ type PublicContext = {
   apiKey?: ApiKeyAuthorization;
   /** @internal */
   environment: EnvironmentConfig;
-  /** @internal */
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -292,7 +282,6 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
 type PublicClientConfig = {
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
 };
 
 class BasePublicClient<
@@ -303,7 +292,6 @@ class BasePublicClient<
     super({
       apiKey: config.apiKey,
       environment: config.environment,
-      onUnknownFrame: config.onUnknownFrame,
       data: new ServiceClient({
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
@@ -334,22 +322,18 @@ class BasePublicClient<
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.clob.market.ws,
         }),
         sports: new SportsWebSocketManager({
           headers: config.environment.sports.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.sports.ws,
         }),
         rtds: new RtdsWebSocketManager({
           headers: config.environment.rtds.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.rtds.ws,
         }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.perps.ws,
         }),
       },
@@ -506,7 +490,6 @@ class BasePublicClient<
       apiKey: this.context.apiKey,
       credentials,
       environment: this.environment,
-      onUnknownFrame: this.context.onUnknownFrame,
       signer,
     });
 
@@ -547,7 +530,6 @@ class BaseSecureClient<
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
-      onUnknownFrame: config.onUnknownFrame,
       signer: config.signer,
       clob: new ServiceClient({
         headers: config.environment.clob.headers,
@@ -587,13 +569,11 @@ class BaseSecureClient<
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.clob.market.ws,
         }),
         clobUser: new ClobUserWebSocketManager({
           credentials: config.credentials,
           headers: config.environment.clob.user.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.clob.user.ws,
         }),
         rfqQuoter: new RfqQuoterWebSocketManager({
@@ -602,29 +582,24 @@ class BaseSecureClient<
           credentials: config.credentials,
           exchange: config.environment.contracts.exchangeV3,
           headers: config.environment.rfq.headers,
-          onUnknownFrame: config.onUnknownFrame,
           signer: config.signer,
           url: config.environment.rfq.ws,
         }),
         sports: new SportsWebSocketManager({
           headers: config.environment.sports.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.sports.ws,
         }),
         rtds: new RtdsWebSocketManager({
           headers: config.environment.rtds.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.rtds.ws,
         }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
-          onUnknownFrame: config.onUnknownFrame,
           url: config.environment.perps.ws,
         }),
         perpsSession: new PerpsSessionManager({
           chainId: config.environment.chainId,
           headers: config.environment.perps.headers,
-          onUnknownFrame: config.onUnknownFrame,
           restUrl: config.environment.perps.rest,
           wsUrl: config.environment.perps.ws,
         }),
@@ -873,16 +848,6 @@ export type PublicClientOptions = {
    * Optional request authorization applied by the client when needed.
    */
   apiKey?: ApiKeyAuthorization;
-
-  /**
-   * Optional observer invoked when a websocket stream receives a frame the
-   * SDK does not recognize, for example a frame type introduced ahead of a
-   * client release that understands it. Unknown frames never close the
-   * connection or end active subscriptions; without an observer they are
-   * ignored. The SDK does not log unknown frames, so whether and how to
-   * record them is up to the consumer.
-   */
-  onUnknownFrame?: OnUnknownWebSocketFrame;
 };
 
 export type SecureClientOptions = PublicClientOptions & {
@@ -933,7 +898,6 @@ export function createPublicClient(
   return new BasePublicClient({
     environment: options.environment ?? production,
     apiKey: options.apiKey,
-    onUnknownFrame: options.onUnknownFrame,
   }).extend(allActions);
 }
 
@@ -984,7 +948,6 @@ export async function createSecureClient(
   const client = createPublicClient({
     environment: options.environment,
     apiKey: options.apiKey,
-    onUnknownFrame: options.onUnknownFrame,
   });
   const wallet = await resolveRequestedWallet(client, options);
 

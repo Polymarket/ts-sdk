@@ -17,10 +17,7 @@ import {
   SubscriptionRegistry,
   type SubscriptionRegistryChange,
 } from '../registry';
-import type {
-  OnUnknownWebSocketFrame,
-  WebSocketSubscriptionManager,
-} from '../types';
+import type { WebSocketSubscriptionManager } from '../types';
 import {
   buildMarketSubscribeMessage,
   deriveMarketServerSubscription,
@@ -32,7 +29,6 @@ import {
 
 export type ClobMarketWebSocketManagerOptions = {
   headers?: Record<string, string>;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   url: string;
 };
 
@@ -46,7 +42,6 @@ export class ClobMarketWebSocketManager
   implements WebSocketSubscriptionManager<MarketSubscription, MarketEvent>
 {
   readonly #headers: Record<string, string> | undefined;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #url: string;
   #closing: Promise<void> | undefined;
   readonly #connection = new WebSocketConnection({
@@ -61,7 +56,6 @@ export class ClobMarketWebSocketManager
 
   constructor(options: ClobMarketWebSocketManagerOptions) {
     this.#headers = options.headers;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#url = options.url;
   }
 
@@ -152,8 +146,9 @@ export class ClobMarketWebSocketManager
       const parsed = MarketEventSchema.safeParse(eventData);
       if (!parsed.success) {
         // Servers may introduce frame types ahead of a client release that
-        // understands them. Surface the frame and keep the stream open.
-        this.#onUnknownFrame?.({ frame: eventData, stream: 'clobMarket' });
+        // understands them. Drop the frame and keep the stream open; unknown
+        // frames are not exposed so consumers do not couple to shapes the SDK
+        // has not modeled yet.
         continue;
       }
       this.#subscriptions.dispatch(parsed.data);

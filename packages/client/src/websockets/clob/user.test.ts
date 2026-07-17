@@ -14,7 +14,7 @@ import { production } from '../../environments';
 import {
   captureConnection,
   collectFrames,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
 import { ClobUserWebSocketManager } from './user';
@@ -192,51 +192,58 @@ describe('ClobUserWebSocketManager', () => {
     });
   });
 
-  it('delivers trade events with statuses introduced after this client release', async () => {
-    const connection = captureConnection(server, clobUser);
-    const handle = await manager.subscribe({ topic: 'user' });
-    const next = waitForNextEvent(handle);
+  it('drops trade events with unrecognized statuses without closing the shared socket', async () => {
+    function tradeFrame(status: string) {
+      return {
+        asset_id: 'token-a',
+        event_type: 'trade',
+        fee_rate_bps: '0',
+        id: 'trade-a',
+        last_update: '1710000000',
+        maker_address: '0x0000000000000000000000000000000000000001',
+        market: 'market-a',
+        match_time: '1710000000',
+        owner: 'test-owner',
+        price: '0.5',
+        side: 'BUY',
+        size: '1',
+        status,
+        taker_order_id: 'order-a',
+        timestamp: '1710000000000',
+        trade_owner: 'test-owner',
+        type: 'TRADE',
+      };
+    }
 
-    await connection.send({
-      asset_id: 'token-a',
-      event_type: 'trade',
-      fee_rate_bps: '0',
-      id: 'trade-a',
-      last_update: '1710000000',
-      maker_address: '0x0000000000000000000000000000000000000001',
-      market: 'market-a',
-      match_time: '1710000000',
-      owner: 'test-owner',
-      price: '0.5',
-      side: 'BUY',
-      size: '1',
-      status: 'TRADE_STATUS_FUTURE_STATUS',
-      taker_order_id: 'order-a',
-      timestamp: '1710000000000',
-      trade_owner: 'test-owner',
-      type: 'TRADE',
-    });
-
-    await expect(next).resolves.toMatchObject({
-      done: false,
-      value: {
-        payload: { id: 'trade-a', status: 'TRADE_STATUS_FUTURE_STATUS' },
+    await expectDropsUnknownFrame({
+      expectedEvent: {
+        payload: { id: 'trade-a', status: 'TRADE_STATUS_CONFIRMED' },
         topic: 'user',
         type: 'trade',
       },
+      link: clobUser,
+      server,
+      subscribe: async () => {
+        const observedManager = new ClobUserWebSocketManager({
+          credentials,
+          url: production.clob.user.ws,
+        });
+        const events = await observedManager.subscribe({ topic: 'user' });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: tradeFrame('TRADE_STATUS_FUTURE_STATUS'),
+      validFrame: tradeFrame('TRADE_STATUS_CONFIRMED'),
     });
   });
 
-  it('surfaces unknown frames without closing the shared socket', async () => {
-    await expectSurfacesUnknownFrame({
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
       expectedEvent: { topic: 'user', type: 'order' },
       link: clobUser,
       server,
-      stream: 'clobUser',
-      subscribe: async (onUnknownFrame) => {
+      subscribe: async () => {
         const observedManager = new ClobUserWebSocketManager({
           credentials,
-          onUnknownFrame,
           url: production.clob.user.ws,
         });
         const events = await observedManager.subscribe({

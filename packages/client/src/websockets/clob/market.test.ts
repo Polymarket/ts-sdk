@@ -13,7 +13,7 @@ import { production } from '../../environments';
 import {
   captureConnection,
   collectFrames,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
 import { ClobMarketWebSocketManager } from './market';
@@ -134,15 +134,13 @@ describe('ClobMarketWebSocketManager', () => {
     });
   });
 
-  it('surfaces unknown frames without closing the shared socket', async () => {
-    await expectSurfacesUnknownFrame({
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
       expectedEvent: { topic: 'market', type: 'book' },
       link: clobMarket,
       server,
-      stream: 'clobMarket',
-      subscribe: async (onUnknownFrame) => {
+      subscribe: async () => {
         const observedManager = new ClobMarketWebSocketManager({
-          onUnknownFrame,
           url: production.clob.market.ws,
         });
         const events = await observedManager.subscribe({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  RfqExecutionStatus,
   RfqKnownErrorCode,
-  RfqKnownExecutionStatus,
   RfqQuoterInboundMessageSchema,
 } from './rfq';
 
@@ -70,20 +70,7 @@ describe('RFQ quoter inbound messages', () => {
     });
 
     expect(message).toMatchObject({
-      status: RfqKnownExecutionStatus.Confirmed,
-      type: 'execution_update',
-    });
-  });
-
-  it('passes unknown RFQ execution statuses through as strings', () => {
-    const message = RfqQuoterInboundMessageSchema.parse({
-      type: 'RFQ_EXECUTION_UPDATE',
-      rfq_id: 'rfq-1',
-      status: 'FUTURE_STATUS',
-    });
-
-    expect(message).toMatchObject({
-      status: 'FUTURE_STATUS',
+      status: RfqExecutionStatus.Confirmed,
       type: 'execution_update',
     });
   });

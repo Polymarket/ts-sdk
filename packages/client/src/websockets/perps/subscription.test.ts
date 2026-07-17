@@ -14,7 +14,7 @@ import { production } from '../../environments';
 import {
   captureConnection,
   collectFrames,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
 import { PerpsSubscriptionManager } from './subscription';
@@ -125,18 +125,16 @@ describe('PerpsSubscriptionManager', () => {
     });
   });
 
-  it('surfaces unknown frames without closing the shared socket', async () => {
-    await expectSurfacesUnknownFrame({
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
       // Request acknowledgements echo the request id and are expected
-      // control frames, not unknown events.
+      // control frames; they must not produce events either.
       expectedControlFrames: [{ id: 7, ret: 'ok' }],
       expectedEvent: { topic: 'perps.book', type: 'book' },
       link: perpsSubscriptions,
       server,
-      stream: 'perpsSubscriptions',
-      subscribe: async (onUnknownFrame) => {
+      subscribe: async () => {
         const observedManager = new PerpsSubscriptionManager({
-          onUnknownFrame,
           url: production.perps.ws,
         });
         const events = await observedManager.subscribe({

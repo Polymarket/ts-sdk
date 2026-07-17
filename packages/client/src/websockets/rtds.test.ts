@@ -14,7 +14,7 @@ import { RtdsWebSocketManager } from './rtds';
 import {
   captureConnection,
   collectFrames,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from './testing';
 
@@ -83,15 +83,13 @@ describe('RtdsWebSocketManager', () => {
     });
   });
 
-  it('surfaces unknown frames without closing the shared socket', async () => {
-    await expectSurfacesUnknownFrame({
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
       expectedEvent: { topic: 'prices.crypto.binance', type: 'update' },
       link: rtds,
       server,
-      stream: 'rtds',
-      subscribe: async (onUnknownFrame) => {
+      subscribe: async () => {
         const observedManager = new RtdsWebSocketManager({
-          onUnknownFrame,
           url: production.rtds.ws,
         });
         const events = await observedManager.subscribe({

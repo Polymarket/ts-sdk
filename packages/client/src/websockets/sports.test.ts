@@ -13,7 +13,7 @@ import { production } from '../environments';
 import { SportsWebSocketManager } from './sports';
 import {
   captureConnection,
-  expectSurfacesUnknownFrame,
+  expectDropsUnknownFrame,
   waitForNextEvent,
 } from './testing';
 
@@ -93,15 +93,13 @@ describe('SportsWebSocketManager', () => {
     });
   });
 
-  it('surfaces unknown frames without closing the shared socket', async () => {
-    await expectSurfacesUnknownFrame({
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
       expectedEvent: { topic: 'sports', type: 'sport_result' },
       link: sports,
       server,
-      stream: 'sports',
-      subscribe: async (onUnknownFrame) => {
+      subscribe: async () => {
         const observedManager = new SportsWebSocketManager({
-          onUnknownFrame,
           url: production.sports.ws,
         });
         const events = await observedManager.subscribe({ topic: 'sports' });

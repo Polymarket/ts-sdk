@@ -34,7 +34,6 @@ export {
   RfqErrorCode,
   RfqExecutionStatus,
   RfqKnownErrorCode,
-  RfqKnownExecutionStatus,
   RfqQuoteError,
   RfqQuoteRejectedError,
   RfqRequestedSizeUnit,

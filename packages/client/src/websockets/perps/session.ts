@@ -44,7 +44,6 @@ import type { Paginated } from '../../pagination';
 import { ServiceClient } from '../../ServiceClient';
 import { PerpsWebSocketHeartbeat } from '../heartbeat';
 import { ReconnectScheduler, WebSocketConnection } from '../lifecycle';
-import type { OnUnknownWebSocketFrame } from '../types';
 import {
   type FetchPerpsAccountConfigRequest,
   type FetchPerpsOpenOrdersRequest,
@@ -114,11 +113,6 @@ const PerpsResponseEnvelopeSchema = z
   })
   .passthrough();
 
-// Responses to client requests echo the request `id`. Heartbeat pongs echo
-// the reserved id 0, outside the positive pending-request id space accepted
-// by PerpsResponseEnvelopeSchema, so they are matched separately here.
-const PerpsRequestResponseSchema = z.object({ id: z.number().int() });
-
 const PerpsSessionAckSchema = z
   .union([PerpsCommandAckSchema, z.array(PerpsCommandAckSchema)])
   .transform((response) =>
@@ -180,7 +174,6 @@ export type PerpsSessionOptions = {
   credentials: PerpsCredentials;
   headers?: Record<string, string>;
   onClose: (session: PerpsSession) => void;
-  onUnknownFrame?: OnUnknownWebSocketFrame;
   restUrl: string;
   wsUrl: string;
 };
@@ -229,7 +222,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly #chainId: number;
   readonly #headers: Record<string, string> | undefined;
   readonly #onClose: (session: PerpsSession) => void;
-  readonly #onUnknownFrame: OnUnknownWebSocketFrame | undefined;
   readonly #wsUrl: string;
   readonly #connection = new WebSocketConnection({
     heartbeat: new PerpsWebSocketHeartbeat(),
@@ -252,7 +244,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.credentials = options.credentials;
     this.#headers = options.headers;
     this.#onClose = options.onClose;
-    this.#onUnknownFrame = options.onUnknownFrame;
     this.#wsUrl = options.wsUrl;
   }
 
@@ -850,12 +841,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     const parsed = PerpsSessionUpdateEventSchema.safeParse(rawMessage);
     if (!parsed.success) {
       // Servers may introduce frame types ahead of a client release that
-      // understands them. Surface the frame and keep the session open.
-      // Frames echoing a request id are expected control frames (for example
-      // heartbeat pongs), not unknown events.
-      if (!PerpsRequestResponseSchema.safeParse(rawMessage).success) {
-        this.#onUnknownFrame?.({ frame: rawMessage, stream: 'perpsSession' });
-      }
+      // understands them. Drop the frame and keep the session open; unknown
+      // frames are not exposed so consumers do not couple to shapes the SDK
+      // has not modeled yet. This also drops expected control frames that
+      // echo a request id, such as heartbeat pongs.
       return;
     }
 

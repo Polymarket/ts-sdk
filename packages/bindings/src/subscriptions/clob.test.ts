@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { KnownTradeStatus, MarketEventSchema, UserEventSchema } from './clob';
+import { MarketEventSchema, TradeStatus, UserEventSchema } from './clob';
 
 describe('UserEventSchema', () => {
   it('accepts short trade statuses from the user websocket and normalizes them', () => {
@@ -31,7 +31,7 @@ describe('UserEventSchema', () => {
 
     expect(result.data).toMatchObject({
       payload: {
-        status: KnownTradeStatus.Confirmed,
+        status: TradeStatus.Confirmed,
       },
       topic: 'user',
       type: 'trade',
@@ -52,7 +52,7 @@ describe('UserEventSchema', () => {
       price: '0.5',
       side: 'BUY',
       size: '1',
-      status: KnownTradeStatus.Matched,
+      status: TradeStatus.Matched,
       taker_order_id: 'order-2',
       timestamp: '1710000000001',
       trade_owner: 'owner-1',
@@ -60,74 +60,6 @@ describe('UserEventSchema', () => {
     });
 
     expect(result.success).toBe(true);
-  });
-
-  it('passes trade statuses not yet enumerated in KnownTradeStatus through as strings', () => {
-    const result = UserEventSchema.safeParse({
-      asset_id: '1',
-      event_type: 'trade',
-      fee_rate_bps: '0',
-      id: 'trade-4',
-      last_update: '1710000000',
-      maker_address: '0x0000000000000000000000000000000000000001',
-      market: 'market-1',
-      match_time: '1710000000',
-      owner: 'owner-1',
-      price: '0.5',
-      side: 'BUY',
-      size: '1',
-      status: 'TRADE_STATUS_FUTURE_STATUS',
-      taker_order_id: 'order-5',
-      timestamp: '1710000000003',
-      trade_owner: 'owner-1',
-      type: 'TRADE',
-    });
-
-    expect(result.success).toBe(true);
-
-    if (!result.success) {
-      throw result.error;
-    }
-
-    expect(result.data).toMatchObject({
-      payload: {
-        status: 'TRADE_STATUS_FUTURE_STATUS',
-      },
-      topic: 'user',
-      type: 'trade',
-    });
-  });
-
-  it('passes order event types and statuses not yet enumerated through as strings', () => {
-    const result = UserEventSchema.safeParse({
-      asset_id: '1',
-      event_type: 'order',
-      id: 'order-6',
-      market: 'market-1',
-      original_size: '1',
-      owner: 'owner-1',
-      price: '0.5',
-      side: 'BUY',
-      size_matched: '0',
-      status: 'FUTURE_STATUS',
-      timestamp: '1710000000004',
-      type: 'FUTURE_EVENT_TYPE',
-    });
-
-    expect(result.success).toBe(true);
-
-    if (!result.success) {
-      throw result.error;
-    }
-
-    expect(result.data).toMatchObject({
-      payload: {
-        orderEventType: 'FUTURE_EVENT_TYPE',
-        status: 'FUTURE_STATUS',
-      },
-      topic: 'user',
-      type: 'order',
-    });
   });
 
   it('normalizes empty-string fee_rate_bps to null on trades and maker orders', () => {
