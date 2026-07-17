@@ -144,10 +144,6 @@ export class ClobUserWebSocketManager
     for (const eventData of events) {
       const parsed = UserEventSchema.safeParse(eventData);
       if (!parsed.success) {
-        // Servers may introduce frame types ahead of a client release that
-        // understands them. Drop the frame and keep the stream open; unknown
-        // frames are not exposed so consumers do not couple to shapes the SDK
-        // has not modeled yet.
         continue;
       }
       this.#subscriptions.dispatch(parsed.data);

@@ -276,12 +276,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
     const parsed = RfqQuoterInboundMessageSchema.safeParse(rawMessage);
     if (!parsed.success) {
-      // Servers may introduce message types or payload shapes ahead of a
-      // client release that understands them. Drop the frame and keep the
-      // session open; unknown frames are not exposed so consumers do not
-      // couple to shapes the SDK has not modeled yet. Callers waiting on an
-      // unreadable acknowledgement fail through their acknowledgement timeout
-      // instead.
       return;
     }
 

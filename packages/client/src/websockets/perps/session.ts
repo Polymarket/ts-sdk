@@ -840,11 +840,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
     const parsed = PerpsSessionUpdateEventSchema.safeParse(rawMessage);
     if (!parsed.success) {
-      // Servers may introduce frame types ahead of a client release that
-      // understands them. Drop the frame and keep the session open; unknown
-      // frames are not exposed so consumers do not couple to shapes the SDK
-      // has not modeled yet. This also drops expected control frames that
-      // echo a request id, such as heartbeat pongs.
       return;
     }
 

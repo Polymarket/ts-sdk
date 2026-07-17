@@ -152,10 +152,6 @@ export class RtdsWebSocketManager
   #onConnectionMessage(message: unknown): void {
     const parsed = RealtimeEventSchema.safeParse(message);
     if (!parsed.success) {
-      // Servers may introduce frame types ahead of a client release that
-      // understands them. Drop the frame and keep the stream open; unknown
-      // frames are not exposed so consumers do not couple to shapes the SDK
-      // has not modeled yet.
       return;
     }
     this.#subscriptions.dispatch(parsed.data);
