@@ -1,5 +1,19 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.15
+
+### Patch Changes
+
+- 8790a22: Normalize empty-string optional decimal fields on streamed market and trade events to null (for example a trade's `feeRateBps` and a price change's `bestBid`/`bestAsk`), so consumers never receive `''` where a decimal string or null is expected.
+- ea844f3: Strengthen CLOB batch price read result types so midpoint, price, and spread lookups are keyed by `TokenId`. `fetchPrices` now returns partial `OrderSide` records containing decimal strings, while `fetchMidpoints` and `fetchSpreads` return token ID keyed decimal strings.
+- 0f25328: Remove the unreleased `QUOTE_VALIDATION_TIMEOUT_INTERNAL` member from `RfqKnownErrorCode`. The gateway now reports quote-validation timeouts as `SERVICE_UNAVAILABLE`; gateways still emitting the internal code during rollout flow through the open `RfqErrorCode` type as plain strings.
+- b434b43: Support Perps fills frames containing a list of fills.
+- 1e707cd: Support Perps trades frames containing a list of trades.
+- 50d56ce: Harden RFQ quoter sessions:
+
+  - Unknown error codes no longer fail the session; they flow through as plain strings via the now-open `RfqErrorCode` type (known codes moved to `RfqKnownErrorCode`).
+  - Unsolicited connection loss now fails in-flight operations and the session iterator with the new `ConnectionLostError`, carrying the close `code` and `reason`.
+
 ## 0.1.0-beta.14
 
 ### Patch Changes
