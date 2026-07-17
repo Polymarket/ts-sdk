@@ -947,16 +947,22 @@ describe('RFQ sessions', () => {
         try {
           let quoteError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              await event.quote({ price: 0.45 });
-            } catch (error) {
-              quoteError = error;
+              try {
+                await event.quote({ price: 0.45 });
+              } catch (error) {
+                quoteError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(quoteError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1008,17 +1014,23 @@ describe('RFQ sessions', () => {
         try {
           let cancellationError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              const quote = await event.quote({ price: 0.45 });
-              await session.cancelQuote(quote);
-            } catch (error) {
-              cancellationError = error;
+              try {
+                const quote = await event.quote({ price: 0.45 });
+                await session.cancelQuote(quote);
+              } catch (error) {
+                cancellationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(cancellationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1074,21 +1086,27 @@ describe('RFQ sessions', () => {
         try {
           let confirmationError: unknown;
 
-          for await (const event of session) {
-            if (event.type === 'quote_request') {
-              await event.quote({ price: 0.45 });
-              continue;
-            }
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type === 'quote_request') {
+                await event.quote({ price: 0.45 });
+                continue;
+              }
 
-            if (event.type !== 'confirmation_request') continue;
+              if (event.type !== 'confirmation_request') continue;
 
-            try {
-              await event.confirm();
-            } catch (error) {
-              confirmationError = error;
+              try {
+                await event.confirm();
+              } catch (error) {
+                confirmationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(confirmationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1263,34 +1281,34 @@ describe('RFQ sessions', () => {
       const session = await secureClientWithDepositWallet.openRfqSession();
 
       try {
-        let quoteFailed = false;
+        let quoteError: unknown;
 
-        try {
+        async function consume(): Promise<void> {
           for await (const event of session) {
             if (event.type !== 'quote_request') continue;
 
-            await event.quote({ price: 0.45 });
-            throw new Error('Expected RFQ session failure.');
-          }
-        } catch (error) {
-          quoteFailed = true;
-          expect(error).toMatchObject({
-            message: 'Invalid RFQ quoter message.',
-            name: 'TransportError',
-          });
-        }
-
-        async function consumeAfterFailure() {
-          for await (const _event of session) {
-            throw new Error('Expected the failed RFQ session to stay closed.');
+            try {
+              await event.quote({ price: 0.45 });
+            } catch (error) {
+              quoteError = error;
+            }
           }
         }
 
-        expect(quoteFailed).toBe(true);
-        await expect(consumeAfterFailure()).rejects.toMatchObject({
+        await expect(consume()).rejects.toMatchObject({
           message: 'Invalid RFQ quoter message.',
           name: 'TransportError',
         });
+        expect(quoteError).toMatchObject({
+          message: 'Invalid RFQ quoter message.',
+          name: 'TransportError',
+        });
+
+        // The terminal error surfaces once, to the active consumer. Iterating
+        // the failed session again ends immediately without new events.
+        for await (const _event of session) {
+          throw new Error('Expected the failed RFQ session to stay closed.');
+        }
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();
       }
