@@ -668,9 +668,9 @@ describe('RFQ sessions', () => {
               quoteAmounts(frame);
               socket.send(
                 rfqErrorMessage({
-                  code: 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
+                  code: 'MAKER_QUOTE_LIMITED',
                   errorId: 'reqerr-1',
-                  error: 'quote validation timed out',
+                  error: 'maker quote limited',
                   requestType: 'RFQ_QUOTE',
                   rfqId: RFQ_ID,
                 }),
@@ -692,9 +692,9 @@ describe('RFQ sessions', () => {
             const quote = event.quote({ price: 0.45 });
 
             await expect(quote).rejects.toMatchObject({
-              code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
+              code: RfqKnownErrorCode.MakerQuoteLimited,
               errorId: 'reqerr-1',
-              message: 'quote validation timed out',
+              message: 'maker quote limited',
               name: 'RfqQuoteRejectedError',
               rfqId: event.rfqId,
             });
@@ -948,16 +948,22 @@ describe('RFQ sessions', () => {
         try {
           let quoteError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              await event.quote({ price: 0.45 });
-            } catch (error) {
-              quoteError = error;
+              try {
+                await event.quote({ price: 0.45 });
+              } catch (error) {
+                quoteError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(quoteError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1009,17 +1015,23 @@ describe('RFQ sessions', () => {
         try {
           let cancellationError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              const quote = await event.quote({ price: 0.45 });
-              await session.cancelQuote(quote);
-            } catch (error) {
-              cancellationError = error;
+              try {
+                const quote = await event.quote({ price: 0.45 });
+                await session.cancelQuote(quote);
+              } catch (error) {
+                cancellationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(cancellationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1075,21 +1087,27 @@ describe('RFQ sessions', () => {
         try {
           let confirmationError: unknown;
 
-          for await (const event of session) {
-            if (event.type === 'quote_request') {
-              await event.quote({ price: 0.45 });
-              continue;
-            }
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type === 'quote_request') {
+                await event.quote({ price: 0.45 });
+                continue;
+              }
 
-            if (event.type !== 'confirmation_request') continue;
+              if (event.type !== 'confirmation_request') continue;
 
-            try {
-              await event.confirm();
-            } catch (error) {
-              confirmationError = error;
+              try {
+                await event.confirm();
+              } catch (error) {
+                confirmationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(confirmationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
