@@ -24,10 +24,10 @@ import {
   RfqConfirmationRejectedError,
   RfqQuoteRejectedError,
 } from '../../actions/rfq';
-import { TransportError } from '../../errors';
+import { ConnectionLostError, TransportError } from '../../errors';
 import type { Signer } from '../../types';
 import type { AccountIdentity } from '../../wallet';
-import { WebSocketConnection } from '../lifecycle';
+import { type WebSocketCloseInfo, WebSocketConnection } from '../lifecycle';
 import {
   type RfqEventController,
   toConfirmationAck,
@@ -211,7 +211,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     try {
       await this.#connection.connect({
         headers: this.#headers,
-        onClose: () => this.#handleClose(),
+        onConnectionLost: (info) => this.#handleConnectionLost(info),
         onError: () => undefined,
         onMessage: (message) => this.#handleMessage(message),
         onOpen: () => this.#sendAuthMessage(),
@@ -243,7 +243,10 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   async #shutdown(): Promise<void> {
     const error = new TransportError('RFQ quoter websocket closed.');
-    await this.#shutdownWithError(error);
+    this.#failPending(error);
+    this.#queue.end();
+    await this.#connection.close();
+    this.#onClose();
   }
 
   async #fail(error: Error): Promise<void> {
@@ -255,7 +258,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   async #shutdownWithError(error: Error): Promise<void> {
     this.#failPending(error);
-    this.#queue.end();
+    this.#queue.end(error);
     await this.#connection.close();
     this.#onClose();
   }
@@ -330,9 +333,10 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     );
   }
 
-  #handleClose(): void {
-    this.#onClose();
-    void this.close();
+  #handleConnectionLost(info: WebSocketCloseInfo): void {
+    void this.#fail(
+      new ConnectionLostError('RFQ quoter connection lost.', info),
+    );
   }
 
   // Unsupported RFQ_ERROR request types are ignored for forward compatibility.
