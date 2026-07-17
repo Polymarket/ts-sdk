@@ -493,11 +493,6 @@ function getRequiredTradingApprovals(
       },
       {
         amount: MAX_UINT256,
-        spenderAddress: contracts.negRiskAdapter,
-        tokenAddress: contracts.collateralToken,
-      },
-      {
-        amount: MAX_UINT256,
         spenderAddress: contracts.collateralAdapter,
         tokenAddress: contracts.collateralToken,
       },
@@ -529,10 +524,6 @@ function getRequiredTradingApprovals(
       },
       {
         operatorAddress: contracts.negRiskExchange,
-        tokenAddress: contracts.conditionalTokens,
-      },
-      {
-        operatorAddress: contracts.negRiskAdapter,
         tokenAddress: contracts.conditionalTokens,
       },
       {
