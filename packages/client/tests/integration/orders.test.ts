@@ -131,6 +131,17 @@ describe('Orders', { timeout: 60_000 }, () => {
             .then(expectAcceptedOrderResponse);
 
           expect(sellResult.orderId).not.toBe('');
+
+          // Follow the matched order to settlement: hashes must surface
+          // regardless of whether the venue settles trades synchronously
+          // (hashes in the order response) or asynchronously (trade ids
+          // in the order response, hashes on the trades).
+          const sellHashes =
+            await secureClientWithDepositWallet.waitForOrderSettlement(
+              sellResult,
+            );
+
+          expect(sellHashes.length).toBeGreaterThan(0);
           return;
         }
 
@@ -147,6 +158,12 @@ describe('Orders', { timeout: 60_000 }, () => {
           .then(expectAcceptedOrderResponse);
 
         expect(buyResult.orderId).not.toBe('');
+
+        // Follow the matched order to settlement (see the sell branch note).
+        const buyHashes =
+          await secureClientWithDepositWallet.waitForOrderSettlement(buyResult);
+
+        expect(buyHashes.length).toBeGreaterThan(0);
       },
     );
   });
