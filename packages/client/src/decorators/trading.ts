@@ -186,7 +186,7 @@ export type SecureTradingActions = {
    */
   postOrders(orders: PostOrdersRequest): Promise<OrderResponses>;
   /**
-   * Waits until every fill of a placed order settles on-chain and returns
+   * Waits until every fill of a placed order is confirmed on-chain and returns
    * the settlement transaction hashes.
    *
    * @remarks

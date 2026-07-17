@@ -97,10 +97,12 @@ describe('waitForOrderSettlement', () => {
     expect(listAccountTrades).not.toHaveBeenCalled();
   });
 
-  it('polls until every fill settles and returns the hashes', async () => {
+  it('polls until every fill confirms and returns the hashes', async () => {
     mockTradesPages(
-      [makeTrade()],
-      [makeTrade({ status: 'MINED', transactionHash: TX_HASH })],
+      // A hash before confirmation is not terminal: it can still be
+      // replaced if the transaction is retried.
+      [makeTrade({ status: 'MINED', transactionHash: OTHER_TX_HASH })],
+      [makeTrade({ status: 'CONFIRMED', transactionHash: TX_HASH })],
     );
 
     const hashes = await waitForOrderSettlement(
