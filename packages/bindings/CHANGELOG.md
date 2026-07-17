@@ -1,5 +1,11 @@
 # @polymarket/bindings
 
+## 0.1.0-beta.16
+
+### Patch Changes
+
+- 7633fad: Remove `RfqKnownInboundMessageSchema`. The loose `{ type }` base was extended and its `type` field overwritten by every concrete inbound message schema, so it added nothing; each message schema now declares its own object shape directly.
+
 ## 0.1.0-beta.15
 
 ### Patch Changes
