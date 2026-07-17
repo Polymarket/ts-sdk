@@ -20,7 +20,13 @@ import {
 } from '../clob';
 import { resolveExchangeAddress, resolveRoundingConfig } from './context';
 import { resolveEstimatedMarketPrice } from './estimate';
-import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
+import {
+  decimalPlaces,
+  isMultipleOf,
+  parseAmount,
+  roundDown,
+  roundUp,
+} from './math';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -168,6 +174,12 @@ function resolveProtectedMarketPrice(
   if (decimalPlaces(price) > roundConfig.price) {
     throw new UserInputError(
       `${field} must conform to tick size ${tickSize} with at most ${roundConfig.price} decimal places.`,
+    );
+  }
+
+  if (!isMultipleOf(price, tickSize, roundConfig.price)) {
+    throw new UserInputError(
+      `${field} ${price} must be a multiple of tick size ${tickSize}.`,
     );
   }
 

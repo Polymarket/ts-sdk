@@ -15,6 +15,7 @@ import { fetchNegRisk, fetchTickSize } from '../clob';
 import { resolveExchangeAddress, resolveRoundingConfig } from './context';
 import {
   decimalPlaces,
+  isMultipleOf,
   parseAmount,
   roundDown,
   roundNormal,
@@ -178,6 +179,12 @@ function resolvePrice(price: number, tickSize: TickSizeValue): number {
   if (decimalPlaces(price) > roundConfig.price) {
     throw new UserInputError(
       `Price must conform to tick size ${tickSize} with at most ${roundConfig.price} decimal places.`,
+    );
+  }
+
+  if (!isMultipleOf(price, tickSize, roundConfig.price)) {
+    throw new UserInputError(
+      `Price ${price} must be a multiple of tick size ${tickSize}.`,
     );
   }
 

@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { decimalPlaces } from './math';
+import { decimalPlaces, isMultipleOf } from './math';
+
+describe('isMultipleOf', () => {
+  it.each([
+    [0.015, 0.005, 3],
+    [0.005, 0.005, 3],
+    [0.995, 0.005, 3],
+    [0.01, 0.005, 3],
+    [0.0075, 0.0025, 4],
+    [0.9975, 0.0025, 4],
+    [0.55, 0.01, 2],
+  ])('returns true for %s on a %s step', (value, step, decimals) => {
+    expect(isMultipleOf(value, step, decimals)).toBe(true);
+  });
+
+  it.each([
+    [0.007, 0.005, 3],
+    [0.013, 0.005, 3],
+    [0.0033, 0.0025, 4],
+    [0.0077, 0.0025, 4],
+  ])('returns false for %s off a %s step', (value, step, decimals) => {
+    expect(isMultipleOf(value, step, decimals)).toBe(false);
+  });
+});
 
 describe('decimalPlaces', () => {
   it.each([
