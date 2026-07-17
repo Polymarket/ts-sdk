@@ -151,9 +151,7 @@ export class RtdsWebSocketManager
 
   #onConnectionMessage(message: unknown): void {
     const parsed = RealtimeEventSchema.safeParse(message);
-    if (!parsed.success) {
-      return;
-    }
+    if (!parsed.success) return;
     this.#subscriptions.dispatch(parsed.data);
   }
 

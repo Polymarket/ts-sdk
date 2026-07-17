@@ -143,9 +143,7 @@ export class ClobUserWebSocketManager
     const events = Array.isArray(message) ? message : [message];
     for (const eventData of events) {
       const parsed = UserEventSchema.safeParse(eventData);
-      if (!parsed.success) {
-        continue;
-      }
+      if (!parsed.success) continue;
       this.#subscriptions.dispatch(parsed.data);
     }
   }

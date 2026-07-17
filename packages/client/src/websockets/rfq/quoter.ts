@@ -275,9 +275,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     if (this.#closing !== undefined) return;
 
     const parsed = RfqQuoterInboundMessageSchema.safeParse(rawMessage);
-    if (!parsed.success) {
-      return;
-    }
+    if (!parsed.success) return;
 
     const message = parsed.data;
     switch (message.type) {

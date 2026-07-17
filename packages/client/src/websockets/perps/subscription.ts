@@ -139,9 +139,7 @@ export class PerpsSubscriptionManager
 
   #onConnectionMessage(message: unknown): void {
     const parsed = PerpsMarketDataEventSchema.safeParse(message);
-    if (!parsed.success) {
-      return;
-    }
+    if (!parsed.success) return;
     this.#subscriptions.dispatch(parsed.data);
   }
 

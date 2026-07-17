@@ -121,9 +121,7 @@ export class SportsWebSocketManager
 
   #onConnectionMessage(message: unknown): void {
     const parsed = SportsResultEventSchema.safeParse(message);
-    if (!parsed.success) {
-      return;
-    }
+    if (!parsed.success) return;
     this.#subscriptions.dispatch(parsed.data);
   }
 

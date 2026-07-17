@@ -144,9 +144,7 @@ export class ClobMarketWebSocketManager
     const events = Array.isArray(message) ? message : [message];
     for (const eventData of events) {
       const parsed = MarketEventSchema.safeParse(eventData);
-      if (!parsed.success) {
-        continue;
-      }
+      if (!parsed.success) continue;
       this.#subscriptions.dispatch(parsed.data);
     }
   }

@@ -839,9 +839,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     if (this.#handleResponse(rawMessage)) return;
 
     const parsed = PerpsSessionUpdateEventSchema.safeParse(rawMessage);
-    if (!parsed.success) {
-      return;
-    }
+    if (!parsed.success) return;
 
     const event = parsed.data;
     this.#pushSequenceGapIfNeeded(event);
