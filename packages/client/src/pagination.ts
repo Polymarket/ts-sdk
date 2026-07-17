@@ -15,9 +15,12 @@ export type Page<T> = {
   totalCount?: number;
 };
 
-export type Paginated<T> = AsyncIterable<Page<T>> & {
-  firstPage(): Promise<Page<T>>;
-  from(cursor?: PaginationCursor): Paginated<T>;
+export type Paginated<
+  T,
+  TPage extends Page<T> = Page<T>,
+> = AsyncIterable<TPage> & {
+  firstPage(): Promise<TPage>;
+  from(cursor?: PaginationCursor): Paginated<T, TPage>;
 };
 
 /** @internal */
@@ -33,18 +36,20 @@ const OffsetCursorStateSchema = z.object({
 });
 
 /** @internal */
-export function paginate<T, TError>(
-  fetchPage: (cursor?: PaginationCursor) => ResultAsync<Page<T>, TError>,
+export function paginate<T, TError, TPage extends Page<T> = Page<T>>(
+  fetchPage: (
+    cursor?: PaginationCursor,
+  ) => ResultAsync<Page<T> & TPage, TError>,
   initialCursor?: PaginationCursor,
   emptyItems: T = [] as T,
-): Paginated<T> {
-  function createEmptyPaginator(): Paginated<T> {
+  emptyPage?: () => NoInfer<TPage>,
+): Paginated<T, TPage> {
+  function createEmptyPaginator(): Paginated<T, TPage> {
     return {
       async firstPage() {
-        return {
-          items: emptyItems,
-          hasMore: false,
-        };
+        return emptyPage === undefined
+          ? ({ items: emptyItems, hasMore: false } as TPage)
+          : emptyPage();
       },
       from() {
         return createEmptyPaginator();
@@ -53,7 +58,7 @@ export function paginate<T, TError>(
     };
   }
 
-  function createPaginator(cursor = initialCursor): Paginated<T> {
+  function createPaginator(cursor = initialCursor): Paginated<T, TPage> {
     return {
       firstPage() {
         return unwrap(fetchPage(cursor));

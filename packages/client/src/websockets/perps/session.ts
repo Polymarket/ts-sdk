@@ -10,6 +10,7 @@ import {
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
+  type PerpsNotificationEntry,
   type PerpsOrder,
   type PerpsOrderId,
   type PerpsPnlPoint,
@@ -19,6 +20,7 @@ import {
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
+  PerpsNotificationsResyncFrameSchema,
   type PerpsOrderUpdateEvent,
   type PerpsSessionEvent,
   PerpsSessionUpdateEventSchema,
@@ -58,14 +60,19 @@ import {
   type ListPerpsEquityHistoryRequest,
   type ListPerpsFillsRequest,
   type ListPerpsFundingPaymentsRequest,
+  type ListPerpsNotificationsRequest,
   type ListPerpsPnlHistoryRequest,
   type ListPerpsWithdrawalsRequest,
   listPerpsDeposits,
   listPerpsEquityHistory,
   listPerpsFills,
   listPerpsFundingPayments,
+  listPerpsNotifications,
   listPerpsPnlHistory,
   listPerpsWithdrawals,
+  type MarkPerpsNotificationsReadRequest,
+  markPerpsNotificationsRead,
+  type PerpsNotificationsPage,
 } from './actions/account';
 import {
   type CancelAllPerpsOrdersRequest,
@@ -103,8 +110,16 @@ const PERPS_SESSION_CHANNELS = [
   'funding',
   'deposits',
   'withdrawals',
+  'notifications',
   'tpsl',
 ] as const;
+
+// Notification frames carry the source event's engine sequence, which is not
+// dense per channel: unrelated engine events skip values and one event can
+// emit several notifications sharing one sequence. Local sequence-gap
+// detection would misfire, so dropped frames are signalled by server-sent
+// resync control frames instead.
+const SERVER_RESYNC_CHANNELS: ReadonlySet<string> = new Set(['notifications']);
 
 const PerpsResponseEnvelopeSchema = z
   .object({
@@ -148,8 +163,11 @@ export type {
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
+  MarkPerpsNotificationsReadRequest,
+  PerpsNotificationsPage,
 } from './actions/account';
 export type {
   CancelAllPerpsOrdersRequest,
@@ -424,6 +442,61 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: ListPerpsPnlHistoryRequest,
   ): Paginated<PerpsPnlPoint[]> {
     return listPerpsPnlHistory(this.#api, request);
+  }
+
+  /**
+   * Lists Perps notifications, newest first, with SDK-owned pagination.
+   *
+   * @remarks
+   * Each page also reports the account's `unread` count and the
+   * `durableSourceSeq` high-water mark. After a `resync` session event or a
+   * reconnect, pass `sinceSeq` to backfill missed notifications: anchor it at
+   * the sequence of the last notification event processed before the gap and
+   * retry until `durableSourceSeq` reaches the catch-up target, deduplicating
+   * merged results by notification id. Follow-up pages keep the same
+   * `sinceSeq` bound automatically.
+   *
+   * @example
+   * ```ts
+   * const page = await session.listNotifications().firstPage();
+   * console.log(page.unread, page.items.length);
+   * ```
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
+  listNotifications(
+    request: ListPerpsNotificationsRequest = {},
+  ): Paginated<PerpsNotificationEntry[], PerpsNotificationsPage> {
+    return listPerpsNotifications(this.#api, request);
+  }
+
+  /**
+   * Marks Perps notifications read, either by id or up to a notification.
+   *
+   * @remarks
+   * Read state is account-scoped: only the authenticated account's
+   * notifications can be marked read.
+   *
+   * @example
+   * ```ts
+   * await session.markNotificationsRead({ ids: [notification.id] });
+   * ```
+   *
+   * @example
+   * ```ts
+   * await session.markNotificationsRead({
+   *   upTo: { id: entry.notification.id, timestamp: entry.timestamp },
+   * });
+   * ```
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   */
+  async markNotificationsRead(
+    request: MarkPerpsNotificationsReadRequest,
+  ): Promise<void> {
+    await markPerpsNotificationsRead(this.#api, request);
   }
 
   /**
@@ -838,6 +911,12 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   #handleMessage(rawMessage: unknown): void {
     if (this.#handleResponse(rawMessage)) return;
 
+    const resync = PerpsNotificationsResyncFrameSchema.safeParse(rawMessage);
+    if (resync.success) {
+      this.#emitEvent(resync.data);
+      return;
+    }
+
     const parsed = PerpsSessionUpdateEventSchema.safeParse(rawMessage);
     if (!parsed.success) return;
 
@@ -897,6 +976,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   #pushSequenceGapIfNeeded(event: { channel: string; sequence: number }): void {
+    if (SERVER_RESYNC_CHANNELS.has(event.channel)) return;
+
     const previousSequence = this.#sequences.get(event.channel);
     this.#sequences.set(event.channel, event.sequence);
 
