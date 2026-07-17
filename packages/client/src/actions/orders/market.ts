@@ -10,7 +10,6 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { UserInputError } from '../../errors';
 import {
   fetchBuilderFeeRates,
   fetchMarketInfo,
@@ -18,15 +17,13 @@ import {
   fetchTickSize,
   resolveConditionByToken,
 } from '../clob';
-import { resolveExchangeAddress, resolveRoundingConfig } from './context';
-import { resolveEstimatedMarketPrice } from './estimate';
 import {
-  decimalPlaces,
-  isMultipleOf,
-  parseAmount,
-  roundDown,
-  roundUp,
-} from './math';
+  resolveExchangeAddress,
+  resolveRoundingConfig,
+  validatePriceOnTickGrid,
+} from './context';
+import { resolveEstimatedMarketPrice } from './estimate';
+import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -142,11 +139,11 @@ async function resolveMarketOrderPrice(
   tickSize: TickSizeValue,
 ): Promise<number> {
   if (params.side === OrderSide.BUY && params.maxPrice !== undefined) {
-    return resolveProtectedMarketPrice(params.maxPrice, tickSize, 'maxPrice');
+    return validatePriceOnTickGrid(params.maxPrice, tickSize, 'maxPrice');
   }
 
   if (params.side === OrderSide.SELL && params.minPrice !== undefined) {
-    return resolveProtectedMarketPrice(params.minPrice, tickSize, 'minPrice');
+    return validatePriceOnTickGrid(params.minPrice, tickSize, 'minPrice');
   }
 
   return resolveEstimatedMarketPrice(client, {
@@ -156,34 +153,6 @@ async function resolveMarketOrderPrice(
     tickSize,
     tokenId: params.tokenId,
   });
-}
-
-function resolveProtectedMarketPrice(
-  price: number,
-  tickSize: TickSizeValue,
-  field: 'maxPrice' | 'minPrice',
-): number {
-  const roundConfig = resolveRoundingConfig(tickSize);
-
-  if (price < tickSize || price > 1 - tickSize) {
-    throw new UserInputError(
-      `${field} must be between ${tickSize} and ${1 - tickSize} for tick size ${tickSize}.`,
-    );
-  }
-
-  if (decimalPlaces(price) > roundConfig.price) {
-    throw new UserInputError(
-      `${field} must conform to tick size ${tickSize} with at most ${roundConfig.price} decimal places.`,
-    );
-  }
-
-  if (!isMultipleOf(price, tickSize, roundConfig.price)) {
-    throw new UserInputError(
-      `${field} ${price} must be a multiple of tick size ${tickSize}.`,
-    );
-  }
-
-  return price;
 }
 
 function hasProtectedPrice(params: PrepareMarketOrderDraftParams): boolean {

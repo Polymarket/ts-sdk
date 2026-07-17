@@ -3,24 +3,28 @@ import { decimalPlaces, isMultipleOf } from './math';
 
 describe('isMultipleOf', () => {
   it.each([
-    [0.015, 0.005, 3],
-    [0.005, 0.005, 3],
-    [0.995, 0.005, 3],
-    [0.01, 0.005, 3],
-    [0.0075, 0.0025, 4],
-    [0.9975, 0.0025, 4],
-    [0.55, 0.01, 2],
-  ])('returns true for %s on a %s step', (value, step, decimals) => {
-    expect(isMultipleOf(value, step, decimals)).toBe(true);
+    [0.015, 0.005],
+    [0.005, 0.005],
+    [0.995, 0.005],
+    [0.01, 0.005],
+    [0.0075, 0.0025],
+    [0.9975, 0.0025],
+    [0.55, 0.01],
+  ])('returns true for %s on a %s step', (value, step) => {
+    expect(isMultipleOf(value, step)).toBe(true);
   });
 
   it.each([
-    [0.007, 0.005, 3],
-    [0.013, 0.005, 3],
-    [0.0033, 0.0025, 4],
-    [0.0077, 0.0025, 4],
-  ])('returns false for %s off a %s step', (value, step, decimals) => {
-    expect(isMultipleOf(value, step, decimals)).toBe(false);
+    [0.007, 0.005],
+    [0.013, 0.005],
+    [0.0033, 0.0025],
+    [0.0077, 0.0025],
+    // More decimals than the step: never a multiple, even when integer
+    // scaling at the step's precision would round onto the grid.
+    [0.555001, 0.01],
+    [0.0100001, 0.005],
+  ])('returns false for %s off a %s step', (value, step) => {
+    expect(isMultipleOf(value, step)).toBe(false);
   });
 });
 
