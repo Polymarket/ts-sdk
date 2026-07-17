@@ -15,7 +15,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "America/New_York"
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 3
     # Wait before adopting freshly-published releases (supply-chain buffer).
     # Applies to version updates only; security fixes are never delayed.
     cooldown:
