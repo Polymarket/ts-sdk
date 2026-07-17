@@ -78,7 +78,7 @@
   "sideEffects": false,
   "dependencies": {
     "@polymarket/types": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "scripts": {
     "build": "tsup",
