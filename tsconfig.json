@@ -23,6 +23,7 @@
       "@polymarket/client/ethers-v5": ["./packages/client/src/ethers-v5.ts"],
       "@polymarket/client/privy": ["./packages/client/src/privy.ts"],
       "@polymarket/client/viem": ["./packages/client/src/viem.ts"],
+      "@polymarket/react": ["./packages/react/src"],
       "@polymarket/types": ["./packages/types/src"]
     }
   },

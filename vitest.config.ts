@@ -48,6 +48,32 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: 'react',
+          include: ['packages/react/src/**/*.test.{ts,tsx}'],
+          exclude: [...configDefaults.exclude],
+          environment: 'jsdom',
+          testTimeout: 10_000,
+          typecheck: {
+            enabled: true,
+            include: ['packages/react/**/*.test-d.{ts,tsx}'],
+            tsconfig: 'packages/react/tsconfig.json',
+          },
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'react-integration',
+          include: ['packages/react/tests/integration/**/*.test.{ts,tsx}'],
+          exclude: [...configDefaults.exclude],
+          environment: 'jsdom',
+          fileParallelism: false,
+          testTimeout: 60_000,
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: 'client-integration',
           include: ['packages/client/tests/integration/**/*.test.ts'],
           exclude: [...configDefaults.exclude],
