@@ -29,6 +29,7 @@ export { relayerApiKey, remoteBuilderSigning } from './authorization';
 export type * from './clients';
 export {
   CreateSecureClientError,
+  createBaseClient,
   createPublicClient,
   createSecureClient,
   SetupGaslessWalletError,

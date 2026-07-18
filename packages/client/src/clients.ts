@@ -885,6 +885,32 @@ export type SecureClientOptions = PublicClientOptions & {
   );
 
 /**
+ * Creates a new base client without any bound action methods.
+ *
+ * @remarks
+ * This is a low-level factory for consumers that call standalone actions
+ * directly and want per-action tree-shaking, such as UI integrations. Most
+ * SDK consumers should prefer {@link createPublicClient}.
+ *
+ * @example
+ * ```ts
+ * const client = createBaseClient();
+ *
+ * const market = await fetchMarket(client, {
+ *   slug: 'some-market-slug',
+ * });
+ * ```
+ */
+export function createBaseClient(
+  options: PublicClientOptions = {},
+): BasePublicClient {
+  return new BasePublicClient({
+    environment: options.environment ?? production,
+    apiKey: options.apiKey,
+  });
+}
+
+/**
  * Creates a new `PublicClient` instance.
  *
  * @example
