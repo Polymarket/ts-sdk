@@ -9,6 +9,7 @@ import { invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import {
+  InsufficientAllowanceError,
   makeErrorGuard,
   RateLimitError,
   RequestRejectedError,
@@ -26,12 +27,14 @@ const PostOrdersRequestSchema = z.array(z.custom<SignedOrder>()).min(1).max(15);
 export type PostOrdersRequest = z.input<typeof PostOrdersRequestSchema>;
 
 export type PostOrderError =
+  | InsufficientAllowanceError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const PostOrderError = makeErrorGuard(
+  InsufficientAllowanceError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -40,6 +43,7 @@ export const PostOrderError = makeErrorGuard(
 );
 
 export type PostOrdersError =
+  | InsufficientAllowanceError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -47,6 +51,7 @@ export type PostOrdersError =
   | UnexpectedResponseError
   | UserInputError;
 export const PostOrdersError = makeErrorGuard(
+  InsufficientAllowanceError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -85,7 +90,8 @@ export function postOrder(
         .post('/order', {
           json: payload,
         })
-        .andThen(validateWith(OrderResponseSchema)),
+        .andThen(validateWith(OrderResponseSchema))
+        .mapErr(remapInsufficientAllowance),
     );
   };
 }
@@ -123,9 +129,32 @@ export function postOrders(
         .post('/orders', {
           json: payload,
         })
-        .andThen(validateWith(OrderResponsesSchema)),
+        .andThen(validateWith(OrderResponsesSchema))
+        .mapErr(remapInsufficientAllowance),
     );
   };
+}
+
+/**
+ * Translates the service's balance/allowance order rejection into the typed
+ * `InsufficientAllowanceError` so consumers never depend on the rejection
+ * message.
+ */
+function remapInsufficientAllowance<TError>(
+  error: TError,
+): TError | InsufficientAllowanceError {
+  if (
+    error instanceof RequestRejectedError &&
+    error.status === 400 &&
+    error.message.includes('allowance is not enough')
+  ) {
+    return new InsufficientAllowanceError(error.message, {
+      cause: error,
+      status: error.status,
+    });
+  }
+
+  return error;
 }
 
 function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {

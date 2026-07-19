@@ -4,6 +4,7 @@ import { AssetType } from '@polymarket/bindings/clob';
 import type { BaseSecureClient } from '../../clients';
 import {
   CancelledSigningError,
+  InsufficientAllowanceError,
   InsufficientLiquidityError,
   makeErrorGuard,
   RateLimitError,
@@ -81,6 +82,7 @@ export type PlaceMarketOrderError =
   | TransactionFailedError;
 export const PlaceMarketOrderError = makeErrorGuard(
   CancelledSigningError,
+  InsufficientAllowanceError,
   InsufficientLiquidityError,
   RateLimitError,
   RequestRejectedError,
@@ -160,6 +162,7 @@ export type PlaceLimitOrderError =
   | TransactionFailedError;
 export const PlaceLimitOrderError = makeErrorGuard(
   CancelledSigningError,
+  InsufficientAllowanceError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -201,7 +204,7 @@ async function postOrderWithAllowanceRecovery(
   try {
     return await postSignedOrder(order);
   } catch (error) {
-    if (!isBalanceOrAllowanceRequestRejection(error)) {
+    if (!(error instanceof InsufficientAllowanceError)) {
       throw error;
     }
 
@@ -227,16 +230,6 @@ async function approveOrderAndRetry(
   const approved = await ensureOrderApproval(client, order);
 
   return approved ? postSignedOrder(order) : undefined;
-}
-
-function isBalanceOrAllowanceRequestRejection(
-  error: unknown,
-): error is RequestRejectedError {
-  return (
-    error instanceof RequestRejectedError &&
-    error.status === 400 &&
-    error.message.includes('allowance is not enough')
-  );
 }
 
 async function ensureOrderApproval(

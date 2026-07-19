@@ -126,6 +126,28 @@ export type RequestRejectedErrorOptions = {
 };
 
 /**
+ * Error thrown when an order is rejected because the account's balance or
+ * token allowance cannot fund it.
+ *
+ * @remarks
+ * Recover by topping up the account or re-running the trading approvals
+ * setup for the account wallet.
+ */
+export class InsufficientAllowanceError extends PolymarketError {
+  override name = 'InsufficientAllowanceError' as const;
+
+  readonly status: number;
+
+  constructor(
+    message: string,
+    options: ErrorOptions & RequestRejectedErrorOptions,
+  ) {
+    super(message, options);
+    this.status = options.status;
+  }
+}
+
+/**
  * Error thrown when a service responds with a non-success status other than
  * rate limiting.
  */
