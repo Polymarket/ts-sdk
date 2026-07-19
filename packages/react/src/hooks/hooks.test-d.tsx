@@ -27,7 +27,7 @@ import type {
 import { useTradingRestriction } from './account';
 import type { TradingApprovalsStep } from './approvals';
 import { useSetupTradingApprovals } from './approvals';
-import { useOrderBook } from './books';
+import { useEstimatedMarketPrice, useOrderBook } from './books';
 import { useEvents } from './events';
 import { useMarket, useMarkets } from './markets';
 import { usePortfolioValue, usePositions } from './portfolio';
@@ -123,6 +123,17 @@ describe('portfolio hook types', () => {
       expectTypeOf(mine.data).toEqualTypeOf<Position[] | undefined>();
       expectTypeOf(theirs.isPaused).toEqualTypeOf<boolean>();
       expectTypeOf(value.data).toEqualTypeOf<Value[] | undefined>();
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+
+  it('types the market price estimate read', () => {
+    function Component() {
+      const { data, isPaused } = useEstimatedMarketPrice(skip);
+
+      expectTypeOf(data).toEqualTypeOf<number | undefined>();
+      expectTypeOf(isPaused).toEqualTypeOf<boolean>();
     }
 
     expectTypeOf(Component).toBeFunction();
