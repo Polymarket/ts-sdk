@@ -307,12 +307,13 @@ function BuyButton({ tokenId }: { tokenId: TokenId }) {
 ```
 
 - `status`: `'idle' | 'pending' | 'success' | 'error'`.
-- `step`: the current workflow request kind while pending (`'signOrder'`, `'signGaslessTypedData'`, ...), so UIs can render progress without intercepting anything. Multi-step flows such as allowance recovery inside `placeMarketOrder` (gasless approval signatures for Deposit/Safe/Proxy accounts) surface naturally as `step` transitions.
-- `error` is the action's public error union plus `CancelledSigningError` when the handler cancels or the wallet rejects.
+- `step`: the current workflow request kind while pending (`'signOrder'`, `'signGaslessTypedData'`, ...), so UIs can render progress without intercepting anything.
+- `error` is the action's public error union plus `CancelledSigningError` when the handler cancels or the wallet rejects, and `UnauthenticatedError` when executed while unauthenticated.
 - The execute function returns a promise of the result for event-handler composition; errors also land in state so purely declarative UIs work without try/catch.
 - Cancellation mid-workflow (via `controls.cancel`) aborts cleanly: the generator is closed and state settles as a cancelled error, not a success.
+- **No automatic allowance recovery.** The client SDK's one-shot placement recovers from allowance rejections by approving and re-posting; the React hooks deliberately do not, because that hides a surprise wallet prompt inside another operation. The rejection surfaces as the typed `InsufficientAllowanceError` and the integrator decides — typically routing the user through `useSetupTradingApprovals`, which is also the account-readiness step for fresh accounts (and requires a gasless-capable `apiKey` in config).
 
-The same pattern covers the whole write surface: `usePlaceLimitOrder`, `useCancelOrder` (no wallet steps, but same imperative shape), transfers, split/merge/redeem, and gasless flows (whose workflows yield `signGaslessTypedData` / `signGaslessMessage` steps through the same handler).
+The same pattern covers the whole write surface: `usePlaceLimitOrder`, `useCancelOrder` (no wallet steps, but same imperative shape), `useSetupTradingApprovals` (gasless approval signatures through the same handler), transfers, and split/merge/redeem.
 
 ## Realtime Subscription Hooks (later phase)
 
@@ -385,4 +386,4 @@ Phases 1–2 retire the architectural risk; phase 3 validates the workflow-handl
 - Whether `logout()` should offer a local-only variant that keeps credentials valid (no server-side key revocation).
 - Whether write hooks should also expose the raw prepared workflow for fully manual driving, or whether handler wrapping covers all real cases.
 - Resolved: the action primitives are the `usePublicClientAction`/`useSecureClientAction` and `usePublicPaginatedAction`/`useSecurePaginatedAction` families — both sides marked, matching the client package's `createPublicClient`/`createSecureClient` convention and avoiding the ambiguity of an unmarked hook binding the public client while a session is active. Still open: `useAuthentication` vs `useSession`.
-- Deferred: whether gasless workflow steps need semantic operation context beyond `kind`. With Deposit/Safe/Proxy accounts, approvals and transfers all surface as `signGaslessTypedData`. Revisit during the trading phase against a real end-to-end example, evaluating the kinds a handler sees across a single operation — `signGaslessTypedData` may be fine as-is if the surrounding kinds make the operation obvious. Do not change the client contract for this preemptively.
+- Resolved: gasless workflow steps do not need semantic context beyond `kind`. Order placement yields only `signOrder`, and with automatic allowance recovery cut from the React hooks, gasless signatures only occur inside single-purpose hooks (`useSetupTradingApprovals`, future transfers), where the hook itself provides the operation context for UI labels.

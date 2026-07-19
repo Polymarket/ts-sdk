@@ -1,6 +1,18 @@
 import { PolymarketError } from '@polymarket/types';
 
 /**
+ * Thrown when a write operation executes while unauthenticated, such as
+ * after the session was invalidated but before the UI re-gated the action.
+ */
+export class UnauthenticatedError extends PolymarketError {
+  override name = 'UnauthenticatedError' as const;
+
+  constructor() {
+    super('Unauthenticated. Authenticate before performing this operation.');
+  }
+}
+
+/**
  * Thrown when authentication resolves to an EOA account configuration.
  *
  * @remarks

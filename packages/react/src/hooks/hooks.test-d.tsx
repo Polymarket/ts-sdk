@@ -1,5 +1,13 @@
-import type { Event, Market, OrderBook } from '@polymarket/client';
 import type {
+  Event,
+  InsufficientAllowanceError,
+  Market,
+  OrderBook,
+  OrderResponse,
+  SignOrderRequest,
+} from '@polymarket/client';
+import type {
+  CancelOrderRequest,
   FetchMarketError,
   FetchOrderBookError,
   ListEventsError,
@@ -9,9 +17,22 @@ import { fetchMarket } from '@polymarket/client/actions';
 import { describe, expectTypeOf, it } from 'vitest';
 import { usePublicClientAction } from '../read';
 import { skip } from '../skip';
+import type {
+  WorkflowCancelled,
+  WorkflowHandler,
+  WorkflowResponse,
+} from '../workflow';
+import type { TradingApprovalsStep } from './approvals';
+import { useSetupTradingApprovals } from './approvals';
 import { useOrderBook } from './books';
 import { useEvents } from './events';
 import { useMarket, useMarkets } from './markets';
+import type { UsePlaceMarketOrderError } from './trading';
+import {
+  useCancelOrder,
+  usePlaceLimitOrder,
+  usePlaceMarketOrder,
+} from './trading';
 
 describe('read hook types', () => {
   it('types useMarket results with the action model and error union', () => {
@@ -82,6 +103,70 @@ describe('read hook types', () => {
       useMarket({ id: 123 });
       // @ts-expect-error - unknown request member
       useOrderBook({ tokenId: '123', side: 'BUY' });
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+});
+
+describe('write hook types', () => {
+  it('narrows the placement handler to signOrder and accepts a broad handler', () => {
+    function Component(broad: WorkflowHandler) {
+      const [placeOrder, state] = usePlaceMarketOrder(broad);
+
+      expectTypeOf(placeOrder).returns.toEqualTypeOf<Promise<OrderResponse>>();
+      expectTypeOf(state.data).toEqualTypeOf<OrderResponse | undefined>();
+      expectTypeOf(state.step).toEqualTypeOf<'signOrder' | undefined>();
+
+      const narrow: WorkflowHandler<SignOrderRequest> = broad;
+      usePlaceLimitOrder(narrow);
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+
+  it('includes InsufficientAllowanceError in the placement error unions', () => {
+    function Component(error: UsePlaceMarketOrderError | undefined) {
+      if (
+        error instanceof Error &&
+        error.name === 'InsufficientAllowanceError'
+      ) {
+        expectTypeOf(error).toEqualTypeOf<InsufficientAllowanceError>();
+      }
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+
+  it('narrows the approvals handler to the gasless step kinds', () => {
+    function Component(broad: WorkflowHandler) {
+      const [setupApprovals, state] = useSetupTradingApprovals(broad);
+
+      expectTypeOf(setupApprovals).returns.toEqualTypeOf<Promise<void>>();
+      expectTypeOf(state.step).toEqualTypeOf<
+        TradingApprovalsStep | undefined
+      >();
+    }
+
+    function RejectsMismatchedHandler(
+      signOrderOnly: (
+        request: SignOrderRequest,
+      ) => Promise<WorkflowResponse | WorkflowCancelled>,
+    ) {
+      // @ts-expect-error - a signOrder-only handler cannot answer gasless steps
+      useSetupTradingApprovals(signOrderOnly);
+    }
+
+    expectTypeOf(Component).toBeFunction();
+    expectTypeOf(RejectsMismatchedHandler).toBeFunction();
+  });
+
+  it('exposes no step on the cancel hook state', () => {
+    function Component() {
+      const [cancel, state] = useCancelOrder();
+
+      expectTypeOf(cancel).parameter(0).toEqualTypeOf<CancelOrderRequest>();
+      expectTypeOf(state).not.toHaveProperty('step');
     }
 
     expectTypeOf(Component).toBeFunction();
