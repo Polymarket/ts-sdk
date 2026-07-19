@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/index.ts', 'src/viem.ts'],
   outDir: 'dist',
   sourcemap: true,
   treeshake: true,
@@ -12,5 +12,5 @@ export default defineConfig({
   dts: true,
   platform: 'neutral',
   format: ['esm'],
-  external: ['react', '@polymarket/client'],
+  external: ['react', '@polymarket/client', '@polymarket/client/viem', 'viem'],
 });

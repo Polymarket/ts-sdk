@@ -5,7 +5,7 @@ import type {
 } from '@polymarket/client/actions';
 import { listEvents } from '@polymarket/client/actions';
 import type { PaginatedReadResult } from '../pagination';
-import { usePaginatedAction } from '../pagination';
+import { usePublicPaginatedAction } from '../pagination';
 import type { Skip } from '../skip';
 
 /**
@@ -27,7 +27,7 @@ import type { Skip } from '../skip';
 export function useEvents(
   request: ListEventsRequest | Skip = {},
 ): PaginatedReadResult<Event, ListEventsError> {
-  return usePaginatedAction<ListEventsRequest, Event, ListEventsError>(
+  return usePublicPaginatedAction<ListEventsRequest, Event, ListEventsError>(
     listEvents,
     request,
   );

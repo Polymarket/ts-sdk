@@ -7,9 +7,9 @@ import type {
 } from '@polymarket/client/actions';
 import { fetchMarket, listMarkets } from '@polymarket/client/actions';
 import type { PaginatedReadResult } from '../pagination';
-import { usePaginatedAction } from '../pagination';
+import { usePublicPaginatedAction } from '../pagination';
 import type { ReadResult } from '../read';
-import { useClientAction } from '../read';
+import { usePublicClientAction } from '../read';
 import type { Skip } from '../skip';
 
 /**
@@ -29,7 +29,7 @@ import type { Skip } from '../skip';
 export function useMarket(
   request: FetchMarketRequest | Skip,
 ): ReadResult<Market, FetchMarketError> {
-  return useClientAction<FetchMarketRequest, Market, FetchMarketError>(
+  return usePublicClientAction<FetchMarketRequest, Market, FetchMarketError>(
     fetchMarket,
     request,
   );
@@ -54,7 +54,7 @@ export function useMarket(
 export function useMarkets(
   request: ListMarketsRequest | Skip = {},
 ): PaginatedReadResult<Market, ListMarketsError> {
-  return usePaginatedAction<ListMarketsRequest, Market, ListMarketsError>(
+  return usePublicPaginatedAction<ListMarketsRequest, Market, ListMarketsError>(
     listMarkets,
     request,
   );

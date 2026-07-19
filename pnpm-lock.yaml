@@ -112,6 +112,10 @@ importers:
         version: 2.47.10(typescript@6.0.2)(zod@4.3.6)
 
   packages/react:
+    dependencies:
+      '@polymarket/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@polymarket/client':
         specifier: workspace:*
@@ -128,6 +132,9 @@ importers:
       jsdom:
         specifier: ^28.0.0
         version: 28.1.0(@noble/hashes@1.8.0)
+      msw:
+        specifier: ^2.11.5
+        version: 2.12.14(@types/node@25.5.0)(typescript@6.0.2)
       react:
         specifier: ^19.2.0
         version: 19.2.7
@@ -140,6 +147,9 @@ importers:
       typescript:
         specifier: ^6.0.2
         version: 6.0.2
+      viem:
+        specifier: ^2.46.3
+        version: 2.47.10(typescript@6.0.2)(zod@4.3.6)
 
   packages/types:
     dependencies:

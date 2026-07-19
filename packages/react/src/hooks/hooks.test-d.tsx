@@ -7,7 +7,7 @@ import type {
 } from '@polymarket/client/actions';
 import { fetchMarket } from '@polymarket/client/actions';
 import { describe, expectTypeOf, it } from 'vitest';
-import { useClientAction } from '../read';
+import { usePublicClientAction } from '../read';
 import { skip } from '../skip';
 import { useOrderBook } from './books';
 import { useEvents } from './events';
@@ -66,9 +66,9 @@ describe('read hook types', () => {
     expectTypeOf(Component).toBeFunction();
   });
 
-  it('infers useClientAction data from the action', () => {
+  it('infers usePublicClientAction data from the action', () => {
     function Component() {
-      const { data } = useClientAction(fetchMarket, { id: '123' });
+      const { data } = usePublicClientAction(fetchMarket, { id: '123' });
 
       expectTypeOf(data).toEqualTypeOf<Market | undefined>();
     }

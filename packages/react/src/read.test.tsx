@@ -4,8 +4,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createConfig } from './config';
 import { PolymarketProvider } from './context';
-import { MissingProviderError } from './errors';
-import { useClientAction } from './read';
+import { usePublicClientAction } from './read';
 import type { Skip } from './skip';
 import { skip } from './skip';
 
@@ -33,15 +32,18 @@ function createDeferred<T>(): Deferred<T> {
 
 type TestRequest = { id: string };
 
-describe('useClientAction', () => {
+describe('usePublicClientAction', () => {
   it('loads data for the request', async () => {
     const action = vi.fn(
       async (_client: BaseClient, request: TestRequest) => `data:${request.id}`,
     );
 
-    const { result } = renderHook(() => useClientAction(action, { id: '1' }), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => usePublicClientAction(action, { id: '1' }),
+      {
+        wrapper,
+      },
+    );
 
     expect(result.current.isLoading).toBe(true);
     expect(result.current.data).toBeUndefined();
@@ -63,9 +65,12 @@ describe('useClientAction', () => {
       throw failure;
     }
 
-    const { result } = renderHook(() => useClientAction(action, { id: '1' }), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => usePublicClientAction(action, { id: '1' }),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.error).toBe(failure));
 
@@ -79,7 +84,7 @@ describe('useClientAction', () => {
     );
 
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useClientAction(action, { id }),
+      ({ id }: { id: string }) => usePublicClientAction(action, { id }),
       { wrapper, initialProps: { id: '1' } },
     );
 
@@ -104,7 +109,7 @@ describe('useClientAction', () => {
     }
 
     const { result, rerender } = renderHook(
-      ({ id }: { id: string }) => useClientAction(action, { id }),
+      ({ id }: { id: string }) => usePublicClientAction(action, { id }),
       { wrapper, initialProps: { id: '1' } },
     );
 
@@ -134,7 +139,7 @@ describe('useClientAction', () => {
 
     const { result, rerender } = renderHook(
       ({ request }: { request: TestRequest | Skip }) =>
-        useClientAction(action, request),
+        usePublicClientAction(action, request),
       { wrapper, initialProps: { request: skip as TestRequest | Skip } },
     );
 
@@ -161,9 +166,12 @@ describe('useClientAction', () => {
       async (_client: BaseClient, _request: TestRequest) => value,
     );
 
-    const { result } = renderHook(() => useClientAction(action, { id: '1' }), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => usePublicClientAction(action, { id: '1' }),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.data).toBe('first'));
 
@@ -182,7 +190,7 @@ describe('useClientAction', () => {
       async (_client: BaseClient, _request: TestRequest) => 'data',
     );
 
-    const { result } = renderHook(() => useClientAction(action, skip), {
+    const { result } = renderHook(() => usePublicClientAction(action, skip), {
       wrapper,
     });
 
@@ -194,7 +202,7 @@ describe('useClientAction', () => {
     expect(action).not.toHaveBeenCalled();
   });
 
-  it('throws MissingProviderError outside of a PolymarketProvider', () => {
+  it('fails clearly outside of a PolymarketProvider', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
@@ -207,8 +215,8 @@ describe('useClientAction', () => {
     }
 
     expect(() =>
-      renderHook(() => useClientAction(action, { id: '1' })),
-    ).toThrow(MissingProviderError);
+      renderHook(() => usePublicClientAction(action, { id: '1' })),
+    ).toThrow('`PolymarketProvider` is missing');
 
     consoleError.mockRestore();
   });

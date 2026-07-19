@@ -1,19 +1,33 @@
 import type {
   BaseClient,
+  BaseSecureClient,
   Paginated,
   PaginationCursor,
 } from '@polymarket/client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { usePolymarketClient } from './context';
+import { usePolymarketContext } from './context';
+import { isSessionRevocation } from './read';
 import { createRequestKey } from './request-key';
 import type { Skip } from './skip';
 import { skip } from './skip';
 
 /**
  * A standalone client action returning SDK pagination.
+ *
+ * @internal
  */
-export type PaginatedClientAction<TRequest, TItem> = (
+export type PublicPaginatedClientAction<TRequest, TItem> = (
   client: BaseClient,
+  request: TRequest,
+) => Paginated<TItem[]>;
+
+/**
+ * A standalone client action returning authenticated SDK pagination.
+ *
+ * @internal
+ */
+export type SecurePaginatedClientAction<TRequest, TItem> = (
+  client: BaseSecureClient,
   request: TRequest,
 ) => Paginated<TItem[]>;
 
@@ -27,7 +41,7 @@ export type PaginatedReadResult<TItem, TError> = {
   error: TError | undefined;
   /** True while the first page for the current request is in flight. */
   isLoading: boolean;
-  /** True while the hook is paused with `skip`. */
+  /** True while the hook is paused with `skip` or awaiting authentication. */
   isPaused: boolean;
   /** True when more pages can be fetched. */
   hasNextPage: boolean;
@@ -64,45 +78,30 @@ const loadingState = {
 } satisfies PaginatedState<never, never>;
 
 /**
- * Binds a paginated read action to the provider client as infinite-scroll
- * React state.
- *
- * @remarks
- * This is the low-level primitive behind the dedicated paginated hooks and
- * the escape hatch for paginated client actions without one. `data` is the
- * flattened accumulation of all fetched pages; page boundaries and cursors
- * stay internal. It resets when the request changes, discards stale in-flight
- * responses, and never updates state after unmount. Errors thrown by the
- * action surface on `error` instead of being rethrown; a failed next page
- * fetch keeps the items accumulated so far. Pass {@link skip} instead of a
- * request to pause fetching.
- *
- * @throws {@link MissingProviderError}
- * Thrown when used outside of a `PolymarketProvider`.
- *
- * @example
- * ```ts
- * const { data: holders, fetchNextPage, hasNextPage } = usePaginatedAction(
- *   listMarketHolders,
- *   { conditionId },
- * );
- * ```
+ * Shared infinite-scroll state machine over `Paginated<T>` actions. Pauses
+ * while the client is unavailable or the request is `skip`, resets on request
+ * or client change, discards stale in-flight responses, and never updates
+ * state after unmount.
  */
-export function usePaginatedAction<TRequest, TItem, TError = unknown>(
-  action: PaginatedClientAction<TRequest, TItem>,
+function usePaginatedState<TClient, TRequest, TItem, TError>(
+  client: TClient | undefined,
+  action: (client: TClient, request: TRequest) => Paginated<TItem[]>,
   request: TRequest | Skip,
+  onError?: (error: unknown) => void,
 ): PaginatedReadResult<TItem, TError> {
-  const client = usePolymarketClient();
+  const paused = request === skip || client === undefined;
   const requestKey = request === skip ? undefined : createRequestKey(request);
 
   const actionRef = useRef(action);
   actionRef.current = action;
   const requestRef = useRef(request);
   requestRef.current = request;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   const generationRef = useRef(0);
   const [state, setState] = useState<PaginatedState<TItem, TError>>(
-    request === skip ? pausedState : loadingState,
+    paused ? pausedState : loadingState,
   );
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -110,7 +109,7 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
   const loadFirstPage = useCallback(async () => {
     const current = requestRef.current;
 
-    if (current === skip) {
+    if (current === skip || client === undefined) {
       return;
     }
 
@@ -138,12 +137,13 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
           nextCursor: undefined,
           isFetchingNextPage: false,
         });
+        onErrorRef.current?.(error);
       }
     }
   }, [client]);
 
   useEffect(() => {
-    if (requestKey === undefined) {
+    if (requestKey === undefined || client === undefined) {
       generationRef.current += 1;
       setState(pausedState);
       return;
@@ -154,7 +154,7 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
     return () => {
       generationRef.current += 1;
     };
-  }, [requestKey, loadFirstPage]);
+  }, [requestKey, client, loadFirstPage]);
 
   const fetchNextPage = useCallback(async () => {
     const current = stateRef.current;
@@ -162,6 +162,7 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
 
     if (
       currentRequest === skip ||
+      client === undefined ||
       current.status !== 'success' ||
       current.nextCursor === undefined ||
       current.isFetchingNextPage
@@ -194,6 +195,7 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
           error: error as TError,
           isFetchingNextPage: false,
         }));
+        onErrorRef.current?.(error);
       }
     }
   }, [client]);
@@ -208,4 +210,56 @@ export function usePaginatedAction<TRequest, TItem, TError = unknown>(
     fetchNextPage,
     refetch: loadFirstPage,
   };
+}
+
+/**
+ * Binds a paginated read action to the provider client as infinite-scroll
+ * React state.
+ *
+ * @remarks
+ * This is the low-level primitive behind the dedicated paginated hooks.
+ * `data` is the flattened accumulation of all fetched pages; page boundaries
+ * and cursors stay internal. Errors thrown by the action surface on `error`
+ * instead of being rethrown; a failed next page fetch keeps the items
+ * accumulated so far. Pass {@link skip} instead of a request to pause
+ * fetching.
+ *
+ * @internal
+ */
+export function usePublicPaginatedAction<TRequest, TItem, TError = unknown>(
+  action: PublicPaginatedClientAction<TRequest, TItem>,
+  request: TRequest | Skip,
+): PaginatedReadResult<TItem, TError> {
+  const { publicClient } = usePolymarketContext();
+
+  return usePaginatedState(publicClient, action, request);
+}
+
+/**
+ * Binds an authenticated paginated read action to the session client as
+ * infinite-scroll React state.
+ *
+ * @remarks
+ * This is the secure sibling of {@link usePublicPaginatedAction}. It pauses
+ * until a session is active, and a request rejected as unauthorized ends the
+ * session, transitioning the provider back to `'unauthenticated'`.
+ *
+ * @internal
+ */
+export function useSecurePaginatedAction<TRequest, TItem, TError = unknown>(
+  action: SecurePaginatedClientAction<TRequest, TItem>,
+  request: TRequest | Skip,
+): PaginatedReadResult<TItem, TError> {
+  const { secureClient, clearSession } = usePolymarketContext();
+
+  const onError = useCallback(
+    (error: unknown) => {
+      if (isSessionRevocation(error)) {
+        clearSession(error);
+      }
+    },
+    [clearSession],
+  );
+
+  return usePaginatedState(secureClient, action, request, onError);
 }

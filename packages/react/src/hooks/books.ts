@@ -5,7 +5,7 @@ import type {
 } from '@polymarket/client/actions';
 import { fetchOrderBook } from '@polymarket/client/actions';
 import type { ReadResult } from '../read';
-import { useClientAction } from '../read';
+import { usePublicClientAction } from '../read';
 import type { Skip } from '../skip';
 
 /**
@@ -26,8 +26,9 @@ import type { Skip } from '../skip';
 export function useOrderBook(
   request: FetchOrderBookRequest | Skip,
 ): ReadResult<OrderBook, FetchOrderBookError> {
-  return useClientAction<FetchOrderBookRequest, OrderBook, FetchOrderBookError>(
-    fetchOrderBook,
-    request,
-  );
+  return usePublicClientAction<
+    FetchOrderBookRequest,
+    OrderBook,
+    FetchOrderBookError
+  >(fetchOrderBook, request);
 }

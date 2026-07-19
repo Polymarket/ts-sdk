@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createConfig } from './config';
 import { PolymarketProvider, usePolymarketClient } from './context';
-import { MissingProviderError } from './errors';
 
 describe('PolymarketProvider', () => {
   it('provides a stable client across renders', () => {
@@ -26,13 +25,13 @@ describe('PolymarketProvider', () => {
     expect(first.isPublicClient()).toBe(true);
   });
 
-  it('throws MissingProviderError outside of a provider', () => {
+  it('fails clearly outside of a provider', () => {
     const consoleError = vi
       .spyOn(console, 'error')
       .mockImplementation(() => {});
 
     expect(() => renderHook(() => usePolymarketClient())).toThrow(
-      MissingProviderError,
+      '`PolymarketProvider` is missing',
     );
 
     consoleError.mockRestore();

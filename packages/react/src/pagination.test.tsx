@@ -9,7 +9,7 @@ import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createConfig } from './config';
 import { PolymarketProvider } from './context';
-import { usePaginatedAction } from './pagination';
+import { usePublicPaginatedAction } from './pagination';
 import type { Skip } from './skip';
 import { skip } from './skip';
 
@@ -56,7 +56,7 @@ function stubPaginator<TItem>(pages: TItem[][], start = 0): Paginated<TItem[]> {
   };
 }
 
-describe('usePaginatedAction', () => {
+describe('usePublicPaginatedAction', () => {
   it('loads the first page and accumulates following pages', async () => {
     const pages = [[1, 2], [3, 4], [5]];
 
@@ -65,7 +65,7 @@ describe('usePaginatedAction', () => {
     }
 
     const { result } = renderHook(
-      () => usePaginatedAction(action, { list: 'numbers' }),
+      () => usePublicPaginatedAction(action, { list: 'numbers' }),
       { wrapper },
     );
 
@@ -93,7 +93,7 @@ describe('usePaginatedAction', () => {
     );
 
     const { result } = renderHook(
-      () => usePaginatedAction(action, { list: 'numbers' }),
+      () => usePublicPaginatedAction(action, { list: 'numbers' }),
       { wrapper },
     );
 
@@ -119,7 +119,7 @@ describe('usePaginatedAction', () => {
     }
 
     const { result } = renderHook(
-      () => usePaginatedAction(action, { list: 'numbers' }),
+      () => usePublicPaginatedAction(action, { list: 'numbers' }),
       { wrapper },
     );
 
@@ -143,7 +143,8 @@ describe('usePaginatedAction', () => {
     }
 
     const { result, rerender } = renderHook(
-      ({ list }: { list: string }) => usePaginatedAction(action, { list }),
+      ({ list }: { list: string }) =>
+        usePublicPaginatedAction(action, { list }),
       { wrapper, initialProps: { list: 'a' } },
     );
 
@@ -171,7 +172,7 @@ describe('usePaginatedAction', () => {
     }
 
     const { result } = renderHook(
-      () => usePaginatedAction(action, { list: 'numbers' }),
+      () => usePublicPaginatedAction(action, { list: 'numbers' }),
       { wrapper },
     );
 
@@ -199,7 +200,7 @@ describe('usePaginatedAction', () => {
     }
 
     const { result } = renderHook(
-      () => usePaginatedAction(action, { list: 'numbers' }),
+      () => usePublicPaginatedAction(action, { list: 'numbers' }),
       { wrapper },
     );
 
@@ -221,7 +222,7 @@ describe('usePaginatedAction', () => {
 
     const { result, rerender } = renderHook(
       ({ request }: { request: TestRequest | Skip }) =>
-        usePaginatedAction(action, request),
+        usePublicPaginatedAction(action, request),
       { wrapper, initialProps: { request: skip as TestRequest | Skip } },
     );
 
