@@ -33,9 +33,11 @@ export type UseSetupTradingApprovalsResult = [
  * This is the recovery path for `InsufficientAllowanceError` order rejections
  * and the account-readiness step for fresh accounts. Approvals execute
  * through the gasless relayer, so the provider config needs an `apiKey` with
- * gasless support, such as `remoteBuilderSigning`. Resolves once the missing
- * approvals are confirmed; resolves immediately when none are missing.
- * Failures surface on `error` and also reject the returned promise.
+ * gasless support, such as `remoteBuilderSigning`. Approvals require a
+ * deployed account wallet: on fresh Deposit Wallet accounts check
+ * `useIsWalletDeployed` and run `useDeployWallet` first. Resolves once the
+ * missing approvals are confirmed; resolves immediately when none are
+ * missing. Failures surface on `error` and also reject the returned promise.
  *
  * @example
  * ```tsx

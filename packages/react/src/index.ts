@@ -21,6 +21,7 @@ export * from './hooks/portfolio';
 export * from './hooks/positions';
 export * from './hooks/trading';
 export * from './hooks/transfers';
+export * from './hooks/wallet';
 export type { PaginatedReadResult } from './pagination';
 export type { ReadResult } from './read';
 export type { Session } from './session';
