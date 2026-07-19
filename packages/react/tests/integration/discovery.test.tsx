@@ -6,6 +6,8 @@ import {
   useMarket,
   useMarkets,
   useOrderBook,
+  usePortfolioValue,
+  usePositions,
 } from '@polymarket/react';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -72,6 +74,30 @@ describe('discovery hooks', () => {
 
     expect(result.current.data?.slug).toBe(fixtureSlug);
     expect(result.current.error).toBeUndefined();
+  });
+
+  it('usePositions and usePortfolioValue read a live public portfolio', async () => {
+    const user = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+
+    const { result } = renderHook(
+      () => ({
+        positions: usePositions({ user, pageSize: 5 }),
+        value: usePortfolioValue({ user }),
+      }),
+      { wrapper },
+    );
+
+    await waitFor(
+      () => {
+        expect(result.current.positions.data).toBeDefined();
+        expect(result.current.value.data).toBeDefined();
+      },
+      { timeout: 30_000 },
+    );
+
+    expect(result.current.positions.data?.length ?? 0).toBeGreaterThan(0);
+    expect(result.current.positions.error).toBeUndefined();
+    expect(result.current.value.error).toBeUndefined();
   });
 
   it('useOrderBook loads a live order book for a market token', async () => {

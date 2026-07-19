@@ -4,7 +4,9 @@ import type {
   Market,
   OrderBook,
   OrderResponse,
+  Position,
   SignOrderRequest,
+  Value,
 } from '@polymarket/client';
 import type {
   CancelOrderRequest,
@@ -22,11 +24,13 @@ import type {
   WorkflowHandler,
   WorkflowResponse,
 } from '../workflow';
+import { useTradingRestriction } from './account';
 import type { TradingApprovalsStep } from './approvals';
 import { useSetupTradingApprovals } from './approvals';
 import { useOrderBook } from './books';
 import { useEvents } from './events';
 import { useMarket, useMarkets } from './markets';
+import { usePortfolioValue, usePositions } from './portfolio';
 import type { UsePlaceMarketOrderError } from './trading';
 import {
   useCancelOrder,
@@ -103,6 +107,32 @@ describe('read hook types', () => {
       useMarket({ id: 123 });
       // @ts-expect-error - unknown request member
       useOrderBook({ tokenId: '123', side: 'BUY' });
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+});
+
+describe('portfolio hook types', () => {
+  it('makes user optional on session-defaulted reads', () => {
+    function Component() {
+      const mine = usePositions();
+      const theirs = usePositions({ user: `0x${'2'.repeat(40)}` });
+      const value = usePortfolioValue();
+
+      expectTypeOf(mine.data).toEqualTypeOf<Position[] | undefined>();
+      expectTypeOf(theirs.isPaused).toEqualTypeOf<boolean>();
+      expectTypeOf(value.data).toEqualTypeOf<Value[] | undefined>();
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+
+  it('types the boolean trading restriction read', () => {
+    function Component() {
+      const { data } = useTradingRestriction();
+
+      expectTypeOf(data).toEqualTypeOf<boolean | undefined>();
     }
 
     expectTypeOf(Component).toBeFunction();
