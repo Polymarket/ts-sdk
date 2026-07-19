@@ -84,22 +84,15 @@ Internally, plain read hooks are one line over a small primitive that takes the 
 
 ```ts
 export function useMarket(request: FetchMarketRequest): ReadResult<Market> {
-  return useClientAction(fetchMarket, request);
+  return usePublicClientAction(fetchMarket, request);
 }
 ```
 
-`useClientAction(action, request)` resolves the client from context, runs `action(client, request)`, and manages state/races/unmount for the single-request case. Because the action is a parameter, each hook bundles only its own action.
+`usePublicClientAction(action, request)` resolves the client from context, runs `action(client, request)`, and manages state/races/unmount for the single-request case. Because the action is a parameter, each hook bundles only its own action.
 
-`useClientAction` is deliberately narrow: it only understands one-shot reads. Other hook families (paginated reads, write workflows, subscriptions) are built from their own primitives that compose smaller pieces (client resolution, request-state tracking, race guarding) rather than growing one internal hook that understands every mode. Favor composition over a single golden path that does everything.
+`usePublicClientAction` is deliberately narrow: it only understands one-shot reads. Other hook families (paginated reads, write workflows, subscriptions) are built from their own primitives that compose smaller pieces (client resolution, request-state tracking, race guarding) rather than growing one internal hook that understands every mode. Favor composition over a single golden path that does everything.
 
-The plain-read primitive is also exported publicly as the escape hatch for any client action without a dedicated hook yet:
-
-```tsx
-import { useClientAction } from '@polymarket/react';
-import { fetchOrderBook } from '@polymarket/client/actions';
-
-const { data: book } = useClientAction(fetchOrderBook, { tokenId });
-```
+The action primitives are internal for now — the public surface is the dedicated hooks. The single escape hatch is `usePolymarketClient()`, which returns the raw client for direct standalone-action usage (imperative fetches in event handlers, actions without a dedicated hook). Exporting the primitives is a deliberate non-goal until real coverage gaps demand it; consumers asking for missing hooks is the signal we want.
 
 ### Conditional / dependent reads
 
@@ -113,7 +106,7 @@ Exact `skip` mechanics (sentinel vs `enabled` option) to be settled during imple
 
 ## Paginated Read Hooks
 
-`list*` actions return `Paginated<T>`; paginated hooks are their own family with their own primitive (`usePaginatedAction`), not a mode of `useClientAction`. The primitive maps `Page<T>` continuation onto infinite-scroll state:
+`list*` actions return `Paginated<T>`; paginated hooks are their own family with their own primitive (`usePublicPaginatedAction`), not a mode of `usePublicClientAction`. The primitive maps `Page<T>` continuation onto infinite-scroll state:
 
 ```tsx
 function MarketList() {
@@ -136,7 +129,7 @@ function MarketList() {
 - `data` is the flattened accumulated items (`T[]`), the shape list UIs actually render. Page boundaries and cursors stay internal.
 - `refetch()` resets to the first page.
 - Internally: `firstPage()` for the initial load, `from(nextCursor).firstPage()` for continuation, cursors are never exposed.
-- `usePaginatedAction(action, request)` shares low-level building blocks with `useClientAction` (client resolution, race guarding) through composition, but owns pagination state itself. Like the plain primitive, it is exported publicly for `list*` actions without a dedicated hook.
+- `usePublicPaginatedAction(action, request)` shares low-level building blocks with `usePublicClientAction` (client resolution, race guarding) through composition, but owns pagination state itself. Like the plain primitive, it is internal for now.
 
 ## Wallet Integration (`@polymarket/react/viem`)
 
@@ -200,8 +193,9 @@ const handler: WorkflowHandler = async (request, { cancel }) => {
 ```
 
 - Core hooks depend only on the `WorkflowHandler` type; they never import viem.
-- Future entry points (`/ethers-v6`, `/privy`, ...) each export their own `useWorkflowHandler` equivalent, as optional peers.
+- Future entry points (`/ethers-v6`, `/privy`, ...) each export their own `useWorkflowHandler` equivalent, as optional peers. viem is the only entry point in the first iteration; the internal `Signer -> WorkflowHandler` bridge stays private, so wallet support arrives exclusively through dedicated adapters.
 - The viem adapter reuses `@polymarket/client/viem` internals (signer wrapping, error translation) rather than reimplementing them.
+- Reusing a client-package adapter is per-library, not a rule. `@polymarket/client/privy` wraps Privy server wallets (Node-only, `@privy-io/node`) and is the wrong integration for a browser app; a future `@polymarket/react/privy` targets Privy embedded wallets via the Privy React SDK instead and shares nothing with the client adapter. Note that Privy embedded wallets can expose a viem `WalletClient`, so the viem entry point may already cover Privy apps before a dedicated entry ships.
 
 ## Authentication and Sessions
 
@@ -278,7 +272,8 @@ function ConnectButton() {
 - Mid-session signer switch is the one place an address-keyed lookup makes sense, because the new address is known there (it arrived from the wallet library's state change). Apps keeping per-address sessions can remount for a prompt-free switch (`<PolymarketProvider key={address} initialSession={loadSession(address)}>`); otherwise `logout()` + `authenticate()`.
 - Apps migrating from bare stored `ApiKeyCreds` construct the `Session` themselves (they know the address and wallet they stored credentials for); otherwise one fresh `authenticate()` prompt.
 - `authenticate()` enforces the non-EOA invariant: resolving to an EOA account configuration fails with a clear error. This guarantee is what makes the signature-only `WorkflowHandler` type sound.
-- The handler argument is optional for status-only consumers: `useAuthentication()` without a handler returns `status`, `session`, and `logout`, with `authenticate` excluded from the result type so calling it without a handler is unrepresentable.
+- The handler argument is optional for status-only consumers: `useAuthentication()` with no argument returns `status`, `session`, and `logout`, with `authenticate` excluded from the result type. Handler-taking hooks assume a non-nullable `WorkflowHandler`.
+- Wallet-availability uncertainty is owned by the wallet entry point, not core: `useWorkflowHandler` always returns a stable handler even while wagmi's `useWalletClient` is still `undefined`, and invoking it without a connected wallet fails with a wallet-flavored error (`WalletClientUnavailableError`) that propagates through the driving operation, e.g. `authenticate()`. The code closest to the wallet ecosystem names the failure.
 - `logout()` calls `endAuthentication()` (revokes the key), clears the session, and swaps back to the public client. A softer local-only disconnect option is an open question.
 - Secure-only read hooks (`useOpenOrders`, `usePositions`, `useBalances`) return the paused state until `status === 'authenticated'`, then fetch automatically.
 
@@ -313,7 +308,7 @@ function BuyButton({ tokenId }: { tokenId: TokenId }) {
 
 - `status`: `'idle' | 'pending' | 'success' | 'error'`.
 - `step`: the current workflow request kind while pending (`'signOrder'`, `'signGaslessTypedData'`, ...), so UIs can render progress without intercepting anything. Multi-step flows such as allowance recovery inside `placeMarketOrder` (gasless approval signatures for Deposit/Safe/Proxy accounts) surface naturally as `step` transitions.
-- `error` is the action's public error union plus `WorkflowCancelledError` when the handler cancels.
+- `error` is the action's public error union plus `CancelledSigningError` when the handler cancels or the wallet rejects.
 - The execute function returns a promise of the result for event-handler composition; errors also land in state so purely declarative UIs work without try/catch.
 - Cancellation mid-workflow (via `controls.cancel`) aborts cleanly: the generator is closed and state settles as a cancelled error, not a success.
 
@@ -338,25 +333,35 @@ const { data: book, status } = useLiveOrderBook({ tokenId });
 - Peer dependencies: `react` (>=18), `@polymarket/client` (regular peer so apps share one client install and can use actions directly), `viem` optional via `peerDependenciesMeta`.
 - Browser-first (`platform: neutral` build). No Node-only entry points.
 
-## Prerequisites in `@polymarket/client`
+## Prerequisites in `@polymarket/client` (landed)
 
-- Confirm `BasePublicClient`/`BaseSecureClient` construction is supportable as a public pattern for context holders, or add a small `createBaseClient(options)` factory so the React package does not depend on class internals.
-- The workflow request/response vocabulary (`CompleteWorkflowRequest`, `CompleteWorkflowNext`, `AuthenticationWorkflow`) becomes a shared public contract consumed by `@polymarket/react`; review naming and export surface before the React package freezes on it.
-- `beginAuthentication` is currently `@internal`; it becomes the supported seam for the provider's auth lifecycle.
-- Synchronous session restore needs a supported way to construct a `SecureClient` from `{ credentials, address, wallet }` without running the authentication workflow (today that construction path is private to `beginAuthentication`).
+- `createBaseClient(options)` — base client without bound action methods, for standalone-action consumers.
+- `createBaseSecureClient(options)` — authenticated client from `{ address, wallet, credentials, signer }` without running an authentication workflow; malformed session input surfaces as `UserInputError`. Powers synchronous session restore and the memoized session derivation.
+- `beginAuthentication` promoted from `@internal` with a brief low-level remark.
+- Workflow request/response vocabulary exported as types from the root entry point.
+- `fetchDepositWallet(client, { address })` — the default account-wallet resolution (existing deployed UUPS Deposit Wallet, else the Beacon Deposit Wallet), extracted from `createSecureClient` so `authenticate()` shares the same strategy.
+
+## Settled implementation decisions (phase 2)
+
+- Session-derived clients carry a throwing signer: `getAddress` resolves `session.address`; signing methods fail with an `InvariantError` whose message points at workflow handlers. Wallet operations never flow through `client.signer` in the React model — they flow through workflow handlers — so a signing-capable client signer is unnecessary and would blur that invariant. This failure is only reachable through direct client usage (signer-driving standalone actions, or the RFQ quoter websocket, whose signer is captured at client construction); no SDK hook path can surface it, which is why it is an invariant rather than a public error class.
+- RFQ quoting is out of scope for `@polymarket/react`. Quoters sign autonomously in response to websocket events — a bot/server workflow with a construction-time signer that the handler model deliberately does not serve.
+- `authenticate()` resolves the default wallet via `fetchDepositWallet` and does **not** auto-deploy an undeployed Deposit Wallet (unlike `createSecureClient`). Authentication stays signature-only and fast; reads work against an undeployed wallet. Deployment belongs to the trading/setup phase — open question there is which hook owns it.
+- 401 session invalidation lives in the secure read primitives: a `RequestRejectedError` with status 401 clears the session, transitioning the provider to `'unauthenticated'` with the rejection recorded on `error`.
+- `Session` fields are plain strings for persistence friendliness; validation happens at restore/derivation via `createBaseSecureClient`.
+- The EOA invariant is enforced at three points: `authenticate()` rejects an explicit EOA wallet before any signature request, the post-workflow account classification is a backstop, and session derivation rejects hand-crafted EOA `initialSession` values.
 
 ## Testing
 
 Mirror the existing repo structure: a colocated unit-test project plus a live-API integration project, extended with React-specific layers.
 
-- **`react` vitest project — hook behavior tests.** Colocated `*.test.tsx` in `packages/react/src`, jsdom environment, `@testing-library/react` `renderHook`. The action-as-parameter design is the testing seam: primitives (`useClientAction`, `usePaginatedAction`) are exercised with controlled in-test action functions — deterministic inputs, no network mocking. This layer owns the hard behavior: param-change refetch, race discarding (stale slow response vs fresh fast one), unmount safety, pause/skip transitions, pagination accumulation and reset. Write hooks are driven the same way with scripted `WorkflowHandler`s that answer or cancel each request, covering step transitions, cancellation semantics, and error surfacing without a wallet.
+- **`react` vitest project — hook behavior tests.** Colocated `*.test.tsx` in `packages/react/src`, jsdom environment, `@testing-library/react` `renderHook`. The action-as-parameter design is the testing seam: primitives (`usePublicClientAction`, `usePublicPaginatedAction`) are exercised with controlled in-test action functions — deterministic inputs, no network mocking. This layer owns the hard behavior: param-change refetch, race discarding (stale slow response vs fresh fast one), unmount safety, pause/skip transitions, pagination accumulation and reset. Write hooks are driven the same way with scripted `WorkflowHandler`s that answer or cancel each request, covering step transitions, cancellation semantics, and error surfacing without a wallet.
 - **`react-integration` vitest project — live hooks.** `packages/react/tests/integration/**`, mirroring `packages/client/tests/integration` (serial, long timeouts, production APIs). Real hooks rendered under a real `<PolymarketProvider>` against live reads (`useMarkets`, `useMarket`, `useEvents`). Phase 1 needs no credentials; auth and trading phases reuse the client integration suite's fixture/credential approach.
 - **Type tests (`.test-d.ts`).** Contracts that are type-level by design are proven with typecheck tests, not runtime tests: per-hook workflow request narrowing (order hooks only see `signOrder`), the signature-only `WorkflowRequest` union, paused-state narrowing, and `useAuthentication()` without a handler excluding `authenticate` from its result type.
-- **Entry-point isolation guard.** A build-level or lint-boundary check that the core `@polymarket/react` entry never imports viem (or any future wallet library), enforcing the wallet-isolation rule.
+- **Entry-point isolation.** The core `@polymarket/react` entry must never import viem (or any future wallet library). This is a review-enforced repo guideline (see `AGENTS.md`), not a runtime test: a filesystem-scanning test is low signal compared to the guideline plus the structural separation (own entry file, own bundle, one-way import direction).
 
 ## Rollout Phases
 
-1. **Foundation** — package scaffold, provider, `useClientAction` and `usePaginatedAction` primitives (races, unmount, param-change refetch, pausing), discovery read hooks (`useMarket`, `useMarkets`, `useEvents`, `useOrderBook`).
+1. **Foundation** — package scaffold, provider, `usePublicClientAction` and `usePublicPaginatedAction` primitives (races, unmount, param-change refetch, pausing), discovery read hooks (`useMarket`, `useMarkets`, `useEvents`, `useOrderBook`).
 2. **Wallet + auth** — `@polymarket/react/viem` with `useWorkflowHandler`, `useAuthentication`, provider public/secure lifecycle, secure-hook gating.
 3. **Trading** — `usePlaceMarketOrder`, `usePlaceLimitOrder`, `useCancelOrder` with step state, cancellation, and the interceptor contract validated end to end.
 4. **Portfolio** — `useOpenOrders`, `usePositions`, `useBalances` and related secure reads.
@@ -374,8 +379,10 @@ Phases 1–2 retire the architectural risk; phase 3 validates the workflow-handl
 
 ## Open Questions
 
+- Tree-shaking follow-up in `@polymarket/client`: `clients.ts` imports `allActions` from `./decorators`, and each decorator value-imports actions from the full actions barrel, so `createBaseClient`/`createBaseSecureClient` currently drag the entire action graph into the module graph. Whether consumer bundlers recover via statement-level DCE over the bundled dist needs measurement; the likely fix is splitting client construction from decoration so the base factories live in a module that never imports the decorators. Tracked separately from the React work.
+
 - `skip`/`enabled` mechanics for conditional reads and the exact paused-state type narrowing.
 - Whether `logout()` should offer a local-only variant that keeps credentials valid (no server-side key revocation).
 - Whether write hooks should also expose the raw prepared workflow for fully manual driving, or whether handler wrapping covers all real cases.
-- Naming pass: `useClientAction` vs `useAction` vs `usePolymarketAction` for the public escape hatch; `useAuthentication` vs `useSession`.
+- Resolved: the action primitives are the `usePublicClientAction`/`useSecureClientAction` and `usePublicPaginatedAction`/`useSecurePaginatedAction` families — both sides marked, matching the client package's `createPublicClient`/`createSecureClient` convention and avoiding the ambiguity of an unmarked hook binding the public client while a session is active. Still open: `useAuthentication` vs `useSession`.
 - Deferred: whether gasless workflow steps need semantic operation context beyond `kind`. With Deposit/Safe/Proxy accounts, approvals and transfers all surface as `signGaslessTypedData`. Revisit during the trading phase against a real end-to-end example, evaluating the kinds a handler sees across a single operation — `signGaslessTypedData` may be fine as-is if the surrounding kinds make the operation obvious. Do not change the client contract for this preemptively.
