@@ -10,7 +10,12 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { captureConnection, collectFrames, waitForNextEvent } from '../testing';
+import {
+  captureConnection,
+  collectFrames,
+  expectDropsUnknownFrame,
+  waitForNextEvent,
+} from '../testing';
 import { ClobMarketWebSocketManager } from './market';
 
 const clobMarket = ws.link(production.clob.market.ws);
@@ -125,6 +130,32 @@ describe('ClobMarketWebSocketManager', () => {
         payload: { tokenId: 'token-a' },
         topic: 'market',
         type: 'book',
+      },
+    });
+  });
+
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
+      expectedEvent: { topic: 'market', type: 'book' },
+      link: clobMarket,
+      server,
+      subscribe: async () => {
+        const observedManager = new ClobMarketWebSocketManager({
+          url: production.clob.market.ws,
+        });
+        const events = await observedManager.subscribe({
+          tokenIds: ['token-a'],
+          topic: 'market',
+        });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: { event_type: 'future_event', payload: 'new' },
+      validFrame: {
+        asks: [],
+        asset_id: 'token-a',
+        bids: [],
+        event_type: 'book',
+        market: '0xmarket',
       },
     });
   });

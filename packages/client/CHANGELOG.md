@@ -1,5 +1,37 @@
 # @polymarket/client
 
+## 0.1.0-beta.18
+
+### Patch Changes
+
+- 66fb8a8: Drop unknown WebSocket frames without closing the connection. Frames that fail to parse — new frame types, malformed known frames, or known frames carrying values the SDK does not model — are silently discarded on every stream, and subsequent events keep flowing. In particular, the RFQ quoter session no longer fails with `TransportError` on an unrecognized or unreadable frame: the frame is dropped, the session stays open, and a caller waiting on an unreadable acknowledgement fails through its acknowledgement timeout. Well-formed but uncorrelated RFQ errors still fail the session.
+- e8584aa: Remove the retired CLOB v1 Neg Risk Adapter from `setupTradingApprovals` and `prepareTradingApprovals`. The setup flow no longer grants a MAX collateral allowance or ERC-1155 approval-for-all to the retired adapter; all current exchanges, collateral adapters, and the auto-redeem operator remain approved.
+- Updated dependencies [7633fad]
+  - @polymarket/bindings@0.1.0-beta.16
+
+## 0.1.0-beta.17
+
+### Patch Changes
+
+- 8790a22: Normalize empty-string optional decimal fields on streamed market and trade events to null (for example a trade's `feeRateBps` and a price change's `bestBid`/`bestAsk`), so consumers never receive `''` where a decimal string or null is expected.
+- e8abc2a: Return branded decimal string types from CLOB price read helpers instead of widening validated decimal strings to plain strings.
+- ea844f3: Strengthen CLOB batch price read result types so midpoint, price, and spread lookups are keyed by `TokenId`. `fetchPrices` now returns partial `OrderSide` records containing decimal strings, while `fetchMidpoints` and `fetchSpreads` return token ID keyed decimal strings.
+- 0f25328: Remove the unreleased `QUOTE_VALIDATION_TIMEOUT_INTERNAL` member from `RfqKnownErrorCode`. The gateway now reports quote-validation timeouts as `SERVICE_UNAVAILABLE`; gateways still emitting the internal code during rollout flow through the open `RfqErrorCode` type as plain strings.
+- b434b43: Support Perps fills frames containing a list of fills.
+- 1e707cd: Support Perps trades frames containing a list of trades.
+- 50d56ce: Harden RFQ quoter sessions:
+
+  - Unknown error codes no longer fail the session; they flow through as plain strings via the now-open `RfqErrorCode` type (known codes moved to `RfqKnownErrorCode`).
+  - Unsolicited connection loss now fails in-flight operations and the session iterator with the new `ConnectionLostError`, carrying the close `code` and `reason`.
+
+- Updated dependencies [8790a22]
+- Updated dependencies [ea844f3]
+- Updated dependencies [0f25328]
+- Updated dependencies [b434b43]
+- Updated dependencies [1e707cd]
+- Updated dependencies [50d56ce]
+  - @polymarket/bindings@0.1.0-beta.15
+
 ## 0.1.0-beta.16
 
 ### Patch Changes

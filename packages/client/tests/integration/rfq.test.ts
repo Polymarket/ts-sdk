@@ -1,6 +1,7 @@
 import {
   ConnectionLostError,
   production,
+  RfqExecutionStatus,
   RfqKnownErrorCode,
   SignatureType,
   TimeoutError,
@@ -947,16 +948,22 @@ describe('RFQ sessions', () => {
         try {
           let quoteError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              await event.quote({ price: 0.45 });
-            } catch (error) {
-              quoteError = error;
+              try {
+                await event.quote({ price: 0.45 });
+              } catch (error) {
+                quoteError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(quoteError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1008,17 +1015,23 @@ describe('RFQ sessions', () => {
         try {
           let cancellationError: unknown;
 
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type !== 'quote_request') continue;
 
-            try {
-              const quote = await event.quote({ price: 0.45 });
-              await session.cancelQuote(quote);
-            } catch (error) {
-              cancellationError = error;
+              try {
+                const quote = await event.quote({ price: 0.45 });
+                await session.cancelQuote(quote);
+              } catch (error) {
+                cancellationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(cancellationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1074,21 +1087,27 @@ describe('RFQ sessions', () => {
         try {
           let confirmationError: unknown;
 
-          for await (const event of session) {
-            if (event.type === 'quote_request') {
-              await event.quote({ price: 0.45 });
-              continue;
-            }
+          async function consume(): Promise<void> {
+            for await (const event of session) {
+              if (event.type === 'quote_request') {
+                await event.quote({ price: 0.45 });
+                continue;
+              }
 
-            if (event.type !== 'confirmation_request') continue;
+              if (event.type !== 'confirmation_request') continue;
 
-            try {
-              await event.confirm();
-            } catch (error) {
-              confirmationError = error;
+              try {
+                await event.confirm();
+              } catch (error) {
+                confirmationError = error;
+              }
             }
           }
 
+          await expect(consume()).rejects.toMatchObject({
+            message: 'Uncorrelated RFQ quoter error.',
+            name: 'TransportError',
+          });
           expect(confirmationError).toMatchObject({
             message: 'Uncorrelated RFQ quoter error.',
             name: 'TransportError',
@@ -1233,6 +1252,63 @@ describe('RFQ sessions', () => {
     });
   });
 
+  describe('when the server sends execution updates with statuses introduced after this client release', () => {
+    beforeEach(() => {
+      server.resetHandlers();
+      server.use(
+        rfq.addEventListener('connection', ({ client: socket }) => {
+          socket.addEventListener('message', (event) => {
+            const frame = recordOutboundFrame(event.data, outboundFrames);
+
+            if (frame.type === 'auth') {
+              socket.send(authAckMessage());
+              socket.send(quoteRequestMessage());
+              return;
+            }
+
+            if (frame.type === 'RFQ_QUOTE') {
+              quoteAmounts(frame);
+              socket.send(quoteAckMessage());
+              socket.send(executionUpdateMessage('FUTURE_STATUS'));
+              socket.send(executionUpdateMessage());
+            }
+          });
+        }),
+      );
+    });
+
+    it('drops the unrecognized update and keeps the session open', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const session = await secureClientWithDepositWallet.openRfqSession();
+
+      try {
+        for await (const event of session) {
+          if (event.type === 'quote_request') {
+            await event.quote({ price: 0.45 });
+            continue;
+          }
+
+          if (event.type === 'execution_update') {
+            // The first execution update carried the unrecognized status and
+            // was dropped; the CONFIRMED update sent afterwards arriving as
+            // the next event proves the session survived.
+            expect(event).toMatchObject({
+              rfqId: RFQ_ID,
+              status: RfqExecutionStatus.Confirmed,
+              txHash: TX_HASH,
+            });
+
+            await session.close();
+            break;
+          }
+        }
+      } finally {
+        await secureClientWithDepositWallet.closeSubscriptions();
+      }
+    });
+  });
+
   describe('when the server sends a malformed known RFQ frame', () => {
     beforeEach(() => {
       server.resetHandlers();
@@ -1250,47 +1326,35 @@ describe('RFQ sessions', () => {
             if (frame.type === 'RFQ_QUOTE') {
               quoteAmounts(frame);
               socket.send(malformedQuoteAckMessage());
-              socket.send(quoteRequestMessage());
+              socket.send(quoteAckMessage());
             }
           });
         }),
       );
     });
 
-    it('fails the session and surfaces the error through the event stream', async ({
+    it('drops the malformed frame and keeps the session open', async ({
       secureClientWithDepositWallet,
     }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
 
       try {
-        let quoteFailed = false;
+        for await (const event of session) {
+          if (event.type !== 'quote_request') continue;
 
-        try {
-          for await (const event of session) {
-            if (event.type !== 'quote_request') continue;
+          // The valid acknowledgement sent after the malformed one still
+          // correlates, proving the malformed frame was dropped and the
+          // session survived.
+          const quote = await event.quote({ price: 0.45 });
 
-            await event.quote({ price: 0.45 });
-            throw new Error('Expected RFQ session failure.');
-          }
-        } catch (error) {
-          quoteFailed = true;
-          expect(error).toMatchObject({
-            message: 'Invalid RFQ quoter message.',
-            name: 'TransportError',
+          expect(quote).toEqual({
+            quoteId: QUOTE_ID,
+            rfqId: event.rfqId,
           });
-        }
 
-        async function consumeAfterFailure() {
-          for await (const _event of session) {
-            throw new Error('Expected the failed RFQ session to stay closed.');
-          }
+          await session.close();
+          break;
         }
-
-        expect(quoteFailed).toBe(true);
-        await expect(consumeAfterFailure()).rejects.toMatchObject({
-          message: 'Invalid RFQ quoter message.',
-          name: 'TransportError',
-        });
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();
       }
