@@ -13,17 +13,22 @@ export { UnauthenticatedError, UnsupportedAccountError } from './errors';
 export * from './hooks/account';
 export * from './hooks/approvals';
 export * from './hooks/books';
+export * from './hooks/discovery';
 export * from './hooks/events';
 export * from './hooks/markets';
 export * from './hooks/orders';
 export * from './hooks/portfolio';
+export * from './hooks/positions';
 export * from './hooks/trading';
+export * from './hooks/transfers';
 export type { PaginatedReadResult } from './pagination';
 export type { ReadResult } from './read';
 export type { Session } from './session';
 export type { Skip } from './skip';
 export { skip } from './skip';
 export type {
+  GaslessStep,
+  GaslessStepRequest,
   WorkflowHandler,
   WorkflowHandlerControls,
   WorkflowRequest,

@@ -86,6 +86,46 @@ export function workflowHandlerFrom(signer: Signer): WorkflowHandler {
   };
 }
 
+/**
+ * Step kinds a gasless relayer workflow can surface.
+ */
+export type GaslessStep =
+  | 'requestAddress'
+  | 'signGaslessMessage'
+  | 'signGaslessTypedData';
+
+/**
+ * The gasless subset of {@link WorkflowRequest}.
+ */
+export type GaslessStepRequest = Extract<
+  WorkflowRequest,
+  { kind: GaslessStep }
+>;
+
+/**
+ * Narrows a client workflow to the gasless request subset.
+ *
+ * @remarks
+ * Session accounts are never EOAs, so client workflows that branch between
+ * direct transactions (EOA) and the gasless relayer only ever yield gasless
+ * signature requests here; the EOA-only transaction kinds are unreachable.
+ *
+ * @internal
+ */
+export function asGaslessWorkflow<TRequest extends { kind: string }, TReturn>(
+  workflow: AsyncGenerator<
+    TRequest,
+    TReturn,
+    EvmAddress | EvmSignature | unknown
+  >,
+): AsyncGenerator<GaslessStepRequest, TReturn, WorkflowResponse> {
+  return workflow as unknown as AsyncGenerator<
+    GaslessStepRequest,
+    TReturn,
+    WorkflowResponse
+  >;
+}
+
 const workflowControls: WorkflowHandlerControls = {
   cancel: (reason?: string) => new WorkflowCancelled(reason),
 };

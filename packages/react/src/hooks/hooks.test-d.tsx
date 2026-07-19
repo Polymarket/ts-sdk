@@ -6,6 +6,7 @@ import type {
   OrderResponse,
   Position,
   SignOrderRequest,
+  TransactionOutcome,
   Value,
 } from '@polymarket/client';
 import type {
@@ -14,23 +15,26 @@ import type {
   FetchOrderBookError,
   ListEventsError,
   ListMarketsError,
+  SearchResults,
 } from '@polymarket/client/actions';
 import { fetchMarket } from '@polymarket/client/actions';
 import { describe, expectTypeOf, it } from 'vitest';
 import { usePublicClientAction } from '../read';
 import { skip } from '../skip';
 import type {
+  GaslessStep,
   WorkflowCancelled,
   WorkflowHandler,
   WorkflowResponse,
 } from '../workflow';
 import { useTradingRestriction } from './account';
-import type { TradingApprovalsStep } from './approvals';
 import { useSetupTradingApprovals } from './approvals';
 import { useEstimatedMarketPrice, useOrderBook } from './books';
+import { useSearch } from './discovery';
 import { useEvents } from './events';
 import { useMarket, useMarkets } from './markets';
 import { usePortfolioValue, usePositions } from './portfolio';
+import { useRedeemPositions } from './positions';
 import type { UsePlaceMarketOrderError } from './trading';
 import {
   useCancelOrder,
@@ -184,9 +188,7 @@ describe('write hook types', () => {
       const [setupApprovals, state] = useSetupTradingApprovals(broad);
 
       expectTypeOf(setupApprovals).returns.toEqualTypeOf<Promise<void>>();
-      expectTypeOf(state.step).toEqualTypeOf<
-        TradingApprovalsStep | undefined
-      >();
+      expectTypeOf(state.step).toEqualTypeOf<GaslessStep | undefined>();
     }
 
     function RejectsMismatchedHandler(
@@ -200,6 +202,27 @@ describe('write hook types', () => {
 
     expectTypeOf(Component).toBeFunction();
     expectTypeOf(RejectsMismatchedHandler).toBeFunction();
+  });
+
+  it('types the gasless lifecycle writes with confirmation outcomes', () => {
+    function Component(broad: WorkflowHandler) {
+      const [redeem, state] = useRedeemPositions(broad);
+
+      expectTypeOf(redeem).returns.toEqualTypeOf<Promise<TransactionOutcome>>();
+      expectTypeOf(state.step).toEqualTypeOf<GaslessStep | undefined>();
+    }
+
+    expectTypeOf(Component).toBeFunction();
+  });
+
+  it('types search as grouped first-page results', () => {
+    function Component() {
+      const { data } = useSearch({ q: 'election' });
+
+      expectTypeOf(data).toEqualTypeOf<SearchResults | undefined>();
+    }
+
+    expectTypeOf(Component).toBeFunction();
   });
 
   it('exposes no step on the cancel hook state', () => {

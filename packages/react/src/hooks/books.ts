@@ -1,13 +1,27 @@
-import type { OrderBook } from '@polymarket/client';
+import type {
+  DecimalString,
+  LastTradePrice,
+  OrderBook,
+  PriceHistoryPoint,
+} from '@polymarket/client';
 import type {
   EstimateMarketPriceError,
   EstimateMarketPriceRequest,
+  FetchLastTradePriceError,
+  FetchLastTradePriceRequest,
+  FetchMidpointError,
+  FetchMidpointRequest,
   FetchOrderBookError,
   FetchOrderBookRequest,
+  FetchPriceHistoryError,
+  FetchPriceHistoryRequest,
 } from '@polymarket/client/actions';
 import {
   estimateMarketPrice,
+  fetchLastTradePrice,
+  fetchMidpoint,
   fetchOrderBook,
+  fetchPriceHistory,
 } from '@polymarket/client/actions';
 import type { ReadResult } from '../read';
 import { usePublicClientAction } from '../read';
@@ -66,4 +80,73 @@ export function useEstimatedMarketPrice(
     number,
     EstimateMarketPriceError
   >(estimateMarketPrice, request);
+}
+
+/**
+ * Fetches a token's price history for charting.
+ *
+ * @remarks
+ * Errors surface on `error` as {@link FetchPriceHistoryError}. Pass `skip`
+ * instead of the request to pause fetching.
+ *
+ * @example
+ * ```tsx
+ * const { data: history } = usePriceHistory({
+ *   tokenId,
+ *   interval: PriceHistoryInterval.ONE_DAY,
+ * });
+ * ```
+ */
+export function usePriceHistory(
+  request: FetchPriceHistoryRequest | Skip,
+): ReadResult<PriceHistoryPoint[], FetchPriceHistoryError> {
+  return usePublicClientAction<
+    FetchPriceHistoryRequest,
+    PriceHistoryPoint[],
+    FetchPriceHistoryError
+  >(fetchPriceHistory, request);
+}
+
+/**
+ * Fetches the midpoint between a token's best bid and best ask.
+ *
+ * @remarks
+ * Errors surface on `error` as {@link FetchMidpointError}. Pass `skip`
+ * instead of the request to pause fetching.
+ *
+ * @example
+ * ```tsx
+ * const { data: midpoint } = useMidpoint({ tokenId });
+ * ```
+ */
+export function useMidpoint(
+  request: FetchMidpointRequest | Skip,
+): ReadResult<DecimalString, FetchMidpointError> {
+  return usePublicClientAction<
+    FetchMidpointRequest,
+    DecimalString,
+    FetchMidpointError
+  >(fetchMidpoint, request);
+}
+
+/**
+ * Fetches a token's last trade price.
+ *
+ * @remarks
+ * Errors surface on `error` as {@link FetchLastTradePriceError}. Pass `skip`
+ * instead of the request to pause fetching.
+ *
+ * @example
+ * ```tsx
+ * const { data: lastTrade } = useLastTradePrice({ tokenId });
+ * ```
+ */
+export function useLastTradePrice(
+  request: FetchLastTradePriceRequest | Skip,
+): ReadResult<LastTradePrice, FetchLastTradePriceError> {
+  return usePublicClientAction<
+    FetchLastTradePriceRequest,
+    LastTradePrice,
+    FetchLastTradePriceError
+  >(fetchLastTradePrice, request);
 }

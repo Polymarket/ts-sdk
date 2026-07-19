@@ -7,26 +7,13 @@ import { prepareTradingApprovals } from '@polymarket/client/actions';
 import { useCallback, useRef } from 'react';
 import type { UnauthenticatedError } from '../errors';
 import type {
+  GaslessStep,
+  GaslessStepRequest,
   WorkflowHandler,
-  WorkflowRequest,
-  WorkflowResponse,
 } from '../workflow';
-import { driveWorkflow } from '../workflow';
+import { asGaslessWorkflow, driveWorkflow } from '../workflow';
 import type { WorkflowWriteResult } from '../write';
 import { useSecureWrite } from '../write';
-
-/**
- * Workflow step kinds a trading approvals setup can surface.
- */
-export type TradingApprovalsStep =
-  | 'requestAddress'
-  | 'signGaslessMessage'
-  | 'signGaslessTypedData';
-
-type TradingApprovalsRequest = Extract<
-  WorkflowRequest,
-  { kind: TradingApprovalsStep }
->;
 
 export type UseSetupTradingApprovalsError =
   | PrepareTradingApprovalsError
@@ -35,11 +22,7 @@ export type UseSetupTradingApprovalsError =
 
 export type UseSetupTradingApprovalsResult = [
   setupTradingApprovals: () => Promise<void>,
-  state: WorkflowWriteResult<
-    void,
-    UseSetupTradingApprovalsError,
-    TradingApprovalsStep
-  >,
+  state: WorkflowWriteResult<void, UseSetupTradingApprovalsError, GaslessStep>,
 ];
 
 /**
@@ -67,26 +50,17 @@ export type UseSetupTradingApprovalsResult = [
  * ```
  */
 export function useSetupTradingApprovals(
-  handler: WorkflowHandler<TradingApprovalsRequest>,
+  handler: WorkflowHandler<GaslessStepRequest>,
 ): UseSetupTradingApprovalsResult {
   const handlerRef = useRef(handler);
   handlerRef.current = handler;
 
   const run = useCallback(
-    async (
-      client: BaseSecureClient,
-      onStep: (kind: TradingApprovalsStep) => void,
-    ) => {
+    async (client: BaseSecureClient, onStep: (kind: GaslessStep) => void) => {
       const workflow = await prepareTradingApprovals(client);
 
-      // Session accounts are never EOAs, so the workflow only yields gasless
-      // signature requests; the EOA-only transaction kinds are unreachable.
       return driveWorkflow(
-        workflow as AsyncGenerator<
-          TradingApprovalsRequest,
-          void,
-          WorkflowResponse
-        >,
+        asGaslessWorkflow(workflow),
         handlerRef.current,
         onStep,
       );
