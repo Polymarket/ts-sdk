@@ -56,6 +56,7 @@ export const PerpsInstrumentSchema = z
     max_market_notional: DecimalStringSchema,
     max_limit_notional: DecimalStringSchema,
     max_leverage: z.number().int().positive(),
+    isolated_only: z.boolean(),
     risk_tiers: z.array(RawPerpsRiskTierSchema),
   })
   .transform((instrument) => ({
@@ -74,6 +75,7 @@ export const PerpsInstrumentSchema = z
     maxMarketNotional: instrument.max_market_notional,
     maxLimitNotional: instrument.max_limit_notional,
     maxLeverage: instrument.max_leverage,
+    isolatedOnly: instrument.isolated_only,
     riskTiers: instrument.risk_tiers,
   }));
 
