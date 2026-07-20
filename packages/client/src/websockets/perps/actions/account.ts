@@ -35,6 +35,8 @@ import {
   PerpsPnlIntervalSchema,
   type PerpsPnlPoint,
   type PerpsPortfolio,
+  type PerpsSortDirection,
+  PerpsSortDirectionSchema,
   type PerpsWithdrawal,
   type PerpsWithdrawalStatus,
   PerpsWithdrawalStatusSchema,
@@ -78,7 +80,6 @@ const PerpsIntervalHistoryRequestBaseSchema = z.object({
 });
 
 const PerpsDescendingAccountHistoryKindSchema = z.enum([
-  'perpsFills',
   'perpsFundingPayments',
   'perpsDeposits',
   'perpsWithdrawals',
@@ -240,86 +241,52 @@ export async function fetchPerpsOrders(
   );
 }
 
-const ListPerpsFillsInitialRequestSchema = PerpsHistoryRequestBaseSchema.extend(
-  {
-    cursor: PaginationCursorSchema.optional(),
-  },
-) satisfies z.ZodType<
-  Exclude<ListPerpsFillsRequest, { cursor: PaginationCursor }>
->;
+const ListPerpsFillsRequestSchema = PerpsHistoryRequestBaseSchema.extend({
+  sort: PerpsSortDirectionSchema.optional(),
+  cursor: PaginationCursorSchema.optional(),
+}) satisfies z.ZodType<ListPerpsFillsRequest>;
 
-const ListPerpsFillsCursorRequestSchema = z.object({
-  cursor: PaginationCursorSchema,
-}) satisfies z.ZodType<
-  Extract<ListPerpsFillsRequest, { cursor: PaginationCursor }>
->;
-
-const ListPerpsFillsRequestSchema = z.union([
-  ListPerpsFillsInitialRequestSchema.transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsHistoryParams(request, ONE_DAY_MS),
-  })),
-  ListPerpsFillsCursorRequestSchema.transform(({ cursor }) => ({
-    cursor,
-    params: undefined,
-  })),
-]);
-
-export type ListPerpsFillsRequest =
-  | {
-      /** Inclusive start timestamp in milliseconds. */
-      start?: number;
-      /** Inclusive end timestamp in milliseconds. */
-      end?: number;
-      /** Opaque cursor returned by a previous page. */
-      cursor?: PaginationCursor;
-    }
-  | {
-      /** Opaque cursor returned by a previous page. */
-      cursor: PaginationCursor;
-    };
+export type ListPerpsFillsRequest = {
+  /** Inclusive start timestamp in milliseconds. */
+  start?: number;
+  /** Inclusive end timestamp in milliseconds. */
+  end?: number;
+  /** Time sort direction. Defaults to newest fills first. */
+  sort?: PerpsSortDirection;
+  /** Opaque cursor returned by a previous page. */
+  cursor?: PaginationCursor;
+};
 
 export function listPerpsFills(
   api: ServiceClient,
   request: ListPerpsFillsRequest = {},
 ): Paginated<PerpsAccountFill[]> {
-  const { cursor, params } = parseUserInput(
-    request,
-    ListPerpsFillsRequestSchema,
+  const params = parseUserInput(request, ListPerpsFillsRequestSchema);
+  return paginate(
+    (cursor) =>
+      api
+        .get('/v1/account/fills', {
+          params: toPerpsSearchParams({
+            startTimestamp: params.start,
+            endTimestamp: params.end,
+            sort: params.sort,
+            cursor: cursor ?? params.cursor,
+          }),
+        })
+        .andThen(validateWith(ListPerpsFillsResponseSchema))
+        .map((response): Page<PerpsAccountFill[]> => {
+          const last = response.data.at(-1);
+          if (!response.more || last === undefined) {
+            return { items: response.data, hasMore: false };
+          }
+          return {
+            items: response.data,
+            hasMore: true,
+            nextCursor: toPaginationCursor(String(last.tradeId)),
+          };
+        }),
+    params.cursor,
   );
-  return paginate((pageCursor) => {
-    let state: PerpsDescendingAccountCursorState;
-    if (pageCursor === undefined) {
-      invariant(params !== undefined, 'Expected initial Perps fills params.');
-      state = { kind: 'perpsFills', seenKeys: [], ...params };
-    } else {
-      state = decodePerpsAccountCursor(
-        pageCursor,
-        PerpsDescendingAccountCursorStateSchema,
-      );
-    }
-    const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
-    const seenKeys = new Set(state.seenKeys);
-
-    return api
-      .get('/v1/account/fills', {
-        params: toPerpsSearchParams(searchParams),
-      })
-      .andThen(validateWith(ListPerpsFillsResponseSchema))
-      .map((response): Page<PerpsAccountFill[]> => {
-        const items = response.data.filter(
-          (fill) => !seenKeys.has(String(fill.tradeId)),
-        );
-        return toPerpsDescendingAccountPage({
-          getKey: (fill) => String(fill.tradeId),
-          getTimestamp: (fill) => fill.timestamp,
-          items,
-          responseData: response.data,
-          responseMore: response.more,
-          state,
-        });
-      });
-  }, cursor);
 }
 
 const ListPerpsFundingPaymentsInitialRequestSchema =

@@ -15,6 +15,7 @@ export {
   PerpsKlineInterval,
   PerpsOrderStatus,
   PerpsSide,
+  PerpsSortDirection,
   PerpsTimeInForce,
   PerpsWithdrawalStatus,
 } from '@polymarket/bindings/perps';
