@@ -67,7 +67,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "@privy-io/node": "^0.15.0",
+    "@privy-io/node": "^0.25.0",
     "ethers-v5": "npm:ethers@^5.8.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.2",
@@ -75,7 +75,7 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@privy-io/node": "^0.15.0",
+    "@privy-io/node": "^0.25.0",
     "ethers-v5": "^5.8.0",
     "viem": "^2.46.3"
   },
