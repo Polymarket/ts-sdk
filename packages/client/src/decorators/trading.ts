@@ -172,7 +172,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelOrder({ orderId: '123' });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelOrder(request: CancelOrderRequest): Promise<CancelOrdersResponse>;
@@ -186,7 +186,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelOrders({ orderIds: ['1', '2'] });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelOrders(request: CancelOrdersRequest): Promise<CancelOrdersResponse>;
@@ -200,7 +200,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelAll();
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelAll(): Promise<CancelOrdersResponse>;
@@ -216,7 +216,7 @@ export type SecureTradingActions = {
    *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
    * });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelMarketOrders(
