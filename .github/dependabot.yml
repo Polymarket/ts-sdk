@@ -1,0 +1,69 @@
+# Dependabot configuration for ts-sdk (pnpm workspace monorepo).
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+version: 2
+updates:
+  # npm (pnpm) — the root workspace plus every package under packages/* and the
+  # example projects under examples/*. Dependabot's npm ecosystem reads the
+  # pnpm-lock.yaml workspace lockfile.
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/packages/*"
+      - "/examples/*"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 3
+    # Wait before adopting freshly-published releases (supply-chain buffer).
+    # Applies to version updates only; security fixes are never delayed.
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One PR per directory for all backward-compatible version bumps, to cut noise.
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      # One PR per directory for security fixes once an advisory has a fix available.
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    # Major-version bumps are left ungrouped so each gets its own PR and review.
+
+  # GitHub Actions used by the CI workflows.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      # Routine action bumps in one PR, to cut noise.
+      github-actions-minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+      # Major action bumps in their own PR for migration-note review
+      # (kept grouped so they stay within the open-PR limit, but separate
+      # from routine bumps since majors can change runner/input contracts).
+      github-actions-major:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "major"

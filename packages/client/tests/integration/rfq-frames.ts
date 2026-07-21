@@ -170,17 +170,19 @@ export function unknownRfqMessage() {
   });
 }
 
-function executionUpdateFrame() {
+function executionUpdateFrame(status: string) {
   return {
     rfq_id: RFQ_ID,
-    status: RfqExecutionStatus.Confirmed,
+    status,
     tx_hash: TX_HASH,
     type: 'RFQ_EXECUTION_UPDATE',
   };
 }
 
-export function executionUpdateMessage() {
-  return JSON.stringify(executionUpdateFrame());
+export function executionUpdateMessage(
+  status: string = RfqExecutionStatus.Confirmed,
+) {
+  return JSON.stringify(executionUpdateFrame(status));
 }
 
 function tradeFrame() {

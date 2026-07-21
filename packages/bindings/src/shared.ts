@@ -67,6 +67,7 @@ export type IsoDateTimeString = Tagged<string, 'IsoDateTimeString'>;
 export type MarketId = Tagged<string, 'MarketId'>;
 export type MixedDateTimeString = Tagged<string, 'MixedDateTimeString'>;
 export type NotificationId = Tagged<number, 'NotificationId'>;
+export type OrderId = Tagged<string, 'OrderId'>;
 export type PartnerId = Tagged<number, 'PartnerId'>;
 export type PaginationCursor = Tagged<string, 'PaginationCursor'>;
 export type PositionId = Tagged<string, 'PositionId'>;
@@ -212,6 +213,10 @@ export function toMarketId(value: string): MarketId {
 
 export function toNotificationId(value: number): NotificationId {
   return toTaggedInteger<NotificationId>(value);
+}
+
+export function toOrderId(value: string): OrderId {
+  return toTaggedString<OrderId>(value);
 }
 
 export function toPartnerId(value: number): PartnerId {
@@ -392,6 +397,7 @@ export const NotificationIdSchema = z
   .int()
   .transform(toNotificationId);
 export const CommentParentEntityTypeSchema = z.enum(CommentParentEntityType);
+export const OrderIdSchema = z.string().transform(toOrderId);
 export const OrderSideSchema = z.enum(OrderSide);
 export const OrderTypeSchema = z.enum(OrderType);
 export const PaginationCursorSchema = z.custom<PaginationCursor>(

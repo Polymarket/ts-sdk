@@ -11,7 +11,11 @@ import {
 } from 'vitest';
 import { production } from '../environments';
 import { SportsWebSocketManager } from './sports';
-import { captureConnection, waitForNextEvent } from './testing';
+import {
+  captureConnection,
+  expectDropsUnknownFrame,
+  waitForNextEvent,
+} from './testing';
 
 const sports = ws.link(production.sports.ws);
 const server = setupServer();
@@ -85,6 +89,30 @@ describe('SportsWebSocketManager', () => {
         payload: { gameId: 123, leagueAbbreviation: 'NBA' },
         topic: 'sports',
         type: 'sport_result',
+      },
+    });
+  });
+
+  it('drops unknown frames without closing the shared socket', async () => {
+    await expectDropsUnknownFrame({
+      expectedEvent: { topic: 'sports', type: 'sport_result' },
+      link: sports,
+      server,
+      subscribe: async () => {
+        const observedManager = new SportsWebSocketManager({
+          url: production.sports.ws,
+        });
+        const events = await observedManager.subscribe({ topic: 'sports' });
+        return { close: () => observedManager.close(), events };
+      },
+      unknownFrame: { event: 'future_event', payload: 'new' },
+      validFrame: {
+        ended: false,
+        gameId: 123,
+        leagueAbbreviation: 'NBA',
+        live: true,
+        score: '0-0',
+        status: 'inprogress',
       },
     });
   });

@@ -33,12 +33,12 @@ describe('RFQ quoter inbound messages', () => {
       type: 'RFQ_ERROR',
       request_type: 'RFQ_QUOTE',
       rfq_id: 'rfq-1',
-      code: 'QUOTE_VALIDATION_TIMEOUT_INTERNAL',
-      error: 'quote validation timed out',
+      code: 'MAKER_QUOTE_LIMITED',
+      error: 'maker quote limited',
     });
 
     expect(message).toMatchObject({
-      code: RfqKnownErrorCode.QuoteValidationTimeoutInternal,
+      code: RfqKnownErrorCode.MakerQuoteLimited,
       type: 'rfq_error',
     });
   });
