@@ -1,4 +1,4 @@
-import { type TxHash, TxHashSchema } from '@polymarket/bindings';
+import { TradeStatus, type TxHash, TxHashSchema } from '@polymarket/bindings';
 import type {
   AcceptedOrderResponse,
   ClobTrade,
@@ -22,8 +22,6 @@ import { listAccountTrades } from '../account';
 
 const SETTLEMENT_POLL_INTERVAL_MS = 250;
 const DEFAULT_SETTLEMENT_TIMEOUT_MS = 30_000;
-const CONFIRMED_TRADE_STATUS = 'CONFIRMED';
-const FAILED_TRADE_STATUS = 'FAILED';
 
 const WaitForOrderSettlementRequestFields = {
   timeoutMs: z.number().int().positive().optional(),
@@ -61,24 +59,19 @@ export const WaitForOrderSettlementError = makeErrorGuard(
   UserInputError,
 );
 
-// Tolerate both the public plain form ("CONFIRMED") and the internal
-// prefixed form ("TRADE_STATUS_CONFIRMED") of trade statuses.
-function normalizedTradeStatus(trade: ClobTrade): string {
-  return trade.status.toUpperCase().replace(/^TRADE_STATUS_/, '');
-}
-
 // A trade is settled once execution reached a terminal outcome: its
 // transaction is confirmed on-chain, or it failed and never will be.
 // Earlier statuses are not terminal: a transaction hash observed before
 // confirmation can still be replaced if the transaction is retried.
 function isTradeSettled(trade: ClobTrade): boolean {
-  const status = normalizedTradeStatus(trade);
-
-  return status === CONFIRMED_TRADE_STATUS || status === FAILED_TRADE_STATUS;
+  return (
+    trade.status === TradeStatus.Confirmed ||
+    trade.status === TradeStatus.Failed
+  );
 }
 
 function isFailedTrade(trade: ClobTrade): boolean {
-  return normalizedTradeStatus(trade) === FAILED_TRADE_STATUS;
+  return trade.status === TradeStatus.Failed;
 }
 
 /**

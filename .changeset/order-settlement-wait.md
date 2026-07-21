@@ -1,5 +1,5 @@
 ---
-"@polymarket/bindings": patch
+"@polymarket/bindings": minor
 "@polymarket/client": minor
 ---
 
@@ -17,3 +17,5 @@ if (response.ok) {
 ```
 
 `waitForOrderSettlement` returns hashes already present in the order response without waiting, so it behaves identically before and after the settlement pipeline rollout. `OrderResponse` fields are now fully documented, including the best-effort semantics of `transactionsHashes`.
+
+`ClobTrade.status` is now typed as the `TradeStatus` enum (previously a bare string). The enum is shared with the user stream trade events, and both wire forms of the status are normalized to it.

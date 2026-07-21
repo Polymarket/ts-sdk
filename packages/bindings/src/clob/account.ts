@@ -12,6 +12,7 @@ import {
   NotificationIdSchema,
   OptionalEpochMillisecondsToIsoDateTimeStringSchema,
   TokenIdSchema,
+  TradeStatusSchema,
 } from '../shared';
 
 function createCursorPageSchema<TItem extends z.ZodTypeAny>(item: TItem) {
@@ -143,7 +144,7 @@ export const ClobTradeSchema = z
     price: DecimalStringSchema,
     side: z.string(),
     size: DecimalStringSchema,
-    status: z.string(),
+    status: TradeStatusSchema,
     taker_order_id: z.string(),
     trader_side: z.enum(['TAKER', 'MAKER']),
     transaction_hash: z.string(),

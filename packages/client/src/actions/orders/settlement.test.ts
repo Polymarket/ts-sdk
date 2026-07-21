@@ -1,4 +1,4 @@
-import { TxHashSchema } from '@polymarket/bindings';
+import { TradeStatus, TxHashSchema } from '@polymarket/bindings';
 import {
   type AcceptedOrderResponse,
   type ClobTrade,
@@ -46,7 +46,7 @@ function makeTrade(overrides: Partial<ClobTrade> = {}): ClobTrade {
     price: '0.5',
     side: 'BUY',
     size: '100',
-    status: 'MATCHED',
+    status: TradeStatus.Matched,
     takerOrderId: '0xorder',
     tokenId: '123',
     traderSide: 'TAKER',
@@ -101,8 +101,13 @@ describe('waitForOrderSettlement', () => {
     mockTradesPages(
       // A hash before confirmation is not terminal: it can still be
       // replaced if the transaction is retried.
-      [makeTrade({ status: 'MINED', transactionHash: OTHER_TX_HASH })],
-      [makeTrade({ status: 'CONFIRMED', transactionHash: TX_HASH })],
+      [
+        makeTrade({
+          status: TradeStatus.Mined,
+          transactionHash: OTHER_TX_HASH,
+        }),
+      ],
+      [makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH })],
     );
 
     const hashes = await waitForOrderSettlement(
@@ -117,11 +122,11 @@ describe('waitForOrderSettlement', () => {
 
   it('returns settled hashes when only some fills fail execution', async () => {
     mockTradesPages(
-      [makeTrade({ id: 'trade-1', status: 'FAILED' })],
+      [makeTrade({ id: 'trade-1', status: TradeStatus.Failed })],
       [
         makeTrade({
           id: 'trade-2',
-          status: 'CONFIRMED',
+          status: TradeStatus.Confirmed,
           transactionHash: OTHER_TX_HASH,
         }),
       ],
@@ -136,7 +141,7 @@ describe('waitForOrderSettlement', () => {
   });
 
   it('throws TransactionFailedError when every fill fails execution', async () => {
-    mockTradesPages([makeTrade({ status: 'FAILED' })]);
+    mockTradesPages([makeTrade({ status: TradeStatus.Failed })]);
 
     await expect(
       waitForOrderSettlement(
