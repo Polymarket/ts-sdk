@@ -68,6 +68,8 @@ export type EnvironmentConfig = {
   /** @internal */
   rfq: RfqEndpoints;
   /** @internal */
+  collateralReturn: RestEndpoint;
+  /** @internal */
   perps: PerpsEndpoints;
   /** @internal */
   rtds: WebSocketEndpoint;
@@ -95,6 +97,7 @@ export type EnvironmentConfigFork = {
   gamma?: Partial<RestEndpoint>;
   data?: Partial<RestEndpoint>;
   rfq?: EnvironmentConfigForkEndpoint;
+  collateralReturn?: Partial<RestEndpoint>;
   perps?: EnvironmentConfigForkEndpoint;
   rtds?: Partial<WebSocketEndpoint>;
   sports?: Partial<WebSocketEndpoint>;
@@ -184,6 +187,9 @@ export const production: EnvironmentConfig = {
     rest: 'https://combos-rfq-api.polymarket.com',
     ws: 'wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq',
   },
+  collateralReturn: {
+    rest: 'https://combos-rfq-collateral-return.polymarket.com',
+  },
   perps: {
     rest: 'https://api.perpetuals.polymarket.com',
     ws: 'wss://ws.perpetuals.polymarket.com/v1/ws',
@@ -224,6 +230,10 @@ export function forkEnvironmentConfig(
     gamma: forkRestEndpoint(base.gamma, fork.gamma),
     data: forkRestEndpoint(base.data, fork.data),
     rfq: forkRestWebSocketEndpoint(base.rfq, fork.rfq),
+    collateralReturn: forkRestEndpoint(
+      base.collateralReturn,
+      fork.collateralReturn,
+    ),
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
     rtds: forkWebSocketEndpoint(base.rtds, fork.rtds),
     sports: forkWebSocketEndpoint(base.sports, fork.sports),

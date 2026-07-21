@@ -1,0 +1,464 @@
+import type { DecimalString, EvmAddress } from '@polymarket/bindings';
+import {
+  type CollateralReturnOperation,
+  type CollateralReturnPlanResponse,
+  CollateralReturnPlanResponseSchema,
+  type CollateralReturnPositionAmount,
+  type CollateralReturnPositionSummary,
+  type CollateralReturnRouterCall,
+  CollateralReturnSubmitRequestSchema,
+} from '@polymarket/bindings/collateral-return';
+import { WalletType } from '@polymarket/bindings/gamma';
+import {
+  type RelayerDepositWalletExecuteRequest,
+  RelayerExecuteResponseSchema,
+  type RelayerLegacyExecuteRequest,
+} from '@polymarket/bindings/relayer';
+import {
+  delay,
+  type EvmSignature,
+  type HexString,
+  invariant,
+  isSameEvmAddress,
+  type NonEmptyArray,
+  unwrap,
+} from '@polymarket/types';
+import { z } from 'zod';
+import {
+  decodeErc20AllowanceResult,
+  decodeErc1155IsApprovedForAllResult,
+  erc20AllowanceCall,
+  erc1155IsApprovedForAllCall,
+} from '../abis';
+import type { BaseSecureClient } from '../clients';
+import {
+  CancelledSigningError,
+  CollateralReturnPlanRejectedError,
+  MissingTradingApprovalsError,
+  makeErrorGuard,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+} from '../errors';
+import { parseUserInput } from '../input';
+import { validateWith } from '../response';
+import type { TransactionCall, TransactionHandle } from '../types';
+import { completeWith } from '../workflow';
+import {
+  buildDepositWalletExecuteRequest,
+  buildProxyWalletExecuteRequest,
+  buildSafeWalletExecuteRequest,
+  GaslessTransactionHandle,
+  type GaslessWorkflowRequest,
+  isRetryableGaslessSubmitError,
+} from './gasless';
+
+export {
+  type CollateralReturnOperation,
+  CollateralReturnOperationKind,
+  type CollateralReturnOperationKindLike,
+  type CollateralReturnPositionAmount,
+  type CollateralReturnPositionSummary,
+  type CollateralReturnRouterCall,
+} from '@polymarket/bindings/collateral-return';
+
+/**
+ * An inspectable collateral return plan.
+ *
+ * A plan is a client-held execution artifact computed from a snapshot of the
+ * account's positions: it describes how much collateral the plan releases,
+ * the inputs the wallet must provide, and the exact call that executing the
+ * plan submits. Inspect the returned amounts and residual-position impact,
+ * and apply any application-specific limits, before executing.
+ */
+export type CollateralReturnPlan = {
+  /** Opaque plan identifier, round-tripped when the plan is executed. */
+  planHash: HexString;
+  /** Wallet the plan was computed for. */
+  wallet: EvmAddress;
+  /** Chain the plan executes on. */
+  chainId: number;
+  /** Block the plan's snapshot was computed at. */
+  blockNumber: bigint;
+  /** Collateral balance before the plan executes. */
+  startingCollateral: DecimalString;
+  /** Net collateral the plan releases to the wallet. */
+  collateralReturned: DecimalString;
+  /** Collateral balance after the plan executes. */
+  finalCollateral: DecimalString;
+  /**
+   * Collateral the wallet must hold, and have approved, to fund the plan's
+   * intermediate operations.
+   */
+  requiredCollateral: DecimalString;
+  /** Positions the wallet must provide to fund the plan's operations. */
+  requiredPositions: CollateralReturnPositionAmount[];
+  /**
+   * Net position impact of the plan: the positions it consumes and the
+   * residual positions it creates.
+   */
+  positionSummary: CollateralReturnPositionSummary;
+  /** Ordered operations the plan performs. */
+  operations: CollateralReturnOperation[];
+  /**
+   * Whether the plan reached the operation limit and is one executable chunk
+   * of a larger return. Execute and confirm the chunk, then request a fresh
+   * plan for the remainder.
+   */
+  truncated: boolean;
+  /** Exact call executing the plan submits. */
+  routerCall: CollateralReturnRouterCall;
+};
+
+export type PlanCollateralReturnError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError;
+export const PlanCollateralReturnError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+);
+
+/**
+ * Plans a collateral return for the authenticated account.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link PlanCollateralReturnError}
+ * Thrown on failure.
+ */
+export async function planCollateralReturn(
+  client: BaseSecureClient,
+): Promise<CollateralReturnPlan> {
+  assertCollateralReturnAccount(client);
+
+  const response = await unwrap(
+    client.collateralReturn
+      .post('/v1/collateral-return/plan', {
+        json: { wallet: client.account.wallet },
+      })
+      .andThen(validateWith(CollateralReturnPlanResponseSchema)),
+  );
+
+  return toCollateralReturnPlan(response);
+}
+
+function toCollateralReturnPlan(
+  response: CollateralReturnPlanResponse,
+): CollateralReturnPlan {
+  return {
+    blockNumber: response.blockNumber,
+    chainId: response.chainId,
+    collateralReturned: response.netPusdOut,
+    finalCollateral: response.finalPusd,
+    operations: response.operations,
+    planHash: response.planHash,
+    positionSummary: response.positionSummary,
+    requiredCollateral: response.requiredPusdInput,
+    requiredPositions: response.requiredPositions,
+    routerCall: response.routerCall,
+    startingCollateral: response.startingPusd,
+    truncated: response.truncated,
+    wallet: response.wallet,
+  };
+}
+
+const ExecuteCollateralReturnPlanRequestSchema = z.object({
+  plan: z.custom<CollateralReturnPlan>(
+    (value) => typeof value === 'object' && value !== null,
+    'Expected a collateral return plan',
+  ),
+});
+
+export type ExecuteCollateralReturnPlanRequest = z.input<
+  typeof ExecuteCollateralReturnPlanRequestSchema
+>;
+
+export type CollateralReturnExecutionWorkflow = AsyncGenerator<
+  GaslessWorkflowRequest,
+  TransactionHandle,
+  EvmAddress | EvmSignature | TransactionHandle
+>;
+
+const COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS = 10;
+const COLLATERAL_RETURN_METADATA = 'Collateral return';
+
+export type PrepareCollateralReturnExecutionError =
+  | MissingTradingApprovalsError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const PrepareCollateralReturnExecutionError = makeErrorGuard(
+  MissingTradingApprovalsError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Starts a collateral return execution workflow for a previously requested
+ * plan.
+ *
+ * The workflow signs and submits the exact call carried by the plan; missing
+ * trading approvals fail the preparation before any signature is requested.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link PrepareCollateralReturnExecutionError}
+ * Thrown on failure.
+ */
+export async function prepareCollateralReturnExecution(
+  client: BaseSecureClient,
+  request: ExecuteCollateralReturnPlanRequest,
+): Promise<CollateralReturnExecutionWorkflow> {
+  const { plan } = parseUserInput(
+    request,
+    ExecuteCollateralReturnPlanRequestSchema,
+  );
+
+  invariant(
+    client.supportsGasless,
+    'Collateral return execution requires a Relayer API Key or Builder API Key in the client configuration.',
+  );
+  assertCollateralReturnAccount(client);
+
+  if (!isSameEvmAddress(plan.wallet, client.account.wallet)) {
+    throw new UserInputError(
+      'The collateral return plan was created for a different wallet than the authenticated account.',
+    );
+  }
+
+  await assertCollateralReturnApprovals(client, plan);
+
+  return async function* (): CollateralReturnExecutionWorkflow {
+    const calls: NonEmptyArray<TransactionCall> = [
+      {
+        data: plan.routerCall.data,
+        to: plan.routerCall.to,
+        value: 0n,
+      },
+    ];
+
+    for (
+      let attempt = 0;
+      attempt <= COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        const envelope = yield* buildCollateralReturnEnvelope(client, calls);
+
+        return await submitCollateralReturnPlan(client, plan, envelope);
+      } catch (error) {
+        if (
+          !isRetryableGaslessSubmitError(error) ||
+          attempt === COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS
+        ) {
+          throw error;
+        }
+
+        await delay(client.environment.relayerPollFrequencyMs);
+      }
+    }
+
+    invariant(false, 'Expected collateral return submit retry loop to return');
+  }.call(null);
+}
+
+export type ExecuteCollateralReturnPlanError =
+  | CollateralReturnPlanRejectedError
+  | MissingTradingApprovalsError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError
+  | CancelledSigningError
+  | SigningError;
+export const ExecuteCollateralReturnPlanError = makeErrorGuard(
+  CancelledSigningError,
+  CollateralReturnPlanRejectedError,
+  MissingTradingApprovalsError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Executes a collateral return plan for the authenticated account.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link ExecuteCollateralReturnPlanError}
+ * Thrown on failure.
+ */
+export function executeCollateralReturnPlan(
+  client: BaseSecureClient,
+  request: ExecuteCollateralReturnPlanRequest,
+): Promise<TransactionHandle> {
+  return prepareCollateralReturnExecution(client, request).then(
+    completeWith(client.signer),
+  );
+}
+
+function assertCollateralReturnAccount(client: BaseSecureClient): void {
+  invariant(
+    client.account.walletType === WalletType.DEPOSIT_WALLET ||
+      client.account.walletType === WalletType.GNOSIS_SAFE ||
+      client.account.walletType === WalletType.POLY_PROXY,
+    'Collateral return supports Deposit Wallet, Safe-backed, and proxy-backed accounts',
+  );
+}
+
+type CollateralReturnEnvelope =
+  | RelayerDepositWalletExecuteRequest
+  | RelayerLegacyExecuteRequest;
+
+function buildCollateralReturnEnvelope(
+  client: BaseSecureClient,
+  calls: NonEmptyArray<TransactionCall>,
+): AsyncGenerator<
+  GaslessWorkflowRequest,
+  CollateralReturnEnvelope,
+  EvmAddress | EvmSignature | TransactionHandle
+> {
+  switch (client.account.walletType) {
+    case WalletType.GNOSIS_SAFE:
+      return buildSafeWalletExecuteRequest(
+        client,
+        calls,
+        COLLATERAL_RETURN_METADATA,
+      );
+    case WalletType.POLY_PROXY:
+      return buildProxyWalletExecuteRequest(
+        client,
+        calls,
+        COLLATERAL_RETURN_METADATA,
+      );
+    default:
+      return buildDepositWalletExecuteRequest(
+        client,
+        calls,
+        COLLATERAL_RETURN_METADATA,
+      );
+  }
+}
+
+async function assertCollateralReturnApprovals(
+  client: BaseSecureClient,
+  plan: CollateralReturnPlan,
+): Promise<void> {
+  const { contracts } = client.environment;
+  const requiredCollateral = decimalToBaseUnits(plan.requiredCollateral);
+  const needsCollateralAllowance = requiredCollateral > 0n;
+  const needsPositionApproval = plan.requiredPositions.length > 0;
+
+  if (!needsCollateralAllowance && !needsPositionApproval) {
+    return;
+  }
+
+  const results = await client.rpc.ethCallBatch([
+    ...(needsCollateralAllowance
+      ? [
+          erc20AllowanceCall(
+            contracts.collateralToken,
+            client.account.wallet,
+            contracts.protocolV2Router,
+          ),
+        ]
+      : []),
+    ...(needsPositionApproval
+      ? [
+          erc1155IsApprovedForAllCall(
+            contracts.positionManager,
+            client.account.wallet,
+            contracts.protocolV2Router,
+          ),
+        ]
+      : []),
+  ]);
+
+  const missing: string[] = [];
+  let resultIndex = 0;
+
+  if (needsCollateralAllowance) {
+    const allowance = decodeErc20AllowanceResult(
+      results[resultIndex] as HexString,
+    );
+    resultIndex += 1;
+
+    if (allowance < requiredCollateral) {
+      missing.push('a collateral allowance covering the required collateral');
+    }
+  }
+
+  if (needsPositionApproval) {
+    const approved = decodeErc1155IsApprovedForAllResult(
+      results[resultIndex] as HexString,
+    );
+
+    if (!approved) {
+      missing.push('a position operator approval');
+    }
+  }
+
+  if (missing.length > 0) {
+    throw new MissingTradingApprovalsError(
+      `Executing this collateral return plan requires ${missing.join(
+        ' and ',
+      )}. Run setupTradingApprovals() and retry.`,
+    );
+  }
+}
+
+function decimalToBaseUnits(value: DecimalString): bigint {
+  const match = /^(\d+)(?:\.(\d*))?$/.exec(value);
+  const fraction = match?.[2] ?? '';
+
+  if (match === null || fraction.length > 6) {
+    throw new UserInputError(
+      `Expected a collateral amount with at most 6 decimal places, received: ${value}`,
+    );
+  }
+
+  return BigInt(match[1] ?? '0') * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+}
+
+async function submitCollateralReturnPlan(
+  client: BaseSecureClient,
+  plan: CollateralReturnPlan,
+  envelope: CollateralReturnEnvelope,
+): Promise<TransactionHandle> {
+  const payload = parseUserInput(
+    { envelope, plan_hash: plan.planHash },
+    CollateralReturnSubmitRequestSchema,
+  );
+
+  const response = await unwrap(
+    client.collateralReturn
+      .post('/v1/collateral-return/submit', { json: payload })
+      .mapErr((error) =>
+        error instanceof RequestRejectedError && error.status === 409
+          ? new CollateralReturnPlanRejectedError(error.message, {
+              cause: error,
+            })
+          : error,
+      )
+      .andThen(validateWith(RelayerExecuteResponseSchema)),
+  );
+
+  return new GaslessTransactionHandle(client, response);
+}

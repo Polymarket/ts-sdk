@@ -22,6 +22,10 @@
       "types": "./dist/clob/index.d.ts",
       "default": "./dist/clob/index.js"
     },
+    "./collateral-return": {
+      "types": "./dist/collateral-return.d.ts",
+      "default": "./dist/collateral-return.js"
+    },
     "./gamma": {
       "types": "./dist/gamma/index.d.ts",
       "default": "./dist/gamma/index.js"
@@ -51,6 +55,9 @@
     "*": {
       "clob": [
         "./dist/clob/index.d.ts"
+      ],
+      "collateral-return": [
+        "./dist/collateral-return.d.ts"
       ],
       "data": [
         "./dist/data/index.d.ts"

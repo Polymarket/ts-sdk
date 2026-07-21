@@ -19,6 +19,11 @@ export type ServiceClientConfig = {
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
+  /**
+   * Request timeout in milliseconds, or `false` to disable the timeout.
+   * Defaults to the transport's standard timeout.
+   */
+  timeout?: number | false;
 };
 
 export type ServiceClientGetOptions = {
@@ -50,8 +55,12 @@ export class ServiceClient {
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
 
-  constructor({ root, headers, resolveHeaders }: ServiceClientConfig) {
-    this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
+  constructor({ root, headers, resolveHeaders, timeout }: ServiceClientConfig) {
+    this.#client = ky.create({
+      prefixUrl: root,
+      throwHttpErrors: false,
+      ...(timeout !== undefined && { timeout }),
+    });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
   }
