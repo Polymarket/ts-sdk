@@ -30,6 +30,8 @@ export enum OrderType {
 /**
  * Lifecycle status of a trade, from creation through on-chain settlement.
  * `Confirmed` and `Failed` are the terminal states.
+ * `MatchedNotBroadcasted` currently appears only on trades read via REST,
+ * not on user stream trade events.
  */
 export enum TradeStatus {
   Matched = 'TRADE_STATUS_MATCHED',
