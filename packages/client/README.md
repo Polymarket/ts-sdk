@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-pnpm add @polymarket/client@beta
+pnpm add @polymarket/client
 ```
 
 ## Usage

@@ -1,14 +1,6 @@
 # Polymarket TypeScript SDK
 
-![Beta](https://img.shields.io/badge/status-beta-yellow)
-
 This repository is the home for Polymarket's official TypeScript SDK packages.
-
-## Beta Status
-
-The TypeScript SDK is currently in beta. We are working toward a stable public API and will use feedback during the beta period to refine the developer experience.
-
-We welcome bug reports, feature requests, and general feedback through GitHub Issues. Please use the provided issue templates so we can triage reports consistently.
 
 ## Repository Structure
 
@@ -22,6 +14,14 @@ This repository is organized as a pnpm workspace with SDK packages and examples.
 | [`examples/scripts`](./examples/scripts)   | Runnable TypeScript scripts for common SDK workflows           |
 
 For installation and usage, see [`packages/client`](./packages/client).
+
+## API Compatibility
+
+The SDK follows semantic versioning. Although minor releases on the 0.x line
+may include breaking changes, we aim to avoid them and, whenever possible,
+provide a deprecation path before removing or changing an API. Patch releases
+remain backward compatible except for APIs marked `@experimental`, which may
+change in any release. The Perps APIs are currently experimental.
 
 ## Local Development
 
@@ -64,6 +64,11 @@ The root scripts are:
 - Root `tsconfig.json` and package-level `tsconfig.json` files are for editor tooling and source navigation.
 - `tsconfig.build.json` files are the configs used by package build and typecheck commands.
 - When changing build behavior, prefer updating `tsconfig.build.json`.
+
+## Contributing
+
+We welcome bug reports, feature requests, and feedback through GitHub Issues.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) before proposing code changes.
 
 ## Maintainer Notes
 

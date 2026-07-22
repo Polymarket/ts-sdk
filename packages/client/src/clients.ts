@@ -631,17 +631,6 @@ class BaseSecureClient<
     return this.context.signer;
   }
 
-  /**
-   * @deprecated `createSecureClient` now sets up the account wallet for its
-   * trading flow, so this is a no-op retained only for backward compatibility
-   * and returns the current secure client.
-   */
-  setupGaslessWallet(): Promise<SecureClient<TPublicActions, TSecureActions>> {
-    return Promise.resolve(
-      this as unknown as SecureClient<TPublicActions, TSecureActions>,
-    );
-  }
-
   /** @internal */
   get secureClob(): ServiceClient {
     return this.context.secureClob;

@@ -50,8 +50,6 @@ export type CommentId = Tagged<string, 'CommentId'>;
 export type ComboActivityId = Tagged<string, 'ComboActivityId'>;
 export type ComboConditionId = Tagged<HexString, 'ComboConditionId'>;
 export type CtfConditionId = Tagged<HexString, 'CtfConditionId'>;
-/** @deprecated Use {@link CtfConditionId}. */
-export type ConditionId = CtfConditionId;
 export type CollectionId = Tagged<string, 'CollectionId'>;
 export type EventCreatorId = Tagged<string, 'EventCreatorId'>;
 export type EventExternalPartnerMappingId = Tagged<
@@ -135,9 +133,6 @@ export function toCtfConditionId(value: string): CtfConditionId {
 
   return value as CtfConditionId;
 }
-
-/** @deprecated Use {@link toCtfConditionId}. */
-export const toConditionId = toCtfConditionId;
 
 export function toComboConditionId(value: string): ComboConditionId {
   if (!isHexString(value)) {
@@ -299,10 +294,6 @@ export const OptionalCtfConditionIdSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   CtfConditionIdSchema.optional(),
 );
-/** @deprecated Use {@link CtfConditionIdSchema}. */
-export const ConditionIdSchema = CtfConditionIdSchema;
-/** @deprecated Use {@link OptionalCtfConditionIdSchema}. */
-export const OptionalConditionIdSchema = OptionalCtfConditionIdSchema;
 export const EvmAddressSchema = z.string().transform(toEvmAddress);
 export const EpochMillisecondsSchema = z
   .number()

@@ -19,8 +19,6 @@ export type OrderBookLevel = {
 export type OrderBookHash = string & { readonly __tag: 'OrderBookHash' };
 
 export type OrderBook = {
-  /** @deprecated Use {@link OrderBook.conditionId}. Holds the CTF condition id, not a distinct market identifier. */
-  market: CtfConditionId;
   /** CTF condition id for the market this book belongs to. */
   conditionId: CtfConditionId;
   tokenId: TokenId;
@@ -73,7 +71,6 @@ export const OrderBookSchema = z
       ...rest
     }) => ({
       ...rest,
-      market,
       conditionId: market,
       tokenId: asset_id,
       minOrderSize: min_order_size,

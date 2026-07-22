@@ -28,6 +28,9 @@ export type ClobEndpoints = RestEndpoint & {
 
 export type RfqEndpoints = RestEndpoint & WebSocketEndpoint;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsEndpoints = RestEndpoint & WebSocketEndpoint;
 
 export type EnvironmentContracts = {

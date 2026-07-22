@@ -23,7 +23,7 @@ body:
     attributes:
       label: SDK package and version
       description: Include this if your question depends on a specific package version.
-      placeholder: "@polymarket/client@0.1.0-beta.0"
+      placeholder: "@polymarket/client@0.1.0"
     validations:
       required: false
   - type: textarea

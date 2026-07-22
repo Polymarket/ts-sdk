@@ -108,12 +108,6 @@ export enum RfqKnownErrorCode {
  */
 export type RfqErrorCode = RfqKnownErrorCode | (string & {});
 
-/**
- * @deprecated Use {@link RfqKnownErrorCode} instead. This alias will be
- * removed at the end of the beta phase.
- */
-export const RfqErrorCode = RfqKnownErrorCode;
-
 const RfqDirectionSchema = z.enum(RfqDirection);
 const RfqSideSchema = z.literal(RfqSide.Yes);
 const RfqConfirmationDecisionSchema = z.enum(RfqConfirmationDecision);

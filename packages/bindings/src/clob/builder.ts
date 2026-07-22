@@ -18,8 +18,6 @@ export type BuilderTrade = {
   tradeType: string;
   takerOrderHash: string;
   builder: string;
-  /** @deprecated Use {@link BuilderTrade.conditionId}. Holds the CTF condition id, not a distinct market identifier. */
-  market: CtfConditionId;
   /** CTF condition id for the market associated with this trade. */
   conditionId: CtfConditionId;
   tokenId: TokenId;
@@ -70,7 +68,6 @@ export const BuilderTradeSchema = z
   })
   .transform(({ err_msg, assetId, market, matchTime, ...rest }) => ({
     ...rest,
-    market,
     conditionId: market,
     tokenId: assetId,
     errMsg: err_msg,
