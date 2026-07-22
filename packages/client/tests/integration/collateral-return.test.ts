@@ -10,8 +10,8 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
-// The collateral-return service is not publicly routed yet. Point this at a
-// reachable deployment (for example the stage mesh URL) to run these tests.
+// Explicit opt-in for live collateral-return runs. Point this at the target
+// deployment (production, or a stage mesh URL) to run these tests.
 const collateralReturnUrl = process.env.POLYMARKET_COLLATERAL_RETURN_URL;
 
 describe('Collateral return', () => {
