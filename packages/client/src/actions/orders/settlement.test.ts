@@ -84,17 +84,33 @@ describe('waitForOrderSettlement', () => {
     expect(listAccountTrades).not.toHaveBeenCalled();
   });
 
-  it('returns hashes delivered with the order response without waiting', async () => {
+  it('returns hashes delivered with the order response when there are no trade ids to poll', async () => {
     const hashes = await waitForOrderSettlement(
       client,
       makeOrderResponse({
-        tradeIds: ['trade-1'],
         transactionsHashes: [TxHashSchema.parse(TX_HASH)],
       }),
     );
 
     expect(hashes).toEqual([TX_HASH]);
     expect(listAccountTrades).not.toHaveBeenCalled();
+  });
+
+  it('polls trade ids even when the order response includes hashes', async () => {
+    mockTradesPages([
+      makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH }),
+    ]);
+
+    const hashes = await waitForOrderSettlement(
+      client,
+      makeOrderResponse({
+        tradeIds: ['trade-1'],
+        transactionsHashes: [TxHashSchema.parse(OTHER_TX_HASH)],
+      }),
+    );
+
+    expect(hashes).toEqual([TX_HASH]);
+    expect(listAccountTrades).toHaveBeenCalledWith(client, { id: 'trade-1' });
   });
 
   it('polls until every fill confirms and returns the hashes', async () => {

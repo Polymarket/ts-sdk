@@ -83,11 +83,10 @@ function isFailedTrade(trade: ClobTrade): boolean {
  * response's `tradeIds`. It does not wait for future fills of an order
  * resting on the book; subscribe to the `user` channel to follow those.
  *
- * Orders without fills resolve immediately to an empty array. When the order
- * response already carries settlement transaction hashes, they are returned
- * as-is without waiting. In the rare case where some fills fail execution,
- * the settled fills' hashes are still returned; the failed fills simply
- * contribute no hash.
+ * Orders without fill identifiers resolve immediately to any transaction
+ * hashes carried by the order response, or an empty array. In the rare case
+ * where some fills fail execution, the settled fills' hashes are still
+ * returned; the failed fills simply contribute no hash.
  *
  * @example
  * ```ts
@@ -116,14 +115,10 @@ export async function waitForOrderSettlement(
     WaitForOrderSettlementRequestSchema,
   );
 
-  if (order.transactionsHashes.length > 0) {
-    return [...order.transactionsHashes];
-  }
-
   const tradeIds = [...new Set(order.tradeIds)];
 
   if (tradeIds.length === 0) {
-    return [];
+    return [...order.transactionsHashes];
   }
 
   const settled = new Map<string, ClobTrade>();
