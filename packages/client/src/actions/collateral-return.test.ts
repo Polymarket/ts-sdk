@@ -32,6 +32,7 @@ const ROUTER_DATA = '0xdeadbeef';
 
 const ZERO_RESULT = `0x${'0'.repeat(64)}` as HexString;
 const TRUE_RESULT = `0x${'0'.repeat(63)}1` as HexString;
+const MAX_UINT256_RESULT = `0x${'f'.repeat(64)}` as HexString;
 
 const environment = forkEnvironmentConfig({
   name: 'test',
@@ -130,6 +131,62 @@ describe('planCollateralReturn', () => {
         data: ROUTER_DATA,
       },
     });
+  });
+
+  it('maps event ids and passes unknown operation kinds through', async () => {
+    const eventId = `0x${'ab'.repeat(31)}`;
+    const { client } = createClient({
+      planOverrides: {
+        operations: [
+          { kind: 'convert_on_event', event_id: eventId, amount: '250000' },
+          { kind: 'not_yet_known_kind', amount: '1000000' },
+        ],
+      },
+    });
+
+    const plan = await planCollateralReturn(client);
+
+    expect(plan.operations).toEqual([
+      {
+        kind: 'convert_on_event',
+        conditionId: undefined,
+        conditionIndex: 0,
+        eventId,
+        positionId: undefined,
+        amount: '0.25',
+      },
+      {
+        kind: 'not_yet_known_kind',
+        conditionId: undefined,
+        conditionIndex: 0,
+        eventId: undefined,
+        positionId: undefined,
+        amount: '1',
+      },
+    ]);
+  });
+
+  it('maps an empty plan with nothing to return', async () => {
+    const { client } = createClient({
+      planOverrides: {
+        operations: [],
+        operation_count: 0,
+        truncated: false,
+        net_pusd_out: '0.000000',
+        final_pusd: '123.456789',
+        required_positions: [],
+        position_summary: { consumed: [], created: [] },
+        candidate_position_ids: [],
+      },
+    });
+
+    const plan = await planCollateralReturn(client);
+
+    expect(plan.collateralReturned).toBe('0.000000');
+    expect(plan.operations).toEqual([]);
+    expect(plan.requiredPositions).toEqual([]);
+    expect(plan.positionSummary).toEqual({ consumed: [], created: [] });
+    expect(plan.truncated).toBe(false);
   });
 
   it('defaults the position summary when the service omits it', async () => {
@@ -302,6 +359,20 @@ describe('executeCollateralReturnPlan', () => {
     );
     expect(relayerGet).not.toHaveBeenCalled();
     expect(signTypedData).not.toHaveBeenCalled();
+  });
+
+  it('executes when the wallet holds both required approvals', async () => {
+    const { client, ethCallBatch } = createClient({
+      ethCallResults: [MAX_UINT256_RESULT, TRUE_RESULT],
+      planOverrides: { required_pusd_input: '5.000000' },
+    });
+    const plan = await planCollateralReturn(client);
+
+    const handle = await executeCollateralReturnPlan(client, { plan });
+
+    expect(handle.transactionId).toBe('tx-1');
+    expect(ethCallBatch).toHaveBeenCalledTimes(1);
+    expect(ethCallBatch.mock.calls[0]?.[0]).toHaveLength(2);
   });
 
   it('skips the approval pre-check when the plan needs no inputs', async () => {
