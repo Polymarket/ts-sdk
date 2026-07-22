@@ -137,7 +137,7 @@ describe('Orders', { timeout: 60_000 }, () => {
           // (hashes in the order response) or asynchronously (trade ids
           // in the order response, hashes on the trades).
           const sellHashes =
-            await secureClientWithDepositWallet.waitForOrderSettlement(
+            await secureClientWithDepositWallet.waitForOrderFillSettlement(
               sellResult,
             );
 
@@ -161,7 +161,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
         // Follow the matched order to settlement (see the sell branch note).
         const buyHashes =
-          await secureClientWithDepositWallet.waitForOrderSettlement(buyResult);
+          await secureClientWithDepositWallet.waitForOrderFillSettlement(
+            buyResult,
+          );
 
         expect(buyHashes.length).toBeGreaterThan(0);
       },

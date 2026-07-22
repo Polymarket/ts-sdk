@@ -13,7 +13,7 @@ import { TimeoutError, TransactionFailedError } from '../../errors';
 vi.mock('../account', () => ({ listAccountTrades: vi.fn() }));
 
 const { listAccountTrades } = vi.mocked(await import('../account'));
-const { waitForOrderSettlement } = await import('./settlement');
+const { waitForOrderFillSettlement } = await import('./settlement');
 
 const client = {} as BaseSecureClient;
 
@@ -73,9 +73,9 @@ afterEach(() => {
   listAccountTrades.mockReset();
 });
 
-describe('waitForOrderSettlement', () => {
+describe('waitForOrderFillSettlement', () => {
   it('resolves immediately to an empty array when the order had no fills', async () => {
-    const hashes = await waitForOrderSettlement(
+    const hashes = await waitForOrderFillSettlement(
       client,
       makeOrderResponse({ status: OrderPostStatus.LIVE }),
     );
@@ -85,7 +85,7 @@ describe('waitForOrderSettlement', () => {
   });
 
   it('returns hashes delivered with the order response when there are no trade ids to poll', async () => {
-    const hashes = await waitForOrderSettlement(
+    const hashes = await waitForOrderFillSettlement(
       client,
       makeOrderResponse({
         transactionsHashes: [TxHashSchema.parse(TX_HASH)],
@@ -101,7 +101,7 @@ describe('waitForOrderSettlement', () => {
       makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH }),
     ]);
 
-    const hashes = await waitForOrderSettlement(
+    const hashes = await waitForOrderFillSettlement(
       client,
       makeOrderResponse({
         tradeIds: ['trade-1'],
@@ -126,7 +126,7 @@ describe('waitForOrderSettlement', () => {
       [makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH })],
     );
 
-    const hashes = await waitForOrderSettlement(
+    const hashes = await waitForOrderFillSettlement(
       client,
       makeOrderResponse({ tradeIds: ['trade-1'] }),
     );
@@ -148,7 +148,7 @@ describe('waitForOrderSettlement', () => {
       ],
     );
 
-    const hashes = await waitForOrderSettlement(
+    const hashes = await waitForOrderFillSettlement(
       client,
       makeOrderResponse({ tradeIds: ['trade-1', 'trade-2'] }),
     );
@@ -160,7 +160,7 @@ describe('waitForOrderSettlement', () => {
     mockTradesPages([makeTrade({ status: TradeStatus.Failed })]);
 
     await expect(
-      waitForOrderSettlement(
+      waitForOrderFillSettlement(
         client,
         makeOrderResponse({ tradeIds: ['trade-1'] }),
       ),
@@ -173,7 +173,7 @@ describe('waitForOrderSettlement', () => {
     } as ReturnType<typeof listAccountTrades>);
 
     await expect(
-      waitForOrderSettlement(
+      waitForOrderFillSettlement(
         client,
         makeOrderResponse({ tradeIds: ['trade-1'] }),
         { timeoutMs: 1 },

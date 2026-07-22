@@ -27,8 +27,8 @@ import {
   placeMarketOrder,
   postOrder,
   postOrders,
-  type WaitForOrderSettlementRequest,
-  waitForOrderSettlement,
+  type WaitForOrderFillSettlementRequest,
+  waitForOrderFillSettlement,
 } from '../actions';
 import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
@@ -67,7 +67,7 @@ export type SecureTradingActions = {
    * @remarks
    * Settlement happens asynchronously, so a matched response is not
    * guaranteed to carry settlement transaction hashes. Use
-   * `waitForOrderSettlement` to obtain them reliably.
+   * `waitForOrderFillSettlement` to obtain them reliably.
    *
    * @throws {@link PlaceMarketOrderError}
    * Thrown on failure.
@@ -104,7 +104,7 @@ export type SecureTradingActions = {
    * });
    *
    * if (response.ok) {
-   *   const hashes = await client.waitForOrderSettlement(response);
+   *   const hashes = await client.waitForOrderFillSettlement(response);
    *   // hashes: TxHash[]
    * }
    * ```
@@ -186,16 +186,16 @@ export type SecureTradingActions = {
    */
   postOrders(orders: PostOrdersRequest): Promise<OrderResponses>;
   /**
-   * Waits until every fill of a placed order is confirmed on-chain and returns
-   * the settlement transaction hashes.
+   * Waits until every fill listed in an order response reaches a terminal
+   * settlement outcome and returns the settlement transaction hashes.
    *
    * @remarks
-   * Settlement covers the fills that occurred at placement. It does not wait
-   * for future fills of an order resting on the book; subscribe to the
-   * `user` channel to follow those. Orders without fills resolve immediately
-   * to an empty array.
+   * Settlement covers the fills listed in this order response. These are the
+   * fills that happened immediately when the order was accepted. It does not
+   * wait for later fills of any remaining quantity resting on the book;
+   * subscribe to the `user` channel to follow those.
    *
-   * @throws {@link WaitForOrderSettlementError}
+   * @throws {@link WaitForOrderFillSettlementError}
    * Thrown on failure: a timeout while fills are still settling, or every
    * fill failing execution. The order placement itself is unaffected.
    *
@@ -208,14 +208,14 @@ export type SecureTradingActions = {
    * });
    *
    * if (response.ok) {
-   *   const hashes = await client.waitForOrderSettlement(response);
+   *   const hashes = await client.waitForOrderFillSettlement(response);
    *   // hashes: TxHash[]
    * }
    * ```
    */
-  waitForOrderSettlement(
+  waitForOrderFillSettlement(
     order: AcceptedOrderResponse,
-    request?: WaitForOrderSettlementRequest,
+    request?: WaitForOrderFillSettlementRequest,
   ): Promise<TxHash[]>;
   /**
    * Cancels a single open order for the authenticated account.
@@ -334,7 +334,7 @@ export function tradingActions(client: BaseSecureClient): SecureTradingActions {
     placeLimitOrder: placeLimitOrder.bind(null, client),
     postOrder: postOrder(client),
     postOrders: postOrders(client),
-    waitForOrderSettlement: waitForOrderSettlement.bind(null, client),
+    waitForOrderFillSettlement: waitForOrderFillSettlement.bind(null, client),
     cancelOrder: cancelOrder.bind(null, client),
     cancelOrders: cancelOrders.bind(null, client),
     cancelAll: cancelAll.bind(null, client),
@@ -360,5 +360,5 @@ export {
   PlaceMarketOrderError,
   PostOrderError,
   PostOrdersError,
-  WaitForOrderSettlementError,
+  WaitForOrderFillSettlementError,
 } from '../actions';
