@@ -57,8 +57,14 @@ export type SportsEventType = SportsEvent['type'];
 export type CommentsEventType = CommentsEvent['type'];
 export type CryptoPricesEventType = CryptoPricesEvent['type'];
 export type EquityPricesEventType = EquityPricesEvent['type'];
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsMarketDataEventType = PerpsMarketDataEvent['type'];
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsStreamingCandleInterval = Exclude<
   PerpsKlineInterval,
   PerpsKlineInterval.OneSecond
@@ -106,37 +112,58 @@ export type EquityPricesSubscription = {
   types?: readonly EquityPricesEventType[];
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTradesSubscription = {
   topic: 'perps.trades';
   instrumentId: PerpsInstrumentIdInput;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBboSubscription = {
   topic: 'perps.bbo';
   instrumentId: PerpsInstrumentIdInput;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBookSubscription = {
   topic: 'perps.book';
   instrumentId: PerpsInstrumentIdInput;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCandlesSubscription = {
   topic: 'perps.candles';
   instrumentId: PerpsInstrumentIdInput;
   interval: PerpsStreamingCandleInterval;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTickersSubscription = {
   topic: 'perps.tickers';
   instrumentId?: PerpsInstrumentIdInput;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsStatisticsSubscription = {
   topic: 'perps.statistics';
   instrumentId?: PerpsInstrumentIdInput;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsMarketDataSubscription =
   | PerpsTradesSubscription
   | PerpsBboSubscription

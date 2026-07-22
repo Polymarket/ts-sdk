@@ -21,6 +21,9 @@ export {
   PerpsFundingIntervalSchema,
 } from './common';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsRiskTierSchema = z.object({
   lowerBound: DecimalStringSchema,
   maxLeverage: z.number().int().positive(),
@@ -36,8 +39,14 @@ const RawPerpsRiskTierSchema = z
     maxLeverage: tier.max_leverage,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsRiskTier = z.infer<typeof PerpsRiskTierSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsInstrumentSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -77,12 +86,21 @@ export const PerpsInstrumentSchema = z
     riskTiers: instrument.risk_tiers,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsInstrument = z.infer<typeof PerpsInstrumentSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsInstrumentsResponseSchema = z.array(
   PerpsInstrumentSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTickerSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -109,13 +127,22 @@ export const PerpsTickerSchema = z
     timestamp: ticker.timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTicker = z.infer<typeof PerpsTickerSchema> & {
   openPrice?: DecimalString;
   volume24h?: DecimalString;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsTickersResponseSchema = z.array(PerpsTickerSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTickerEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
@@ -138,6 +165,9 @@ export const PerpsTickerEntrySchema = z
     nextFunding: ticker.nxf,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCandleSchema = z
   .tuple([
     EpochMillisecondsSchema,
@@ -158,8 +188,14 @@ export const PerpsCandleSchema = z
     trades,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCandle = z.infer<typeof PerpsCandleSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsStatisticSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -176,10 +212,19 @@ export const PerpsStatisticSchema = z
     klines: statistic.klines,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsStatistic = z.infer<typeof PerpsStatisticSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsStatisticsResponseSchema = z.array(PerpsStatisticSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsStatisticUpdateSchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
@@ -194,12 +239,21 @@ export const PerpsStatisticUpdateSchema = z
     klines: statistic.klines,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBookLevelSchema = z
   .tuple([DecimalStringSchema, DecimalStringSchema])
   .transform(([price, quantity]) => ({ price, quantity }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBookLevel = z.infer<typeof PerpsBookLevelSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBookSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -216,8 +270,14 @@ export const PerpsBookSchema = z
     sequence: book.sequence,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBook = z.infer<typeof PerpsBookSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBookUpdateSchema = z
   .object({
     b: z.array(PerpsBookLevelSchema),
@@ -228,6 +288,9 @@ export const PerpsBookUpdateSchema = z
     asks: book.a,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBboSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   bidPrice: DecimalStringSchema,
@@ -237,8 +300,14 @@ export const PerpsBboSchema = z.object({
   timestamp: EpochMillisecondsSchema.optional(),
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBbo = z.infer<typeof PerpsBboSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBboUpdateSchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
@@ -255,6 +324,9 @@ export const PerpsBboUpdateSchema = z
     askQuantity: bbo.aq,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPublicTradeSchema = z
   .object({
     trade_id: PerpsTradeIdSchema,
@@ -275,8 +347,14 @@ export const PerpsPublicTradeSchema = z
     hash: trade.hash,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPublicTrade = z.infer<typeof PerpsPublicTradeSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPublicTradeUpdateSchema = z
   .object({
     tid: PerpsTradeIdSchema,
@@ -297,10 +375,16 @@ export const PerpsPublicTradeUpdateSchema = z
     hash: trade.hash,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsTradesResponseSchema = PerpsDataResponseSchema(
   PerpsPublicTradeSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsFundingRateSchema = z
   .object({
     funding_rate: DecimalStringSchema,
@@ -311,12 +395,21 @@ export const PerpsFundingRateSchema = z
     timestamp: funding.timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsFundingRate = z.infer<typeof PerpsFundingRateSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsFundingHistoryResponseSchema = PerpsDataResponseSchema(
   PerpsFundingRateSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsFeeScheduleEntrySchema = z
   .object({
     instrument_type: PerpsInstrumentTypeSchema,
@@ -330,8 +423,14 @@ export const PerpsFeeScheduleEntrySchema = z
     makerFeeRate: fee.maker_fee_rate,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsFeeScheduleEntry = z.infer<typeof PerpsFeeScheduleEntrySchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsFeesInfoSchema = z
   .object({
     fee_schedule: z.array(PerpsFeeScheduleEntrySchema),
@@ -340,9 +439,18 @@ export const PerpsFeesInfoSchema = z
     feeSchedule: fees.fee_schedule,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsFeesInfo = z.infer<typeof PerpsFeesInfoSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsFeesResponseSchema = PerpsFeesInfoSchema;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsCandlesResponseSchema =
   PerpsDataResponseSchema(PerpsCandleSchema);

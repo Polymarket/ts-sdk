@@ -12,9 +12,18 @@ type MsgpackValue =
   | { readonly [key: string]: MsgpackValue }
   | undefined;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSignedOp = readonly MsgpackValue[];
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSignableValue = MsgpackValue;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type SignPerpsOpRequest = {
   chainId: number;
   op: PerpsSignableValue;
@@ -23,11 +32,17 @@ export type SignPerpsOpRequest = {
   timestamp: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type CreatePerpsOpTypedDataPayloadRequest = Omit<
   SignPerpsOpRequest,
   'privateKey'
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function signPerpsOp(request: SignPerpsOpRequest): EvmSignature {
   const payload = TypedData.getSignPayload(
     createPerpsOpTypedDataPayload(request),
@@ -39,6 +54,9 @@ export function signPerpsOp(request: SignPerpsOpRequest): EvmSignature {
   );
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function createPerpsOpTypedDataPayload(
   request: CreatePerpsOpTypedDataPayloadRequest,
 ): TypedDataPayload {

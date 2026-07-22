@@ -41,6 +41,8 @@ describe('ClobTradeSchema', () => {
     });
 
     expect(trade.makerOrders[0]?.tokenId).toBe('1');
+    expect(trade.conditionId).toBe(baseTrade.market);
+    expect(trade).not.toHaveProperty('market');
     expect(trade.matchedAt).toBe('2026-05-05T16:00:29.000Z');
     expect(trade.updatedAt).toBe('2026-05-05T16:00:40.000Z');
   });

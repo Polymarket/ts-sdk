@@ -8,12 +8,12 @@ The TypeScript SDK should make building on Polymarket simpler, typed, and workfl
 
 The SDK should hide internal service boundaries where possible while staying close to real integration needs. Lower-level controls can still be exposed when they support concrete workflows, but the default experience should feel cohesive.
 
-## Beta Focus
+## Current Focus
 
-- Iterate on `@polymarket/client` during beta and move toward a stable public API.
+- Evolve `@polymarket/client` on a stable 0.x release line.
 - Support common workflows across market data, trading, account, wallet, and realtime APIs.
 - Keep `@polymarket/client` focused on backend, script, and automation workflows.
-- Use beta feedback to refine developer experience without mirroring internal services directly.
+- Use developer feedback to refine the experience without mirroring internal services directly.
 
 ## Design Principles
 
@@ -38,7 +38,7 @@ The SDK should hide internal service boundaries where possible while staying clo
 - Deposit Wallet is the current wallet setup direction. Existing EOA, Poly Proxy, and Poly Safe wallets must remain supported.
 - A `SecureClient` is architecturally bound to one Polymarket account, identified by the authenticated signer and selected account/funder wallet. The `wallet` option is not a per-action balance lookup address; it is the account wallet used for authentication, balances, order funding, and transaction execution.
 - Per-action APIs should not accept alternate wallet or user overrides that would make reads and execution target different accounts. Relayer API keys must match the same authenticated account binding; relayer submission failures for a signer/wallet pair should be treated as account configuration issues, not worked around with action-level wallet overrides.
-- `SecureClient.setupGaslessWallet` should treat Proxy-bound and Safe-bound clients as already gasless and preserve the existing wallet binding.
+- `createSecureClient` should treat Proxy-bound and Safe-bound clients as already gasless and preserve the existing wallet binding.
 - Do not make wallet migration implicit. Existing wallet-bound clients should remain usable as Deposit Wallet support evolves.
 
 ## Package Direction
