@@ -14,7 +14,13 @@ pnpm --filter @polymarket/examples stream:public
 pnpm --filter @polymarket/examples order:create-limit
 pnpm --filter @polymarket/examples order:create-market
 pnpm --filter @polymarket/examples positions:list
+pnpm --filter @polymarket/examples collateral:prepare
 ```
+
+`collateral:prepare` splits 1 pUSD of the configured account into complementary
+combo positions so a collateral-return plan becomes executable (for example by
+the metered collateral-return integration test, which merges the pair and
+returns the collateral).
 
 Secure client examples use the same environment variables as the integration tests. Copy the root `.env.example` to `.env` and set `POLYMARKET_PRIVATE_KEY` and `POLYMARKET_DEPOSIT_WALLET` before running them.
 
