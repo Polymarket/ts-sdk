@@ -31,9 +31,6 @@ export type CombosEndpoints = RestEndpoint &
     collateralReturn: RestEndpoint;
   };
 
-/** @deprecated Use {@link CombosEndpoints}. */
-export type RfqEndpoints = RestEndpoint & WebSocketEndpoint;
-
 export type PerpsEndpoints = RestEndpoint & WebSocketEndpoint;
 
 export type EnvironmentContracts = {
