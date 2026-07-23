@@ -1,6 +1,7 @@
 import type { CollateralReturnPlan, SecureClient } from '@polymarket/client';
 import {
   CollateralReturnPlanRejectedError,
+  createSecureClient,
   RequestRejectedError,
   WalletType,
 } from '@polymarket/client';
@@ -44,6 +45,90 @@ describe('Collateral return', () => {
     }
   });
 
+  it('plans a collateral return for a Safe Wallet account', async ({
+    safeWalletAddress,
+    safeWalletSigner,
+  }) => {
+    const secureClient = await createSecureClient({
+      signer: safeWalletSigner,
+      wallet: safeWalletAddress,
+    });
+
+    expect(secureClient.account.walletType).toBe(WalletType.GNOSIS_SAFE);
+
+    const plan = await fetchPlan(secureClient);
+
+    expect(plan.wallet.toLowerCase()).toBe(safeWalletAddress.toLowerCase());
+    expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
+  });
+
+  it('plans a collateral return for a Proxy Wallet account', async ({
+    proxyWalletAddress,
+    proxyWalletSigner,
+  }) => {
+    const secureClient = await createSecureClient({
+      signer: proxyWalletSigner,
+      wallet: proxyWalletAddress,
+    });
+
+    expect(secureClient.account.walletType).toBe(WalletType.POLY_PROXY);
+
+    const plan = await fetchPlan(secureClient);
+
+    expect(plan.wallet.toLowerCase()).toBe(proxyWalletAddress.toLowerCase());
+    expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
+  });
+
+  it('rejects planning for an EOA-bound account', async ({
+    randomEoaSigner,
+  }) => {
+    const signerAddress = await randomEoaSigner.getAddress();
+    const secureClient = await createSecureClient({
+      signer: randomEoaSigner,
+      wallet: signerAddress,
+    });
+
+    expect(secureClient.account.walletType).toBe(WalletType.EOA);
+
+    await expect(secureClient.planCollateralReturn()).rejects.toThrow(
+      /Deposit Wallet, Safe Wallet, and Proxy Wallet accounts/,
+    );
+  });
+
+  // Relayer API keys are address-bound, so a fresh random Deposit Wallet
+  // cannot be deployed against production. The empty-plan scenario instead
+  // uses the configured account, which holds no returnable inventory between
+  // metered runs; it skips when inventory is pending.
+  it.runIf(runMeteredTests)(
+    'returns an empty plan when nothing is returnable and rejects executing it',
+    async ({ secureClientWithDepositWallet, skip }) => {
+      const secureClient = secureClientWithDepositWallet;
+
+      const plan = await fetchPlan(secureClient);
+
+      if (Number(plan.collateralReturned) > 0) {
+        skip('The account holds returnable inventory; empty plan unavailable');
+      }
+
+      expect(plan.collateralReturned).toBe('0.000000');
+      expect(plan.requiredCollateral).toBe('0.000000');
+      expect(plan.operations).toEqual([]);
+      expect(plan.requiredPositions).toEqual([]);
+      expect(plan.positionSummary).toEqual({ consumed: [], created: [] });
+      expect(plan.truncated).toBe(false);
+      expect(plan.startingCollateral).toBe(plan.finalCollateral);
+      expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
+      expect(plan.routerCall.data).toMatch(/^0x[0-9a-f]+$/i);
+
+      // A plan that returns no collateral is re-validated and rejected by the
+      // service at submission.
+      await expect(
+        secureClient.executeCollateralReturnPlan({ plan }),
+      ).rejects.toThrow(CollateralReturnPlanRejectedError);
+    },
+    300_000,
+  );
+
   it.runIf(runMeteredTests)(
     'seeds combo inventory and executes plans until the return completes',
     async ({ secureClientWithDepositWallet, skip }) => {
@@ -56,6 +141,7 @@ describe('Collateral return', () => {
       }
 
       let rejections = 0;
+      let executedPlan: CollateralReturnPlan | undefined;
 
       for (;;) {
         try {
@@ -65,6 +151,7 @@ describe('Collateral return', () => {
           const outcome = await handle.wait();
 
           expect(outcome.transactionHash).toMatch(/^0x[0-9a-f]{64}$/i);
+          executedPlan = plan;
         } catch (error) {
           // Wallet state can move between planning and submission; the
           // documented recovery is to request a fresh plan and execute that.
@@ -95,6 +182,14 @@ describe('Collateral return', () => {
         if (Number(plan.collateralReturned) <= 0) {
           break;
         }
+      }
+
+      // The executed plan no longer matches wallet state, so re-submitting it
+      // must be rejected in favor of a fresh plan.
+      if (executedPlan !== undefined) {
+        await expect(
+          secureClient.executeCollateralReturnPlan({ plan: executedPlan }),
+        ).rejects.toThrow(CollateralReturnPlanRejectedError);
       }
     },
     300_000,
