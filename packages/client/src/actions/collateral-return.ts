@@ -113,6 +113,10 @@ export type CollateralReturnPlan = {
   routerCall: CollateralReturnRouterCall;
 };
 
+// Planning recomputes wallet state server-side and can take well beyond the
+// transport's standard timeout for position-heavy accounts.
+const PLAN_COLLATERAL_RETURN_TIMEOUT_MS = 2 * 60_000;
+
 export type PlanCollateralReturnError =
   | RateLimitError
   | RequestRejectedError
@@ -140,9 +144,10 @@ export async function planCollateralReturn(
   assertCollateralReturnAccount(client);
 
   const response = await unwrap(
-    client.collateralReturn
+    client.combos
       .post('/v1/collateral-return/plan', {
         json: { wallet: client.account.wallet },
+        timeout: PLAN_COLLATERAL_RETURN_TIMEOUT_MS,
       })
       .andThen(validateWith(CollateralReturnPlanResponseSchema)),
   );
@@ -448,7 +453,7 @@ async function submitCollateralReturnPlan(
   );
 
   const response = await unwrap(
-    client.collateralReturn
+    client.combos
       .post('/v1/collateral-return/submit', { json: payload })
       .mapErr((error) =>
         error instanceof RequestRejectedError && error.status === 409

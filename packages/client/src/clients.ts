@@ -69,11 +69,6 @@ import {
   requestAddress,
 } from './workflow';
 
-// Collateral-return planning recomputes wallet state server-side and can run
-// for several minutes, so its service client needs a far longer timeout than
-// the transport default.
-const COLLATERAL_RETURN_TIMEOUT_MS = 15 * 60_000;
-
 type PublicContext = {
   /** @internal */
   apiKey?: ApiKeyAuthorization;
@@ -571,11 +566,10 @@ class BaseSecureClient<
         }),
         root: config.environment.clob.rest,
       }),
-      collateralReturn: new ServiceClient({
+      combos: new ServiceClient({
         headers: config.environment.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.collateralReturn.rest,
-        timeout: COLLATERAL_RETURN_TIMEOUT_MS,
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -659,8 +653,8 @@ class BaseSecureClient<
   }
 
   /** @internal */
-  get collateralReturn(): ServiceClient {
-    return this.context.collateralReturn;
+  get combos(): ServiceClient {
+    return this.context.combos;
   }
 
   /** @internal */
@@ -817,7 +811,7 @@ type SecureContext = PublicContext & {
   /** @internal */
   secureClob: ServiceClient;
   /** @internal */
-  collateralReturn: ServiceClient;
+  combos: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };

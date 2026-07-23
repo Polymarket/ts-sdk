@@ -101,7 +101,7 @@ describe('planCollateralReturn', () => {
 
     expect(collateralReturnPost).toHaveBeenCalledWith(
       '/v1/collateral-return/plan',
-      { json: { wallet: WALLET } },
+      { json: { wallet: WALLET }, timeout: 120_000 },
     );
     expect(plan).toEqual({
       planHash: PLAN_HASH,
@@ -488,7 +488,7 @@ function createClient(options: CreateClientOptions = {}) {
       wallet: WALLET,
       walletType: options.walletType ?? WalletType.DEPOSIT_WALLET,
     },
-    collateralReturn: { post: collateralReturnPost },
+    combos: { post: collateralReturnPost },
     environment,
     relayer: { get: relayerGet },
     rpc: { ethCallBatch, ethEstimateGas },

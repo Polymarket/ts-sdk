@@ -19,32 +19,37 @@ export type ServiceClientConfig = {
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
-  /**
-   * Request timeout in milliseconds, or `false` to disable the timeout.
-   * Defaults to the transport's standard timeout.
-   */
-  timeout?: number | false;
 };
+
+/**
+ * Request timeout in milliseconds, or `false` to disable the timeout.
+ * Defaults to the transport's standard timeout.
+ */
+type ServiceClientTimeout = number | false;
 
 export type ServiceClientGetOptions = {
   headers?: HeadersInit;
   params?: URLSearchParams;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientPostOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientPatchOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientDeleteOptions = {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
+  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -55,12 +60,8 @@ export class ServiceClient {
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
 
-  constructor({ root, headers, resolveHeaders, timeout }: ServiceClientConfig) {
-    this.#client = ky.create({
-      prefixUrl: root,
-      throwHttpErrors: false,
-      ...(timeout !== undefined && { timeout }),
-    });
+  constructor({ root, headers, resolveHeaders }: ServiceClientConfig) {
+    this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
   }
@@ -150,6 +151,7 @@ export class ServiceClient {
       headers,
       method,
       searchParams: request.params,
+      ...(options.timeout !== undefined && { timeout: options.timeout }),
     });
   }
 
