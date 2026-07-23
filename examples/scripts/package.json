@@ -5,7 +5,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "collateral:prepare": "tsx src/prepare-collateral-return.ts",
     "fetch:market": "tsx src/fetch-market.ts",
     "list:markets": "tsx src/list-markets.ts",
     "market:prices": "tsx src/market-prices.ts",
