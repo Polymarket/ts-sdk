@@ -18,6 +18,9 @@ import {
   PerpsTxHashSchema,
 } from './common';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export enum PerpsOrderStatus {
   Accepted = 'accepted',
   Open = 'open',
@@ -46,6 +49,9 @@ export enum PerpsOrderStatus {
   Expired = 'expired',
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTpSlOrderFieldsSchema = z
   .object({
     kind: PerpsTpSlKindSchema,
@@ -64,10 +70,19 @@ export const PerpsTpSlOrderFieldsSchema = z
     slippageBps: fields.slip_bps,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTpSlOrderFields = z.infer<typeof PerpsTpSlOrderFieldsSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsOrderStatusSchema = z.enum(PerpsOrderStatus);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCommandStatusSchema = z.enum(['ok', 'err']);
 
 const PerpsAckErrorSchema = z
@@ -76,6 +91,9 @@ const PerpsAckErrorSchema = z
   .optional()
   .transform(perpsAckError);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
   z.object({ status: z.literal('ok') }),
   z.object({
@@ -84,8 +102,14 @@ export const PerpsCommandAckSchema = z.discriminatedUnion('status', [
   }),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCommandAck = z.infer<typeof PerpsCommandAckSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPostOrderAckSchema = z
   .object({
     status: PerpsCommandStatusSchema,
@@ -117,8 +141,14 @@ export const PerpsPostOrderAckSchema = z
     };
   });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCancelOrderResultSchema = z
   .object({
     status: PerpsCommandStatusSchema,
@@ -143,18 +173,30 @@ export const PerpsCancelOrderResultSchema = z
     };
   });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCancelOrderResult = z.infer<
   typeof PerpsCancelOrderResultSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCancelAllOrdersResponseSchema = z.object({
   status: z.literal('ok'),
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCancelAllOrdersResponse = z.infer<
   typeof PerpsCancelAllOrdersResponseSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsUpdateLeverageResultSchema = z
   .object({
     status: z.literal('ok'),
@@ -169,6 +211,9 @@ export const PerpsUpdateLeverageResultSchema = z
     crossMargin: result.cross,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsUpdateLeverageResult = z.infer<
   typeof PerpsUpdateLeverageResultSchema
 >;
@@ -177,6 +222,9 @@ function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsOrderSchema = z
   .object({
     order_id: PerpsOrderIdSchema,
@@ -213,12 +261,24 @@ export const PerpsOrderSchema = z
     tpSl: order.tpsl ?? undefined,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsOrder = z.infer<typeof PerpsOrderSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsOrdersResponseSchema = z.array(PerpsOrderSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsOpenOrdersResponseSchema = z.array(PerpsOrderSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsOrderUpdateSchema = z
   .object({
     oid: PerpsOrderIdSchema,
@@ -255,6 +315,9 @@ export const PerpsOrderUpdateSchema = z
     tpSl: order.tpsl ?? undefined,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountFillSchema = z
   .object({
     trade_id: PerpsTradeIdSchema,
@@ -291,12 +354,21 @@ export const PerpsAccountFillSchema = z
     hash: fill.hash,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsAccountFill = z.infer<typeof PerpsAccountFillSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsFillsResponseSchema = PerpsDataResponseSchema(
   PerpsAccountFillSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountFillUpdateSchema = z
   .object({
     tid: PerpsTradeIdSchema,

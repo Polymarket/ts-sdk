@@ -46,7 +46,7 @@ jobs:
       - name: Set Up Repository
         uses: ./.github/actions/setup
 
-      - name: Create Or Update Beta Release PR
+      - name: Create Or Update Release PR
         uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1
         with:
           version: pnpm version:bump
@@ -74,8 +74,8 @@ jobs:
       - name: Set Up Repository
         uses: ./.github/actions/setup
 
-      - name: Disable Beta Prerelease Mode For Canary
-        run: mv .changeset/pre.json .changeset/pre.json.disabled
+      - name: Disable Prerelease Mode For Canary
+        run: if test -f .changeset/pre.json; then mv .changeset/pre.json .changeset/pre.json.disabled; fi
 
       - name: Version Packages For Canary
         run: pnpm version:canary

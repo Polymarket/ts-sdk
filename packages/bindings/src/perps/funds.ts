@@ -17,6 +17,9 @@ import {
   PerpsWithdrawalStatusSchema,
 } from './common';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsDepositSchema = z
   .object({
     hash: TxHashSchema,
@@ -43,11 +46,20 @@ export const PerpsDepositSchema = z
     confirmedTimestamp: deposit.confirmed_timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsDeposit = z.infer<typeof PerpsDepositSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsDepositsResponseSchema =
   PerpsDataResponseSchema(PerpsDepositSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsDepositUpdateSchema = z
   .object({
     hash: PerpsTxHashSchema,
@@ -62,6 +74,9 @@ export const PerpsDepositUpdateSchema = z
     status: deposit.status,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsWithdrawalSchema = z
   .object({
     withdraw_id: PerpsWithdrawalIdSchema,
@@ -90,12 +105,21 @@ export const PerpsWithdrawalSchema = z
     confirmedTimestamp: withdrawal.confirmed_timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsWithdrawal = z.infer<typeof PerpsWithdrawalSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsWithdrawalsResponseSchema = PerpsDataResponseSchema(
   PerpsWithdrawalSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsWithdrawResponseSchema = z
   .object({
     status: z.enum(['ok', 'err']),
@@ -108,6 +132,9 @@ export const PerpsWithdrawResponseSchema = z
     error: response.error,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsWithdrawalUpdateSchema = z
   .object({
     withdraw_id: PerpsWithdrawalIdSchema,
@@ -128,6 +155,9 @@ export const PerpsWithdrawalUpdateSchema = z
     hash: withdrawal.hash,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsInternalTransferSchema = z.object({
   transferId: PerpsInternalTransferIdSchema,
   asset: PerpsAssetSchema,
@@ -138,4 +168,7 @@ export const PerpsInternalTransferSchema = z.object({
   createdTimestamp: EpochMillisecondsSchema,
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsInternalTransfer = z.infer<typeof PerpsInternalTransferSchema>;

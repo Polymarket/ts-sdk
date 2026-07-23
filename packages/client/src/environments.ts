@@ -31,6 +31,9 @@ export type CombosEndpoints = RestEndpoint &
     collateralReturn: RestEndpoint;
   };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsEndpoints = RestEndpoint & WebSocketEndpoint;
 
 export type EnvironmentContracts = {

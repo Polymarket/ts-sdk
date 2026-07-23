@@ -44,8 +44,6 @@ export type ClosedOnlyMode = z.infer<typeof ClosedOnlyModeSchema>;
 
 export type OpenOrder = {
   id: string;
-  /** @deprecated Use {@link OpenOrder.conditionId}. Holds the CTF condition id, not a distinct market identifier. */
-  market: CtfConditionId;
   /** CTF condition id for the market associated with this order. */
   conditionId: CtfConditionId;
   tokenId: TokenId;
@@ -96,7 +94,6 @@ export const OpenOrderSchema = z
     }) => {
       const transformed = {
         ...rest,
-        market,
         conditionId: market,
         tokenId: asset_id,
         associateTrades: associate_trades,
@@ -157,8 +154,6 @@ type MakerOrder = z.output<typeof MakerOrderSchema>;
 
 export type ClobTrade = {
   id: string;
-  /** @deprecated Use {@link ClobTrade.conditionId}. Holds the CTF condition id, not a distinct market identifier. */
-  market: CtfConditionId;
   /** CTF condition id for the market associated with this trade. */
   conditionId: CtfConditionId;
   tokenId: TokenId;
@@ -216,7 +211,6 @@ export const ClobTradeSchema = z
       ...rest
     }) => ({
       ...rest,
-      market,
       conditionId: market,
       tokenId: asset_id,
       bucketIndex: bucket_index,
