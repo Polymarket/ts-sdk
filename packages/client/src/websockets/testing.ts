@@ -65,3 +65,56 @@ export function waitForNextEvent<TEvent>(
 ): Promise<IteratorResult<TEvent>> {
   return handle[Symbol.asyncIterator]().next();
 }
+
+export type ExpectDropsUnknownFrameOptions<TEvent> = {
+  /**
+   * Frames sent before the unknown frame that the stream treats as expected
+   * control frames (for example request acknowledgements); like unknown
+   * frames, they must not produce events.
+   */
+  expectedControlFrames?: unknown[];
+  /** `toMatchObject` matcher for the event produced by `validFrame`. */
+  expectedEvent: unknown;
+  link: WebSocketLink;
+  server: SetupServerApi;
+  /**
+   * Opens the stream under test and returns its event iterable plus a
+   * cleanup callback.
+   */
+  subscribe: () => Promise<{
+    close: () => Promise<void>;
+    events: AsyncIterable<TEvent>;
+  }>;
+  unknownFrame: unknown;
+  validFrame: unknown;
+};
+
+/**
+ * Asserts the shared unknown-frame contract for a websocket stream: an
+ * unrecognized frame is dropped without emitting an event, and the connection
+ * and subscription survive — proven by the valid frame sent afterwards being
+ * delivered as the next event.
+ */
+export async function expectDropsUnknownFrame<TEvent>(
+  options: ExpectDropsUnknownFrameOptions<TEvent>,
+): Promise<void> {
+  const connection = captureConnection(options.server, options.link);
+  const { close, events } = await options.subscribe();
+
+  try {
+    const next = waitForNextEvent(events);
+
+    for (const frame of options.expectedControlFrames ?? []) {
+      await connection.send(frame);
+    }
+    await connection.send(options.unknownFrame);
+    await connection.send(options.validFrame);
+
+    await expect(next).resolves.toMatchObject({
+      done: false,
+      value: options.expectedEvent,
+    });
+  } finally {
+    await close();
+  }
+}

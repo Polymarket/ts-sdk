@@ -71,7 +71,7 @@ export const CancelOrderError = makeErrorGuard(
  *   orderId: '123',
  * });
  *
- * // response.canceled: string[]
+ * // response.canceled: OrderId[]
  * ```
  */
 export async function cancelOrder(
@@ -117,7 +117,7 @@ export const CancelOrdersError = makeErrorGuard(
  *   orderIds: ['1', '2'],
  * });
  *
- * // response.canceled: string[]
+ * // response.canceled: OrderId[]
  * ```
  */
 export async function cancelOrders(
@@ -156,7 +156,7 @@ export const CancelAllError = makeErrorGuard(
  * ```ts
  * const response = await cancelAll(client);
  *
- * // response.canceled: string[]
+ * // response.canceled: OrderId[]
  * ```
  */
 export async function cancelAll(
@@ -200,7 +200,7 @@ export const CancelMarketOrdersError = makeErrorGuard(
  *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
  * });
  *
- * // response.canceled: string[]
+ * // response.canceled: OrderId[]
  * ```
  */
 export async function cancelMarketOrders(

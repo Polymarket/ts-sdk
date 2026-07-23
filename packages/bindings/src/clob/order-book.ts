@@ -19,7 +19,8 @@ export type OrderBookLevel = {
 export type OrderBookHash = string & { readonly __tag: 'OrderBookHash' };
 
 export type OrderBook = {
-  market: CtfConditionId;
+  /** CTF condition id for the market this book belongs to. */
+  conditionId: CtfConditionId;
   tokenId: TokenId;
   timestamp?: EpochMilliseconds | null;
 
@@ -61,6 +62,7 @@ export const OrderBookSchema = z
   })
   .transform(
     ({
+      market,
       asset_id,
       min_order_size,
       tick_size,
@@ -69,6 +71,7 @@ export const OrderBookSchema = z
       ...rest
     }) => ({
       ...rest,
+      conditionId: market,
       tokenId: asset_id,
       minOrderSize: min_order_size,
       tickSize: tick_size,

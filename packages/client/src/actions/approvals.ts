@@ -399,14 +399,6 @@ export const SetupTradingApprovalsError = makeErrorGuard(
   UserInputError,
 );
 
-export type DeprecatedTransactionHandle = Omit<TransactionHandle, 'wait'> & {
-  /**
-   * @deprecated `setupTradingApprovals` now waits internally. You do not need
-   * to call this method, and it will be removed in a later version.
-   */
-  wait(): Promise<void>;
-};
-
 /**
  * Sets up the approvals required for trading.
  *
@@ -416,20 +408,10 @@ export type DeprecatedTransactionHandle = Omit<TransactionHandle, 'wait'> & {
  * @throws {@link SetupTradingApprovalsError}
  * Thrown on failure.
  */
-export function setupTradingApprovals(
-  client: BaseSecureClient,
-): Promise<DeprecatedTransactionHandle> {
+export function setupTradingApprovals(client: BaseSecureClient): Promise<void> {
   return prepareTradingApprovals(client)
     .then(completeWith(client.signer))
-    .then(createDeprecatedTransactionHandle);
-}
-
-function createDeprecatedTransactionHandle(): DeprecatedTransactionHandle {
-  return {
-    transactionHash: null,
-    transactionId: null,
-    wait: async () => {},
-  };
+    .then(() => undefined);
 }
 
 async function resolveMissingTradingApprovals(
@@ -493,11 +475,6 @@ function getRequiredTradingApprovals(
       },
       {
         amount: MAX_UINT256,
-        spenderAddress: contracts.negRiskAdapter,
-        tokenAddress: contracts.collateralToken,
-      },
-      {
-        amount: MAX_UINT256,
         spenderAddress: contracts.collateralAdapter,
         tokenAddress: contracts.collateralToken,
       },
@@ -529,10 +506,6 @@ function getRequiredTradingApprovals(
       },
       {
         operatorAddress: contracts.negRiskExchange,
-        tokenAddress: contracts.conditionalTokens,
-      },
-      {
-        operatorAddress: contracts.negRiskAdapter,
         tokenAddress: contracts.conditionalTokens,
       },
       {

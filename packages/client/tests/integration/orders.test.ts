@@ -1,4 +1,9 @@
-import { BuilderCodeSchema, OrderSide, OrderType } from '@polymarket/bindings';
+import {
+  BuilderCodeSchema,
+  OrderSide,
+  OrderType,
+  toOrderId,
+} from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
   InsufficientLiquidityError,
@@ -509,7 +514,7 @@ async function cancelMarketOrderWithRetry(
       market: conditionId,
     });
 
-    if (result.canceled.includes(order.orderId)) {
+    if (result.canceled.includes(toOrderId(order.orderId))) {
       return result;
     }
 

@@ -11,16 +11,28 @@ import {
   PerpsInstrumentIdSchema,
 } from './common';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBalanceSchema = z.object({
   asset: PerpsAssetSchema,
   balance: DecimalStringSchema,
   value: DecimalStringSchema,
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBalance = z.infer<typeof PerpsBalanceSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsBalancesResponseSchema = z.array(PerpsBalanceSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountStatsSchema = z
   .object({
     volume_7d: DecimalStringSchema,
@@ -41,10 +53,19 @@ export const PerpsAccountStatsSchema = z
     entityName: stats.entity_name,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsAccountStats = z.infer<typeof PerpsAccountStatsSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsAccountStatsResponseSchema = PerpsAccountStatsSchema;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPortfolioPositionSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -77,10 +98,16 @@ export const PerpsPortfolioPositionSchema = z
     cumulativeFunding: position.cumulative_funding,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPortfolioPosition = z.infer<
   typeof PerpsPortfolioPositionSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsMarginSummarySchema = z.object({
   totalAccountValue: DecimalStringSchema,
   totalInitialMargin: DecimalStringSchema,
@@ -88,6 +115,9 @@ export const PerpsMarginSummarySchema = z.object({
   totalPositionValue: DecimalStringSchema,
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsMarginSummary = z.infer<typeof PerpsMarginSummarySchema>;
 
 const RawPerpsMarginSummarySchema = z
@@ -104,6 +134,9 @@ const RawPerpsMarginSummarySchema = z
     totalPositionValue: margin.total_position_value,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPortfolioSchema = z
   .object({
     positions: z.array(PerpsPortfolioPositionSchema),
@@ -120,10 +153,19 @@ export const PerpsPortfolioSchema = z
     timestamp: portfolio.timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPortfolio = z.infer<typeof PerpsPortfolioSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsPortfolioResponseSchema = PerpsPortfolioSchema;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountFundingPaymentSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -142,14 +184,23 @@ export const PerpsAccountFundingPaymentSchema = z
     timestamp: funding.timestamp,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsAccountFundingPayment = z.infer<
   typeof PerpsAccountFundingPaymentSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsFundingPaymentsResponseSchema = PerpsDataResponseSchema(
   PerpsAccountFundingPaymentSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountFundingPaymentEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
@@ -168,6 +219,9 @@ export const PerpsAccountFundingPaymentEntrySchema = z
     timestamp: funding.ts,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountConfigSchema = z
   .object({
     instrument_id: PerpsInstrumentIdSchema,
@@ -180,28 +234,52 @@ export const PerpsAccountConfigSchema = z
     cross: config.cross,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsAccountConfig = z.infer<typeof PerpsAccountConfigSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsAccountConfigResponseSchema = z.array(
   PerpsAccountConfigSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsEquityPointSchema = z
   .tuple([EpochMillisecondsSchema, DecimalStringSchema])
   .transform(([timestamp, equity]) => ({ timestamp, equity }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsEquityPoint = z.infer<typeof PerpsEquityPointSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsEquityHistoryResponseSchema = PerpsDataResponseSchema(
   PerpsEquityPointSchema,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPnlPointSchema = z
   .tuple([EpochMillisecondsSchema, DecimalStringSchema])
   .transform(([timestamp, pnl]) => ({ timestamp, pnl }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPnlPoint = z.infer<typeof PerpsPnlPointSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsPnlHistoryResponseSchema =
   PerpsDataResponseSchema(PerpsPnlPointSchema);
 
@@ -216,6 +294,9 @@ const RawPerpsProxyExpirySchema = z
   )
   .pipe(EpochMillisecondsSchema);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsProxyKeySchema = z
   .object({
     proxy: EvmAddressSchema,
@@ -228,8 +309,14 @@ export const PerpsProxyKeySchema = z
     expiresAt: key.expiry,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsProxyKey = z.infer<typeof PerpsProxyKeySchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCredentialsResponseSchema = z
   .object({
     address: EvmAddressSchema,
@@ -240,10 +327,16 @@ export const PerpsCredentialsResponseSchema = z
     keys: credentials.keys,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCreateProxyResponseSchema = z.object({
   secret: z.string().min(1),
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsDeleteProxyResponseSchema = z.object({
   status: z.enum(['ok', 'err']),
   error: z.string().optional(),

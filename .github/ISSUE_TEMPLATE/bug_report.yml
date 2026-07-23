@@ -16,7 +16,7 @@ body:
     attributes:
       label: SDK package and version
       description: Include the package name and version from your package manager.
-      placeholder: "@polymarket/client@0.1.0-beta.0"
+      placeholder: "@polymarket/client@0.1.0"
     validations:
       required: true
   - type: input

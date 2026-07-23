@@ -2,6 +2,9 @@ import type { PerpsCredentials } from '@polymarket/bindings/perps';
 import { TransportError } from '../../errors';
 import { PerpsSession } from './session';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionManagerOptions = {
   chainId: number;
   headers?: Record<string, string>;
@@ -9,6 +12,9 @@ export type PerpsSessionManagerOptions = {
   wsUrl: string;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export class PerpsSessionManager {
   readonly #chainId: number;
   readonly #headers: Record<string, string> | undefined;
@@ -19,6 +25,9 @@ export class PerpsSessionManager {
   readonly #connecting = new Set<Promise<PerpsSession>>();
   #hasShutdown = false;
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   constructor(options: PerpsSessionManagerOptions) {
     this.#chainId = options.chainId;
     this.#headers = options.headers;
@@ -26,6 +35,9 @@ export class PerpsSessionManager {
     this.#wsUrl = options.wsUrl;
   }
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   connect(credentials: PerpsCredentials): Promise<PerpsSession> {
     if (this.#hasShutdown) {
       return Promise.reject(
@@ -66,6 +78,9 @@ export class PerpsSessionManager {
     return connecting;
   }
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   async shutdown(): Promise<void> {
     this.#hasShutdown = true;
     const sessions = Array.from(this.#sessions);
