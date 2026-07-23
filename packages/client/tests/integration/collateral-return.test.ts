@@ -1,10 +1,12 @@
 import type { CollateralReturnPlan, SecureClient } from '@polymarket/client';
 import {
+  CollateralReturnKnownOperationKind,
   CollateralReturnPlanRejectedError,
   createSecureClient,
   RequestRejectedError,
   WalletType,
 } from '@polymarket/client';
+import { expectHexString } from '@polymarket/types';
 import { type TestContext, vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
@@ -129,6 +131,37 @@ describe('Collateral return', () => {
     300_000,
   );
 
+  // A corrupted execution artifact fails submit validation outright (400)
+  // rather than as a stale-plan rejection (409), so it must surface as the
+  // plain request error instead of CollateralReturnPlanRejectedError.
+  it.runIf(runMeteredTests)(
+    'rejects a tampered plan as an invalid submission',
+    async ({ secureClientWithDepositWallet }) => {
+      const secureClient = secureClientWithDepositWallet;
+      const plan = await fetchPlan(secureClient);
+
+      const tampered: CollateralReturnPlan = {
+        ...plan,
+        routerCall: {
+          ...plan.routerCall,
+          data: expectHexString('0xdeadbeef'),
+        },
+      };
+
+      const failure = await secureClient
+        .executeCollateralReturnPlan({ plan: tampered })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+
+      expect(failure).toBeInstanceOf(RequestRejectedError);
+      expect(failure).not.toBeInstanceOf(CollateralReturnPlanRejectedError);
+      expect((failure as RequestRejectedError).status).toBe(400);
+    },
+    300_000,
+  );
+
   it.runIf(runMeteredTests)(
     'seeds combo inventory and executes plans until the return completes',
     async ({ secureClientWithDepositWallet, skip }) => {
@@ -139,6 +172,14 @@ describe('Collateral return', () => {
       if (Number(plan.collateralReturned) <= 0) {
         plan = await seedReturnableInventory(secureClient, plan, skip);
       }
+
+      // Seeded inventory is a complementary pair, so the plan must merge it
+      // and report the consumed positions.
+      expect(plan.operations.length).toBeGreaterThan(0);
+      expect(plan.operations.map((operation) => operation.kind)).toContain(
+        CollateralReturnKnownOperationKind.Merge,
+      );
+      expect(plan.positionSummary.consumed.length).toBeGreaterThan(0);
 
       let rejections = 0;
       let executedPlan: CollateralReturnPlan | undefined;
