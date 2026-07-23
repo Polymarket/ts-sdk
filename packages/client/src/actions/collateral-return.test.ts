@@ -213,7 +213,7 @@ describe('planCollateralReturn', () => {
     const { client } = createClient({ walletType: WalletType.EOA });
 
     await expect(planCollateralReturn(client)).rejects.toThrow(
-      /Deposit Wallet, Safe-backed, and proxy-backed accounts/,
+      /Deposit Wallet, Safe Wallet, and Proxy Wallet accounts/,
     );
   });
 });
@@ -268,7 +268,7 @@ describe('executeCollateralReturnPlan', () => {
 
     await expect(
       executeCollateralReturnPlan(eoaClient, { plan }),
-    ).rejects.toThrow(/Deposit Wallet, Safe-backed, and proxy-backed accounts/);
+    ).rejects.toThrow(/Deposit Wallet, Safe Wallet, and Proxy Wallet accounts/);
   });
 
   it('submits a Safe envelope carrying the exact router call for Safe accounts', async () => {
