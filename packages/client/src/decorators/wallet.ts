@@ -2,7 +2,6 @@ import {
   approveErc20,
   approveErc1155ForAll,
   type CollateralReturnPlan,
-  type DeprecatedTransactionHandle,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   mergePositions,

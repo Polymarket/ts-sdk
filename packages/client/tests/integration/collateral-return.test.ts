@@ -165,77 +165,126 @@ describe('Collateral return', () => {
   it.runIf(runMeteredTests)(
     'seeds combo inventory and executes plans until the return completes',
     async ({ secureClientWithDepositWallet, skip }) => {
-      const secureClient = secureClientWithDepositWallet;
+      await seedAndExecuteCollateralReturn(secureClientWithDepositWallet, skip);
+    },
+    300_000,
+  );
 
-      let plan = await fetchPlan(secureClient);
+  it.runIf(runMeteredTests)(
+    'seeds and executes a collateral return for a Safe Wallet account',
+    async ({
+      builderAuthentication,
+      safeWalletAddress,
+      safeWalletSigner,
+      skip,
+    }) => {
+      const secureClient = await createSecureClient({
+        apiKey: builderAuthentication,
+        signer: safeWalletSigner,
+        wallet: safeWalletAddress,
+      });
 
-      if (Number(plan.collateralReturned) <= 0) {
-        plan = await seedReturnableInventory(secureClient, plan, skip);
-      }
+      expect(secureClient.account.walletType).toBe(WalletType.GNOSIS_SAFE);
 
-      // Seeded inventory is a complementary pair, so the plan must merge it
-      // and report the consumed positions.
-      expect(plan.operations.length).toBeGreaterThan(0);
-      expect(plan.operations.map((operation) => operation.kind)).toContain(
-        CollateralReturnKnownOperationKind.Merge,
-      );
-      expect(plan.positionSummary.consumed.length).toBeGreaterThan(0);
+      await seedAndExecuteCollateralReturn(secureClient, skip);
+    },
+    300_000,
+  );
 
-      let rejections = 0;
-      let executedPlan: CollateralReturnPlan | undefined;
+  it.runIf(runMeteredTests)(
+    'seeds and executes a collateral return for a Proxy Wallet account',
+    async ({
+      builderAuthentication,
+      proxyWalletAddress,
+      proxyWalletSigner,
+      skip,
+    }) => {
+      const secureClient = await createSecureClient({
+        apiKey: builderAuthentication,
+        signer: proxyWalletSigner,
+        wallet: proxyWalletAddress,
+      });
 
-      for (;;) {
-        try {
-          const handle = await secureClient.executeCollateralReturnPlan({
-            plan,
-          });
-          const outcome = await handle.wait();
+      expect(secureClient.account.walletType).toBe(WalletType.POLY_PROXY);
 
-          expect(outcome.transactionHash).toMatch(/^0x[0-9a-f]{64}$/i);
-          executedPlan = plan;
-        } catch (error) {
-          // Wallet state can move between planning and submission; the
-          // documented recovery is to request a fresh plan and execute that.
-          rejections += 1;
-
-          if (
-            !(error instanceof CollateralReturnPlanRejectedError) ||
-            rejections > EXECUTE_RETRY_ATTEMPTS
-          ) {
-            throw error;
-          }
-
-          plan = await fetchPlan(secureClient);
-
-          if (Number(plan.collateralReturned) <= 0) {
-            break;
-          }
-
-          continue;
-        }
-
-        if (!plan.truncated) {
-          break;
-        }
-
-        plan = await fetchPlan(secureClient);
-
-        if (Number(plan.collateralReturned) <= 0) {
-          break;
-        }
-      }
-
-      // The executed plan no longer matches wallet state, so re-submitting it
-      // must be rejected in favor of a fresh plan.
-      if (executedPlan !== undefined) {
-        await expect(
-          secureClient.executeCollateralReturnPlan({ plan: executedPlan }),
-        ).rejects.toThrow(CollateralReturnPlanRejectedError);
-      }
+      await seedAndExecuteCollateralReturn(secureClient, skip);
     },
     300_000,
   );
 });
+
+// Seeds returnable inventory when needed, executes plans until the return
+// completes, and verifies a consumed plan can no longer be re-submitted.
+async function seedAndExecuteCollateralReturn(
+  secureClient: SecureClient,
+  skip: TestContext['skip'],
+): Promise<void> {
+  let plan = await fetchPlan(secureClient);
+
+  if (Number(plan.collateralReturned) <= 0) {
+    plan = await seedReturnableInventory(secureClient, plan, skip);
+  }
+
+  // Seeded inventory is a complementary pair, so the plan must merge it
+  // and report the consumed positions.
+  expect(plan.operations.length).toBeGreaterThan(0);
+  expect(plan.operations.map((operation) => operation.kind)).toContain(
+    CollateralReturnKnownOperationKind.Merge,
+  );
+  expect(plan.positionSummary.consumed.length).toBeGreaterThan(0);
+
+  let rejections = 0;
+  let executedPlan: CollateralReturnPlan | undefined;
+
+  for (;;) {
+    try {
+      const handle = await secureClient.executeCollateralReturnPlan({
+        plan,
+      });
+      const outcome = await handle.wait();
+
+      expect(outcome.transactionHash).toMatch(/^0x[0-9a-f]{64}$/i);
+      executedPlan = plan;
+    } catch (error) {
+      // Wallet state can move between planning and submission; the
+      // documented recovery is to request a fresh plan and execute that.
+      rejections += 1;
+
+      if (
+        !(error instanceof CollateralReturnPlanRejectedError) ||
+        rejections > EXECUTE_RETRY_ATTEMPTS
+      ) {
+        throw error;
+      }
+
+      plan = await fetchPlan(secureClient);
+
+      if (Number(plan.collateralReturned) <= 0) {
+        break;
+      }
+
+      continue;
+    }
+
+    if (!plan.truncated) {
+      break;
+    }
+
+    plan = await fetchPlan(secureClient);
+
+    if (Number(plan.collateralReturned) <= 0) {
+      break;
+    }
+  }
+
+  // The executed plan no longer matches wallet state, so re-submitting it
+  // must be rejected in favor of a fresh plan.
+  if (executedPlan !== undefined) {
+    await expect(
+      secureClient.executeCollateralReturnPlan({ plan: executedPlan }),
+    ).rejects.toThrow(CollateralReturnPlanRejectedError);
+  }
+}
 
 // Retries planning through transient upstream failures (for example edge
 // 502s) that are unrelated to the plan itself.
