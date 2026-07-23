@@ -450,8 +450,8 @@ async function* prepareProxyWalletGaslessTransaction(
 }
 
 /**
- * Builds and signs a legacy Proxy Wallet relay request without submitting it,
- * so callers can route the signed envelope to their own submission endpoint.
+ * Builds and signs a Proxy Wallet relay request without submitting it, so
+ * callers can route the signed envelope to their own submission endpoint.
  *
  * @internal
  */

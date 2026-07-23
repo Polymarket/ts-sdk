@@ -39,6 +39,15 @@ const environment = forkEnvironmentConfig({
   relayerPollFrequencyMs: 0,
 });
 
+type PlanWireOperation = {
+  kind: string;
+  condition_id?: string;
+  event_id?: string;
+  position_id?: string;
+  condition_index?: number;
+  amount: string;
+};
+
 const planWire = {
   plan_hash: PLAN_HASH,
   chain_id: 137,
@@ -59,7 +68,7 @@ const planWire = {
       condition_index: 2,
       amount: '500000',
     },
-  ],
+  ] as PlanWireOperation[],
   operation_count: 2,
   truncated: true,
   estimated_cost: 1240,

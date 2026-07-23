@@ -9,7 +9,7 @@
       "@polymarket/bindings": ["./packages/bindings/src"],
       "@polymarket/bindings/clob": ["./packages/bindings/src/clob"],
       "@polymarket/bindings/collateral-return": [
-        "./packages/bindings/src/collateral-return.ts"
+        "./packages/bindings/src/collateral-return"
       ],
       "@polymarket/bindings/data": ["./packages/bindings/src/data"],
       "@polymarket/bindings/gamma": ["./packages/bindings/src/gamma"],

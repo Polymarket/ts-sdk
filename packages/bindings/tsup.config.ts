@@ -6,7 +6,7 @@ export default defineConfig(() => ({
   entry: [
     'src/index.ts',
     'src/clob/index.ts',
-    'src/collateral-return.ts',
+    'src/collateral-return/index.ts',
     'src/data/index.ts',
     'src/gamma/index.ts',
     'src/perps/index.ts',
