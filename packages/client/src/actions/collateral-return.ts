@@ -319,7 +319,7 @@ function assertCollateralReturnAccount(client: BaseSecureClient): void {
     client.account.walletType === WalletType.DEPOSIT_WALLET ||
       client.account.walletType === WalletType.GNOSIS_SAFE ||
       client.account.walletType === WalletType.POLY_PROXY,
-    'Collateral return supports Deposit Wallet, Safe-backed, and proxy-backed accounts',
+    'Collateral return supports Deposit Wallet, Safe Wallet, and Proxy Wallet accounts',
   );
 }
 
