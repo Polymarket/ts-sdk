@@ -294,7 +294,7 @@ export function walletActions(client: BaseSecureClient): SecureWalletActions {
 // Public collateral-return model types surfaced alongside the bound methods.
 export type {
   CollateralReturnOperation,
-  CollateralReturnOperationKindLike,
+  CollateralReturnOperationKind,
   CollateralReturnPlan,
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
@@ -307,7 +307,7 @@ export type {
 export {
   ApproveErc20Error,
   ApproveErc1155ForAllError,
-  CollateralReturnOperationKind,
+  CollateralReturnKnownOperationKind,
   ExecuteCollateralReturnPlanError,
   MergePositionsError,
   PlanCollateralReturnError,

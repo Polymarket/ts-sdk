@@ -1,10 +1,18 @@
 import { expectHexString, type HexString } from '@polymarket/types';
 import { z } from 'zod';
-import type { DecimalString, EvmAddress, PositionId } from '../shared';
+import type {
+  ComboConditionId,
+  DecimalString,
+  EvmAddress,
+  NegRiskEventId,
+  PositionId,
+} from '../shared';
 import {
+  ComboConditionIdSchema,
   DecimalStringSchema,
   E6BigIntStringToDecimalStringSchema,
   EvmAddressSchema,
+  NegRiskEventIdSchema,
   PositionIdSchema,
 } from '../shared';
 
@@ -15,9 +23,9 @@ const HexStringSchema = z.string().transform((value) => expectHexString(value));
  *
  * The service evolves this set independently of released clients, so plan
  * parsing accepts unknown kinds as plain strings; see
- * {@link CollateralReturnOperationKindLike}.
+ * {@link CollateralReturnOperationKind}.
  */
-export enum CollateralReturnOperationKind {
+export enum CollateralReturnKnownOperationKind {
   Split = 'split',
   Merge = 'merge',
   Redeem = 'redeem',
@@ -35,22 +43,22 @@ export enum CollateralReturnOperationKind {
 
 /**
  * A collateral-return operation kind. Known kinds are enumerated in
- * {@link CollateralReturnOperationKind}; newly introduced kinds flow through
- * as plain strings so plans keep parsing before a client release that
+ * {@link CollateralReturnKnownOperationKind}; newly introduced kinds flow
+ * through as plain strings so plans keep parsing before a client release that
  * enumerates them.
  */
-export type CollateralReturnOperationKindLike =
-  | CollateralReturnOperationKind
+export type CollateralReturnOperationKind =
+  | CollateralReturnKnownOperationKind
   | (string & {});
 
 const CollateralReturnOperationKindSchema = z
   .string()
-  .transform((value): CollateralReturnOperationKindLike => value);
+  .transform((value): CollateralReturnOperationKind => value);
 
 export type CollateralReturnOperation = {
-  kind: CollateralReturnOperationKindLike;
-  conditionId?: HexString;
-  eventId?: HexString;
+  kind: CollateralReturnOperationKind;
+  conditionId?: ComboConditionId;
+  eventId?: NegRiskEventId;
   positionId?: PositionId;
   conditionIndex: number;
   amount: DecimalString;
@@ -59,8 +67,8 @@ export type CollateralReturnOperation = {
 const CollateralReturnOperationSchema = z
   .object({
     kind: CollateralReturnOperationKindSchema,
-    condition_id: HexStringSchema.optional(),
-    event_id: HexStringSchema.optional(),
+    condition_id: ComboConditionIdSchema.optional(),
+    event_id: NegRiskEventIdSchema.optional(),
     position_id: PositionIdSchema.optional(),
     // The wire format omits zero values, so an absent index means 0.
     condition_index: z.number().int().nonnegative().optional().default(0),

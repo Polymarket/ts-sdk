@@ -57,9 +57,9 @@ import {
 } from './gasless';
 
 export {
+  CollateralReturnKnownOperationKind,
   type CollateralReturnOperation,
-  CollateralReturnOperationKind,
-  type CollateralReturnOperationKindLike,
+  type CollateralReturnOperationKind,
   type CollateralReturnPositionAmount,
   type CollateralReturnPositionSummary,
   type CollateralReturnRouterCall,

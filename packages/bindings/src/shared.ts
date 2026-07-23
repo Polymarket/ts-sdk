@@ -66,6 +66,7 @@ export type IsoCalendarDateString = Tagged<string, 'IsoCalendarDateString'>;
 export type IsoDateTimeString = Tagged<string, 'IsoDateTimeString'>;
 export type MarketId = Tagged<string, 'MarketId'>;
 export type MixedDateTimeString = Tagged<string, 'MixedDateTimeString'>;
+export type NegRiskEventId = Tagged<HexString, 'NegRiskEventId'>;
 export type NotificationId = Tagged<number, 'NotificationId'>;
 export type OrderId = Tagged<string, 'OrderId'>;
 export type PartnerId = Tagged<number, 'PartnerId'>;
@@ -209,6 +210,16 @@ export function toMixedDateTimeString(value: string): MixedDateTimeString {
 
 export function toMarketId(value: string): MarketId {
   return toTaggedString<MarketId>(value);
+}
+
+export function toNegRiskEventId(value: string): NegRiskEventId {
+  if (!isHexString(value)) {
+    throw new TypeError(
+      `Expected a neg-risk event ID hex string, received: ${value}`,
+    );
+  }
+
+  return value as NegRiskEventId;
 }
 
 export function toNotificationId(value: number): NotificationId {
@@ -392,6 +403,7 @@ export const ImageOptimizationIdSchema = z
   .transform(toImageOptimizationId);
 export const InternalUserIdSchema = z.string().transform(toInternalUserId);
 export const MarketIdSchema = z.string().transform(toMarketId);
+export const NegRiskEventIdSchema = z.string().transform(toNegRiskEventId);
 export const NotificationIdSchema = z
   .number()
   .int()
