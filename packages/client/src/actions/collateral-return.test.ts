@@ -58,8 +58,9 @@ const planWire = {
   final_pusd: '124.456789',
   operations: [
     {
+      // The wire pads bytes31 condition IDs to 32 bytes.
       kind: 'merge',
-      condition_id: `0x03${'00'.repeat(30)}`,
+      condition_id: `0x03${'ab'.repeat(29)}0100`,
       amount: '1000000',
     },
     {
@@ -119,7 +120,7 @@ describe('planCollateralReturn', () => {
       operations: [
         {
           kind: 'merge',
-          conditionId: `0x03${'00'.repeat(30)}`,
+          conditionId: `0x03${'ab'.repeat(29)}01`,
           conditionIndex: 0,
           eventId: undefined,
           positionId: undefined,
