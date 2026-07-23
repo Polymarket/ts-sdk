@@ -311,8 +311,8 @@ class BasePublicClient<
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rfq: new ServiceClient({
-        headers: config.environment.rfq.headers,
-        root: config.environment.rfq.rest,
+        headers: config.environment.combos.headers,
+        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         headers: config.environment.perps.headers,
@@ -551,8 +551,8 @@ class BaseSecureClient<
         root: config.environment.data.rest,
       }),
       rfq: new ServiceClient({
-        headers: config.environment.rfq.headers,
-        root: config.environment.rfq.rest,
+        headers: config.environment.combos.headers,
+        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         headers: config.environment.perps.headers,
@@ -567,9 +567,9 @@ class BaseSecureClient<
         root: config.environment.clob.rest,
       }),
       combos: new ServiceClient({
-        headers: config.environment.collateralReturn.headers,
+        headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
-        root: config.environment.collateralReturn.rest,
+        root: config.environment.combos.collateralReturn.rest,
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -586,9 +586,9 @@ class BaseSecureClient<
           chainId: config.environment.chainId,
           credentials: config.credentials,
           exchange: config.environment.contracts.exchangeV3,
-          headers: config.environment.rfq.headers,
+          headers: config.environment.combos.headers,
           signer: config.signer,
-          url: config.environment.rfq.ws,
+          url: config.environment.combos.ws,
         }),
         sports: new SportsWebSocketManager({
           headers: config.environment.sports.headers,
