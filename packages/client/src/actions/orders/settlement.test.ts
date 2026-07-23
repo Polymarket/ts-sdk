@@ -2,6 +2,7 @@ import { TradeStatus, TxHashSchema } from '@polymarket/bindings';
 import {
   type AcceptedOrderResponse,
   type ClobTrade,
+  ClobTradeSchema,
   OrderPostStatus,
 } from '@polymarket/bindings/clob';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -32,28 +33,37 @@ function makeOrderResponse(
   } as AcceptedOrderResponse;
 }
 
-function makeTrade(overrides: Partial<ClobTrade> = {}): ClobTrade {
-  return {
-    bucketIndex: 0,
-    feeRateBps: '0',
-    id: 'trade-1',
-    makerAddress: '0xmaker',
-    makerOrders: [],
-    market: '0xmarket',
-    matchedAt: '2026-07-16T00:00:00.000Z',
+type MakeTradeOverrides = {
+  id?: string;
+  status?: TradeStatus;
+  transactionHash?: string;
+};
+
+// Trades are built from the wire payload through `ClobTradeSchema` so the
+// factory stays aligned with the real boundary shape, including branded
+// fields, as the schema evolves.
+function makeTrade(overrides: MakeTradeOverrides = {}): ClobTrade {
+  return ClobTradeSchema.parse({
+    asset_id: '123',
+    bucket_index: 0,
+    fee_rate_bps: '0',
+    id: overrides.id ?? 'trade-1',
+    last_update: '1752500000',
+    maker_address: '0xmaker',
+    maker_orders: [],
+    market:
+      '0x00000000000000000000000000000000000000000000000000000000000000a1',
+    match_time: '1752500000',
     outcome: 'YES',
     owner: 'owner',
     price: '0.5',
     side: 'BUY',
     size: '100',
-    status: TradeStatus.Matched,
-    takerOrderId: '0xorder',
-    tokenId: '123',
-    traderSide: 'TAKER',
-    transactionHash: '',
-    updatedAt: '2026-07-16T00:00:00.000Z',
-    ...overrides,
-  } as ClobTrade;
+    status: overrides.status ?? TradeStatus.Matched,
+    taker_order_id: '0xorder',
+    trader_side: 'TAKER',
+    transaction_hash: overrides.transactionHash ?? '',
+  });
 }
 
 function mockTradesPages(...pages: ClobTrade[][]) {
