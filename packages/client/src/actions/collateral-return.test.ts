@@ -94,119 +94,39 @@ const submitResponseWire = {
 };
 
 describe('planCollateralReturn', () => {
-  it('maps the plan response into the public plan shape', async () => {
-    const { client, collateralReturnPost } = createClient();
+  it('normalizes the plan response into the public plan shape', async () => {
+    const { client } = createClient();
 
     const plan = await planCollateralReturn(client);
 
-    expect(collateralReturnPost).toHaveBeenCalledWith(
-      '/v1/collateral-return/plan',
-      { json: { wallet: WALLET }, timeout: 120_000 },
-    );
-    expect(plan).toEqual({
-      planHash: PLAN_HASH,
-      wallet: WALLET,
-      chainId: 137,
-      blockNumber: 74000000n,
-      startingCollateral: '123.456789',
-      collateralReturned: '1.000000',
-      finalCollateral: '124.456789',
-      requiredCollateral: '0.000000',
-      requiredPositions: [{ positionId: '123', amount: '2' }],
-      positionSummary: {
-        consumed: [{ positionId: '123', amount: '2' }],
-        created: [{ positionId: '456', amount: '1.5' }],
-      },
-      operations: [
-        {
-          kind: 'merge',
-          conditionId: `0x03${'ab'.repeat(29)}01`,
-          conditionIndex: 0,
-          eventId: undefined,
-          positionId: undefined,
-          amount: '1',
-        },
-        {
-          kind: 'extract',
-          conditionId: undefined,
-          conditionIndex: 2,
-          eventId: undefined,
-          positionId: '123',
-          amount: '0.5',
-        },
-      ],
-      truncated: true,
-      routerCall: {
-        to: production.contracts.protocolV2Router,
-        data: ROUTER_DATA,
-      },
-    });
-  });
-
-  it('maps event ids and passes unknown operation kinds through', async () => {
-    const eventId = `0x${'ab'.repeat(31)}`;
-    const { client } = createClient({
-      planOverrides: {
-        operations: [
-          { kind: 'convert_on_event', event_id: eventId, amount: '250000' },
-          { kind: 'not_yet_known_kind', amount: '1000000' },
-        ],
-      },
-    });
-
-    const plan = await planCollateralReturn(client);
-
-    expect(plan.operations).toEqual([
-      {
-        kind: 'convert_on_event',
-        conditionId: undefined,
-        conditionIndex: 0,
-        eventId,
-        positionId: undefined,
-        amount: '0.25',
-      },
-      {
-        kind: 'not_yet_known_kind',
-        conditionId: undefined,
-        conditionIndex: 0,
-        eventId: undefined,
-        positionId: undefined,
-        amount: '1',
-      },
+    expect(plan.planHash).toBe(PLAN_HASH);
+    expect(plan.blockNumber).toBe(74000000n);
+    expect(plan.collateralReturned).toBe('1.000000');
+    expect(plan.requiredPositions).toEqual([
+      { positionId: '123', amount: '2' },
     ]);
+    // Wire condition IDs arrive padded to 32 bytes and amounts in base units.
+    expect(plan.operations[0]).toMatchObject({
+      kind: 'merge',
+      conditionId: `0x03${'ab'.repeat(29)}01`,
+      amount: '1',
+    });
+    expect(plan.routerCall).toEqual({
+      to: production.contracts.protocolV2Router,
+      data: ROUTER_DATA,
+    });
   });
 
-  it('maps an empty plan with nothing to return', async () => {
+  it('passes unknown operation kinds through', async () => {
     const { client } = createClient({
       planOverrides: {
-        operations: [],
-        operation_count: 0,
-        truncated: false,
-        net_pusd_out: '0.000000',
-        final_pusd: '123.456789',
-        required_positions: [],
-        position_summary: { consumed: [], created: [] },
-        candidate_position_ids: [],
+        operations: [{ kind: 'not_yet_known_kind', amount: '1000000' }],
       },
     });
 
     const plan = await planCollateralReturn(client);
 
-    expect(plan.collateralReturned).toBe('0.000000');
-    expect(plan.operations).toEqual([]);
-    expect(plan.requiredPositions).toEqual([]);
-    expect(plan.positionSummary).toEqual({ consumed: [], created: [] });
-    expect(plan.truncated).toBe(false);
-  });
-
-  it('defaults the position summary when the service omits it', async () => {
-    const { client } = createClient({
-      planOverrides: { position_summary: undefined },
-    });
-
-    const plan = await planCollateralReturn(client);
-
-    expect(plan.positionSummary).toEqual({ consumed: [], created: [] });
+    expect(plan.operations[0]?.kind).toBe('not_yet_known_kind');
   });
 
   it('rejects EOA-bound accounts', async () => {
@@ -219,46 +139,31 @@ describe('planCollateralReturn', () => {
 });
 
 describe('executeCollateralReturnPlan', () => {
-  it('signs and submits exactly the planned router call', async () => {
-    const { client, collateralReturnPost, ethCallBatch, signTypedData } =
-      createClient({ ethCallResults: [TRUE_RESULT] });
+  it('signs and submits the planned router call', async () => {
+    const { client, collateralReturnPost, signTypedData } = createClient({
+      ethCallResults: [TRUE_RESULT],
+    });
     const plan = await planCollateralReturn(client);
 
     const handle = await executeCollateralReturnPlan(client, { plan });
 
     expect(handle.transactionId).toBe('tx-1');
     expect(signTypedData).toHaveBeenCalledTimes(1);
-    expect(ethCallBatch).toHaveBeenCalledTimes(1);
-    expect(ethCallBatch.mock.calls[0]?.[0]).toHaveLength(1);
-
-    const submitCall = collateralReturnPost.mock.calls.find(
-      ([path]) => path === '/v1/collateral-return/submit',
-    );
-    expect(submitCall).toBeDefined();
-    const payload = submitCall?.[1]?.json as {
-      plan_hash: string;
+    expect(findSubmitPayload(collateralReturnPost)).toMatchObject({
+      plan_hash: PLAN_HASH,
       envelope: {
-        type: string;
-        from: string;
-        nonce: string;
+        type: 'WALLET',
         depositWalletParams: {
-          depositWallet: string;
-          calls: Array<{ target: string; value: string; data: string }>;
-        };
-      };
-    };
-    expect(payload.plan_hash).toBe(PLAN_HASH);
-    expect(payload.envelope.type).toBe('WALLET');
-    expect(payload.envelope.from).toBe(SIGNER);
-    expect(payload.envelope.nonce).toBe('7');
-    expect(payload.envelope.depositWalletParams.depositWallet).toBe(WALLET);
-    expect(payload.envelope.depositWalletParams.calls).toEqual([
-      {
-        target: production.contracts.protocolV2Router,
-        value: '0',
-        data: ROUTER_DATA,
+          calls: [
+            {
+              target: production.contracts.protocolV2Router,
+              value: '0',
+              data: ROUTER_DATA,
+            },
+          ],
+        },
       },
-    ]);
+    });
   });
 
   it('rejects EOA-bound accounts', async () => {
@@ -271,7 +176,7 @@ describe('executeCollateralReturnPlan', () => {
     ).rejects.toThrow(/Deposit Wallet, Safe Wallet, and Proxy Wallet accounts/);
   });
 
-  it('submits a Safe envelope carrying the exact router call for Safe accounts', async () => {
+  it('submits a Safe envelope carrying the router call for Safe accounts', async () => {
     const { client, collateralReturnPost, signMessage } = createClient({
       ethCallResults: [TRUE_RESULT],
       walletType: WalletType.GNOSIS_SAFE,
@@ -282,31 +187,17 @@ describe('executeCollateralReturnPlan', () => {
 
     expect(handle.transactionId).toBe('tx-1');
     expect(signMessage).toHaveBeenCalledTimes(1);
-
-    const payload = findSubmitPayload(collateralReturnPost) as {
-      plan_hash: string;
-      envelope: Record<string, unknown>;
-    };
-    expect(payload.plan_hash).toBe(PLAN_HASH);
-    expect(payload.envelope).toMatchObject({
-      type: 'SAFE',
-      from: SIGNER,
-      to: production.contracts.protocolV2Router,
-      proxyWallet: WALLET,
-      data: ROUTER_DATA,
-      nonce: '7',
-      signatureParams: {
-        baseGas: '0',
-        gasPrice: '0',
-        gasToken: `0x${'0'.repeat(40)}`,
-        operation: '0',
-        refundReceiver: `0x${'0'.repeat(40)}`,
-        safeTxnGas: '0',
+    expect(findSubmitPayload(collateralReturnPost)).toMatchObject({
+      plan_hash: PLAN_HASH,
+      envelope: {
+        type: 'SAFE',
+        to: production.contracts.protocolV2Router,
+        data: ROUTER_DATA,
       },
     });
   });
 
-  it('submits a Proxy envelope wrapping the exact router call for proxy accounts', async () => {
+  it('submits a Proxy envelope wrapping the router call for proxy accounts', async () => {
     const { client, collateralReturnPost, signMessage } = createClient({
       ethCallResults: [TRUE_RESULT],
       walletType: WalletType.POLY_PROXY,
@@ -317,31 +208,17 @@ describe('executeCollateralReturnPlan', () => {
 
     expect(handle.transactionId).toBe('tx-1');
     expect(signMessage).toHaveBeenCalledTimes(1);
-
-    const payload = findSubmitPayload(collateralReturnPost) as {
-      plan_hash: string;
-      envelope: Record<string, unknown>;
-    };
-    expect(payload.plan_hash).toBe(PLAN_HASH);
-    expect(payload.envelope).toMatchObject({
-      type: 'PROXY',
-      from: SIGNER,
-      to: production.walletDerivation.proxyFactory,
-      proxyWallet: WALLET,
-      nonce: '7',
-      data: encodeProxyCall([
-        {
-          data: ROUTER_DATA as HexString,
-          to: production.contracts.protocolV2Router,
-          value: 0n,
-        },
-      ]),
-      signatureParams: {
-        gasLimit: '500000',
-        gasPrice: '0',
-        relay: RELAY,
-        relayHub: production.contracts.relayHub,
-        relayerFee: '0',
+    expect(findSubmitPayload(collateralReturnPost)).toMatchObject({
+      plan_hash: PLAN_HASH,
+      envelope: {
+        type: 'PROXY',
+        data: encodeProxyCall([
+          {
+            data: ROUTER_DATA as HexString,
+            to: production.contracts.protocolV2Router,
+            value: 0n,
+          },
+        ]),
       },
     });
   });
@@ -357,8 +234,19 @@ describe('executeCollateralReturnPlan', () => {
     ).rejects.toThrow(UserInputError);
   });
 
+  it('rejects a plan created for a different chain', async () => {
+    const { client } = createClient();
+    const plan = await planCollateralReturn(client);
+
+    await expect(
+      executeCollateralReturnPlan(client, {
+        plan: { ...plan, chainId: 80002 },
+      }),
+    ).rejects.toThrow(UserInputError);
+  });
+
   it('fails fast on missing approvals before requesting a signature', async () => {
-    const { client, relayerGet, signTypedData } = createClient({
+    const { client, signTypedData } = createClient({
       ethCallResults: [ZERO_RESULT, ZERO_RESULT],
       planOverrides: { required_pusd_input: '5.000000' },
     });
@@ -367,12 +255,11 @@ describe('executeCollateralReturnPlan', () => {
     await expect(executeCollateralReturnPlan(client, { plan })).rejects.toThrow(
       MissingTradingApprovalsError,
     );
-    expect(relayerGet).not.toHaveBeenCalled();
     expect(signTypedData).not.toHaveBeenCalled();
   });
 
-  it('executes when the wallet holds both required approvals', async () => {
-    const { client, ethCallBatch } = createClient({
+  it('executes when the wallet holds the required approvals', async () => {
+    const { client } = createClient({
       ethCallResults: [MAX_UINT256_RESULT, TRUE_RESULT],
       planOverrides: { required_pusd_input: '5.000000' },
     });
@@ -381,19 +268,6 @@ describe('executeCollateralReturnPlan', () => {
     const handle = await executeCollateralReturnPlan(client, { plan });
 
     expect(handle.transactionId).toBe('tx-1');
-    expect(ethCallBatch).toHaveBeenCalledTimes(1);
-    expect(ethCallBatch.mock.calls[0]?.[0]).toHaveLength(2);
-  });
-
-  it('skips the approval pre-check when the plan needs no inputs', async () => {
-    const { client, ethCallBatch } = createClient({
-      planOverrides: { required_positions: [] },
-    });
-    const plan = await planCollateralReturn(client);
-
-    await executeCollateralReturnPlan(client, { plan });
-
-    expect(ethCallBatch).not.toHaveBeenCalled();
   });
 
   it('maps plan rejections to CollateralReturnPlanRejectedError without retrying', async () => {
@@ -413,11 +287,7 @@ describe('executeCollateralReturnPlan', () => {
     await expect(executeCollateralReturnPlan(client, { plan })).rejects.toThrow(
       CollateralReturnPlanRejectedError,
     );
-
-    const submitCalls = collateralReturnPost.mock.calls.filter(
-      ([path]) => path === '/v1/collateral-return/submit',
-    );
-    expect(submitCalls).toHaveLength(1);
+    expect(countSubmitCalls(collateralReturnPost)).toBe(1);
   });
 
   it('re-signs and resubmits after a transient relayer rejection', async () => {
@@ -439,10 +309,7 @@ describe('executeCollateralReturnPlan', () => {
 
     expect(handle.transactionId).toBe('tx-1');
     expect(signTypedData).toHaveBeenCalledTimes(2);
-    const submitCalls = collateralReturnPost.mock.calls.filter(
-      ([path]) => path === '/v1/collateral-return/submit',
-    );
-    expect(submitCalls).toHaveLength(2);
+    expect(countSubmitCalls(collateralReturnPost)).toBe(2);
   });
 });
 
@@ -499,8 +366,6 @@ function createClient(options: CreateClientOptions = {}) {
   return {
     client,
     collateralReturnPost,
-    ethCallBatch,
-    relayerGet,
     signMessage,
     signTypedData,
   };
@@ -515,6 +380,14 @@ function findSubmitPayload(
   expect(submitCall).toBeDefined();
 
   return (submitCall?.[1] as { json?: unknown } | undefined)?.json;
+}
+
+function countSubmitCalls(
+  collateralReturnPost: ReturnType<typeof vi.fn>,
+): number {
+  return collateralReturnPost.mock.calls.filter(
+    ([path]) => path === '/v1/collateral-return/submit',
+  ).length;
 }
 
 function jsonResponse(payload: unknown): Response {

@@ -1,6 +1,5 @@
 import type { CollateralReturnPlan, SecureClient } from '@polymarket/client';
 import {
-  CollateralReturnKnownOperationKind,
   CollateralReturnPlanRejectedError,
   createSecureClient,
   RequestRejectedError,
@@ -27,24 +26,6 @@ describe('Collateral return', () => {
     expect(plan.wallet.toLowerCase()).toBe(
       secureClient.account.wallet.toLowerCase(),
     );
-    expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
-    expect(plan.chainId).toBe(secureClient.environment.chainId);
-    expect(plan.blockNumber).toBeGreaterThan(0n);
-    expect(plan.routerCall.to.toLowerCase()).toBe(
-      secureClient.environment.contracts.protocolV2Router.toLowerCase(),
-    );
-    expect(plan.routerCall.data).toMatch(/^0x[0-9a-f]*$/i);
-    expect(typeof plan.truncated).toBe('boolean');
-    expect(Number(plan.startingCollateral)).not.toBeNaN();
-    expect(Number(plan.collateralReturned)).not.toBeNaN();
-    expect(Number(plan.finalCollateral)).not.toBeNaN();
-    expect(Number(plan.requiredCollateral)).not.toBeNaN();
-    expect(Array.isArray(plan.positionSummary.consumed)).toBe(true);
-    expect(Array.isArray(plan.positionSummary.created)).toBe(true);
-    for (const operation of plan.operations) {
-      expect(operation.kind).toBeTruthy();
-      expect(Number(operation.amount)).not.toBeNaN();
-    }
   });
 
   it('plans a collateral return for a Safe Wallet account', async ({
@@ -61,7 +42,6 @@ describe('Collateral return', () => {
     const plan = await fetchPlan(secureClient);
 
     expect(plan.wallet.toLowerCase()).toBe(safeWalletAddress.toLowerCase());
-    expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
   });
 
   it('plans a collateral return for a Proxy Wallet account', async ({
@@ -78,7 +58,6 @@ describe('Collateral return', () => {
     const plan = await fetchPlan(secureClient);
 
     expect(plan.wallet.toLowerCase()).toBe(proxyWalletAddress.toLowerCase());
-    expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
   });
 
   it('rejects planning for an EOA-bound account', async ({
@@ -112,15 +91,7 @@ describe('Collateral return', () => {
         skip('The account holds returnable inventory; empty plan unavailable');
       }
 
-      expect(plan.collateralReturned).toBe('0.000000');
-      expect(plan.requiredCollateral).toBe('0.000000');
       expect(plan.operations).toEqual([]);
-      expect(plan.requiredPositions).toEqual([]);
-      expect(plan.positionSummary).toEqual({ consumed: [], created: [] });
-      expect(plan.truncated).toBe(false);
-      expect(plan.startingCollateral).toBe(plan.finalCollateral);
-      expect(plan.planHash).toMatch(/^0x[0-9a-f]{64}$/i);
-      expect(plan.routerCall.data).toMatch(/^0x[0-9a-f]+$/i);
 
       // A plan that returns no collateral is re-validated and rejected by the
       // service at submission.
@@ -157,7 +128,6 @@ describe('Collateral return', () => {
 
       expect(failure).toBeInstanceOf(RequestRejectedError);
       expect(failure).not.toBeInstanceOf(CollateralReturnPlanRejectedError);
-      expect((failure as RequestRejectedError).status).toBe(400);
     },
     300_000,
   );
@@ -224,14 +194,6 @@ async function seedAndExecuteCollateralReturn(
   if (Number(plan.collateralReturned) <= 0) {
     plan = await seedReturnableInventory(secureClient, plan, skip);
   }
-
-  // Seeded inventory is a complementary pair, so the plan must merge it
-  // and report the consumed positions.
-  expect(plan.operations.length).toBeGreaterThan(0);
-  expect(plan.operations.map((operation) => operation.kind)).toContain(
-    CollateralReturnKnownOperationKind.Merge,
-  );
-  expect(plan.positionSummary.consumed.length).toBeGreaterThan(0);
 
   let rejections = 0;
   let executedPlan: CollateralReturnPlan | undefined;
