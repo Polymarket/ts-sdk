@@ -5,7 +5,7 @@ describe('Series', () => {
   describe('listSeries', () => {
     it('fetches series', async ({ publicClient }) => {
       const paginator = publicClient.listSeries({
-        pageSize: 100,
+        pageSize: 49,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 

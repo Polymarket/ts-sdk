@@ -28,7 +28,8 @@ const ListTeamsRequestSchema = z.object({
   league: z.array(z.string()).optional(),
   name: z.array(z.string()).optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 100 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(99).default(20),
   providerId: z.array(z.number().int()).optional(),
 });
 
@@ -111,7 +112,7 @@ export function listTeams(
       })
       .andThen(validateWith(ListTeamsResponseSchema))
       .map((teams) => {
-        const hasMore = teams.length > decoded.pageSize;
+        const hasMore = teams.length >= decoded.pageSize;
 
         return {
           items: teams.slice(0, decoded.pageSize),
