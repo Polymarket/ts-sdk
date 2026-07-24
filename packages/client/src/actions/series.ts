@@ -33,7 +33,8 @@ const ListSeriesRequestSchema = z.object({
   excludeEvents: z.boolean().optional(),
   locale: z.string().optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 50 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(49).default(20),
   recurrence: z.enum(['daily', 'weekly', 'monthly']).optional(),
   slug: z.array(z.string()).optional(),
 });
@@ -123,7 +124,7 @@ export function listSeries(
       })
       .andThen(validateWith(ListSeriesResponseSchema))
       .map((series) => {
-        const hasMore = series.length > decoded.pageSize;
+        const hasMore = series.length >= decoded.pageSize;
 
         return {
           items: series.slice(0, decoded.pageSize),

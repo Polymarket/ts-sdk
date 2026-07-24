@@ -5,7 +5,7 @@ describe('Teams', () => {
   describe('listTeams', () => {
     it('fetches teams', async ({ publicClient }) => {
       const paginator = publicClient.listTeams({
-        pageSize: 100,
+        pageSize: 99,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 

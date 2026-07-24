@@ -36,7 +36,8 @@ const ListTagsRequestSchema = z.object({
   isCarousel: z.boolean().optional(),
   locale: z.string().optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 100 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(99).default(20),
 });
 
 const FetchTagRequestSchema = z.union([
@@ -161,7 +162,7 @@ export function listTags(
       })
       .andThen(validateWith(ListTagsResponseSchema))
       .map((tags) => {
-        const hasMore = tags.length > decoded.pageSize;
+        const hasMore = tags.length >= decoded.pageSize;
 
         return {
           items: tags.slice(0, decoded.pageSize),

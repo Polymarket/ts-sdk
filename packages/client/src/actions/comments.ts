@@ -34,7 +34,8 @@ import { snakeCase, toSearchParams } from './params';
 const ListCommentsRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 100 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(99).default(20),
   getPositions: z.boolean().optional(),
   holdersOnly: z.boolean().optional(),
   order: z.string().optional(),
@@ -52,7 +53,8 @@ const ListCommentsByUserAddressRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 100 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(99).default(20),
 });
 
 export type ListCommentsRequest = z.input<typeof ListCommentsRequestSchema>;
@@ -147,7 +149,7 @@ export function listComments(
       })
       .andThen(validateWith(ListCommentsResponseSchema))
       .map((comments) => {
-        const hasMore = comments.length > decoded.pageSize;
+        const hasMore = comments.length >= decoded.pageSize;
 
         return {
           items: comments.slice(0, decoded.pageSize),
@@ -296,7 +298,7 @@ export function listCommentsByUserAddress(
       })
       .andThen(validateWith(ListCommentsResponseSchema))
       .map((comments) => {
-        const hasMore = comments.length > decoded.pageSize;
+        const hasMore = comments.length >= decoded.pageSize;
 
         return {
           items: comments.slice(0, decoded.pageSize),
