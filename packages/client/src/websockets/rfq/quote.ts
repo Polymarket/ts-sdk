@@ -10,7 +10,7 @@ import {
   type RfqRequestedSize,
   RfqRequestedSizeUnit,
   type RfqSignedOrder,
-} from '@polymarket/bindings/rfq';
+} from '@polymarket/bindings/combos';
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { RfqQuoteResponse, RfqQuoteSource } from '../../actions/rfq';
