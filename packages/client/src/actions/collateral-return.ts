@@ -6,7 +6,6 @@ import {
   type CollateralReturnPositionAmount,
   type CollateralReturnPositionSummary,
   type CollateralReturnRouterCall,
-  CollateralReturnSubmitRequestSchema,
 } from '@polymarket/bindings/combos';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -23,7 +22,6 @@ import {
   type NonEmptyArray,
   unwrap,
 } from '@polymarket/types';
-import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
@@ -35,7 +33,6 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
-import { parseUserInput } from '../input';
 import { validateWith } from '../response';
 import type { TransactionCall, TransactionHandle } from '../types';
 import { completeWith } from '../workflow';
@@ -167,16 +164,10 @@ function toCollateralReturnPlan(
   };
 }
 
-const ExecuteCollateralReturnPlanRequestSchema = z.object({
-  plan: z.custom<CollateralReturnPlan>(
-    (value) => typeof value === 'object' && value !== null,
-    'Expected a collateral return plan',
-  ),
-});
-
-export type ExecuteCollateralReturnPlanRequest = z.input<
-  typeof ExecuteCollateralReturnPlanRequestSchema
->;
+export type ExecuteCollateralReturnPlanRequest = {
+  /** The plan to execute, as returned by `planCollateralReturn()`. */
+  plan: CollateralReturnPlan;
+};
 
 export type CollateralReturnExecutionWorkflow = AsyncGenerator<
   GaslessWorkflowRequest,
@@ -215,10 +206,7 @@ export async function prepareCollateralReturnExecution(
   client: BaseSecureClient,
   request: ExecuteCollateralReturnPlanRequest,
 ): Promise<CollateralReturnExecutionWorkflow> {
-  const { plan } = parseUserInput(
-    request,
-    ExecuteCollateralReturnPlanRequestSchema,
-  );
+  const { plan } = request;
 
   invariant(
     client.supportsGasless,
@@ -356,15 +344,10 @@ async function submitCollateralReturnPlan(
   plan: CollateralReturnPlan,
   envelope: CollateralReturnEnvelope,
 ): Promise<TransactionHandle> {
-  const payload = parseUserInput(
-    { envelope, plan_hash: plan.planHash },
-    CollateralReturnSubmitRequestSchema,
-  );
-
   const response = await unwrap(
     client.combos
       .post('/v1/collateral-return/submit', {
-        json: payload,
+        json: { envelope, plan_hash: plan.planHash },
         timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerExecuteResponseSchema)),
