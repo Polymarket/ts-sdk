@@ -24,17 +24,10 @@ import {
   unwrap,
 } from '@polymarket/types';
 import { z } from 'zod';
-import {
-  decodeErc20AllowanceResult,
-  decodeErc1155IsApprovedForAllResult,
-  erc20AllowanceCall,
-  erc1155IsApprovedForAllCall,
-} from '../abis';
 import type { BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
   CollateralReturnPlanRejectedError,
-  MissingTradingApprovalsError,
   makeErrorGuard,
   RateLimitError,
   RequestRejectedError,
@@ -196,13 +189,11 @@ const COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS = 10;
 const COLLATERAL_RETURN_METADATA = 'Collateral return';
 
 export type PrepareCollateralReturnExecutionError =
-  | MissingTradingApprovalsError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const PrepareCollateralReturnExecutionError = makeErrorGuard(
-  MissingTradingApprovalsError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -213,8 +204,7 @@ export const PrepareCollateralReturnExecutionError = makeErrorGuard(
  * Starts a collateral return execution workflow for a previously requested
  * plan.
  *
- * The workflow signs and submits the exact call carried by the plan; missing
- * trading approvals fail the preparation before any signature is requested.
+ * The workflow signs and submits the exact call carried by the plan.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -248,8 +238,6 @@ export async function prepareCollateralReturnExecution(
       `The collateral return plan was created for chain ${plan.chainId}, but the client is configured for chain ${client.environment.chainId}.`,
     );
   }
-
-  await assertCollateralReturnApprovals(client, plan);
 
   return async function* (): CollateralReturnExecutionWorkflow {
     const calls: NonEmptyArray<TransactionCall> = [
@@ -287,7 +275,6 @@ export async function prepareCollateralReturnExecution(
 
 export type ExecuteCollateralReturnPlanError =
   | CollateralReturnPlanRejectedError
-  | MissingTradingApprovalsError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -298,7 +285,6 @@ export type ExecuteCollateralReturnPlanError =
 export const ExecuteCollateralReturnPlanError = makeErrorGuard(
   CancelledSigningError,
   CollateralReturnPlanRejectedError,
-  MissingTradingApprovalsError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -366,86 +352,6 @@ function buildCollateralReturnEnvelope(
         COLLATERAL_RETURN_METADATA,
       );
   }
-}
-
-async function assertCollateralReturnApprovals(
-  client: BaseSecureClient,
-  plan: CollateralReturnPlan,
-): Promise<void> {
-  const { contracts } = client.environment;
-  const requiredCollateral = decimalToBaseUnits(plan.requiredCollateral);
-  const needsCollateralAllowance = requiredCollateral > 0n;
-  const needsPositionApproval = plan.requiredPositions.length > 0;
-
-  if (!needsCollateralAllowance && !needsPositionApproval) {
-    return;
-  }
-
-  const results = await client.rpc.ethCallBatch([
-    ...(needsCollateralAllowance
-      ? [
-          erc20AllowanceCall(
-            contracts.collateralToken,
-            client.account.wallet,
-            contracts.protocolV2Router,
-          ),
-        ]
-      : []),
-    ...(needsPositionApproval
-      ? [
-          erc1155IsApprovedForAllCall(
-            contracts.positionManager,
-            client.account.wallet,
-            contracts.protocolV2Router,
-          ),
-        ]
-      : []),
-  ]);
-
-  const missing: string[] = [];
-  let resultIndex = 0;
-
-  if (needsCollateralAllowance) {
-    const allowance = decodeErc20AllowanceResult(
-      results[resultIndex] as HexString,
-    );
-    resultIndex += 1;
-
-    if (allowance < requiredCollateral) {
-      missing.push('a collateral allowance covering the required collateral');
-    }
-  }
-
-  if (needsPositionApproval) {
-    const approved = decodeErc1155IsApprovedForAllResult(
-      results[resultIndex] as HexString,
-    );
-
-    if (!approved) {
-      missing.push('a position operator approval');
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new MissingTradingApprovalsError(
-      `Executing this collateral return plan requires ${missing.join(
-        ' and ',
-      )}. Run setupTradingApprovals() and retry.`,
-    );
-  }
-}
-
-function decimalToBaseUnits(value: DecimalString): bigint {
-  const match = /^(\d+)(?:\.(\d*))?$/.exec(value);
-  const fraction = match?.[2] ?? '';
-
-  if (match === null || fraction.length > 6) {
-    throw new UserInputError(
-      `Expected a collateral amount with at most 6 decimal places, received: ${value}`,
-    );
-  }
-
-  return BigInt(match[1] ?? '0') * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 
 async function submitCollateralReturnPlan(

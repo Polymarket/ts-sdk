@@ -242,10 +242,8 @@ export type SecureWalletActions = {
    * Executes a collateral return plan for the authenticated account.
    *
    * Execution signs and submits the exact call carried by the plan; nothing is
-   * recomputed on the client. Missing trading approvals fail execution before
-   * any signature is requested, and no approval transactions are run
-   * implicitly. Confirmation stays explicit through the returned handle's
-   * `wait()`.
+   * recomputed on the client, and no approval transactions are run implicitly.
+   * Confirmation stays explicit through the returned handle's `wait()`.
    *
    * If wallet state changed since the plan was created, execution is rejected
    * with {@link CollateralReturnPlanRejectedError}; request a fresh plan and

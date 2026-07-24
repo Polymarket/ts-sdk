@@ -12,11 +12,9 @@ import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig, production } from '../environments';
 import {
   CollateralReturnPlanRejectedError,
-  MissingTradingApprovalsError,
   RequestRejectedError,
   UserInputError,
 } from '../errors';
-import type { EthCallRequest } from '../rpc';
 import type { Signer } from '../types';
 import {
   executeCollateralReturnPlan,
@@ -29,10 +27,6 @@ const RELAY = expectEvmAddress('0x3333333333333333333333333333333333333333');
 const SIGNATURE = `0x${'11'.repeat(65)}`;
 const PLAN_HASH = `0x${'ab'.repeat(32)}`;
 const ROUTER_DATA = '0xdeadbeef';
-
-const ZERO_RESULT = `0x${'0'.repeat(64)}` as HexString;
-const TRUE_RESULT = `0x${'0'.repeat(63)}1` as HexString;
-const MAX_UINT256_RESULT = `0x${'f'.repeat(64)}` as HexString;
 
 const environment = forkEnvironmentConfig({
   name: 'test',
@@ -140,9 +134,7 @@ describe('planCollateralReturn', () => {
 
 describe('executeCollateralReturnPlan', () => {
   it('signs and submits the planned router call', async () => {
-    const { client, collateralReturnPost, signTypedData } = createClient({
-      ethCallResults: [TRUE_RESULT],
-    });
+    const { client, collateralReturnPost, signTypedData } = createClient();
     const plan = await planCollateralReturn(client);
 
     const handle = await executeCollateralReturnPlan(client, { plan });
@@ -178,7 +170,6 @@ describe('executeCollateralReturnPlan', () => {
 
   it('submits a Safe envelope carrying the router call for Safe accounts', async () => {
     const { client, collateralReturnPost, signMessage } = createClient({
-      ethCallResults: [TRUE_RESULT],
       walletType: WalletType.GNOSIS_SAFE,
     });
     const plan = await planCollateralReturn(client);
@@ -199,7 +190,6 @@ describe('executeCollateralReturnPlan', () => {
 
   it('submits a Proxy envelope wrapping the router call for proxy accounts', async () => {
     const { client, collateralReturnPost, signMessage } = createClient({
-      ethCallResults: [TRUE_RESULT],
       walletType: WalletType.POLY_PROXY,
     });
     const plan = await planCollateralReturn(client);
@@ -245,34 +235,8 @@ describe('executeCollateralReturnPlan', () => {
     ).rejects.toThrow(UserInputError);
   });
 
-  it('fails fast on missing approvals before requesting a signature', async () => {
-    const { client, signTypedData } = createClient({
-      ethCallResults: [ZERO_RESULT, ZERO_RESULT],
-      planOverrides: { required_pusd_input: '5.000000' },
-    });
-    const plan = await planCollateralReturn(client);
-
-    await expect(executeCollateralReturnPlan(client, { plan })).rejects.toThrow(
-      MissingTradingApprovalsError,
-    );
-    expect(signTypedData).not.toHaveBeenCalled();
-  });
-
-  it('executes when the wallet holds the required approvals', async () => {
-    const { client } = createClient({
-      ethCallResults: [MAX_UINT256_RESULT, TRUE_RESULT],
-      planOverrides: { required_pusd_input: '5.000000' },
-    });
-    const plan = await planCollateralReturn(client);
-
-    const handle = await executeCollateralReturnPlan(client, { plan });
-
-    expect(handle.transactionId).toBe('tx-1');
-  });
-
   it('maps plan rejections to CollateralReturnPlanRejectedError without retrying', async () => {
     const { client, collateralReturnPost } = createClient({
-      ethCallResults: [TRUE_RESULT],
       submitResults: [
         errAsync(
           new RequestRejectedError(
@@ -292,7 +256,6 @@ describe('executeCollateralReturnPlan', () => {
 
   it('re-signs and resubmits after a transient relayer rejection', async () => {
     const { client, collateralReturnPost, signTypedData } = createClient({
-      ethCallResults: [TRUE_RESULT],
       submitResults: [
         errAsync(
           new RequestRejectedError(
@@ -315,7 +278,6 @@ describe('executeCollateralReturnPlan', () => {
 
 type CreateClientOptions = {
   walletType?: WalletType;
-  ethCallResults?: HexString[];
   planOverrides?: Partial<typeof planWire>;
   submitResults?: Array<ResultAsync<Response, RequestRejectedError>>;
 };
@@ -334,10 +296,6 @@ function createClient(options: CreateClientOptions = {}) {
     },
   );
   const relayerGet = vi.fn(() => okAsync(jsonResponse(executeParamsWire)));
-  const ethCallBatch = vi.fn(
-    async (_calls: readonly EthCallRequest[]): Promise<HexString[]> =>
-      options.ethCallResults ?? [],
-  );
   const ethEstimateGas = vi.fn(async () => 500_000n);
   const signTypedData = vi.fn(async () => SIGNATURE);
   const signMessage = vi.fn(async () => SIGNATURE);
@@ -358,7 +316,7 @@ function createClient(options: CreateClientOptions = {}) {
     combos: { post: collateralReturnPost },
     environment,
     relayer: { get: relayerGet },
-    rpc: { ethCallBatch, ethEstimateGas },
+    rpc: { ethEstimateGas },
     signer,
     supportsGasless: true,
   } as unknown as BaseSecureClient;
