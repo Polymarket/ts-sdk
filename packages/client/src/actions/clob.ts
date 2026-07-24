@@ -1057,7 +1057,6 @@ export function listCurrentRewards(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );
@@ -1154,7 +1153,6 @@ export function listMarketRewards(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );

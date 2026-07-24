@@ -12,6 +12,7 @@ export type Page<T> = {
   items: T;
   hasMore: boolean;
   nextCursor?: PaginationCursor;
+  /** Total number of matching items across all pages. Only present when the service reports one. */
   totalCount?: number;
 };
 
