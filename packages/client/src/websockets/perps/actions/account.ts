@@ -268,7 +268,9 @@ export async function fetchPerpsOrders(
   );
 }
 
-const ListPerpsFillsRequestSchema = PerpsHistoryRequestBaseSchema.extend({
+const ListPerpsFillsRequestSchema = z.object({
+  start: TimestampInputSchema.optional(),
+  end: TimestampInputSchema.optional(),
   sort: PerpsSortDirectionSchema.optional(),
   cursor: PaginationCursorSchema.optional(),
 }) satisfies z.ZodType<ListPerpsFillsRequest>;
