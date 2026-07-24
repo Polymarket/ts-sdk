@@ -27,9 +27,15 @@ const OrderResponsePayloadSchema = z.object({
 
 type OrderResponsePayload = z.infer<typeof OrderResponsePayloadSchema>;
 
+/**
+ * Placement outcome of an accepted order.
+ */
 export enum OrderPostStatus {
+  /** The order rests on the book without matching. */
   LIVE = 'live',
+  /** The order matched, fully or partially, at placement. */
   MATCHED = 'matched',
+  /** The market imposes a matching delay; the order is queued. */
   DELAYED = 'delayed',
 }
 
@@ -51,24 +57,53 @@ export const OrderResponseErrorCodeSchema = z.nativeEnum(
   OrderResponseErrorCode,
 );
 
+/**
+ * A successfully placed order.
+ */
 export type AcceptedOrderResponse = {
   ok: true;
+  /** Unique identifier of the placed order. */
   orderId: string;
+  /** Placement outcome. Fills only exist when the status is `matched`. */
   status: OrderPostStatus;
+  /** Amount of the maker asset committed by fills at placement. `'0'` when the order did not match. */
   makingAmount: DecimalString;
+  /** Amount of the taker asset received by fills at placement. `'0'` when the order did not match. */
   takingAmount: DecimalString;
+  /**
+   * Settlement transaction hashes for fills that occurred at placement.
+   * Populated on a best-effort basis: settlement happens asynchronously, so
+   * this can be empty even when the order matched. Follow the order's trades
+   * to obtain hashes reliably.
+   */
   transactionsHashes: TxHash[];
+  /**
+   * Identifiers of the trades created by fills at placement. Empty when the
+   * order did not match. Later fills of a resting order create new trades
+   * that are not listed here.
+   */
   tradeIds: string[];
 };
 
+/**
+ * An order the venue refused to place.
+ */
 export type RejectedOrderResponse = {
   ok: false;
+  /** Machine-readable rejection reason. */
   code: OrderResponseErrorCode;
+  /** Human-readable rejection message. */
   message: string;
 };
 
+/**
+ * Result of posting an order, discriminated on `ok`.
+ */
 export type OrderResponse = AcceptedOrderResponse | RejectedOrderResponse;
 
+/**
+ * Results of posting a batch of orders, in request order.
+ */
 export type OrderResponses = OrderResponse[];
 
 export const AcceptedOrderResponseSchema = z.object({

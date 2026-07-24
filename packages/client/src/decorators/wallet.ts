@@ -1,7 +1,6 @@
 import {
   approveErc20,
   approveErc1155ForAll,
-  type DeprecatedTransactionHandle,
   mergePositions,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
@@ -19,12 +18,6 @@ import type { TransactionHandle } from '../types';
 
 export type SecureWalletActions = {
   /**
-   * @deprecated You no longer need to call this. `createSecureClient` ensures
-   * the account wallet is set up for its trading flow, so this always resolves
-   * to `true` and is retained only for backward compatibility.
-   */
-  isGaslessReady(): Promise<boolean>;
-  /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
    * @throws {@link SetupTradingApprovalsError}
@@ -35,7 +28,7 @@ export type SecureWalletActions = {
    * await client.setupTradingApprovals();
    * ```
    */
-  setupTradingApprovals(): Promise<DeprecatedTransactionHandle>;
+  setupTradingApprovals(): Promise<void>;
   /**
    * Approves ERC-20 token spending for the authenticated account.
    *
@@ -217,7 +210,6 @@ export type SecureWalletActions = {
 
 export function walletActions(client: BaseSecureClient): SecureWalletActions {
   return {
-    isGaslessReady: () => Promise.resolve(true),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),

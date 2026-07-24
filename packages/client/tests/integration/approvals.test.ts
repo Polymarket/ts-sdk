@@ -90,11 +90,9 @@ describe('Approvals', () => {
 
       expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
 
-      await expect(secureClient.setupTradingApprovals()).resolves.toMatchObject(
-        {
-          wait: expect.any(Function),
-        },
-      );
+      await expect(
+        secureClient.setupTradingApprovals(),
+      ).resolves.toBeUndefined();
     });
 
     it.runIf(runMeteredTests)(
@@ -109,9 +107,7 @@ describe('Approvals', () => {
 
         await expect(
           secureClient.setupTradingApprovals(),
-        ).resolves.toMatchObject({
-          wait: expect.any(Function),
-        });
+        ).resolves.toBeUndefined();
       },
     );
   });

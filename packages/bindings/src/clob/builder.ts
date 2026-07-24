@@ -1,11 +1,44 @@
 import { z } from 'zod';
 import {
+  type CtfConditionId,
+  CtfConditionIdSchema,
+  type DecimalString,
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  type IsoDateTimeString,
+  type OrderSide,
   OrderSideSchema,
+  type TokenId,
   TokenIdSchema,
 } from '../shared';
+
+export type BuilderTrade = {
+  id: string;
+  tradeType: string;
+  takerOrderHash: string;
+  builder: string;
+  /** CTF condition id for the market associated with this trade. */
+  conditionId: CtfConditionId;
+  tokenId: TokenId;
+  side: OrderSide;
+  size: DecimalString;
+  sizeUsdc: DecimalString;
+  price: DecimalString;
+  status: string;
+  outcome: string;
+  outcomeIndex: number;
+  owner: string;
+  maker: string;
+  transactionHash: string;
+  matchedAt: IsoDateTimeString;
+  bucketIndex: number;
+  fee: DecimalString;
+  feeUsdc: DecimalString;
+  errMsg: string | null | undefined;
+  createdAt?: IsoDateTimeString;
+  updatedAt?: IsoDateTimeString;
+};
 
 export const BuilderTradeSchema = z
   .object({
@@ -13,7 +46,7 @@ export const BuilderTradeSchema = z
     tradeType: z.string(),
     takerOrderHash: z.string(),
     builder: z.string(),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     assetId: TokenIdSchema,
     side: OrderSideSchema,
     size: DecimalStringSchema,
@@ -33,13 +66,13 @@ export const BuilderTradeSchema = z
     createdAt: EpochMillisecondsToIsoDateTimeStringSchema.optional(),
     updatedAt: EpochMillisecondsToIsoDateTimeStringSchema.optional(),
   })
-  .transform(({ err_msg, assetId, matchTime, ...rest }) => ({
+  .transform(({ err_msg, assetId, market, matchTime, ...rest }) => ({
     ...rest,
+    conditionId: market,
     tokenId: assetId,
     errMsg: err_msg,
     matchedAt: matchTime,
-  }));
-export type BuilderTrade = z.infer<typeof BuilderTradeSchema>;
+  })) satisfies z.ZodType<BuilderTrade>;
 
 export const PaginatedBuilderTradesSchema = z
   .object({

@@ -41,13 +41,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set Up Repository
         uses: ./.github/actions/setup
 
-      - name: Create Or Update Beta Release PR
-        uses: changesets/action@63a615b9cd06ba9a3e6d13796c7fbcb080a60a0b # v1
+      - name: Create Or Update Release PR
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
           version: pnpm version:bump
           publish: pnpm release
@@ -69,13 +69,13 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set Up Repository
         uses: ./.github/actions/setup
 
-      - name: Disable Beta Prerelease Mode For Canary
-        run: mv .changeset/pre.json .changeset/pre.json.disabled
+      - name: Disable Prerelease Mode For Canary
+        run: if test -f .changeset/pre.json; then mv .changeset/pre.json .changeset/pre.json.disabled; fi
 
       - name: Version Packages For Canary
         run: pnpm version:canary
@@ -92,7 +92,7 @@ jobs:
     needs: canary
     steps:
       - id: app-token
-        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           # GITHUB_TOKEN can't dispatch cross-repo; polymarket-ci-bot is installed on e2e-defi.
           # CI_APP_ID + CI_APP_PRIVATE_KEY need to be added as secrets on this repo (the same
