@@ -118,27 +118,23 @@ async function createPrivyTestAccount({
     apiKey: builderAuthentication,
     signer: signerFrom(wallet),
   });
-  const depositWalletClient = await secureClient.setupGaslessWallet();
-
-  expect(depositWalletClient.account.walletType).toBe(
-    WalletType.DEPOSIT_WALLET,
-  );
+  expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
 
   const hasCollateralBalance =
     (
-      await fetchBalanceAllowance(depositWalletClient, {
+      await fetchBalanceAllowance(secureClient, {
         assetType: AssetType.COLLATERAL,
       })
     ).balance !== '0';
 
   if (hasCollateralBalance && runMeteredTests) {
-    await depositWalletClient.setupTradingApprovals();
+    await secureClient.setupTradingApprovals();
   }
 
   return {
     hasCollateralBalance,
     wallet,
-    walletAddress: depositWalletClient.account.wallet,
+    walletAddress: secureClient.account.wallet,
   };
 }
 

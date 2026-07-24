@@ -1,9 +1,11 @@
 import type {
+  AcceptedOrderResponse,
   CancelOrdersResponse,
   OpenOrder,
   OrderResponse,
   OrderResponses,
 } from '@polymarket/bindings/clob';
+import type { TxHash } from '@polymarket/types';
 import {
   type CancelMarketOrdersRequest,
   type CancelOrderRequest,
@@ -25,6 +27,8 @@ import {
   placeMarketOrder,
   postOrder,
   postOrders,
+  type WaitForOrderFillSettlementRequest,
+  waitForOrderFillSettlement,
 } from '../actions';
 import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
@@ -60,6 +64,11 @@ export type SecureTradingActions = {
   /**
    * Creates and posts a market order for the authenticated account.
    *
+   * @remarks
+   * Settlement happens asynchronously, so a matched response is not
+   * guaranteed to carry settlement transaction hashes. Use
+   * `waitForOrderFillSettlement` to obtain them reliably.
+   *
    * @throws {@link PlaceMarketOrderError}
    * Thrown on failure.
    *
@@ -84,6 +93,20 @@ export type SecureTradingActions = {
    * });
    *
    * // response: OrderResponse
+   * ```
+   *
+   * @example Market buy followed to settlement
+   * ```ts
+   * const response = await client.placeMarketOrder({
+   *   amount: 10,
+   *   side: OrderSide.BUY,
+   *   tokenId: '123',
+   * });
+   *
+   * if (response.ok) {
+   *   const hashes = await client.waitForOrderFillSettlement(response);
+   *   // hashes: TxHash[]
+   * }
    * ```
    */
   placeMarketOrder(request: PrepareMarketOrderRequest): Promise<OrderResponse>;
@@ -163,6 +186,38 @@ export type SecureTradingActions = {
    */
   postOrders(orders: PostOrdersRequest): Promise<OrderResponses>;
   /**
+   * Waits until every fill listed in an order response reaches a terminal
+   * settlement outcome and returns the settlement transaction hashes.
+   *
+   * @remarks
+   * Settlement covers the fills listed in this order response. These are the
+   * fills that happened immediately when the order was accepted. It does not
+   * wait for later fills of any remaining quantity resting on the book;
+   * subscribe to the `user` channel to follow those.
+   *
+   * @throws {@link WaitForOrderFillSettlementError}
+   * Thrown on failure: a timeout while fills are still settling, or every
+   * fill failing execution. The order placement itself is unaffected.
+   *
+   * @example
+   * ```ts
+   * const response = await client.placeMarketOrder({
+   *   amount: 10,
+   *   side: OrderSide.BUY,
+   *   tokenId: '123',
+   * });
+   *
+   * if (response.ok) {
+   *   const hashes = await client.waitForOrderFillSettlement(response);
+   *   // hashes: TxHash[]
+   * }
+   * ```
+   */
+  waitForOrderFillSettlement(
+    order: AcceptedOrderResponse,
+    request?: WaitForOrderFillSettlementRequest,
+  ): Promise<TxHash[]>;
+  /**
    * Cancels a single open order for the authenticated account.
    *
    * @throws {@link CancelOrderError}
@@ -172,7 +227,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelOrder({ orderId: '123' });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelOrder(request: CancelOrderRequest): Promise<CancelOrdersResponse>;
@@ -186,7 +241,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelOrders({ orderIds: ['1', '2'] });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelOrders(request: CancelOrdersRequest): Promise<CancelOrdersResponse>;
@@ -200,7 +255,7 @@ export type SecureTradingActions = {
    * ```ts
    * const response = await client.cancelAll();
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelAll(): Promise<CancelOrdersResponse>;
@@ -216,7 +271,7 @@ export type SecureTradingActions = {
    *   market: '0x0000000000000000000000000000000000000000000000000000000000000001',
    * });
    *
-   * // response.canceled: string[]
+   * // response.canceled: OrderId[]
    * ```
    */
   cancelMarketOrders(
@@ -279,6 +334,7 @@ export function tradingActions(client: BaseSecureClient): SecureTradingActions {
     placeLimitOrder: placeLimitOrder.bind(null, client),
     postOrder: postOrder(client),
     postOrders: postOrders(client),
+    waitForOrderFillSettlement: waitForOrderFillSettlement.bind(null, client),
     cancelOrder: cancelOrder.bind(null, client),
     cancelOrders: cancelOrders.bind(null, client),
     cancelAll: cancelAll.bind(null, client),
@@ -304,4 +360,5 @@ export {
   PlaceMarketOrderError,
   PostOrderError,
   PostOrdersError,
+  WaitForOrderFillSettlementError,
 } from '../actions';

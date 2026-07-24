@@ -27,7 +27,6 @@ import {
 export {
   RfqConfirmationDecision,
   RfqDirection,
-  RfqErrorCode,
   RfqExecutionStatus,
   RfqKnownErrorCode,
   RfqRequestedSizeUnit,
@@ -35,6 +34,7 @@ export {
 } from '@polymarket/bindings/rfq';
 export type {
   RfqConfirmationRequest,
+  RfqErrorCode,
   RfqExecutionUpdate,
   RfqId,
   RfqQuoteId,

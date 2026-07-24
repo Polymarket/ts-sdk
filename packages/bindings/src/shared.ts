@@ -27,6 +27,21 @@ export enum OrderType {
   FAK = 'FAK',
 }
 
+/**
+ * Lifecycle status of a trade, from creation through on-chain settlement.
+ * `Confirmed` and `Failed` are the terminal states.
+ * `MatchedNotBroadcasted` currently appears only on trades read via REST,
+ * not on user stream trade events.
+ */
+export enum TradeStatus {
+  Matched = 'TRADE_STATUS_MATCHED',
+  MatchedNotBroadcasted = 'TRADE_STATUS_MATCHED_NOT_BROADCASTED',
+  Mined = 'TRADE_STATUS_MINED',
+  Confirmed = 'TRADE_STATUS_CONFIRMED',
+  Retrying = 'TRADE_STATUS_RETRYING',
+  Failed = 'TRADE_STATUS_FAILED',
+}
+
 function toTaggedString<T extends string>(value: string): T {
   return value as T;
 }
@@ -50,8 +65,6 @@ export type CommentId = Tagged<string, 'CommentId'>;
 export type ComboActivityId = Tagged<string, 'ComboActivityId'>;
 export type ComboConditionId = Tagged<HexString, 'ComboConditionId'>;
 export type CtfConditionId = Tagged<HexString, 'CtfConditionId'>;
-/** @deprecated Use {@link CtfConditionId}. */
-export type ConditionId = CtfConditionId;
 export type CollectionId = Tagged<string, 'CollectionId'>;
 export type EventCreatorId = Tagged<string, 'EventCreatorId'>;
 export type EventExternalPartnerMappingId = Tagged<
@@ -67,6 +80,7 @@ export type IsoDateTimeString = Tagged<string, 'IsoDateTimeString'>;
 export type MarketId = Tagged<string, 'MarketId'>;
 export type MixedDateTimeString = Tagged<string, 'MixedDateTimeString'>;
 export type NotificationId = Tagged<number, 'NotificationId'>;
+export type OrderId = Tagged<string, 'OrderId'>;
 export type PartnerId = Tagged<number, 'PartnerId'>;
 export type PaginationCursor = Tagged<string, 'PaginationCursor'>;
 export type PositionId = Tagged<string, 'PositionId'>;
@@ -134,9 +148,6 @@ export function toCtfConditionId(value: string): CtfConditionId {
 
   return value as CtfConditionId;
 }
-
-/** @deprecated Use {@link toCtfConditionId}. */
-export const toConditionId = toCtfConditionId;
 
 export function toComboConditionId(value: string): ComboConditionId {
   if (!isHexString(value)) {
@@ -212,6 +223,10 @@ export function toMarketId(value: string): MarketId {
 
 export function toNotificationId(value: number): NotificationId {
   return toTaggedInteger<NotificationId>(value);
+}
+
+export function toOrderId(value: string): OrderId {
+  return toTaggedString<OrderId>(value);
 }
 
 export function toPartnerId(value: number): PartnerId {
@@ -294,10 +309,6 @@ export const OptionalCtfConditionIdSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   CtfConditionIdSchema.optional(),
 );
-/** @deprecated Use {@link CtfConditionIdSchema}. */
-export const ConditionIdSchema = CtfConditionIdSchema;
-/** @deprecated Use {@link OptionalCtfConditionIdSchema}. */
-export const OptionalConditionIdSchema = OptionalCtfConditionIdSchema;
 export const EvmAddressSchema = z.string().transform(toEvmAddress);
 export const EpochMillisecondsSchema = z
   .number()
@@ -392,8 +403,23 @@ export const NotificationIdSchema = z
   .int()
   .transform(toNotificationId);
 export const CommentParentEntityTypeSchema = z.enum(CommentParentEntityType);
+export const OrderIdSchema = z.string().transform(toOrderId);
 export const OrderSideSchema = z.enum(OrderSide);
 export const OrderTypeSchema = z.enum(OrderType);
+// Trade statuses arrive in two wire forms: REST endpoints serialize the raw
+// prefixed constants ("TRADE_STATUS_CONFIRMED") while the user websocket
+// channel serializes plain values ("CONFIRMED"). Normalize both to the enum.
+export const TradeStatusSchema = z.preprocess((value) => {
+  if (typeof value !== 'string' || value.startsWith('TRADE_STATUS_')) {
+    return value;
+  }
+
+  const normalized = Object.values(TradeStatus).find(
+    (status) => status.slice('TRADE_STATUS_'.length) === value,
+  );
+
+  return normalized ?? value;
+}, z.enum(TradeStatus));
 export const PaginationCursorSchema = z.custom<PaginationCursor>(
   (value) => typeof value === 'string' && value.length > 0,
   'Expected a non-empty pagination cursor',
