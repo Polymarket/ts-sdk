@@ -25,10 +25,11 @@ import {
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
-  encodeOffsetCursor,
+  offsetRequestLimit,
   PageSizeSchema,
   type Paginated,
   paginate,
+  toOffsetPage,
 } from '../pagination';
 import { validateWith } from '../response';
 import { snakeCase, toDataSearchParams, toSearchParams } from './params';
@@ -37,10 +38,12 @@ export { ComboActivityType } from '@polymarket/bindings/data';
 
 const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 
+const TRADES_MAX_PAGE_SIZE = 10_000;
+
 const ListTradesRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    pageSize: PageSizeSchema.max(TRADES_MAX_PAGE_SIZE).default(20),
     takerOnly: z.boolean().optional(),
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().optional(),
@@ -133,35 +136,24 @@ export function listTrades(
       .get('/trades', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: offsetRequestLimit(decoded.pageSize, TRADES_MAX_PAGE_SIZE),
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListTradesResponseSchema))
-      .map((trades) => {
-        const hasMore = trades.length > decoded.pageSize;
-
-        return {
-          items: trades.slice(0, decoded.pageSize),
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
+      .map((trades) => toOffsetPage(trades, decoded, TRADES_MAX_PAGE_SIZE));
   }, cursor);
 }
 
 const ActivitySortBySchema = z.enum(['TIMESTAMP', 'TOKENS', 'CASH']);
 const SortDirectionSchema = z.enum(['ASC', 'DESC']);
 
+const ACTIVITY_MAX_PAGE_SIZE = 500;
+
 const ListActivityRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    pageSize: PageSizeSchema.max(ACTIVITY_MAX_PAGE_SIZE).default(20),
     user: z.string(),
     market: z.array(z.string()).optional(),
     eventId: z.array(z.number().int()).optional(),
@@ -247,25 +239,14 @@ export function listActivity(
       .get('/activity', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: offsetRequestLimit(decoded.pageSize, ACTIVITY_MAX_PAGE_SIZE),
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListActivityResponseSchema))
-      .map((activity) => {
-        const hasMore = activity.length > decoded.pageSize;
-
-        return {
-          items: activity.slice(0, decoded.pageSize),
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
+      .map((activity) =>
+        toOffsetPage(activity, decoded, ACTIVITY_MAX_PAGE_SIZE),
+      );
   }, cursor);
 }
 

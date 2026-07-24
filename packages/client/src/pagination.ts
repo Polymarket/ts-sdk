@@ -86,6 +86,47 @@ export function paginate<T, TError>(
   return createPaginator();
 }
 
+/**
+ * Computes the `limit` for an offset lookahead request. Requests one extra row
+ * to detect a following page, capped at the endpoint's maximum limit so the
+ * lookahead row is never clamped away.
+ *
+ * @internal
+ */
+export function offsetRequestLimit(pageSize: number, maxLimit: number): number {
+  return Math.min(pageSize + 1, maxLimit);
+}
+
+/**
+ * Builds a `Page` from the rows of an offset lookahead request. When the
+ * request limit was capped at the endpoint's maximum limit, a full page is
+ * treated as potentially non-terminal; the following request may yield a
+ * final empty page.
+ *
+ * @internal
+ */
+export function toOffsetPage<T>(
+  rows: T[],
+  state: OffsetCursorState,
+  maxLimit: number,
+): Page<T[]> {
+  const hasMore =
+    state.pageSize < maxLimit
+      ? rows.length > state.pageSize
+      : rows.length >= state.pageSize;
+
+  return {
+    items: rows.slice(0, state.pageSize),
+    hasMore,
+    nextCursor: hasMore
+      ? encodeOffsetCursor({
+          offset: state.offset + state.pageSize,
+          pageSize: state.pageSize,
+        })
+      : undefined,
+  };
+}
+
 /** @internal */
 export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
   return toPaginationCursor(

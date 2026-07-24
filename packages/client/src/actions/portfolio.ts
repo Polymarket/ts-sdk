@@ -29,10 +29,11 @@ import {
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
-  encodeOffsetCursor,
+  offsetRequestLimit,
   PageSizeSchema,
   type Paginated,
   paginate,
+  toOffsetPage,
 } from '../pagination';
 import { readBlob, validateWith } from '../response';
 import { snakeCase, toDataSearchParams, toSearchParams } from './params';
@@ -64,6 +65,8 @@ const PositionSortBySchema = z.enum([
 
 const PositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
 
+const POSITIONS_MAX_PAGE_SIZE = 500;
+
 const ListPositionsRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
@@ -73,7 +76,7 @@ const ListPositionsRequestSchema = z
     sizeThreshold: z.number().optional(),
     redeemable: z.boolean().optional(),
     mergeable: z.boolean().optional(),
-    pageSize: PageSizeSchema.default(20),
+    pageSize: PageSizeSchema.max(POSITIONS_MAX_PAGE_SIZE).default(20),
     sortBy: PositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
     title: z.string().max(100).optional(),
@@ -153,25 +156,14 @@ export function listPositions(
       .get('/positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: offsetRequestLimit(decoded.pageSize, POSITIONS_MAX_PAGE_SIZE),
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListPositionsResponseSchema))
-      .map((positions) => {
-        const hasMore = positions.length > decoded.pageSize;
-
-        return {
-          items: positions.slice(0, decoded.pageSize),
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
+      .map((positions) =>
+        toOffsetPage(positions, decoded, POSITIONS_MAX_PAGE_SIZE),
+      );
   }, cursor);
 }
 
@@ -183,6 +175,8 @@ const ClosedPositionSortBySchema = z.enum([
   'TIMESTAMP',
 ]);
 
+const CLOSED_POSITIONS_MAX_PAGE_SIZE = 50;
+
 const ListClosedPositionsRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
@@ -190,7 +184,7 @@ const ListClosedPositionsRequestSchema = z
     market: z.array(z.string()).optional(),
     title: z.string().max(100).optional(),
     eventId: z.array(z.number().int()).optional(),
-    pageSize: PageSizeSchema.default(20),
+    pageSize: PageSizeSchema.max(CLOSED_POSITIONS_MAX_PAGE_SIZE).default(20),
     sortBy: ClosedPositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
   })
@@ -271,25 +265,17 @@ export function listClosedPositions(
       .get('/closed-positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: offsetRequestLimit(
+            decoded.pageSize,
+            CLOSED_POSITIONS_MAX_PAGE_SIZE,
+          ),
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListClosedPositionsResponseSchema))
-      .map((positions) => {
-        const hasMore = positions.length > decoded.pageSize;
-
-        return {
-          items: positions.slice(0, decoded.pageSize),
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
+      .map((positions) =>
+        toOffsetPage(positions, decoded, CLOSED_POSITIONS_MAX_PAGE_SIZE),
+      );
   }, cursor);
 }
 
