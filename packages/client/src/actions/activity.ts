@@ -40,7 +40,8 @@ const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 const ListTradesRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Upstream caps limit at 10,000 and the probe requests pageSize + 1.
+    pageSize: PageSizeSchema.max(9_999).default(20),
     takerOnly: z.boolean().optional(),
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().optional(),
@@ -139,7 +140,7 @@ export function listTrades(
       })
       .andThen(validateWith(ListTradesResponseSchema))
       .map((trades) => {
-        const hasMore = trades.length > decoded.pageSize;
+        const hasMore = trades.length >= decoded.pageSize;
 
         return {
           items: trades.slice(0, decoded.pageSize),
@@ -161,7 +162,8 @@ const SortDirectionSchema = z.enum(['ASC', 'DESC']);
 const ListActivityRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Upstream caps limit at 500 and the probe requests pageSize + 1.
+    pageSize: PageSizeSchema.max(499).default(20),
     user: z.string(),
     market: z.array(z.string()).optional(),
     eventId: z.array(z.number().int()).optional(),
@@ -253,7 +255,7 @@ export function listActivity(
       })
       .andThen(validateWith(ListActivityResponseSchema))
       .map((activity) => {
-        const hasMore = activity.length > decoded.pageSize;
+        const hasMore = activity.length >= decoded.pageSize;
 
         return {
           items: activity.slice(0, decoded.pageSize),

@@ -34,7 +34,8 @@ import { toDataSearchParams } from './params';
 
 const ListBuilderLeaderboardRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 50 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(49).default(20),
   timePeriod: TimePeriodSchema.optional(),
 });
 
@@ -45,7 +46,8 @@ const ListBuilderVolumeRequestSchema = z.object({
 const ListTraderLeaderboardRequestSchema = z.object({
   category: LeaderboardCategorySchema.optional(),
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Upstream caps limit at 50 and the probe requests pageSize + 1.
+  pageSize: PageSizeSchema.max(49).default(20),
   timePeriod: TimePeriodSchema.optional(),
   orderBy: LeaderboardOrderBySchema.optional(),
   user: z.string().optional(),
@@ -136,7 +138,7 @@ export function listBuilderLeaderboard(
       })
       .andThen(validateWith(ListBuilderLeaderboardResponseSchema))
       .map((builders) => {
-        const hasMore = builders.length > decoded.pageSize;
+        const hasMore = builders.length >= decoded.pageSize;
 
         return {
           items: builders.slice(0, decoded.pageSize),
@@ -275,7 +277,7 @@ export function listTraderLeaderboard(
       })
       .andThen(validateWith(ListTraderLeaderboardResponseSchema))
       .map((traders) => {
-        const hasMore = traders.length > decoded.pageSize;
+        const hasMore = traders.length >= decoded.pageSize;
 
         return {
           items: traders.slice(0, decoded.pageSize),

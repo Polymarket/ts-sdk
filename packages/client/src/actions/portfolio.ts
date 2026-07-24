@@ -73,7 +73,8 @@ const ListPositionsRequestSchema = z
     sizeThreshold: z.number().optional(),
     redeemable: z.boolean().optional(),
     mergeable: z.boolean().optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Upstream caps limit at 500 and the probe requests pageSize + 1.
+    pageSize: PageSizeSchema.max(499).default(20),
     sortBy: PositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
     title: z.string().max(100).optional(),
@@ -159,7 +160,7 @@ export function listPositions(
       })
       .andThen(validateWith(ListPositionsResponseSchema))
       .map((positions) => {
-        const hasMore = positions.length > decoded.pageSize;
+        const hasMore = positions.length >= decoded.pageSize;
 
         return {
           items: positions.slice(0, decoded.pageSize),
@@ -190,7 +191,8 @@ const ListClosedPositionsRequestSchema = z
     market: z.array(z.string()).optional(),
     title: z.string().max(100).optional(),
     eventId: z.array(z.number().int()).optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Upstream caps limit at 50 and the probe requests pageSize + 1.
+    pageSize: PageSizeSchema.max(49).default(20),
     sortBy: ClosedPositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
   })
@@ -277,7 +279,7 @@ export function listClosedPositions(
       })
       .andThen(validateWith(ListClosedPositionsResponseSchema))
       .map((positions) => {
-        const hasMore = positions.length > decoded.pageSize;
+        const hasMore = positions.length >= decoded.pageSize;
 
         return {
           items: positions.slice(0, decoded.pageSize),

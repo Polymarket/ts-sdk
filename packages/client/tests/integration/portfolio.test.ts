@@ -1,4 +1,8 @@
-import { ComboPositionOutcome, ComboPositionSort } from '@polymarket/client';
+import {
+  ComboPositionOutcome,
+  ComboPositionSort,
+  UserInputError,
+} from '@polymarket/client';
 import { isSameEvmAddress } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
@@ -41,9 +45,11 @@ describe('Portfolio', () => {
 
   describe('listClosedPositions', () => {
     it('lists closed positions for a wallet', async ({ publicClient }) => {
+      // 49 is the largest allowed pageSize; the upstream limit cap is 50 and
+      // the pagination probe requests pageSize + 1.
       const paginator = publicClient.listClosedPositions({
         user: TEST_USER,
-        pageSize: 100,
+        pageSize: 49,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 
@@ -55,6 +61,17 @@ describe('Portfolio', () => {
           wallet: TEST_USER,
         }),
       );
+    });
+
+    it('rejects page sizes the upstream limit cap cannot serve', ({
+      publicClient,
+    }) => {
+      expect(() =>
+        publicClient.listClosedPositions({
+          user: TEST_USER,
+          pageSize: 50,
+        }),
+      ).toThrow(UserInputError);
     });
 
     it('defaults secure clients to the authenticated wallet', async ({
