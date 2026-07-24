@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ClobTradeSchema } from './account';
+import { ClobTradeSchema, type OpenOrder, OpenOrderSchema } from './account';
 
 const baseTrade = {
   asset_id: '1',
@@ -60,5 +60,53 @@ describe('ClobTradeSchema', () => {
 
     expect(trade.makerOrders[0]?.feeRateBps).toBeNull();
     expect(trade.makerOrders[1]?.feeRateBps).toBe('25');
+  });
+});
+
+const baseOpenOrder = {
+  asset_id: '8501497',
+  associate_trades: [],
+  created_at: 1700000000,
+  expiration: '0',
+  id: 'order-1',
+  maker_address: `0x${'1'.repeat(40)}`,
+  market: `0x${'1'.repeat(64)}`,
+  order_type: 'GTC',
+  original_size: '100',
+  outcome: 'Yes',
+  owner: `0x${'1'.repeat(40)}`,
+  price: '0.5',
+  side: 'BUY',
+  size_matched: '0',
+  status: 'LIVE',
+};
+
+describe('OpenOrderSchema', () => {
+  it('normalizes epoch seconds timestamps', () => {
+    const order: OpenOrder = OpenOrderSchema.parse({
+      ...baseOpenOrder,
+      expiration: '1735689600',
+    });
+
+    expect(order.createdAt).toBe('2023-11-14T22:13:20.000Z');
+    expect(order.expiresAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('omits expiresAt for zero expiration', () => {
+    const order: OpenOrder = OpenOrderSchema.parse(baseOpenOrder);
+
+    expect(order.expiresAt).toBeUndefined();
+    expect(order).not.toHaveProperty('expiresAt');
+  });
+
+  it('normalizes epoch milliseconds timestamps', () => {
+    const order: OpenOrder = OpenOrderSchema.parse({
+      ...baseOpenOrder,
+      created_at: 1735689600000,
+      expiration: '1735689600000',
+    });
+
+    expect(order.createdAt).toBe('2025-01-01T00:00:00.000Z');
+    expect(order.expiresAt).toBe('2025-01-01T00:00:00.000Z');
   });
 });
