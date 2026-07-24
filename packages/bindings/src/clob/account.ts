@@ -1,17 +1,22 @@
 import { z } from 'zod';
 import {
   BaseUnitsSchema,
+  type CtfConditionId,
   CtfConditionIdSchema,
   DecimalishSchema,
+  type DecimalString,
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
   EpochMillisecondsSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
   EvmAddressSchema,
   emptyStringToNull,
+  type IsoDateTimeString,
   NotificationIdSchema,
   OptionalEpochMillisecondsToIsoDateTimeStringSchema,
+  type TokenId,
   TokenIdSchema,
+  TradeStatusSchema,
 } from '../shared';
 
 function createCursorPageSchema<TItem extends z.ZodTypeAny>(item: TItem) {
@@ -38,6 +43,25 @@ export const ClosedOnlyModeSchema = z
 
 export type ClosedOnlyMode = z.infer<typeof ClosedOnlyModeSchema>;
 
+export type OpenOrder = {
+  id: string;
+  /** CTF condition id for the market associated with this order. */
+  conditionId: CtfConditionId;
+  tokenId: TokenId;
+  owner: string;
+  makerAddress: string;
+  side: string;
+  price: DecimalString;
+  originalSize: DecimalString;
+  sizeMatched: DecimalString;
+  outcome: string;
+  orderType: string;
+  status: string;
+  associateTrades: string[];
+  createdAt: IsoDateTimeString;
+  expiresAt?: IsoDateTimeString;
+};
+
 export const OpenOrderSchema = z
   .object({
     asset_id: TokenIdSchema,
@@ -46,7 +70,7 @@ export const OpenOrderSchema = z
     expiration: OptionalEpochMillisecondsToIsoDateTimeStringSchema,
     id: z.string(),
     maker_address: z.string(),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     order_type: z.string(),
     original_size: DecimalStringSchema,
     outcome: z.string(),
@@ -63,6 +87,7 @@ export const OpenOrderSchema = z
       created_at,
       expiration,
       maker_address,
+      market,
       order_type,
       original_size,
       size_matched,
@@ -70,6 +95,7 @@ export const OpenOrderSchema = z
     }) => {
       const transformed = {
         ...rest,
+        conditionId: market,
         tokenId: asset_id,
         associateTrades: associate_trades,
         createdAt: created_at,
@@ -83,9 +109,7 @@ export const OpenOrderSchema = z
         ? transformed
         : { ...transformed, expiresAt: expiration };
     },
-  );
-
-export type OpenOrder = z.infer<typeof OpenOrderSchema>;
+  ) satisfies z.ZodType<OpenOrder>;
 
 export const OpenOrdersPageSchema = createCursorPageSchema(OpenOrderSchema);
 
@@ -127,6 +151,30 @@ export const MakerOrderSchema = z
     }),
   );
 
+type MakerOrder = z.output<typeof MakerOrderSchema>;
+
+export type ClobTrade = {
+  id: string;
+  /** CTF condition id for the market associated with this trade. */
+  conditionId: CtfConditionId;
+  tokenId: TokenId;
+  owner: string;
+  makerAddress: string;
+  takerOrderId: string;
+  side: string;
+  traderSide: 'TAKER' | 'MAKER';
+  price: DecimalString;
+  size: DecimalString;
+  outcome: string;
+  status: string;
+  feeRateBps: DecimalString;
+  bucketIndex: number;
+  transactionHash: string;
+  makerOrders: MakerOrder[];
+  matchedAt: IsoDateTimeString;
+  updatedAt: IsoDateTimeString;
+};
+
 export const ClobTradeSchema = z
   .object({
     asset_id: TokenIdSchema,
@@ -136,14 +184,14 @@ export const ClobTradeSchema = z
     last_update: EpochLikeToIsoDateTimeStringSchema,
     maker_address: z.string(),
     maker_orders: z.array(MakerOrderSchema),
-    market: z.string(),
+    market: CtfConditionIdSchema,
     match_time: EpochLikeToIsoDateTimeStringSchema,
     outcome: z.string(),
     owner: z.string(),
     price: DecimalStringSchema,
     side: z.string(),
     size: DecimalStringSchema,
-    status: z.string(),
+    status: TradeStatusSchema,
     taker_order_id: z.string(),
     trader_side: z.enum(['TAKER', 'MAKER']),
     transaction_hash: z.string(),
@@ -156,6 +204,7 @@ export const ClobTradeSchema = z
       last_update,
       maker_address,
       maker_orders,
+      market,
       match_time,
       taker_order_id,
       trader_side,
@@ -163,6 +212,7 @@ export const ClobTradeSchema = z
       ...rest
     }) => ({
       ...rest,
+      conditionId: market,
       tokenId: asset_id,
       bucketIndex: bucket_index,
       feeRateBps: fee_rate_bps,
@@ -174,9 +224,7 @@ export const ClobTradeSchema = z
       traderSide: trader_side,
       transactionHash: transaction_hash,
     }),
-  );
-
-export type ClobTrade = z.infer<typeof ClobTradeSchema>;
+  ) satisfies z.ZodType<ClobTrade>;
 
 export const ClobTradesPageSchema = createCursorPageSchema(ClobTradeSchema);
 

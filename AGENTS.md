@@ -39,6 +39,7 @@
 - Future work includes `@polymarket/react`, which should build on the same core model with a higher-level frontend-oriented surface.
 - Each action in `packages/client/src/actions/` has a corresponding bound method in a decorator under `packages/client/src/decorators/`. When you change an action — its signature, parameter types, TSDoc, or examples — verify the matching decorator method is also updated. The decorator method is the public surface most consumers see.
 - The `@polymarket/client` root entry point exports decorators, so new public client additions must be re-exported by the corresponding decorator module.
+- Perps is experimental. Every public Perps surface—including actions, decorator methods, websocket classes and methods, request and response types, bindings, subscription types, and re-exports—must carry an `@experimental` TSDoc tag stating that the API may change in a breaking way in any release, including patch releases. Apply the tag at the original declaration and verify that generated `.d.ts` output retains it.
 - Do not leak `ky` details outside of `ServiceClient`. Keep `ky` instances, types, and option shapes internal, and expose Polymarket-specific abstractions instead.
 - Wallet-library integrations must stay isolated to their entry points and optional peer dependencies. If `viem` is an optional peer tied to the `viem` entry point, non-`viem` code paths must not import `viem`. Apply the same rule to future entry points for other wallet libraries such as Ethers, Privy, Safe SDK, or Turnkey.
 
