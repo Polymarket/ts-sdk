@@ -29,6 +29,7 @@ describe('PerpsInstrumentSchema', () => {
       funding_interval: '1h',
       instrument_id: 1,
       instrument_type: 'perpetual',
+      isolated_only: true,
       liquidation_fee: '0.01',
       max_leverage: 10,
       max_limit_notional: '1000000',
@@ -47,6 +48,7 @@ describe('PerpsInstrumentSchema', () => {
       id: 1,
       category: 'crypto',
       symbol: 'BTC-PERP',
+      isolatedOnly: true,
     });
     expect(instrument).not.toHaveProperty('instrumentId');
     expect(instrument).not.toHaveProperty('instrumentType');
