@@ -409,6 +409,20 @@ export const FetchPerpsFundingHistoryResponseSchema = PerpsDataResponseSchema(
   PerpsFundingRateSchema,
 );
 
+export const PerpsFeeTierSchema = z
+  .object({
+    min_volume_30d: DecimalStringSchema,
+    taker_fee_rate: DecimalStringSchema,
+    maker_fee_rate: DecimalStringSchema,
+  })
+  .transform((tier) => ({
+    minVolume30d: tier.min_volume_30d,
+    takerFeeRate: tier.taker_fee_rate,
+    makerFeeRate: tier.maker_fee_rate,
+  }));
+
+export type PerpsFeeTier = z.infer<typeof PerpsFeeTierSchema>;
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -418,11 +432,13 @@ export const PerpsFeeScheduleEntrySchema = z
     category: PerpsInstrumentCategorySchema,
     taker_fee_rate: DecimalStringSchema,
     maker_fee_rate: DecimalStringSchema,
+    tiers: z.array(PerpsFeeTierSchema),
   })
   .transform((fee) => ({
     category: fee.category,
     takerFeeRate: fee.taker_fee_rate,
     makerFeeRate: fee.maker_fee_rate,
+    tiers: fee.tiers,
   }));
 
 /**
