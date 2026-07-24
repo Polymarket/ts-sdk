@@ -9,6 +9,7 @@ import {
   OrderSideSchema,
   OrderTypeSchema,
   TokenIdSchema,
+  TradeStatusSchema,
   toIsoDateTimeString,
 } from '../shared';
 
@@ -22,26 +23,7 @@ const NormalizedOrderSideSchema: z.ZodType<OrderSide> = z.preprocess(
   OrderSideSchema,
 );
 
-export enum TradeStatus {
-  Matched = 'TRADE_STATUS_MATCHED',
-  MatchedNotBroadcasted = 'TRADE_STATUS_MATCHED_NOT_BROADCASTED',
-  Mined = 'TRADE_STATUS_MINED',
-  Confirmed = 'TRADE_STATUS_CONFIRMED',
-  Retrying = 'TRADE_STATUS_RETRYING',
-  Failed = 'TRADE_STATUS_FAILED',
-}
-
-const TradeStatusSchema = z.preprocess((value) => {
-  if (typeof value !== 'string' || value.startsWith('TRADE_STATUS_')) {
-    return value;
-  }
-
-  const normalized = Object.values(TradeStatus).find(
-    (status) => status.slice('TRADE_STATUS_'.length) === value,
-  );
-
-  return normalized ?? value;
-}, z.enum(TradeStatus));
+export { TradeStatus } from '../shared';
 
 export enum UserOrderStatus {
   Live = 'LIVE',
