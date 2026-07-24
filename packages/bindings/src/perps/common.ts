@@ -189,13 +189,30 @@ export enum PerpsDepositStatus {
 }
 
 /**
+ * Known withdrawal statuses.
+ *
+ * The service evolves this set independently of released clients, so
+ * withdrawal parsing accepts unknown statuses as plain strings; see
+ * {@link PerpsWithdrawalStatus}.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export enum PerpsWithdrawalStatus {
+export enum PerpsKnownWithdrawalStatus {
   Pending = 'pending',
   Confirmed = 'confirmed',
   Removed = 'removed',
+  Failed = 'failed',
 }
+
+/**
+ * A withdrawal status. Known statuses are enumerated in
+ * {@link PerpsKnownWithdrawalStatus}; newly introduced statuses flow through
+ * as plain strings so they can be handled before a client release that
+ * enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsWithdrawalStatus = PerpsKnownWithdrawalStatus | (string & {});
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -260,7 +277,9 @@ export const PerpsDepositStatusSchema = z.enum(PerpsDepositStatus);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export const PerpsWithdrawalStatusSchema = z.enum(PerpsWithdrawalStatus);
+export const PerpsWithdrawalStatusSchema = z
+  .string()
+  .transform((value): PerpsWithdrawalStatus => value);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
