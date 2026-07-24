@@ -203,21 +203,6 @@ export class InsufficientLiquidityError extends PolymarketError {
 }
 
 /**
- * Error thrown when the authenticated account is missing on-chain trading
- * approvals that an action requires.
- *
- * Run `setupTradingApprovals()` on the client to grant the standard trading
- * approvals, then retry the action.
- */
-export class MissingTradingApprovalsError extends PolymarketError {
-  override name = 'MissingTradingApprovalsError' as const;
-
-  constructor(message: string, options: ErrorOptions = {}) {
-    super(message, options);
-  }
-}
-
-/**
  * Error thrown when the service rejects a collateral return plan because it no
  * longer matches current wallet state.
  *
