@@ -5,6 +5,10 @@ import {
   PositionIdSchema,
 } from '@polymarket/bindings';
 import {
+  type ComboMarket,
+  ListComboMarketsResponseSchema,
+} from '@polymarket/bindings/combos';
+import {
   ListMarketHoldersResponseSchema,
   ListMarketPositionsResponseSchema,
   ListOpenInterestResponseSchema,
@@ -19,10 +23,6 @@ import {
   MarketSchema,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import {
-  type ComboMarket,
-  ListComboMarketsResponseSchema,
-} from '@polymarket/bindings/rfq';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';

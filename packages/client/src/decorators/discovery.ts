@@ -1,3 +1,4 @@
+import type { ComboMarket } from '@polymarket/bindings/combos';
 import type {
   Comment,
   Event,
@@ -12,7 +13,6 @@ import type {
   TagReference,
   Team,
 } from '@polymarket/bindings/gamma';
-import type { ComboMarket } from '@polymarket/bindings/rfq';
 import {
   type FetchCommentsByIdRequest,
   type FetchEventRequest,

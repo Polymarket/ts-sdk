@@ -3,16 +3,16 @@ import { z } from 'zod';
 import type {
   ComboConditionId,
   DecimalString,
+  EventId,
   EvmAddress,
-  NegRiskEventId,
   PositionId,
 } from '../shared';
 import {
   ComboConditionIdSchema,
   DecimalStringSchema,
   E6BigIntStringToDecimalStringSchema,
+  EventIdSchema,
   EvmAddressSchema,
-  NegRiskEventIdSchema,
   PositionIdSchema,
 } from '../shared';
 
@@ -58,7 +58,7 @@ const CollateralReturnOperationKindSchema = z
 export type CollateralReturnOperation = {
   kind: CollateralReturnOperationKind;
   conditionId?: ComboConditionId;
-  eventId?: NegRiskEventId;
+  eventId?: EventId;
   positionId?: PositionId;
   conditionIndex: number;
   amount: DecimalString;
@@ -68,7 +68,7 @@ const CollateralReturnOperationSchema = z
   .object({
     kind: CollateralReturnOperationKindSchema,
     condition_id: ComboConditionIdSchema.optional(),
-    event_id: NegRiskEventIdSchema.optional(),
+    event_id: EventIdSchema.optional(),
     position_id: PositionIdSchema.optional(),
     // The wire format omits zero values, so an absent index means 0.
     condition_index: z.number().int().nonnegative().optional().default(0),

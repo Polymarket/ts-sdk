@@ -8,7 +8,7 @@ import type {
   RfqQuoteId,
   RfqQuoteMessage,
   RfqQuoteRequest,
-} from '@polymarket/bindings/rfq';
+} from '@polymarket/bindings/combos';
 import type { AccountIdentity } from '../../wallet';
 import { resolveOrderIdentity } from '../../wallet';
 import type { RfqQuote } from './quote';

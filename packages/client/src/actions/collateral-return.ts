@@ -7,7 +7,7 @@ import {
   type CollateralReturnPositionSummary,
   type CollateralReturnRouterCall,
   CollateralReturnSubmitRequestSchema,
-} from '@polymarket/bindings/collateral-return';
+} from '@polymarket/bindings/combos';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type RelayerDepositWalletExecuteRequest,
@@ -63,7 +63,7 @@ export {
   type CollateralReturnPositionAmount,
   type CollateralReturnPositionSummary,
   type CollateralReturnRouterCall,
-} from '@polymarket/bindings/collateral-return';
+} from '@polymarket/bindings/combos';
 
 /**
  * An inspectable collateral return plan.
@@ -240,6 +240,12 @@ export async function prepareCollateralReturnExecution(
   if (!isSameEvmAddress(plan.wallet, client.account.wallet)) {
     throw new UserInputError(
       'The collateral return plan was created for a different wallet than the authenticated account.',
+    );
+  }
+
+  if (plan.chainId !== client.environment.chainId) {
+    throw new UserInputError(
+      `The collateral return plan was created for chain ${plan.chainId}, but the client is configured for chain ${client.environment.chainId}.`,
     );
   }
 
