@@ -52,7 +52,11 @@ import type {
   TypedDataField,
   TypedDataPayload,
 } from '../types';
-import { deriveCurrentDepositWalletAddress } from '../wallet';
+import {
+  deriveBeaconDepositWalletAddress,
+  deriveCurrentDepositWalletAddress,
+  deriveUupsDepositWalletAddress,
+} from '../wallet';
 import {
   type RequestAddressRequest,
   requestAddress,
@@ -251,6 +255,73 @@ async function resolveWalletDeploymentTarget(
     ),
     type: WalletType.DEPOSIT_WALLET,
   };
+}
+
+const FetchDepositWalletRequestSchema = z.object({
+  address: EvmAddressSchema,
+});
+
+export type FetchDepositWalletRequest = z.input<
+  typeof FetchDepositWalletRequestSchema
+>;
+
+export type FetchDepositWalletError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchDepositWalletError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches the Deposit Wallet address for a signer address.
+ *
+ * Resolves the signer's existing deployed UUPS Deposit Wallet when there is
+ * one, and the signer's Beacon Deposit Wallet otherwise. The resolved wallet
+ * may not be deployed yet.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchDepositWalletError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const wallet = await fetchDepositWallet(client, {
+ *   address: '0x1234...',
+ * });
+ * ```
+ */
+export async function fetchDepositWallet(
+  client: BaseClient,
+  request: FetchDepositWalletRequest,
+): Promise<EvmAddress> {
+  const params = parseUserInput(request, FetchDepositWalletRequestSchema);
+  const legacyDepositWallet = deriveUupsDepositWalletAddress(
+    params.address,
+    client.environment.walletDerivation,
+  );
+
+  if (
+    await isWalletDeployed(client, {
+      wallet: legacyDepositWallet,
+      type: WalletType.DEPOSIT_WALLET,
+    })
+  ) {
+    return legacyDepositWallet;
+  }
+
+  return deriveBeaconDepositWalletAddress(
+    params.address,
+    client.environment.walletDerivation,
+  );
 }
 
 export const GaslessTransactionMetadataSchema = z.string().max(500);

@@ -4,6 +4,7 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import {
   expectEvmAddress,
   expectEvmSignature,
+  InvariantError,
   invariant,
   isSameEvmAddress,
   type Prettify,
@@ -17,6 +18,7 @@ import {
 import {
   type DeployDepositWalletError,
   deployDepositWallet,
+  fetchDepositWallet,
   type IsWalletDeployedError,
   isWalletDeployed,
   type WaitForGaslessTransactionError,
@@ -49,7 +51,6 @@ import type { ApiKeyAuthorization, Signer } from './types';
 import type { AccountIdentity } from './wallet';
 import {
   deriveBeaconDepositWalletAddress,
-  deriveUupsDepositWalletAddress,
   resolveAccountIdentity,
 } from './wallet';
 import {
@@ -410,10 +411,12 @@ class BasePublicClient<
    * Begins an authentication workflow that produces a {@link SecureClient}.
    *
    * @remarks
-   * This is a low-level method for building wallet-interactive workflows. Most
-   * applications should use {@link createSecureClient} instead.
+   * This is a low-level primitive for driving wallet-interactive
+   * authentication step by step; few consumers need it. Most applications
+   * should use {@link createSecureClient} instead.
    *
-   * @internal
+   * @throws {@link UserInputError}
+   * Thrown when the request is malformed.
    */
   beginAuthentication(
     request: BeginAuthenticationRequest,
@@ -874,6 +877,142 @@ export type SecureClientOptions = PublicClientOptions & {
   );
 
 /**
+ * Creates a new base client without any bound action methods.
+ *
+ * @remarks
+ * This is a low-level factory for consumers that call standalone actions
+ * directly and want per-action tree-shaking, such as UI integrations. Most
+ * SDK consumers should prefer {@link createPublicClient}.
+ *
+ * @example
+ * ```ts
+ * const client = createBaseClient();
+ *
+ * const market = await fetchMarket(client, {
+ *   slug: 'some-market-slug',
+ * });
+ * ```
+ */
+export function createBaseClient(
+  options: PublicClientOptions = {},
+): BasePublicClient {
+  return new BasePublicClient({
+    environment: options.environment ?? production,
+    apiKey: options.apiKey,
+  });
+}
+
+export type BaseSecureClientOptions = PublicClientOptions & {
+  /**
+   * Authenticated signer address for the session.
+   */
+  address: string;
+
+  /**
+   * Account/funder wallet address bound to the session.
+   *
+   * Must be the signer address itself (EOA account) or a supported Poly
+   * Deposit Wallet, Poly Safe, or Poly Proxy wallet derived from the signer.
+   */
+  wallet: string;
+
+  /**
+   * Existing API credentials for the account.
+   */
+  credentials: ApiKeyCreds;
+
+  /**
+   * Wallet-library adapter used to complete wallet operations.
+   */
+  signer: Signer;
+};
+
+const BaseSecureClientOptionsSchema = z.object({
+  address: EvmAddressSchema,
+  wallet: EvmAddressSchema,
+  credentials: BeginAuthenticationCredentialsSchema,
+});
+
+export type CreateBaseSecureClientError = UserInputError;
+export const CreateBaseSecureClientError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a base secure client from existing session credentials, without any
+ * bound action methods and without running an authentication workflow.
+ *
+ * @remarks
+ * This is a low-level factory for consumers that call standalone actions
+ * directly and manage session persistence themselves, such as UI integrations
+ * restoring a stored session. The credentials are not validated against the
+ * API: invalid or revoked credentials surface later as request rejections on
+ * authenticated requests. Most SDK consumers should prefer
+ * {@link createSecureClient}.
+ *
+ * @throws {@link CreateBaseSecureClientError}
+ * Thrown when an address or the credentials are malformed, or when the wallet
+ * does not correspond to the signer address.
+ *
+ * @example
+ * ```ts
+ * const client = createBaseSecureClient({
+ *   address: session.address,
+ *   wallet: session.wallet,
+ *   credentials: session.credentials,
+ *   signer,
+ * });
+ *
+ * const orders = listOpenOrders(client);
+ * ```
+ */
+export function createBaseSecureClient(
+  options: BaseSecureClientOptions,
+): BaseSecureClient {
+  const environment = options.environment ?? production;
+  const { account, credentials } = resolveSessionAccount(environment, options);
+
+  return new BaseSecureClient({
+    account,
+    apiKey: options.apiKey,
+    credentials,
+    environment,
+    signer: options.signer,
+  });
+}
+
+function resolveSessionAccount(
+  environment: EnvironmentConfig,
+  options: BaseSecureClientOptions,
+): { account: AccountIdentity; credentials: ApiKeyCreds } {
+  try {
+    const params = parseUserInput(
+      {
+        address: options.address,
+        wallet: options.wallet,
+        credentials: options.credentials,
+      },
+      BaseSecureClientOptionsSchema,
+    );
+
+    return {
+      account: resolveAccountIdentity(
+        environment,
+        params.address,
+        params.wallet,
+      ),
+      credentials: params.credentials,
+    };
+  } catch (error) {
+    // Address parsing and wallet classification assert internally; at this
+    // boundary those failures are malformed session input, not SDK bugs.
+    if (error instanceof InvariantError) {
+      throw new UserInputError(error.message, { cause: error });
+    }
+
+    throw error;
+  }
+}
+
+/**
  * Creates a new `PublicClient` instance.
  *
  * @example
@@ -984,24 +1123,8 @@ async function resolveRequestedWallet(
   }
 
   const signerAddress = expectEvmAddress(await options.signer.getAddress());
-  const legacyDepositWallet = deriveUupsDepositWalletAddress(
-    signerAddress,
-    client.environment.walletDerivation,
-  );
 
-  if (
-    await isWalletDeployed(client, {
-      wallet: legacyDepositWallet,
-      type: WalletType.DEPOSIT_WALLET,
-    })
-  ) {
-    return legacyDepositWallet;
-  }
-
-  return deriveBeaconDepositWalletAddress(
-    signerAddress,
-    client.environment.walletDerivation,
-  );
+  return fetchDepositWallet(client, { address: signerAddress });
 }
 
 /**

@@ -28,7 +28,10 @@ export type {
 export { relayerApiKey, remoteBuilderSigning } from './authorization';
 export type * from './clients';
 export {
+  CreateBaseSecureClientError,
   CreateSecureClientError,
+  createBaseClient,
+  createBaseSecureClient,
   createPublicClient,
   createSecureClient,
   SetupGaslessWalletError,
@@ -40,3 +43,4 @@ export * from './hmac';
 export type * from './pagination';
 export * from './types';
 export type { AccountIdentity } from './wallet';
+export type * from './workflow';

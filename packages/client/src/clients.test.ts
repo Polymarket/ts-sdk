@@ -17,8 +17,13 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createSecureClient } from './clients';
+import {
+  createBaseClient,
+  createBaseSecureClient,
+  createSecureClient,
+} from './clients';
 import { forkEnvironmentConfig } from './environments';
+import { UserInputError } from './errors';
 import type { ApiKeyAuthorization, Signer } from './types';
 import {
   deriveBeaconDepositWalletAddress,
@@ -74,6 +79,74 @@ const signer: Signer = {
     throw new Error('Unexpected sendTransaction call');
   },
 };
+
+describe('base client factories', () => {
+  it('creates a base public client without bound action methods', () => {
+    const client = createBaseClient({ environment });
+
+    expect(client.isPublicClient()).toBe(true);
+    expect('listMarkets' in client).toBe(false);
+  });
+
+  it('creates a base secure client bound to an EOA account', () => {
+    const client = createBaseSecureClient({
+      address: signerAddress,
+      wallet: signerAddress,
+      credentials,
+      environment,
+      signer,
+    });
+
+    expect(client.isSecureClient()).toBe(true);
+    expect('placeMarketOrder' in client).toBe(false);
+    expect(client.account.signer).toBe(signerAddress);
+    expect(client.account.wallet).toBe(signerAddress);
+    expect(client.account.walletType).toBe(WalletType.EOA);
+    expect(client.credentials).toEqual(credentials);
+  });
+
+  it('classifies a derived deposit wallet account', () => {
+    const wallet = deriveBeaconDepositWalletAddress(
+      signerAddress,
+      environment.walletDerivation,
+    );
+
+    const client = createBaseSecureClient({
+      address: signerAddress,
+      wallet,
+      credentials,
+      environment,
+      signer,
+    });
+
+    expect(client.account.wallet).toBe(wallet);
+    expect(client.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+  });
+
+  it('rejects a malformed signer address', () => {
+    expect(() =>
+      createBaseSecureClient({
+        address: 'not-an-address',
+        wallet: signerAddress,
+        credentials,
+        environment,
+        signer,
+      }),
+    ).toThrow(UserInputError);
+  });
+
+  it('rejects a wallet that is unrelated to the signer', () => {
+    expect(() =>
+      createBaseSecureClient({
+        address: signerAddress,
+        wallet: '0x0000000000000000000000000000000000000002',
+        credentials,
+        environment,
+        signer,
+      }),
+    ).toThrow(UserInputError);
+  });
+});
 
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {
