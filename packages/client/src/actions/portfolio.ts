@@ -73,8 +73,8 @@ const ListPositionsRequestSchema = z
     sizeThreshold: z.number().optional(),
     redeemable: z.boolean().optional(),
     mergeable: z.boolean().optional(),
-    // Upstream caps limit at 500 and the probe requests pageSize + 1.
-    pageSize: PageSizeSchema.max(499).default(20),
+    // Matches the upstream per-request limit cap.
+    pageSize: PageSizeSchema.max(500).default(20),
     sortBy: PositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
     title: z.string().max(100).optional(),
@@ -154,7 +154,7 @@ export function listPositions(
       .get('/positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
@@ -163,7 +163,7 @@ export function listPositions(
         const hasMore = positions.length >= decoded.pageSize;
 
         return {
-          items: positions.slice(0, decoded.pageSize),
+          items: positions,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
@@ -191,8 +191,8 @@ const ListClosedPositionsRequestSchema = z
     market: z.array(z.string()).optional(),
     title: z.string().max(100).optional(),
     eventId: z.array(z.number().int()).optional(),
-    // Upstream caps limit at 50 and the probe requests pageSize + 1.
-    pageSize: PageSizeSchema.max(49).default(20),
+    // Matches the upstream per-request limit cap.
+    pageSize: PageSizeSchema.max(50).default(20),
     sortBy: ClosedPositionSortBySchema.optional(),
     sortDirection: PositionSortDirectionSchema.optional(),
   })
@@ -273,7 +273,7 @@ export function listClosedPositions(
       .get('/closed-positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
@@ -282,7 +282,7 @@ export function listClosedPositions(
         const hasMore = positions.length >= decoded.pageSize;
 
         return {
-          items: positions.slice(0, decoded.pageSize),
+          items: positions,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

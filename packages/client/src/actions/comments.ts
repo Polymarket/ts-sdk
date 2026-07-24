@@ -34,8 +34,8 @@ import { snakeCase, toSearchParams } from './params';
 const ListCommentsRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
-  // Upstream caps limit at 100 and the probe requests pageSize + 1.
-  pageSize: PageSizeSchema.max(99).default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(100).default(20),
   getPositions: z.boolean().optional(),
   holdersOnly: z.boolean().optional(),
   order: z.string().optional(),
@@ -53,8 +53,8 @@ const ListCommentsByUserAddressRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
   order: z.string().optional(),
-  // Upstream caps limit at 100 and the probe requests pageSize + 1.
-  pageSize: PageSizeSchema.max(99).default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(100).default(20),
 });
 
 export type ListCommentsRequest = z.input<typeof ListCommentsRequestSchema>;
@@ -138,7 +138,7 @@ export function listComments(
             ascending: params.ascending,
             getPositions: params.getPositions,
             holdersOnly: params.holdersOnly,
-            limit: decoded.pageSize + 1,
+            limit: decoded.pageSize,
             offset: decoded.offset,
             order: params.order,
             parentEntityId: params.parentEntityId,
@@ -152,7 +152,7 @@ export function listComments(
         const hasMore = comments.length >= decoded.pageSize;
 
         return {
-          items: comments.slice(0, decoded.pageSize),
+          items: comments,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
@@ -289,7 +289,7 @@ export function listCommentsByUserAddress(
         params: toSearchParams(
           {
             ascending: params.ascending,
-            limit: decoded.pageSize + 1,
+            limit: decoded.pageSize,
             offset: decoded.offset,
             order: params.order,
           },
@@ -301,7 +301,7 @@ export function listCommentsByUserAddress(
         const hasMore = comments.length >= decoded.pageSize;
 
         return {
-          items: comments.slice(0, decoded.pageSize),
+          items: comments,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

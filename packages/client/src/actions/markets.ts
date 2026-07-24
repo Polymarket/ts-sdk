@@ -140,8 +140,8 @@ const MarketPositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
 const ListMarketPositionsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
   market: z.string(),
-  // Upstream caps limit at 500 and the probe requests pageSize + 1.
-  pageSize: PageSizeSchema.max(499).default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(500).default(20),
   user: z.string().optional(),
   status: MarketPositionStatusSchema.optional(),
   sortBy: MarketPositionSortBySchema.optional(),
@@ -595,7 +595,7 @@ export function listMarketPositions(
       .get('/v1/market-positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
@@ -604,7 +604,7 @@ export function listMarketPositions(
         const hasMore = positions.length >= decoded.pageSize;
 
         return {
-          items: positions.slice(0, decoded.pageSize),
+          items: positions,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

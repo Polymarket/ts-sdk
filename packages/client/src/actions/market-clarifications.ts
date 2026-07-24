@@ -40,8 +40,8 @@ const ListMarketClarificationsRequestSchema = z.object({
   order: z.string().optional(),
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
-  // Upstream caps limit at 100 and the probe requests pageSize + 1.
-  pageSize: PageSizeSchema.max(99).default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(100).default(20),
 });
 
 export type ListMarketClarificationsRequest = z.input<
@@ -117,7 +117,7 @@ export function listMarketClarifications(
         params: toSearchParams(
           {
             ...params,
-            limit: decoded.pageSize + 1,
+            limit: decoded.pageSize,
             offset: decoded.offset,
           },
           snakeCase(),
@@ -128,7 +128,7 @@ export function listMarketClarifications(
         const hasMore = clarifications.length >= decoded.pageSize;
 
         return {
-          items: clarifications.slice(0, decoded.pageSize),
+          items: clarifications,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

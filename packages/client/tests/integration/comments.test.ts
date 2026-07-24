@@ -22,7 +22,7 @@ describe('Comments', () => {
       const paginator = publicClient.listComments({
         parentEntityId: commentEvent.id,
         parentEntityType: CommentParentEntityType.Event,
-        pageSize: 99,
+        pageSize: 100,
       });
       const firstPage = await paginator.firstPage();
 

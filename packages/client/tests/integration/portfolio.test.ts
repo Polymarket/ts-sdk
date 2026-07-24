@@ -45,11 +45,10 @@ describe('Portfolio', () => {
 
   describe('listClosedPositions', () => {
     it('lists closed positions for a wallet', async ({ publicClient }) => {
-      // 49 is the largest allowed pageSize; the upstream limit cap is 50 and
-      // the pagination probe requests pageSize + 1.
+      // 50 is the largest allowed pageSize, matching the upstream limit cap.
       const paginator = publicClient.listClosedPositions({
         user: TEST_USER,
-        pageSize: 49,
+        pageSize: 50,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 
@@ -63,13 +62,13 @@ describe('Portfolio', () => {
       );
     });
 
-    it('rejects page sizes the upstream limit cap cannot serve', ({
+    it('rejects page sizes above the upstream limit cap', ({
       publicClient,
     }) => {
       expect(() =>
         publicClient.listClosedPositions({
           user: TEST_USER,
-          pageSize: 50,
+          pageSize: 51,
         }),
       ).toThrow(UserInputError);
     });

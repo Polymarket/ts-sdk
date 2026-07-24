@@ -11,14 +11,14 @@ describe('Tags', () => {
     it('fetches tags', async ({ publicClient }) => {
       const result = await publicClient
         .listTags({
-          pageSize: 99,
+          pageSize: 100,
         })
         .firstPage()
         .then(expectNonEmptyPage);
 
       expect(result.items.length).toBeGreaterThan(0);
       await expectPageWindow(
-        publicClient.listTags({ pageSize: 99 }),
+        publicClient.listTags({ pageSize: 100 }),
         result,
         99,
       );
