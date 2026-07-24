@@ -22,6 +22,10 @@
       "types": "./dist/clob/index.d.ts",
       "default": "./dist/clob/index.js"
     },
+    "./combos": {
+      "types": "./dist/combos/index.d.ts",
+      "default": "./dist/combos/index.js"
+    },
     "./gamma": {
       "types": "./dist/gamma/index.d.ts",
       "default": "./dist/gamma/index.js"
@@ -38,10 +42,6 @@
       "types": "./dist/perps/index.d.ts",
       "default": "./dist/perps/index.js"
     },
-    "./rfq": {
-      "types": "./dist/rfq.d.ts",
-      "default": "./dist/rfq.js"
-    },
     "./subscriptions": {
       "types": "./dist/subscriptions/index.d.ts",
       "default": "./dist/subscriptions/index.js"
@@ -51,6 +51,9 @@
     "*": {
       "clob": [
         "./dist/clob/index.d.ts"
+      ],
+      "combos": [
+        "./dist/combos/index.d.ts"
       ],
       "data": [
         "./dist/data/index.d.ts"
@@ -63,9 +66,6 @@
       ],
       "relayer": [
         "./dist/relayer/index.d.ts"
-      ],
-      "rfq": [
-        "./dist/rfq.d.ts"
       ],
       "subscriptions": [
         "./dist/subscriptions/index.d.ts"

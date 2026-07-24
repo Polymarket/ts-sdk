@@ -12,7 +12,7 @@ import type {
   RfqRequestorPublicId,
   RfqSide,
   RfqTrade,
-} from '@polymarket/bindings/rfq';
+} from '@polymarket/bindings/combos';
 import { PolymarketError } from '@polymarket/types';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -31,7 +31,7 @@ export {
   RfqKnownErrorCode,
   RfqRequestedSizeUnit,
   RfqSide,
-} from '@polymarket/bindings/rfq';
+} from '@polymarket/bindings/combos';
 export type {
   RfqConfirmationRequest,
   RfqErrorCode,
