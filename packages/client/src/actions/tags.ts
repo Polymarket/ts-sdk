@@ -36,7 +36,8 @@ const ListTagsRequestSchema = z.object({
   isCarousel: z.boolean().optional(),
   locale: z.string().optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(100).default(20),
 });
 
 const FetchTagRequestSchema = z.union([
@@ -153,7 +154,7 @@ export function listTags(
         params: toSearchParams(
           {
             ...params,
-            limit: decoded.pageSize + 1,
+            limit: decoded.pageSize,
             offset: decoded.offset,
           },
           snakeCase(),
@@ -161,10 +162,10 @@ export function listTags(
       })
       .andThen(validateWith(ListTagsResponseSchema))
       .map((tags) => {
-        const hasMore = tags.length > decoded.pageSize;
+        const hasMore = tags.length >= decoded.pageSize;
 
         return {
-          items: tags.slice(0, decoded.pageSize),
+          items: tags,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
