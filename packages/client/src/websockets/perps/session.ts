@@ -169,6 +169,9 @@ export type {
 } from './actions/trading';
 export { UpdatePerpsLeverageError } from './actions/trading';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionOptions = {
   chainId: number;
   credentials: PerpsCredentials;
@@ -178,8 +181,14 @@ export type PerpsSessionOptions = {
   wsUrl: string;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionLifecycleError = RequestRejectedError | TransportError;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionAccountError =
   | RateLimitError
   | RequestRejectedError
@@ -187,6 +196,9 @@ export type PerpsSessionAccountError =
   | UnexpectedResponseError
   | UserInputError;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionTradingError =
   | RateLimitError
   | RequestRejectedError
@@ -195,27 +207,45 @@ export type PerpsSessionTradingError =
   | UnexpectedResponseError
   | UserInputError;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPlacedTpSlOrder = {
   orderId: PerpsOrderId;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPlacedTpSlOrders = {
   takeProfit?: PerpsPlacedTpSlOrder;
   stopLoss?: PerpsPlacedTpSlOrder;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsOrderResult = {
   order: PerpsOrder;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
   tpSl: PerpsPlacedTpSlOrders;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsPositionTpSlResult = {
   tpSl: PerpsPlacedTpSlOrders;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly credentials: PerpsCredentials;
   readonly #api: ServiceClient;
@@ -234,6 +264,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   #nextRequestId = 1;
   #closing: Promise<void> | undefined;
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   constructor(options: PerpsSessionOptions) {
     this.#api = new ServiceClient({
       headers: options.headers,
@@ -247,6 +280,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.#wsUrl = options.wsUrl;
   }
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   get closed(): boolean {
     return this.#closing !== undefined;
   }
@@ -256,6 +292,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionLifecycleError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async connect(): Promise<void> {
     await this.#connect(false);
@@ -266,6 +304,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionLifecycleError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async close(): Promise<void> {
     if (this.#closing === undefined) {
@@ -285,6 +325,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *   }
    * }
    * ```
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   [Symbol.asyncIterator](): AsyncIterator<PerpsSessionEvent> {
     return this.#queue[Symbol.asyncIterator]();
@@ -295,6 +337,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchBalances(): Promise<PerpsBalance[]> {
     return await fetchPerpsBalances(this.#api);
@@ -305,6 +349,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchPortfolio(): Promise<PerpsPortfolio> {
     return await fetchPerpsPortfolio(this.#api);
@@ -315,6 +361,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchStats(): Promise<PerpsAccountStats> {
     return await fetchPerpsStats(this.#api);
@@ -325,6 +373,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchAccountConfig(
     request?: FetchPerpsAccountConfigRequest,
@@ -337,6 +387,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchOpenOrders(
     request?: FetchPerpsOpenOrdersRequest,
@@ -349,13 +401,15 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async fetchOrders(request?: FetchPerpsOrdersRequest): Promise<PerpsOrder[]> {
     return await fetchPerpsOrders(this.#api, request);
   }
 
   /**
-   * Lists Perps fills with cursor pagination.
+   * Lists Perps fills
    *
    * @remarks
    * Fills are returned newest first by default; set `sort` to change the
@@ -363,6 +417,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listFills(
     request: ListPerpsFillsRequest = {},
@@ -375,6 +431,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listFundingPayments(
     request: ListPerpsFundingPaymentsRequest = {},
@@ -387,6 +445,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listDeposits(
     request: ListPerpsDepositsRequest = {},
@@ -399,6 +459,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listWithdrawals(
     request: ListPerpsWithdrawalsRequest = {},
@@ -411,6 +473,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listEquityHistory(
     request: ListPerpsEquityHistoryRequest,
@@ -423,6 +487,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listPnlHistory(
     request: ListPerpsPnlHistoryRequest,
@@ -458,13 +524,21 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async placeOrder(
     request: PlacePerpsOrderWithTpSlRequest,
   ): Promise<PlacePerpsOrderWithTpSlResult>;
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   async placeOrder(
     request: PlacePerpsOrderRequest,
   ): Promise<PlacePerpsOrderResult>;
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   async placeOrder(
     request: PlacePerpsOrderRequestWithOptions,
   ): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
@@ -497,6 +571,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async postOrders(
     request: PostPerpsOrdersRequest,
@@ -568,6 +644,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown when the TP/SL command fails.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async placePositionTpSl(
     request: PlacePerpsPositionTpSlRequest,
@@ -632,6 +710,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async cancelOrder(
     request: CancelPerpsOrderRequest,
@@ -647,6 +727,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async cancelOrders(
     request: CancelPerpsOrdersRequest,
@@ -664,6 +746,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async cancelAllOrders(request?: CancelAllPerpsOrdersRequest): Promise<void> {
     await cancelAllOrders(
@@ -687,6 +771,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @throws {@link UpdatePerpsLeverageError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async updateLeverage(
     request: UpdatePerpsLeverageRequest,

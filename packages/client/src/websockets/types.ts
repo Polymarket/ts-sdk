@@ -75,6 +75,9 @@ export type PublicWebSocketManagers = {
     CommentsSubscription | CryptoPricesSubscription | EquityPricesSubscription,
     CommentsEvent | CryptoPricesEvent | EquityPricesEvent
   >;
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   readonly perpsSubscriptions: WebSocketSubscriptionManager<
     PerpsMarketDataSubscription,
     PerpsMarketDataEvent
@@ -84,6 +87,9 @@ export type PublicWebSocketManagers = {
 // Secure client additionally exposes the user surface.
 export type SecureWebSocketManagers = PublicWebSocketManagers & {
   readonly clobUser: WebSocketSubscriptionManager<UserSubscription, UserEvent>;
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   readonly perpsSession: PerpsSessionManager;
   readonly rfqQuoter: RfqQuoterWebSocketManager;
 };

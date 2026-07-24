@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
   PerpsPublicTradeSchema,
@@ -29,6 +30,7 @@ describe('PerpsInstrumentSchema', () => {
       funding_interval: '1h',
       instrument_id: 1,
       instrument_type: 'perpetual',
+      isolated_only: true,
       liquidation_fee: '0.01',
       max_leverage: 10,
       max_limit_notional: '1000000',
@@ -47,9 +49,51 @@ describe('PerpsInstrumentSchema', () => {
       id: 1,
       category: 'crypto',
       symbol: 'BTC-PERP',
+      isolatedOnly: true,
     });
     expect(instrument).not.toHaveProperty('instrumentId');
     expect(instrument).not.toHaveProperty('instrumentType');
+  });
+});
+
+describe('PerpsFeeScheduleEntrySchema', () => {
+  it('normalizes volume tiers including negative maker rates', () => {
+    const entry = PerpsFeeScheduleEntrySchema.parse({
+      instrument_type: 'perpetual',
+      category: 'crypto',
+      taker_fee_rate: '0.00045',
+      maker_fee_rate: '0.00015',
+      tiers: [
+        {
+          min_volume_30d: '0',
+          taker_fee_rate: '0.00045',
+          maker_fee_rate: '0.00015',
+        },
+        {
+          min_volume_30d: '5000000',
+          taker_fee_rate: '0.0002',
+          maker_fee_rate: '-0.00005',
+        },
+      ],
+    });
+
+    expect(entry).toEqual({
+      category: 'crypto',
+      takerFeeRate: '0.00045',
+      makerFeeRate: '0.00015',
+      tiers: [
+        {
+          minVolume30d: '0',
+          takerFeeRate: '0.00045',
+          makerFeeRate: '0.00015',
+        },
+        {
+          minVolume30d: '5000000',
+          takerFeeRate: '0.0002',
+          makerFeeRate: '-0.00005',
+        },
+      ],
+    });
   });
 });
 

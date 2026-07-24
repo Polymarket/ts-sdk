@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PerpsKnownWithdrawalStatus } from './common';
 import {
   PerpsDepositUpdateSchema,
   PerpsWithdrawalSchema,
@@ -38,6 +39,24 @@ describe('PerpsWithdrawalSchema', () => {
     });
 
     expect(withdrawal.hash).toBeUndefined();
+  });
+
+  it('parses failed withdrawals', () => {
+    const withdrawal = PerpsWithdrawalSchema.parse({
+      ...baseWithdrawal,
+      status: 'failed',
+    });
+
+    expect(withdrawal.status).toBe(PerpsKnownWithdrawalStatus.Failed);
+  });
+
+  it('passes unknown withdrawal statuses through as strings', () => {
+    const withdrawal = PerpsWithdrawalSchema.parse({
+      ...baseWithdrawal,
+      status: 'not-a-status-yet',
+    });
+
+    expect(withdrawal.status).toBe('not-a-status-yet');
   });
 });
 

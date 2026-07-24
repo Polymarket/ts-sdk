@@ -28,6 +28,9 @@ type PerpsSubscriptionEntry = SubscriptionRegistryEntry<
 
 type PerpsSubscriptionServerState = Set<string>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSubscriptionManagerOptions = {
   headers?: Record<string, string>;
   url: string;
@@ -39,6 +42,8 @@ export type PerpsSubscriptionManagerOptions = {
  * The Perps server tracks subscriptions by channel string. This manager keeps
  * SDK-level topic specs separate from upstream channel names and resubscribes
  * active channels after reconnects.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export class PerpsSubscriptionManager
   implements
@@ -61,11 +66,17 @@ export class PerpsSubscriptionManager
     PerpsSubscriptionServerState
   >({ deriveServerState: derivePerpsSubscriptionServerState });
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   constructor(options: PerpsSubscriptionManagerOptions) {
     this.#headers = options.headers;
     this.#url = options.url;
   }
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   async subscribe(
     subscription: PerpsMarketDataSubscription,
   ): Promise<SubscriptionHandle<PerpsMarketDataEvent>> {
@@ -105,6 +116,9 @@ export class PerpsSubscriptionManager
     }
   }
 
+  /**
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   async close(): Promise<void> {
     if (this.#closing === undefined) {
       this.#closing = this.#shutdown().finally(() => {
