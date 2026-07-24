@@ -245,9 +245,8 @@ export type SecureWalletActions = {
    * recomputed on the client, and no approval transactions are run implicitly.
    * Confirmation stays explicit through the returned handle's `wait()`.
    *
-   * If wallet state changed since the plan was created, execution is rejected
-   * with {@link CollateralReturnPlanRejectedError}; request a fresh plan and
-   * execute that instead.
+   * If wallet state changed since the plan was created, the service rejects
+   * the submission; request a fresh plan and execute that instead.
    *
    * @throws {@link ExecuteCollateralReturnPlanError}
    * Thrown on failure.

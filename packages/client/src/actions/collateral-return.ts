@@ -27,7 +27,6 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
-  CollateralReturnPlanRejectedError,
   makeErrorGuard,
   RateLimitError,
   RequestRejectedError,
@@ -274,7 +273,6 @@ export async function prepareCollateralReturnExecution(
 }
 
 export type ExecuteCollateralReturnPlanError =
-  | CollateralReturnPlanRejectedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -284,7 +282,6 @@ export type ExecuteCollateralReturnPlanError =
   | SigningError;
 export const ExecuteCollateralReturnPlanError = makeErrorGuard(
   CancelledSigningError,
-  CollateralReturnPlanRejectedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -370,13 +367,6 @@ async function submitCollateralReturnPlan(
         json: payload,
         timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
       })
-      .mapErr((error) =>
-        error instanceof RequestRejectedError && error.status === 409
-          ? new CollateralReturnPlanRejectedError(error.message, {
-              cause: error,
-            })
-          : error,
-      )
       .andThen(validateWith(RelayerExecuteResponseSchema)),
   );
 

@@ -1,6 +1,5 @@
 import type { CollateralReturnPlan, SecureClient } from '@polymarket/client';
 import {
-  CollateralReturnPlanRejectedError,
   createSecureClient,
   RequestRejectedError,
   WalletType,
@@ -97,14 +96,13 @@ describe('Collateral return', () => {
       // service at submission.
       await expect(
         secureClient.executeCollateralReturnPlan({ plan }),
-      ).rejects.toThrow(CollateralReturnPlanRejectedError);
+      ).rejects.toThrow(RequestRejectedError);
     },
     300_000,
   );
 
-  // A corrupted execution artifact fails submit validation outright (400)
-  // rather than as a stale-plan rejection (409), so it must surface as the
-  // plain request error instead of CollateralReturnPlanRejectedError.
+  // A corrupted execution artifact fails submit validation and is rejected
+  // by the service before anything reaches the relayer.
   it.runIf(runMeteredTests)(
     'rejects a tampered plan as an invalid submission',
     async ({ secureClientWithDepositWallet }) => {
@@ -119,15 +117,9 @@ describe('Collateral return', () => {
         },
       };
 
-      const failure = await secureClient
-        .executeCollateralReturnPlan({ plan: tampered })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
-
-      expect(failure).toBeInstanceOf(RequestRejectedError);
-      expect(failure).not.toBeInstanceOf(CollateralReturnPlanRejectedError);
+      await expect(
+        secureClient.executeCollateralReturnPlan({ plan: tampered }),
+      ).rejects.toThrow(RequestRejectedError);
     },
     300_000,
   );
@@ -208,14 +200,15 @@ async function seedAndExecuteCollateralReturn(
       expect(outcome.transactionHash).toMatch(/^0x[0-9a-f]{64}$/i);
       executedPlan = plan;
     } catch (error) {
-      // Wallet state can move between planning and submission; the
-      // documented recovery is to request a fresh plan and execute that.
+      // Wallet state can move between planning and submission; the service
+      // rejects the stale plan with a 409 and the documented recovery is to
+      // request a fresh plan and execute that.
       rejections += 1;
 
-      if (
-        !(error instanceof CollateralReturnPlanRejectedError) ||
-        rejections > EXECUTE_RETRY_ATTEMPTS
-      ) {
+      const stalePlan =
+        error instanceof RequestRejectedError && error.status === 409;
+
+      if (!stalePlan || rejections > EXECUTE_RETRY_ATTEMPTS) {
         throw error;
       }
 
@@ -244,7 +237,7 @@ async function seedAndExecuteCollateralReturn(
   if (executedPlan !== undefined) {
     await expect(
       secureClient.executeCollateralReturnPlan({ plan: executedPlan }),
-    ).rejects.toThrow(CollateralReturnPlanRejectedError);
+    ).rejects.toThrow(RequestRejectedError);
   }
 }
 

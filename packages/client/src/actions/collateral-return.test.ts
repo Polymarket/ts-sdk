@@ -10,11 +10,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { encodeProxyCall } from '../abis';
 import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig, production } from '../environments';
-import {
-  CollateralReturnPlanRejectedError,
-  RequestRejectedError,
-  UserInputError,
-} from '../errors';
+import { RequestRejectedError, UserInputError } from '../errors';
 import type { Signer } from '../types';
 import {
   executeCollateralReturnPlan,
@@ -235,7 +231,7 @@ describe('executeCollateralReturnPlan', () => {
     ).rejects.toThrow(UserInputError);
   });
 
-  it('maps plan rejections to CollateralReturnPlanRejectedError without retrying', async () => {
+  it('does not retry plan rejections', async () => {
     const { client, collateralReturnPost } = createClient({
       submitResults: [
         errAsync(
@@ -249,7 +245,7 @@ describe('executeCollateralReturnPlan', () => {
     const plan = await planCollateralReturn(client);
 
     await expect(executeCollateralReturnPlan(client, { plan })).rejects.toThrow(
-      CollateralReturnPlanRejectedError,
+      RequestRejectedError,
     );
     expect(countSubmitCalls(collateralReturnPost)).toBe(1);
   });
