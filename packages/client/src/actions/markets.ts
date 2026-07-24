@@ -140,7 +140,8 @@ const MarketPositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
 const ListMarketPositionsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
   market: z.string(),
-  pageSize: PageSizeSchema.default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(500).default(20),
   user: z.string().optional(),
   status: MarketPositionStatusSchema.optional(),
   sortBy: MarketPositionSortBySchema.optional(),
@@ -594,16 +595,16 @@ export function listMarketPositions(
       .get('/v1/market-positions', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListMarketPositionsResponseSchema))
       .map((positions) => {
-        const hasMore = positions.length > decoded.pageSize;
+        const hasMore = positions.length >= decoded.pageSize;
 
         return {
-          items: positions.slice(0, decoded.pageSize),
+          items: positions,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

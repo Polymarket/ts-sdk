@@ -28,7 +28,8 @@ const ListTeamsRequestSchema = z.object({
   league: z.array(z.string()).optional(),
   name: z.array(z.string()).optional(),
   order: z.string().optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(100).default(20),
   providerId: z.array(z.number().int()).optional(),
 });
 
@@ -103,7 +104,7 @@ export function listTeams(
         params: toSearchParams(
           {
             ...params,
-            limit: decoded.pageSize + 1,
+            limit: decoded.pageSize,
             offset: decoded.offset,
           },
           snakeCase({ providerId: 'provider_id' }),
@@ -111,10 +112,10 @@ export function listTeams(
       })
       .andThen(validateWith(ListTeamsResponseSchema))
       .map((teams) => {
-        const hasMore = teams.length > decoded.pageSize;
+        const hasMore = teams.length >= decoded.pageSize;
 
         return {
-          items: teams.slice(0, decoded.pageSize),
+          items: teams,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
