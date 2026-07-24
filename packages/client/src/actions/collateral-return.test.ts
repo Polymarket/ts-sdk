@@ -84,14 +84,14 @@ const submitResponseWire = {
 };
 
 describe('planCollateralReturn', () => {
-  it('normalizes the plan response into the public plan shape', async () => {
+  it('parses the plan response', async () => {
     const { client } = createClient();
 
     const plan = await planCollateralReturn(client);
 
     expect(plan.planHash).toBe(PLAN_HASH);
     expect(plan.blockNumber).toBe(74000000n);
-    expect(plan.collateralReturned).toBe('1.000000');
+    expect(plan.netPusdOut).toBe('1.000000');
     expect(plan.requiredPositions).toEqual([
       { positionId: '123', amount: '2' },
     ]);

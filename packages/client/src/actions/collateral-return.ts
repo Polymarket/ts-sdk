@@ -1,11 +1,8 @@
-import type { DecimalString, EvmAddress } from '@polymarket/bindings';
+import type { EvmAddress } from '@polymarket/bindings';
 import {
-  type CollateralReturnOperation,
   type CollateralReturnPlanResponse,
   CollateralReturnPlanResponseSchema,
-  type CollateralReturnPositionAmount,
-  type CollateralReturnPositionSummary,
-  type CollateralReturnRouterCall,
+  CollateralReturnPlanSchema,
 } from '@polymarket/bindings/combos';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -22,6 +19,7 @@ import {
   type NonEmptyArray,
   unwrap,
 } from '@polymarket/types';
+import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
@@ -33,6 +31,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { parseUserInput } from '../input';
 import { validateWith } from '../response';
 import type { TransactionCall, TransactionHandle } from '../types';
 import { completeWith } from '../workflow';
@@ -49,58 +48,11 @@ export {
   CollateralReturnKnownOperationKind,
   type CollateralReturnOperation,
   type CollateralReturnOperationKind,
+  type CollateralReturnPlanResponse,
   type CollateralReturnPositionAmount,
   type CollateralReturnPositionSummary,
   type CollateralReturnRouterCall,
 } from '@polymarket/bindings/combos';
-
-/**
- * An inspectable collateral return plan.
- *
- * A plan is a client-held execution artifact computed from a snapshot of the
- * account's positions: it describes how much collateral the plan releases,
- * the inputs the wallet must provide, and the exact call that executing the
- * plan submits. Inspect the returned amounts and residual-position impact,
- * and apply any application-specific limits, before executing.
- */
-export type CollateralReturnPlan = {
-  /** Opaque plan identifier, round-tripped when the plan is executed. */
-  planHash: HexString;
-  /** Wallet the plan was computed for. */
-  wallet: EvmAddress;
-  /** Chain the plan executes on. */
-  chainId: number;
-  /** Block the plan's snapshot was computed at. */
-  blockNumber: bigint;
-  /** Collateral balance before the plan executes. */
-  startingCollateral: DecimalString;
-  /** Net collateral the plan releases to the wallet. */
-  collateralReturned: DecimalString;
-  /** Collateral balance after the plan executes. */
-  finalCollateral: DecimalString;
-  /**
-   * Collateral the wallet must hold, and have approved, to fund the plan's
-   * intermediate operations.
-   */
-  requiredCollateral: DecimalString;
-  /** Positions the wallet must provide to fund the plan's operations. */
-  requiredPositions: CollateralReturnPositionAmount[];
-  /**
-   * Net position impact of the plan: the positions it consumes and the
-   * residual positions it creates.
-   */
-  positionSummary: CollateralReturnPositionSummary;
-  /** Ordered operations the plan performs. */
-  operations: CollateralReturnOperation[];
-  /**
-   * Whether the plan reached the operation limit and is one executable chunk
-   * of a larger return. Execute and confirm the chunk, then request a fresh
-   * plan for the remainder.
-   */
-  truncated: boolean;
-  /** Exact call executing the plan submits. */
-  routerCall: CollateralReturnRouterCall;
-};
 
 // Planning and submit re-validation both recompute wallet state server-side
 // and can take well beyond the transport's standard timeout.
@@ -129,10 +81,10 @@ export const PlanCollateralReturnError = makeErrorGuard(
  */
 export async function planCollateralReturn(
   client: BaseSecureClient,
-): Promise<CollateralReturnPlan> {
+): Promise<CollateralReturnPlanResponse> {
   assertCollateralReturnAccount(client);
 
-  const response = await unwrap(
+  return unwrap(
     client.combos
       .post('/v1/collateral-return/plan', {
         json: { wallet: client.account.wallet },
@@ -140,34 +92,15 @@ export async function planCollateralReturn(
       })
       .andThen(validateWith(CollateralReturnPlanResponseSchema)),
   );
-
-  return toCollateralReturnPlan(response);
 }
 
-function toCollateralReturnPlan(
-  response: CollateralReturnPlanResponse,
-): CollateralReturnPlan {
-  return {
-    blockNumber: response.blockNumber,
-    chainId: response.chainId,
-    collateralReturned: response.netPusdOut,
-    finalCollateral: response.finalPusd,
-    operations: response.operations,
-    planHash: response.planHash,
-    positionSummary: response.positionSummary,
-    requiredCollateral: response.requiredPusdInput,
-    requiredPositions: response.requiredPositions,
-    routerCall: response.routerCall,
-    startingCollateral: response.startingPusd,
-    truncated: response.truncated,
-    wallet: response.wallet,
-  };
-}
+const ExecuteCollateralReturnPlanRequestSchema = z.object({
+  plan: CollateralReturnPlanSchema,
+});
 
-export type ExecuteCollateralReturnPlanRequest = {
-  /** The plan to execute, as returned by `planCollateralReturn()`. */
-  plan: CollateralReturnPlan;
-};
+export type ExecuteCollateralReturnPlanRequest = z.infer<
+  typeof ExecuteCollateralReturnPlanRequestSchema
+>;
 
 export type CollateralReturnExecutionWorkflow = AsyncGenerator<
   GaslessWorkflowRequest,
@@ -206,7 +139,10 @@ export async function prepareCollateralReturnExecution(
   client: BaseSecureClient,
   request: ExecuteCollateralReturnPlanRequest,
 ): Promise<CollateralReturnExecutionWorkflow> {
-  const { plan } = request;
+  const { plan } = parseUserInput(
+    request,
+    ExecuteCollateralReturnPlanRequestSchema,
+  );
 
   invariant(
     client.supportsGasless,
@@ -243,7 +179,11 @@ export async function prepareCollateralReturnExecution(
       try {
         const envelope = yield* buildCollateralReturnEnvelope(client, calls);
 
-        return await submitCollateralReturnPlan(client, plan, envelope);
+        return await submitCollateralReturnPlan(
+          client,
+          plan.planHash,
+          envelope,
+        );
       } catch (error) {
         if (
           !isRetryableGaslessSubmitError(error) ||
@@ -341,13 +281,13 @@ function buildCollateralReturnEnvelope(
 
 async function submitCollateralReturnPlan(
   client: BaseSecureClient,
-  plan: CollateralReturnPlan,
+  planHash: HexString,
   envelope: CollateralReturnEnvelope,
 ): Promise<TransactionHandle> {
   const response = await unwrap(
     client.combos
       .post('/v1/collateral-return/submit', {
-        json: { envelope, plan_hash: plan.planHash },
+        json: { envelope, plan_hash: planHash },
         timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerExecuteResponseSchema)),

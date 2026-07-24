@@ -1,4 +1,7 @@
-import type { CollateralReturnPlan, SecureClient } from '@polymarket/client';
+import type {
+  CollateralReturnPlanResponse,
+  SecureClient,
+} from '@polymarket/client';
 import {
   createSecureClient,
   RequestRejectedError,
@@ -86,7 +89,7 @@ describe('Collateral return', () => {
 
       const plan = await fetchPlan(secureClient);
 
-      if (Number(plan.collateralReturned) > 0) {
+      if (Number(plan.netPusdOut) > 0) {
         skip('The account holds returnable inventory; empty plan unavailable');
       }
 
@@ -109,7 +112,7 @@ describe('Collateral return', () => {
       const secureClient = secureClientWithDepositWallet;
       const plan = await fetchPlan(secureClient);
 
-      const tampered: CollateralReturnPlan = {
+      const tampered: CollateralReturnPlanResponse = {
         ...plan,
         routerCall: {
           ...plan.routerCall,
@@ -183,12 +186,12 @@ async function seedAndExecuteCollateralReturn(
 ): Promise<void> {
   let plan = await fetchPlan(secureClient);
 
-  if (Number(plan.collateralReturned) <= 0) {
+  if (Number(plan.netPusdOut) <= 0) {
     plan = await seedReturnableInventory(secureClient, plan, skip);
   }
 
   let rejections = 0;
-  let executedPlan: CollateralReturnPlan | undefined;
+  let executedPlan: CollateralReturnPlanResponse | undefined;
 
   for (;;) {
     try {
@@ -214,7 +217,7 @@ async function seedAndExecuteCollateralReturn(
 
       plan = await fetchPlan(secureClient);
 
-      if (Number(plan.collateralReturned) <= 0) {
+      if (Number(plan.netPusdOut) <= 0) {
         break;
       }
 
@@ -227,7 +230,7 @@ async function seedAndExecuteCollateralReturn(
 
     plan = await fetchPlan(secureClient);
 
-    if (Number(plan.collateralReturned) <= 0) {
+    if (Number(plan.netPusdOut) <= 0) {
       break;
     }
   }
@@ -245,7 +248,7 @@ async function seedAndExecuteCollateralReturn(
 // 502s) that are unrelated to the plan itself.
 async function fetchPlan(
   secureClient: SecureClient,
-): Promise<CollateralReturnPlan> {
+): Promise<CollateralReturnPlanResponse> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await secureClient.planCollateralReturn();
@@ -268,10 +271,10 @@ async function fetchPlan(
 // collateral, keeping the seeded amount a net-zero round trip.
 async function seedReturnableInventory(
   secureClient: SecureClient,
-  currentPlan: CollateralReturnPlan,
+  currentPlan: CollateralReturnPlanResponse,
   skip: TestContext['skip'],
-): Promise<CollateralReturnPlan> {
-  if (Number(currentPlan.startingCollateral) < 1) {
+): Promise<CollateralReturnPlanResponse> {
+  if (Number(currentPlan.startingPusd) < 1) {
     skip(
       'The account needs at least 1 pUSD of collateral to seed combo inventory',
     );
@@ -296,7 +299,7 @@ async function seedReturnableInventory(
     async () => {
       const plan = await fetchPlan(secureClient);
 
-      expect(Number(plan.collateralReturned)).toBeGreaterThan(0);
+      expect(Number(plan.netPusdOut)).toBeGreaterThan(0);
 
       return plan;
     },

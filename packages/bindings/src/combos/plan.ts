@@ -136,6 +136,18 @@ const CollateralReturnRouterCallSchema = z
     }),
   );
 
+/**
+ * The plan fields execution consumes: the plan identifier round-tripped to
+ * the service, the chain and wallet the plan was computed for, and the exact
+ * Router call the execution signs and submits.
+ */
+export const CollateralReturnPlanSchema = z.looseObject({
+  planHash: HexStringSchema,
+  chainId: z.number().int(),
+  wallet: EvmAddressSchema,
+  routerCall: CollateralReturnRouterCallSchema,
+});
+
 export type CollateralReturnPlanResponse = {
   planHash: HexString;
   chainId: number;

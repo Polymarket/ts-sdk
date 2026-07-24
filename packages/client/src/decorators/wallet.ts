@@ -1,7 +1,7 @@
 import {
   approveErc20,
   approveErc1155ForAll,
-  type CollateralReturnPlan,
+  type CollateralReturnPlanResponse,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   mergePositions,
@@ -225,7 +225,7 @@ export type SecureWalletActions = {
    *
    * @example
    * ```ts
-   * let plan: CollateralReturnPlan;
+   * let plan: CollateralReturnPlanResponse;
    *
    * do {
    *   plan = await client.planCollateralReturn();
@@ -237,7 +237,7 @@ export type SecureWalletActions = {
    * } while (plan.truncated);
    * ```
    */
-  planCollateralReturn(): Promise<CollateralReturnPlan>;
+  planCollateralReturn(): Promise<CollateralReturnPlanResponse>;
   /**
    * Executes a collateral return plan for the authenticated account.
    *
@@ -284,7 +284,7 @@ export function walletActions(client: BaseSecureClient): SecureWalletActions {
 export type {
   CollateralReturnOperation,
   CollateralReturnOperationKind,
-  CollateralReturnPlan,
+  CollateralReturnPlanResponse,
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
