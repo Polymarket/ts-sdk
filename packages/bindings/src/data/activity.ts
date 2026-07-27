@@ -205,6 +205,27 @@ export type YieldActivity = ActivityBase & {
   amount: DecimalString;
 };
 
+export type DepositActivity = ActivityBase & {
+  /** An account-level deposit credit. */
+  type: 'DEPOSIT';
+  /** The deposit amount credited to the wallet in USD. */
+  amount: DecimalString;
+};
+
+export type WithdrawalActivity = ActivityBase & {
+  /** An account-level withdrawal debit. */
+  type: 'WITHDRAWAL';
+  /** The withdrawal amount debited from the wallet in USD. */
+  amount: DecimalString;
+};
+
+export type TakerRebateActivity = ActivityBase & {
+  /** An account-level taker rebate credit. */
+  type: 'TAKER_REBATE';
+  /** The taker rebate amount credited to the wallet in USD. */
+  amount: DecimalString;
+};
+
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -214,7 +235,10 @@ export type Activity =
   | RewardActivity
   | MakerRebateActivity
   | ReferralRewardActivity
-  | YieldActivity;
+  | YieldActivity
+  | DepositActivity
+  | WithdrawalActivity
+  | TakerRebateActivity;
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -486,6 +510,9 @@ function normalizeActivity(activity: RawActivity): Activity {
     case ActivityType.MAKER_REBATE:
     case ActivityType.REFERRAL_REWARD:
     case ActivityType.YIELD:
+    case ActivityType.DEPOSIT:
+    case ActivityType.WITHDRAWAL:
+    case ActivityType.TAKER_REBATE:
       return {
         ...base,
         type: activity.type,

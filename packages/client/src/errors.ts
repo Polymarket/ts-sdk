@@ -123,6 +123,11 @@ export class ConnectionLostError extends PolymarketError {
 
 export type RequestRejectedErrorOptions = {
   status: number;
+  /**
+   * Server-requested delay in seconds before retrying, when the response
+   * provided one.
+   */
+  retryAfter?: number;
 };
 
 /**
@@ -133,6 +138,11 @@ export class RequestRejectedError extends PolymarketError {
   override name = 'RequestRejectedError' as const;
 
   readonly status: number;
+  /**
+   * Server-requested delay in seconds before retrying, when the response
+   * provided one.
+   */
+  readonly retryAfter?: number;
 
   constructor(
     message: string,
@@ -140,8 +150,17 @@ export class RequestRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.status = options.status;
+    this.retryAfter = options.retryAfter;
   }
 }
+
+export type RateLimitErrorOptions = {
+  /**
+   * Server-requested delay in seconds before retrying, when the response
+   * provided one.
+   */
+  retryAfter?: number;
+};
 
 /**
  * Error thrown when the service rejects a request because the rate limit has
@@ -149,6 +168,20 @@ export class RequestRejectedError extends PolymarketError {
  */
 export class RateLimitError extends PolymarketError {
   override name = 'RateLimitError' as const;
+
+  /**
+   * Server-requested delay in seconds before retrying, when the response
+   * provided one.
+   */
+  readonly retryAfter?: number;
+
+  constructor(
+    message: string,
+    options: ErrorOptions & RateLimitErrorOptions = {},
+  ) {
+    super(message, options);
+    this.retryAfter = options.retryAfter;
+  }
 }
 
 /**
