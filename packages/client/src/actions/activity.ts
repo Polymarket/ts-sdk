@@ -40,7 +40,8 @@ const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 const ListTradesRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Matches the upstream per-request limit cap.
+    pageSize: PageSizeSchema.max(10_000).default(20),
     takerOnly: z.boolean().optional(),
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().optional(),
@@ -133,16 +134,16 @@ export function listTrades(
       .get('/trades', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListTradesResponseSchema))
       .map((trades) => {
-        const hasMore = trades.length > decoded.pageSize;
+        const hasMore = trades.length >= decoded.pageSize;
 
         return {
-          items: trades.slice(0, decoded.pageSize),
+          items: trades,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
@@ -161,7 +162,8 @@ const SortDirectionSchema = z.enum(['ASC', 'DESC']);
 const ListActivityRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    pageSize: PageSizeSchema.default(20),
+    // Matches the upstream per-request limit cap.
+    pageSize: PageSizeSchema.max(500).default(20),
     user: z.string(),
     market: z.array(z.string()).optional(),
     eventId: z.array(z.number().int()).optional(),
@@ -247,16 +249,16 @@ export function listActivity(
       .get('/activity', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListActivityResponseSchema))
       .map((activity) => {
-        const hasMore = activity.length > decoded.pageSize;
+        const hasMore = activity.length >= decoded.pageSize;
 
         return {
-          items: activity.slice(0, decoded.pageSize),
+          items: activity,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

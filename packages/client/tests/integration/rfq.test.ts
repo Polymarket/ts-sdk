@@ -34,7 +34,7 @@ import {
   unknownRfqMessage,
 } from './rfq-frames';
 
-const rfq = ws.link(production.rfq.ws);
+const rfq = ws.link(production.combos.ws);
 const server = setupServer();
 let outboundFrames: OutboundFrame[] = [];
 let connectionCount = 0;

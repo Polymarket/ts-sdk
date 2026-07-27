@@ -4,6 +4,7 @@ export * from './approvals';
 export * from './auth';
 export * from './builders';
 export * from './clob';
+export * from './collateral-return';
 export * from './comments';
 export * from './events';
 export * from './gasless';

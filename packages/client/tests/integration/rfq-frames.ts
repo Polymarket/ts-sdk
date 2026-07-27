@@ -1,5 +1,5 @@
 import { SignatureType } from '@polymarket/bindings/clob';
-import { RfqExecutionStatus } from '@polymarket/bindings/rfq';
+import { RfqExecutionStatus } from '@polymarket/bindings/combos';
 import { invariant } from '@polymarket/types';
 
 export const RFQ_ID = 'rfq-1';

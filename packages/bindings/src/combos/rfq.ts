@@ -4,7 +4,10 @@ import type {
   HexString,
 } from '@polymarket/types';
 import { z } from 'zod';
-import { type SignatureType, SignatureTypeSchema } from './clob/signature-type';
+import {
+  type SignatureType,
+  SignatureTypeSchema,
+} from '../clob/signature-type';
 import type {
   BaseUnits,
   CtfConditionId,
@@ -12,7 +15,7 @@ import type {
   EvmAddress,
   MarketId,
   TokenId,
-} from './shared';
+} from '../shared';
 import {
   ComboConditionIdSchema,
   CtfConditionIdSchema,
@@ -31,13 +34,13 @@ import {
   RfqQuoteIdSchema,
   RfqRequestorPublicIdSchema,
   TxHashSchema,
-} from './shared';
+} from '../shared';
 
 export type {
   RfqId,
   RfqQuoteId,
   RfqRequestorPublicId,
-} from './shared';
+} from '../shared';
 
 export enum RfqDirection {
   Buy = 'BUY',
