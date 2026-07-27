@@ -213,14 +213,18 @@ export class ServiceClient {
           return response;
         }
 
+        const retryAfter = this.#parseRetryAfterHeader(response);
+
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
+            { retryAfter },
           );
         }
 
         const message = await this.#extractResponseErrorMessage(response);
         throw new RequestRejectedError(message, {
+          retryAfter,
           status: response.status,
         });
       }),
@@ -235,6 +239,16 @@ export class ServiceClient {
         return TransportError.fromError(error);
       },
     );
+  }
+
+  #parseRetryAfterHeader(response: Response): number | undefined {
+    const value = response.headers.get('retry-after');
+
+    if (value === null || !/^\d+$/.test(value)) {
+      return undefined;
+    }
+
+    return Number(value);
   }
 
   async #extractResponseErrorMessage(response: Response) {
