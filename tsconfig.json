@@ -8,11 +8,11 @@
     "paths": {
       "@polymarket/bindings": ["./packages/bindings/src"],
       "@polymarket/bindings/clob": ["./packages/bindings/src/clob"],
+      "@polymarket/bindings/combos": ["./packages/bindings/src/combos"],
       "@polymarket/bindings/data": ["./packages/bindings/src/data"],
       "@polymarket/bindings/gamma": ["./packages/bindings/src/gamma"],
       "@polymarket/bindings/perps": ["./packages/bindings/src/perps"],
       "@polymarket/bindings/relayer": ["./packages/bindings/src/relayer"],
-      "@polymarket/bindings/rfq": ["./packages/bindings/src/rfq.ts"],
       "@polymarket/bindings/subscriptions": [
         "./packages/bindings/src/subscriptions"
       ],

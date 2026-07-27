@@ -10,9 +10,12 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { UserInputError } from '../../errors';
 import { fetchNegRisk, fetchTickSize } from '../clob';
-import { resolveExchangeAddress, resolveRoundingConfig } from './context';
+import {
+  resolveExchangeAddress,
+  resolveRoundingConfig,
+  validatePriceOnTickGrid,
+} from './context';
 import {
   decimalPlaces,
   parseAmount,
@@ -113,7 +116,7 @@ async function resolveLimitOrderContext(
     exchangeAddress: resolveExchangeAddress(client, negRisk),
     funderAddress: account.wallet,
     negRisk,
-    price: resolvePrice(params.price, tickSize),
+    price: validatePriceOnTickGrid(params.price, tickSize, 'Price'),
     signerAddress: account.signer,
     tickSize,
   };
@@ -164,22 +167,4 @@ function computeLimitOrderAmounts(params: {
     offeredAmount: parseAmount(rawMakerAmount),
     requestedAmount: parseAmount(rawTakerAmount),
   };
-}
-
-function resolvePrice(price: number, tickSize: TickSizeValue): number {
-  const roundConfig = resolveRoundingConfig(tickSize);
-
-  if (price < tickSize || price > 1 - tickSize) {
-    throw new UserInputError(
-      `Price must be between ${tickSize} and ${1 - tickSize} for tick size ${tickSize}.`,
-    );
-  }
-
-  if (decimalPlaces(price) > roundConfig.price) {
-    throw new UserInputError(
-      `Price must conform to tick size ${tickSize} with at most ${roundConfig.price} decimal places.`,
-    );
-  }
-
-  return roundNormal(price, roundConfig.price);
 }

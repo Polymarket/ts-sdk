@@ -1,5 +1,29 @@
 # @polymarket/client
 
+## 0.2.0
+
+### Minor Changes
+
+- e3aafe4: Add `isolatedOnly` to `PerpsInstrument`, indicating whether the instrument supports only isolated margin.
+- 3ae2f13: Add `client.waitForOrderFillSettlement(order)`, which waits until every fill listed in an order response reaches a terminal settlement outcome and returns the settlement transaction hashes. Matched order responses are no longer guaranteed to include `transactionsHashes`; use this method to obtain hashes reliably. `ClobTrade.status` is now typed as the shared `TradeStatus` enum instead of a bare string.
+
+### Patch Changes
+
+- dd8733f: Add Collateral Return plan/execute support: `planCollateralReturn` returns an inspectable plan and `executeCollateralReturnPlan` signs and submits the plan's exact Router call for Deposit Wallet, Safe, and Proxy accounts, returning a transaction handle.
+- 04ed7b2: Fix offset-paginated list methods silently stopping after the first page when `pageSize` reached the server's limit cap.
+
+  - `pageSize` is now validated per endpoint and rejects values above the cap with `UserInputError`: 500 for `listPositions`, `listActivity`, `listMarketPositions`; 100 for `listTags`, `listComments`, `listCommentsByUserAddress`, `listTeams`, `listMarketClarifications`; 50 for `listClosedPositions`, `listBuilderLeaderboard`, `listTraderLeaderboard`, `listSeries`; 10,000 for `listTrades`.
+  - Requests fetch exactly `pageSize` rows instead of probing with `pageSize + 1`. A full page reports `hasMore: true`; when a collection ends exactly on a page boundary, the final page is empty.
+
+- 9b13de2: Accept withdrawal statuses introduced after a client release instead of failing the response parse. Known statuses now live in the `PerpsKnownWithdrawalStatus` enum, which adds the `failed` status the withdrawal contract already includes, and `PerpsWithdrawalStatus` is widened so unrecognized statuses flow through as plain strings.
+- e628321: Reject limit and protected market order prices that are not a multiple of the market tick size. Previously, prices within the tick's decimal allowance but off the tick grid (for example `0.007` on a `0.005` tick market) passed client-side validation and were rejected by the exchange after signing.
+- Updated dependencies [dd8733f]
+- Updated dependencies [e3aafe4]
+- Updated dependencies [d29c369]
+- Updated dependencies [9b13de2]
+- Updated dependencies [3ae2f13]
+  - @polymarket/bindings@0.2.0
+
 ## 0.1.0
 
 ### Minor Changes
