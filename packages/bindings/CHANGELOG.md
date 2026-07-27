@@ -1,5 +1,18 @@
 # @polymarket/bindings
 
+## 0.2.0
+
+### Minor Changes
+
+- e3aafe4: Add `isolatedOnly` to `PerpsInstrument`, indicating whether the instrument supports only isolated margin.
+- 3ae2f13: Add `client.waitForOrderFillSettlement(order)`, which waits until every fill listed in an order response reaches a terminal settlement outcome and returns the settlement transaction hashes. Matched order responses are no longer guaranteed to include `transactionsHashes`; use this method to obtain hashes reliably. `ClobTrade.status` is now typed as the shared `TradeStatus` enum instead of a bare string.
+
+### Patch Changes
+
+- dd8733f: Add Collateral Return plan/execute support: `planCollateralReturn` returns an inspectable plan and `executeCollateralReturnPlan` signs and submits the plan's exact Router call for Deposit Wallet, Safe, and Proxy accounts, returning a transaction handle.
+- d29c369: Add `PerpsFeeTier` and a required `tiers` array on `PerpsFeeScheduleEntry`, matching the volume-based fee tiers (including negative maker rebate rates) in the updated `GET /v1/info/fees` contract.
+- 9b13de2: Accept withdrawal statuses introduced after a client release instead of failing the response parse. Known statuses now live in the `PerpsKnownWithdrawalStatus` enum, which adds the `failed` status the withdrawal contract already includes, and `PerpsWithdrawalStatus` is widened so unrecognized statuses flow through as plain strings.
+
 ## 0.1.0
 
 ### Minor Changes
