@@ -11,6 +11,7 @@ import {
   RelayerExecuteRequestSchema,
   type RelayerExecuteResponse,
   RelayerExecuteResponseSchema,
+  type RelayerLegacyExecuteRequest,
   RelayerTransactionState,
   RelayerTransactionType,
 } from '@polymarket/bindings/relayer';
@@ -439,13 +440,37 @@ async function* prepareProxyWalletGaslessTransaction(
   client: BaseSecureClient,
   params: PrepareGaslessTransactionParams,
 ): GaslessWorkflow {
+  const payload = yield* buildProxyWalletExecuteRequest(
+    client,
+    params.calls,
+    params.metadata,
+  );
+
+  return executeGasless(client, payload);
+}
+
+/**
+ * Builds and signs a Proxy Wallet relay request without submitting it, so
+ * callers can route the signed envelope to their own submission endpoint.
+ *
+ * @internal
+ */
+export async function* buildProxyWalletExecuteRequest(
+  client: BaseSecureClient,
+  calls: NonEmptyArray<TransactionCall>,
+  metadata?: string,
+): AsyncGenerator<
+  GaslessWorkflowRequest,
+  RelayerLegacyExecuteRequest,
+  EvmAddress | EvmSignature | TransactionHandle
+> {
   const executeParams = await fetchExecuteParams(client, {
     address: client.account.signer,
     type: RelayerTransactionType.PROXY,
   });
 
   const to = client.environment.walletDerivation.proxyFactory;
-  const data = encodeProxyCall(params.calls);
+  const data = encodeProxyCall(calls);
   const relayerFee = '0';
   // Signed RelayHub parameter; the relayer applies its own execution gas price.
   const gasPrice = '0';
@@ -473,10 +498,10 @@ async function* prepareProxyWalletGaslessTransaction(
 
   const signature = expectEvmSignature(yield signGaslessMessage(hash));
 
-  return executeGasless(client, {
+  return {
     data,
     from: client.account.signer,
-    metadata: params.metadata,
+    ...(metadata !== undefined && { metadata }),
     nonce: executeParams.nonce,
     proxyWallet: client.account.wallet,
     signature,
@@ -489,24 +514,49 @@ async function* prepareProxyWalletGaslessTransaction(
     },
     to,
     type: RelayerTransactionType.PROXY,
-  });
+  };
 }
 
 async function* prepareDepositWalletGaslessTransaction(
   client: BaseSecureClient,
   params: PrepareGaslessTransactionParams,
 ): GaslessWorkflow {
+  const payload = yield* buildDepositWalletExecuteRequest(
+    client,
+    params.calls,
+    params.metadata,
+  );
+
+  return executeGasless(client, payload);
+}
+
+/**
+ * Builds and signs a Deposit Wallet batch execution request without
+ * submitting it, so callers can route the signed envelope to their own
+ * submission endpoint.
+ *
+ * @internal
+ */
+export async function* buildDepositWalletExecuteRequest(
+  client: BaseSecureClient,
+  calls: NonEmptyArray<TransactionCall>,
+  metadata?: string,
+): AsyncGenerator<
+  GaslessWorkflowRequest,
+  RelayerDepositWalletExecuteRequest,
+  EvmAddress | EvmSignature | TransactionHandle
+> {
   const executeParams = await fetchExecuteParams(client, {
     address: client.account.signer,
     type: RelayerTransactionType.WALLET,
   });
-  const calls = params.calls.map(toDepositWalletCall);
+  const depositWalletCalls = calls.map(toDepositWalletCall);
   const deadline = `${Math.floor(Date.now() / 1000) + DEPOSIT_WALLET_DEFAULT_DEADLINE_SECONDS}`;
 
   const signature = expectEvmSignature(
     yield signGaslessTypedData(
       createDepositWalletBatchTypedDataPayload({
-        calls,
+        calls: depositWalletCalls,
         chainId: client.environment.chainId,
         deadline,
         nonce: executeParams.nonce,
@@ -515,33 +565,55 @@ async function* prepareDepositWalletGaslessTransaction(
     ),
   );
 
-  const payload: RelayerDepositWalletExecuteRequest = {
+  return {
     depositWalletParams: {
-      calls,
+      calls: depositWalletCalls,
       deadline,
       depositWallet: client.account.wallet,
     },
     from: client.account.signer,
-    metadata: params.metadata,
+    ...(metadata !== undefined && { metadata }),
     nonce: executeParams.nonce,
     signature,
     to: client.environment.walletDerivation.depositWalletFactory,
     type: RelayerTransactionType.WALLET,
   };
-
-  return executeGasless(client, payload);
 }
 
 async function* prepareSafeWalletGaslessTransaction(
   client: BaseSecureClient,
   params: PrepareGaslessTransactionParams,
 ): GaslessWorkflow {
+  const payload = yield* buildSafeWalletExecuteRequest(
+    client,
+    params.calls,
+    params.metadata,
+  );
+
+  return executeGasless(client, payload);
+}
+
+/**
+ * Builds and signs a Safe transaction relay request without submitting it, so
+ * callers can route the signed envelope to their own submission endpoint.
+ *
+ * @internal
+ */
+export async function* buildSafeWalletExecuteRequest(
+  client: BaseSecureClient,
+  calls: NonEmptyArray<TransactionCall>,
+  metadata?: string,
+): AsyncGenerator<
+  GaslessWorkflowRequest,
+  RelayerLegacyExecuteRequest,
+  EvmAddress | EvmSignature | TransactionHandle
+> {
   const executeParams = await fetchExecuteParams(client, {
     address: client.account.signer,
     type: RelayerTransactionType.SAFE,
   });
   const transaction = aggregateSafeTransactionCalls(
-    params.calls,
+    calls,
     client.environment.contracts.safeMultisend,
   );
 
@@ -565,10 +637,10 @@ async function* prepareSafeWalletGaslessTransaction(
     ),
   );
 
-  return executeGasless(client, {
+  return {
     data: transaction.data,
     from: client.account.signer,
-    metadata: params.metadata,
+    ...(metadata !== undefined && { metadata }),
     nonce: executeParams.nonce,
     proxyWallet: client.account.wallet,
     signature: packSafeSignature(signature),
@@ -576,7 +648,7 @@ async function* prepareSafeWalletGaslessTransaction(
     to: transaction.to,
     type: RelayerTransactionType.SAFE,
     value: transaction.value > 0n ? `${transaction.value}` : undefined,
-  });
+  };
 }
 
 type ExecuteGaslessRequest = RelayerExecuteRequest;
@@ -605,7 +677,13 @@ async function executeGasless(
   return new GaslessTransactionHandle(client, response);
 }
 
-function isRetryableGaslessSubmitError(error: unknown): boolean {
+/**
+ * Detects transient relayer submission failures (rate limits, wallet-busy
+ * races, stale batch nonces) that are safe to retry with a fresh signature.
+ *
+ * @internal
+ */
+export function isRetryableGaslessSubmitError(error: unknown): boolean {
   if (error instanceof RateLimitError) {
     return true;
   }
@@ -844,7 +922,13 @@ export const WaitForGaslessTransactionError = makeErrorGuard(
   TransactionFailedError,
 );
 
-class GaslessTransactionHandle implements TransactionHandle {
+/**
+ * Transaction handle for relayer-backed submissions; polls the submitted
+ * transaction until it settles.
+ *
+ * @internal
+ */
+export class GaslessTransactionHandle implements TransactionHandle {
   readonly #client: BaseClient;
 
   readonly transactionHash;

@@ -1,6 +1,9 @@
 import {
   approveErc20,
   approveErc1155ForAll,
+  type CollateralReturnPlanResponse,
+  type ExecuteCollateralReturnPlanRequest,
+  executeCollateralReturnPlan,
   mergePositions,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
@@ -8,6 +11,7 @@ import {
   type PrepareMergePositionsRequest,
   type PrepareRedeemPositionsRequest,
   type PrepareSplitPositionRequest,
+  planCollateralReturn,
   redeemPositions,
   setupTradingApprovals,
   splitPosition,
@@ -206,6 +210,60 @@ export type SecureWalletActions = {
   redeemPositions(
     request: PrepareRedeemPositionsRequest,
   ): Promise<TransactionHandle>;
+  /**
+   * Plans a collateral return for the authenticated account.
+   *
+   * The returned plan is an inspectable artifact: review the collateral it
+   * releases, the inputs it consumes, and the residual-position impact, and
+   * apply any application-specific limits before executing it with
+   * {@link SecureWalletActions.executeCollateralReturnPlan | executeCollateralReturnPlan}.
+   * A truncated plan is one executable chunk of a larger return; execute and
+   * confirm it before requesting the next plan.
+   *
+   * @throws {@link PlanCollateralReturnError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * let plan: CollateralReturnPlanResponse;
+   *
+   * do {
+   *   plan = await client.planCollateralReturn();
+   *
+   *   // Inspect the return and residual-position impact, and apply any
+   *   // application-specific limits before signing.
+   *   const handle = await client.executeCollateralReturnPlan({ plan });
+   *   await handle.wait();
+   * } while (plan.truncated);
+   * ```
+   */
+  planCollateralReturn(): Promise<CollateralReturnPlanResponse>;
+  /**
+   * Executes a collateral return plan for the authenticated account.
+   *
+   * Execution signs and submits the exact call carried by the plan; nothing is
+   * recomputed on the client, and no approval transactions are run implicitly.
+   * Confirmation stays explicit through the returned handle's `wait()`.
+   *
+   * If wallet state changed since the plan was created, the service rejects
+   * the submission; request a fresh plan and execute that instead.
+   *
+   * @throws {@link ExecuteCollateralReturnPlanError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const plan = await client.planCollateralReturn();
+   *
+   * const handle = await client.executeCollateralReturnPlan({ plan });
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  executeCollateralReturnPlan(
+    request: ExecuteCollateralReturnPlanRequest,
+  ): Promise<TransactionHandle>;
 };
 
 export function walletActions(client: BaseSecureClient): SecureWalletActions {
@@ -217,16 +275,31 @@ export function walletActions(client: BaseSecureClient): SecureWalletActions {
     splitPosition: splitPosition.bind(null, client),
     mergePositions: mergePositions.bind(null, client),
     redeemPositions: redeemPositions.bind(null, client),
+    planCollateralReturn: planCollateralReturn.bind(null, client),
+    executeCollateralReturnPlan: executeCollateralReturnPlan.bind(null, client),
   };
 }
 
+// Public collateral-return model types surfaced alongside the bound methods.
+export type {
+  CollateralReturnOperation,
+  CollateralReturnOperationKind,
+  CollateralReturnPlanResponse,
+  CollateralReturnPositionAmount,
+  CollateralReturnPositionSummary,
+  CollateralReturnRouterCall,
+  ExecuteCollateralReturnPlanRequest,
+} from '../actions';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on SecureWalletActions.
 export {
   ApproveErc20Error,
   ApproveErc1155ForAllError,
+  CollateralReturnKnownOperationKind,
+  ExecuteCollateralReturnPlanError,
   MergePositionsError,
+  PlanCollateralReturnError,
   RedeemPositionsError,
   SetupTradingApprovalsError,
   SplitPositionError,
