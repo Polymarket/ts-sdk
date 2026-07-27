@@ -13,6 +13,9 @@ export enum ActivityType {
   MAKER_REBATE = 'MAKER_REBATE',
   REFERRAL_REWARD = 'REFERRAL_REWARD',
   YIELD = 'YIELD',
+  DEPOSIT = 'DEPOSIT',
+  WITHDRAWAL = 'WITHDRAWAL',
+  TAKER_REBATE = 'TAKER_REBATE',
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);
