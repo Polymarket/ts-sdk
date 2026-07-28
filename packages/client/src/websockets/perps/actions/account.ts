@@ -859,24 +859,6 @@ type PerpsNotificationsCursorState = z.infer<
   typeof PerpsNotificationsCursorStateSchema
 >;
 
-/**
- * One page of Perps notifications, newest first.
- *
- * @remarks
- * `unread` and `durableSourceSeq` reflect the account state observed when the
- * page was fetched. The synthetic empty page produced by continuing past the
- * final page reports both as `0`.
- */
-export type PerpsNotificationsPage = Page<PerpsNotificationEntry[]> & {
-  /** Count of the account's unread notifications within the retention window. */
-  unread: number;
-  /**
-   * Highest engine sequence durably persisted for the account. During a
-   * `sinceSeq` backfill, retry until this reaches the resync target sequence.
-   */
-  durableSourceSeq: number;
-};
-
 const ListPerpsNotificationsInitialRequestSchema = z.object({
   sinceSeq: z.number().int().nonnegative().optional(),
   limit: z.number().int().positive().optional(),
@@ -904,14 +886,17 @@ const ListPerpsNotificationsRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsNotificationsRequest =
   | {
       /**
-       * Inclusive engine sequence lower bound used to backfill after a gap.
-       * Use the sequence of the last notification event processed before the
-       * gap, never the sequence of a resync event. Follow-up pages keep the
-       * same bound automatically. Merged results should be deduplicated by
-       * notification id.
+       * Inclusive sequence lower bound used to backfill notifications missed
+       * while disconnected. Use the `sequence` of the last notification event
+       * processed before the gap. Follow-up pages keep the same bound
+       * automatically. Merged results should be deduplicated by notification
+       * id.
        */
       sinceSeq?: number;
       /** Maximum number of notifications per page. */
@@ -924,63 +909,75 @@ export type ListPerpsNotificationsRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsNotifications(
   api: ServiceClient,
   request: ListPerpsNotificationsRequest = {},
-): Paginated<PerpsNotificationEntry[], PerpsNotificationsPage> {
+): Paginated<PerpsNotificationEntry[]> {
   const { cursor, params } = parseUserInput(
     request,
     ListPerpsNotificationsRequestSchema,
   );
-  return paginate(
-    (pageCursor) => {
-      let state: PerpsNotificationsCursorState | undefined;
-      if (pageCursor === undefined) {
-        invariant(
-          params !== undefined,
-          'Expected initial Perps notifications params.',
-        );
-      } else {
-        state = decodePerpsAccountCursor(
-          pageCursor,
-          PerpsNotificationsCursorStateSchema,
-        );
-      }
-      const sinceSeq = state === undefined ? params?.sinceSeq : state.sinceSeq;
-      const limit = state === undefined ? params?.limit : state.limit;
+  return paginate((pageCursor) => {
+    let state: PerpsNotificationsCursorState | undefined;
+    if (pageCursor === undefined) {
+      invariant(
+        params !== undefined,
+        'Expected initial Perps notifications params.',
+      );
+    } else {
+      state = decodePerpsAccountCursor(
+        pageCursor,
+        PerpsNotificationsCursorStateSchema,
+      );
+    }
+    const sinceSeq = state === undefined ? params?.sinceSeq : state.sinceSeq;
+    const limit = state === undefined ? params?.limit : state.limit;
 
-      return api
-        .get('/v1/account/notifications', {
-          params: toPerpsSearchParams({
-            cursor: state?.cursor,
-            limit,
-            sinceSeq,
-          }),
-        })
-        .andThen(validateWith(ListPerpsNotificationsResponseSchema))
-        .map((response): PerpsNotificationsPage => {
-          const hasMore = response.has_more && response.next_cursor !== null;
-          return {
-            items: response.items,
-            hasMore,
-            nextCursor:
-              hasMore && response.next_cursor !== null
-                ? encodePerpsAccountCursor({
-                    kind: 'perpsNotifications',
-                    cursor: response.next_cursor,
-                    limit,
-                    sinceSeq,
-                  })
-                : undefined,
-            unread: response.unread,
-            durableSourceSeq: response.durable_source_seq,
-          };
-        });
-    },
-    cursor,
-    [],
-    () => ({ items: [], hasMore: false, unread: 0, durableSourceSeq: 0 }),
+    return api
+      .get('/v1/account/notifications', {
+        params: toPerpsSearchParams({
+          cursor: state?.cursor,
+          limit,
+          sinceSeq,
+        }),
+      })
+      .andThen(validateWith(ListPerpsNotificationsResponseSchema))
+      .map((response): Page<PerpsNotificationEntry[]> => {
+        const hasMore = response.has_more && response.next_cursor !== null;
+        return {
+          items: response.items,
+          hasMore,
+          nextCursor:
+            hasMore && response.next_cursor !== null
+              ? encodePerpsAccountCursor({
+                  kind: 'perpsNotifications',
+                  cursor: response.next_cursor,
+                  limit,
+                  sinceSeq,
+                })
+              : undefined,
+        };
+      });
+  }, cursor);
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function fetchPerpsUnreadNotificationsCount(
+  api: ServiceClient,
+): Promise<number> {
+  const response = await unwrap(
+    api
+      .get('/v1/account/notifications', {
+        params: toPerpsSearchParams({ limit: 1 }),
+      })
+      .andThen(validateWith(ListPerpsNotificationsResponseSchema)),
   );
+  return response.unread;
 }
 
 const MarkPerpsNotificationsReadByIdsRequestSchema = z.object({
@@ -1007,6 +1004,9 @@ const MarkPerpsNotificationsReadRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type MarkPerpsNotificationsReadRequest =
   | {
       /** Notification ids to mark read. */
@@ -1025,6 +1025,9 @@ export type MarkPerpsNotificationsReadRequest =
       };
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function markPerpsNotificationsRead(
   api: ServiceClient,
   request: MarkPerpsNotificationsReadRequest,

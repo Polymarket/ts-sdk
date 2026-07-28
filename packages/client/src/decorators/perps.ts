@@ -69,7 +69,6 @@ export type {
   OpenPerpsSessionRequest,
   PerpsBookDepth,
   PerpsCancelOrderResult,
-  PerpsNotificationsPage,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,

@@ -99,7 +99,6 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsCancelOrderResult,
-  PerpsNotificationsPage,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,

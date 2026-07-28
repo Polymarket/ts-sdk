@@ -968,13 +968,16 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('relays server resync frames as resync events', async () => {
+    it('drops server resync frames without emitting an event', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
 
       await session.connect();
 
+      // The server resync control frame is parsed but intentionally not
+      // surfaced until DEV-428; the notification sent afterwards arriving as
+      // the next event proves it was dropped without closing the session.
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
@@ -982,15 +985,16 @@ describe('PerpsSession', () => {
         ts: 1_700_000_000_000,
         type: 'resync',
       });
+      await connection.send(
+        notificationUpdate({ sequence: 1051, type: 'position_opened' }),
+      );
 
       await expect(nextEvent).resolves.toMatchObject({
         done: false,
         value: {
           channel: 'notifications',
-          reason: 'server',
-          sequence: 1050,
-          timestamp: 1_700_000_000_000,
-          type: 'resync',
+          sequence: 1051,
+          type: 'notification',
         },
       });
 
@@ -1092,8 +1096,6 @@ describe('PerpsSession', () => {
 
       const first = await pages.firstPage();
       expect(first.items).toHaveLength(1);
-      expect(first.unread).toBe(2);
-      expect(first.durableSourceSeq).toBe(1043);
       expect(first.hasMore).toBe(true);
 
       const second = await pages.from(first.nextCursor).firstPage();
@@ -1107,6 +1109,29 @@ describe('PerpsSession', () => {
       expect(requests[1]?.get('since_seq')).toBe('1000');
       expect(requests[1]?.get('limit')).toBe('1');
       expect(requests[1]?.get('cursor')).toBe('upstream-cursor-1');
+    });
+
+    it('fetches the unread notifications count', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/notifications`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({
+              items: [notificationEntry({ ts: 3000 })],
+              unread: 7,
+              durable_source_seq: 1043,
+              has_more: true,
+              next_cursor: 'upstream-cursor-1',
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      await expect(session.fetchUnreadNotificationsCount()).resolves.toBe(7);
+      expect(requests[0]?.get('limit')).toBe('1');
     });
 
     it('marks notifications read by id', async () => {
