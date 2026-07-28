@@ -26,8 +26,14 @@ export type ClobEndpoints = RestEndpoint & {
   user: WebSocketEndpoint;
 };
 
-export type RfqEndpoints = RestEndpoint & WebSocketEndpoint;
+export type CombosEndpoints = RestEndpoint &
+  WebSocketEndpoint & {
+    collateralReturn: RestEndpoint;
+  };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsEndpoints = RestEndpoint & WebSocketEndpoint;
 
 export type EnvironmentContracts = {
@@ -66,7 +72,7 @@ export type EnvironmentConfig = {
   /** @internal */
   data: RestEndpoint;
   /** @internal */
-  rfq: RfqEndpoints;
+  combos: CombosEndpoints;
   /** @internal */
   perps: PerpsEndpoints;
   /** @internal */
@@ -94,7 +100,9 @@ export type EnvironmentConfigFork = {
   relayer?: Partial<RestEndpoint>;
   gamma?: Partial<RestEndpoint>;
   data?: Partial<RestEndpoint>;
-  rfq?: EnvironmentConfigForkEndpoint;
+  combos?: EnvironmentConfigForkEndpoint & {
+    collateralReturn?: Partial<RestEndpoint>;
+  };
   perps?: EnvironmentConfigForkEndpoint;
   rtds?: Partial<WebSocketEndpoint>;
   sports?: Partial<WebSocketEndpoint>;
@@ -180,9 +188,12 @@ export const production: EnvironmentConfig = {
   relayer: { rest: 'https://relayer-v2.polymarket.com' },
   gamma: { rest: 'https://gamma-api.polymarket.com' },
   data: { rest: 'https://data-api.polymarket.com' },
-  rfq: {
+  combos: {
     rest: 'https://combos-rfq-api.polymarket.com',
     ws: 'wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq',
+    collateralReturn: {
+      rest: 'https://combos-rfq-collateral-return.polymarket.com',
+    },
   },
   perps: {
     rest: 'https://api.perpetuals.polymarket.com',
@@ -223,7 +234,13 @@ export function forkEnvironmentConfig(
     relayer: forkRestEndpoint(base.relayer, fork.relayer),
     gamma: forkRestEndpoint(base.gamma, fork.gamma),
     data: forkRestEndpoint(base.data, fork.data),
-    rfq: forkRestWebSocketEndpoint(base.rfq, fork.rfq),
+    combos: {
+      ...forkRestWebSocketEndpoint(base.combos, fork.combos),
+      collateralReturn: forkRestEndpoint(
+        base.combos.collateralReturn,
+        fork.combos?.collateralReturn,
+      ),
+    },
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
     rtds: forkWebSocketEndpoint(base.rtds, fork.rtds),
     sports: forkWebSocketEndpoint(base.sports, fork.sports),

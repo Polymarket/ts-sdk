@@ -112,7 +112,6 @@ export function listBuilderTrades(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );

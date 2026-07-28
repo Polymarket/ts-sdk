@@ -7,7 +7,7 @@ import {
   type RfqQuoteRequest,
   RfqQuoterInboundMessageSchema,
   type RfqQuoterOutboundMessage,
-} from '@polymarket/bindings/rfq';
+} from '@polymarket/bindings/combos';
 import { type EvmAddress, setNonBlockingTimeout } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import type {

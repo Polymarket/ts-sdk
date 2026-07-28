@@ -34,7 +34,8 @@ import { toDataSearchParams } from './params';
 
 const ListBuilderLeaderboardRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(50).default(20),
   timePeriod: TimePeriodSchema.optional(),
 });
 
@@ -45,7 +46,8 @@ const ListBuilderVolumeRequestSchema = z.object({
 const ListTraderLeaderboardRequestSchema = z.object({
   category: LeaderboardCategorySchema.optional(),
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(20),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(50).default(20),
   timePeriod: TimePeriodSchema.optional(),
   orderBy: LeaderboardOrderBySchema.optional(),
   user: z.string().optional(),
@@ -130,16 +132,16 @@ export function listBuilderLeaderboard(
       .get('/v1/builders/leaderboard', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListBuilderLeaderboardResponseSchema))
       .map((builders) => {
-        const hasMore = builders.length > decoded.pageSize;
+        const hasMore = builders.length >= decoded.pageSize;
 
         return {
-          items: builders.slice(0, decoded.pageSize),
+          items: builders,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({
@@ -269,16 +271,16 @@ export function listTraderLeaderboard(
       .get('/v1/leaderboard', {
         params: toDataSearchParams({
           ...params,
-          limit: decoded.pageSize + 1,
+          limit: decoded.pageSize,
           offset: decoded.offset,
         }),
       })
       .andThen(validateWith(ListTraderLeaderboardResponseSchema))
       .map((traders) => {
-        const hasMore = traders.length > decoded.pageSize;
+        const hasMore = traders.length >= decoded.pageSize;
 
         return {
-          items: traders.slice(0, decoded.pageSize),
+          items: traders,
           hasMore,
           nextCursor: hasMore
             ? encodeOffsetCursor({

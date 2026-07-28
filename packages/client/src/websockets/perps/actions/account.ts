@@ -117,6 +117,9 @@ type PerpsAscendingAccountCursorState = z.infer<
   typeof PerpsAscendingAccountCursorStateSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsBalances(
   api: ServiceClient,
 ): Promise<PerpsBalance[]> {
@@ -127,6 +130,9 @@ export async function fetchPerpsBalances(
   );
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsPortfolio(
   api: ServiceClient,
 ): Promise<PerpsPortfolio> {
@@ -137,6 +143,9 @@ export async function fetchPerpsPortfolio(
   );
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsStats(
   api: ServiceClient,
 ): Promise<PerpsAccountStats> {
@@ -153,11 +162,17 @@ const FetchPerpsAccountConfigRequestSchema = z
   })
   .default({}) satisfies z.ZodType<FetchPerpsAccountConfigRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsAccountConfigRequest = {
   /** Optional Perps instrument identifier filter. */
   instrumentId?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsAccountConfig(
   api: ServiceClient,
   request?: FetchPerpsAccountConfigRequest,
@@ -178,11 +193,17 @@ const FetchPerpsOpenOrdersRequestSchema = z
   })
   .default({}) satisfies z.ZodType<FetchPerpsOpenOrdersRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsOpenOrdersRequest = {
   /** Optional Perps instrument identifier filter. */
   instrumentId?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsOpenOrders(
   api: ServiceClient,
   request?: FetchPerpsOpenOrdersRequest,
@@ -216,6 +237,9 @@ const FetchPerpsOrdersRequestSchema =
     }),
   );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsOrdersRequest = {
   /** Optional order identifier filter. */
   orderId?: number;
@@ -229,6 +253,9 @@ export type FetchPerpsOrdersRequest = {
   end?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function fetchPerpsOrders(
   api: ServiceClient,
   request?: FetchPerpsOrdersRequest,
@@ -268,6 +295,9 @@ const ListPerpsFillsRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsFillsRequest =
   | {
       /** Inclusive start timestamp in milliseconds. */
@@ -282,6 +312,9 @@ export type ListPerpsFillsRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsFills(
   api: ServiceClient,
   request: ListPerpsFillsRequest = {},
@@ -352,6 +385,9 @@ const ListPerpsFundingPaymentsRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsFundingPaymentsRequest =
   | {
       /** Optional Perps instrument identifier filter. */
@@ -368,6 +404,9 @@ export type ListPerpsFundingPaymentsRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsFundingPayments(
   api: ServiceClient,
   request: ListPerpsFundingPaymentsRequest = {},
@@ -444,6 +483,9 @@ const ListPerpsDepositsRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsDepositsRequest =
   | {
       /** Optional deposit status filter. */
@@ -462,6 +504,9 @@ export type ListPerpsDepositsRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsDeposits(
   api: ServiceClient,
   request: ListPerpsDepositsRequest = {},
@@ -533,6 +578,9 @@ const ListPerpsWithdrawalsRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsWithdrawalsRequest =
   | {
       /** Optional withdrawal status filter. */
@@ -551,6 +599,9 @@ export type ListPerpsWithdrawalsRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsWithdrawals(
   api: ServiceClient,
   request: ListPerpsWithdrawalsRequest = {},
@@ -623,6 +674,9 @@ const ListPerpsEquityHistoryRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsEquityHistoryRequest =
   | {
       /** History interval. */
@@ -639,6 +693,9 @@ export type ListPerpsEquityHistoryRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsEquityHistory(
   api: ServiceClient,
   request: ListPerpsEquityHistoryRequest,
@@ -717,6 +774,9 @@ const ListPerpsPnlHistoryRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsPnlHistoryRequest =
   | {
       /** History interval. */
@@ -733,6 +793,9 @@ export type ListPerpsPnlHistoryRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function listPerpsPnlHistory(
   api: ServiceClient,
   request: ListPerpsPnlHistoryRequest,

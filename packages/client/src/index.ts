@@ -13,13 +13,13 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsKnownWithdrawalStatus,
   PerpsMarginType,
   PerpsNotificationOrderType,
   PerpsNotificationType,
   PerpsOrderStatus,
   PerpsSide,
   PerpsTimeInForce,
-  PerpsWithdrawalStatus,
 } from '@polymarket/bindings/perps';
 export type * from '@polymarket/bindings/relayer';
 export * from './abis';

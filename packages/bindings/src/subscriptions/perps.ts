@@ -55,6 +55,9 @@ const PerpsUpdateEnvelopeSchema = z.object({
   sq: SequenceSchema,
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
   data: z.array(PerpsPublicTradeUpdateSchema),
@@ -67,8 +70,14 @@ export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   payload: data,
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTradeEvent = z.infer<typeof PerpsTradeEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBboEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BboChannelSchema,
   data: PerpsBboUpdateSchema,
@@ -81,8 +90,14 @@ export const PerpsBboEventSchema = PerpsUpdateEnvelopeSchema.extend({
   payload: data,
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBboEvent = z.infer<typeof PerpsBboEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBookEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BookChannelSchema,
   data: PerpsBookUpdateSchema,
@@ -98,8 +113,14 @@ export const PerpsBookEventSchema = PerpsUpdateEnvelopeSchema.extend({
   },
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBookEvent = z.infer<typeof PerpsBookEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTickerEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TickersChannelSchema,
   data: PerpsTickerEntrySchema,
@@ -112,8 +133,14 @@ export const PerpsTickerEventSchema = PerpsUpdateEnvelopeSchema.extend({
   payload: data,
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTickerEvent = z.infer<typeof PerpsTickerEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsStatisticEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: StatisticsChannelSchema,
   data: PerpsStatisticUpdateSchema,
@@ -126,8 +153,14 @@ export const PerpsStatisticEventSchema = PerpsUpdateEnvelopeSchema.extend({
   payload: data,
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsStatisticEvent = z.infer<typeof PerpsStatisticEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsCandleEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: CandlesChannelSchema,
   data: z.array(PerpsCandleSchema),
@@ -144,8 +177,14 @@ export const PerpsCandleEventSchema = PerpsUpdateEnvelopeSchema.extend({
   },
 }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsCandleEvent = z.infer<typeof PerpsCandleEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsMarketDataEventSchema = z.union([
   PerpsTradeEventSchema,
   PerpsBboEventSchema,
@@ -155,6 +194,9 @@ export const PerpsMarketDataEventSchema = z.union([
   PerpsCandleEventSchema,
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsMarketDataEvent = z.infer<typeof PerpsMarketDataEventSchema>;
 
 const PerpsSessionUpdateEnvelopeSchema = PerpsUpdateEnvelopeSchema.extend({
@@ -187,61 +229,103 @@ function perpsSessionEventSchema<
   });
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsBalanceUpdateEventSchema = perpsSessionEventSchema(
   'balance',
   'balances',
   PerpsBalanceSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBalanceUpdateEvent = z.infer<
   typeof PerpsBalanceUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPortfolioUpdateEventSchema = perpsSessionEventSchema(
   'portfolio',
   'portfolio',
   PerpsPortfolioSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPortfolioUpdateEvent = z.infer<
   typeof PerpsPortfolioUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsOrderUpdateEventSchema = perpsSessionEventSchema(
   'order',
   'orders',
   PerpsOrderUpdateSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsOrderUpdateEvent = z.infer<typeof PerpsOrderUpdateEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
   'fill',
   'fills',
   z.array(PerpsAccountFillUpdateSchema),
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsFundingUpdateEventSchema = perpsSessionEventSchema(
   'funding',
   'funding',
   PerpsAccountFundingPaymentEntrySchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsFundingUpdateEvent = z.infer<
   typeof PerpsFundingUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsDepositUpdateEventSchema = perpsSessionEventSchema(
   'deposit',
   'deposits',
   PerpsDepositUpdateSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsDepositUpdateEvent = z.infer<
   typeof PerpsDepositUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsWithdrawalUpdateEventSchema = perpsSessionEventSchema(
   'withdrawal',
   'withdrawals',
   PerpsWithdrawalUpdateSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
@@ -281,6 +365,9 @@ const PerpsTpSlLifecycleUpdateSchema = z.object({
   reason: z.string().optional(),
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTpSlUpdateEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TpslChannelSchema,
   data: PerpsTpSlLifecycleUpdateSchema.transform((update) => ({
@@ -295,8 +382,14 @@ export const PerpsTpSlUpdateEventSchema = PerpsUpdateEnvelopeSchema.extend({
   sequence: sq,
   payload: data,
 }));
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTpSlUpdateEvent = z.infer<typeof PerpsTpSlUpdateEventSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsSessionUpdateEventSchema = z.union([
   PerpsBalanceUpdateEventSchema,
   PerpsPortfolioUpdateEventSchema,
@@ -309,26 +402,27 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsTpSlUpdateEventSchema,
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionUpdateEvent = z.infer<
   typeof PerpsSessionUpdateEventSchema
 >;
 
 /**
- * Signals that channel events may have been missed and channel state should
- * be re-read. `reconnect` and `sequence_gap` resyncs are synthesized locally;
- * `server` resyncs relay a server-sent `notifications` backpressure frame
- * whose `sequence` is the highest engine sequence among the dropped
- * notifications.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsResyncEvent = {
   type: 'resync';
-  reason: 'reconnect' | 'sequence_gap' | 'server';
+  reason: 'reconnect' | 'sequence_gap';
   channel?: string;
   previousSequence?: number;
   sequence?: number;
-  timestamp?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSessionEvent = PerpsSessionUpdateEvent | PerpsResyncEvent;
 
 function instrumentIdFromChannel(channel: string) {

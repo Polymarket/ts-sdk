@@ -166,6 +166,64 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('exposes Retry-After header values on rejected requests', async () => {
+    server.use(
+      http.get(
+        `${root}/retry-after-error`,
+        () =>
+          new HttpResponse(null, {
+            headers: { 'retry-after': '17' },
+            status: 503,
+          }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/retry-after-error')),
+    ).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      retryAfter: 17,
+      status: 503,
+    });
+  });
+
+  it('exposes Retry-After header values on rate limited requests', async () => {
+    server.use(
+      http.get(
+        `${root}/retry-after-rate-limit`,
+        () =>
+          new HttpResponse(null, {
+            headers: { 'retry-after': '3' },
+            status: 429,
+          }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/retry-after-rate-limit')),
+    ).rejects.toMatchObject({
+      name: 'RateLimitError',
+      retryAfter: 3,
+    });
+  });
+
+  it('leaves retryAfter undefined when the Retry-After header is missing', async () => {
+    server.use(
+      http.get(`${root}/no-retry-after`, () =>
+        HttpResponse.json({ error: 'failure' }, { status: 503 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.get('/no-retry-after'))).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      retryAfter: undefined,
+      status: 503,
+    });
+  });
+
   it('falls back to an unreadable-body message for unknown content types', async () => {
     server.use(
       http.get(

@@ -45,6 +45,8 @@ const PerpsOrderBaseInputSchema = z.object({
 
 /**
  * Good-til-cancelled Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsPlaceGtcOrderRequest = {
   /** Perps instrument identifier to trade. */
@@ -73,6 +75,8 @@ const PerpsPlaceGtcOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
 
 /**
  * Immediate-or-cancel Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsPlaceIocOrderRequest = {
   /** Perps instrument identifier to trade. */
@@ -100,6 +104,8 @@ const PerpsPlaceIocOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
 
 /**
  * Fill-or-kill Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsPlaceFokOrderRequest = {
   /** Perps instrument identifier to trade. */
@@ -127,6 +133,8 @@ const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
 
 /**
  * Request parameters for one Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsOrderRequest =
   | PerpsPlaceGtcOrderRequest
@@ -139,6 +147,9 @@ const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceFokOrderRequestSchema,
 ]) satisfies z.ZodType<PerpsOrderRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
   limitPrice?: PerpsDecimalInput;
@@ -153,6 +164,9 @@ const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
 }) satisfies z.ZodType<PerpsPositionTpSlTrigger>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPositionTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
 };
@@ -172,6 +186,9 @@ const PerpsTpSlPairSchema = z.union([
   }),
 ]) satisfies z.ZodType<PerpsTpSlPairRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsSignedWsCommandRequest<T> = {
   op: PerpsSignedOp;
   responseSchema: z.ZodType<T>;
@@ -179,16 +196,26 @@ export type PerpsSignedWsCommandRequest<T> = {
   expiresAt?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTradingTransport = {
   sendSignedWsCommand<T>(request: PerpsSignedWsCommandRequest<T>): Promise<T>;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type SignPerpsRestCommand = (
   op: PerpsSignedOp,
   expiresAt?: number,
 ) => Record<string, unknown>;
 
-/** Request parameters for posting one or more Perps orders. */
+/**
+ * Request parameters for posting one or more Perps orders.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PostPerpsOrdersRequest = {
   /** Orders to post as one command. */
   orders: PerpsOrderRequest[];
@@ -201,6 +228,9 @@ const PostPerpsOrdersRequestSchema = z.object({
   expiresAt: z.number().int().positive().optional(),
 }) satisfies z.ZodType<PostPerpsOrdersRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function postPerpsOrders(
   transport: PerpsTradingTransport,
   request: PostPerpsOrdersRequest,
@@ -224,6 +254,9 @@ const PlacePerpsOrderWithTpSlRequestSchema = z.intersection(
   ),
 ) satisfies z.ZodType<PlacePerpsOrderWithTpSlRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsOrderRequest =
   | {
       /** Perps instrument identifier to trade. */
@@ -290,6 +323,9 @@ export type PlacePerpsOrderRequest =
       stopLoss?: never;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsOrderWithTpSlRequest =
   | {
       /** Perps instrument identifier to trade. */
@@ -432,16 +468,25 @@ export type PlacePerpsOrderWithTpSlRequest =
       stopLoss: PerpsTpSlTrigger;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsOrderRequestWithOptions =
   | PlacePerpsOrderRequest
   | PlacePerpsOrderWithTpSlRequest;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function hasPerpsTpSl(
   request: PlacePerpsOrderRequestWithOptions,
 ): request is PlacePerpsOrderWithTpSlRequest {
   return request.takeProfit !== undefined || request.stopLoss !== undefined;
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function placePerpsOrderWithTpSl(
   transport: PerpsTradingTransport,
   request: PlacePerpsOrderWithTpSlRequest,
@@ -480,6 +525,9 @@ export async function placePerpsOrderWithTpSl(
   });
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PlacePerpsPositionTpSlRequest =
   | {
       /** Perps instrument identifier whose current position should receive TP/SL protection. */
@@ -530,6 +578,9 @@ type PlacePerpsPositionTpSlCommandRequest = PlacePerpsPositionTpSlRequest & {
   buy: boolean;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function placePerpsPositionTpSl(
   transport: PerpsTradingTransport,
   request: PlacePerpsPositionTpSlCommandRequest,
@@ -583,6 +634,9 @@ const CancelPerpsOrderRequestSchema = z.union([
   }),
 ]) satisfies z.ZodType<CancelPerpsOrderRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type CancelPerpsOrderRequest =
   | {
       /** Order identifier to cancel. */
@@ -599,6 +653,9 @@ export type CancelPerpsOrderRequest =
       expiresAt?: number;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function cancelPerpsOrder(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrderRequest,
@@ -630,6 +687,9 @@ const CancelPerpsOrdersRequestSchema = z.union([
   }),
 ]) satisfies z.ZodType<CancelPerpsOrdersRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type CancelPerpsOrdersRequest =
   | {
       /** Order identifiers to cancel. */
@@ -646,6 +706,9 @@ export type CancelPerpsOrdersRequest =
       expiresAt?: number;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function cancelPerpsOrders(
   transport: PerpsTradingTransport,
   request: CancelPerpsOrdersRequest,
@@ -674,6 +737,9 @@ const CancelAllPerpsOrdersRequestSchema = z
   })
   .default({}) satisfies z.ZodType<CancelAllPerpsOrdersRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type CancelAllPerpsOrdersRequest = {
   /** Optional Perps instrument identifier to scope cancellation. */
   instrumentId?: number;
@@ -681,6 +747,9 @@ export type CancelAllPerpsOrdersRequest = {
   expiresAt?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export async function cancelAllOrders(
   client: ServiceClient,
   signCommand: SignPerpsRestCommand,
@@ -711,6 +780,9 @@ const UpdatePerpsLeverageRequestSchema = z.object({
   crossMargin: z.boolean(),
 }) satisfies z.ZodType<UpdatePerpsLeverageRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type UpdatePerpsLeverageRequest = {
   /** Perps instrument identifier whose leverage should be updated. */
   instrumentId: number;
@@ -720,11 +792,17 @@ export type UpdatePerpsLeverageRequest = {
   crossMargin: boolean;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type UpdatePerpsLeverageError =
   | RequestRejectedError
   | SigningError
   | TransportError
   | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const UpdatePerpsLeverageError = makeErrorGuard(
   RequestRejectedError,
   SigningError,
@@ -737,6 +815,8 @@ export const UpdatePerpsLeverageError = makeErrorGuard(
  *
  * @throws {@link UpdatePerpsLeverageError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function updatePerpsLeverage(
   transport: PerpsTradingTransport,
@@ -829,6 +909,9 @@ async function placePerpsOrderGroup(
   });
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
   const [type, args, group] = op;
   switch (type) {

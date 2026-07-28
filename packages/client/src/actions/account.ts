@@ -171,7 +171,6 @@ export function listOpenOrders(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );
@@ -320,7 +319,6 @@ export function listAccountTrades(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );
@@ -744,7 +742,6 @@ export function listUserEarningsForDay(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );
@@ -900,7 +897,6 @@ export function listUserEarningsAndMarketsConfig(
             response.nextCursor === END_CURSOR
               ? undefined
               : toPaginationCursor(response.nextCursor),
-          totalCount: response.count,
         })),
     cursor,
   );

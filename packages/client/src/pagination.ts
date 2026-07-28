@@ -10,8 +10,16 @@ export const PageSizeSchema = z.number().int().positive();
 
 export type Page<T> = {
   items: T;
+  /**
+   * Whether another page may be available.
+   *
+   * On methods without a server-provided continuation signal, a full page
+   * reports `true` and the follow-up request returns an empty final page when
+   * the collection ended exactly on a page boundary.
+   */
   hasMore: boolean;
   nextCursor?: PaginationCursor;
+  /** Total number of matching items across all pages. Only present when the service reports one. */
   totalCount?: number;
 };
 

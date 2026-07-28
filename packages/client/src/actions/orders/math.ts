@@ -28,6 +28,23 @@ export function roundNormal(value: number, decimals: number): number {
   return Math.round(value * 10 ** decimals) / 10 ** decimals;
 }
 
+/**
+ * Returns whether `value` is an integer multiple of `step`, comparing both as
+ * integers scaled to `step`'s decimal precision to avoid floating-point
+ * modulo errors. A value with more decimal places than `step` is never a
+ * multiple of it.
+ */
+export function isMultipleOf(value: number, step: number): boolean {
+  const decimals = decimalPlaces(step);
+
+  if (decimalPlaces(value) > decimals) {
+    return false;
+  }
+
+  const scale = 10 ** decimals;
+  return Math.round(value * scale) % Math.round(step * scale) === 0;
+}
+
 export function decimalPlaces(value: number | string): number {
   if (typeof value === 'number' && Number.isInteger(value)) {
     return 0;

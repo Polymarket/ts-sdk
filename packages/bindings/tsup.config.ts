@@ -6,11 +6,11 @@ export default defineConfig(() => ({
   entry: [
     'src/index.ts',
     'src/clob/index.ts',
+    'src/combos/index.ts',
     'src/data/index.ts',
     'src/gamma/index.ts',
     'src/perps/index.ts',
     'src/relayer/index.ts',
-    'src/rfq.ts',
     'src/subscriptions/index.ts',
   ],
   outDir: 'dist',

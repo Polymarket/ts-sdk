@@ -166,6 +166,9 @@ const FetchPerpsInstrumentsRequestSchema = z
   })
   .default({}) satisfies z.ZodType<FetchPerpsInstrumentsRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsInstrumentsRequest = {
   /** Perps instrument identifier to fetch. */
   instrumentId?: number;
@@ -173,7 +176,13 @@ export type FetchPerpsInstrumentsRequest = {
   category?: PerpsInstrumentCategory;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsInstrumentsError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsInstrumentsError = PerpsPublicReadError;
 
 /**
@@ -184,6 +193,8 @@ export const FetchPerpsInstrumentsError = PerpsPublicReadError;
  *
  * @throws {@link FetchPerpsInstrumentsError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function fetchPerpsInstruments(
   client: BaseClient,
@@ -204,12 +215,21 @@ const FetchPerpsTickerRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
 }) satisfies z.ZodType<FetchPerpsTickerRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsTickerRequest = {
   /** Perps instrument identifier whose ticker should be fetched. */
   instrumentId: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsTickerError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsTickerError = PerpsPublicReadError;
 
 /**
@@ -220,6 +240,8 @@ export const FetchPerpsTickerError = PerpsPublicReadError;
  *
  * @throws {@link FetchPerpsTickerError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function fetchPerpsTicker(
   client: BaseClient,
@@ -243,12 +265,21 @@ const FetchPerpsTickersRequestSchema = z
   })
   .default({}) satisfies z.ZodType<FetchPerpsTickersRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsTickersRequest = {
   /** Optional Perps instrument identifier filter. */
   instrumentId?: number;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsTickersError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsTickersError = PerpsPublicReadError;
 
 /**
@@ -259,6 +290,8 @@ export const FetchPerpsTickersError = PerpsPublicReadError;
  *
  * @throws {@link FetchPerpsTickersError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function fetchPerpsTickers(
   client: BaseClient,
@@ -293,6 +326,9 @@ export async function fetchPerpsTickers(
   });
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsBookDepth = 10 | 100 | 500 | 1000;
 
 const PerpsBookDepthSchema: z.ZodType<PerpsBookDepth> = z.union([
@@ -307,6 +343,9 @@ const FetchPerpsBookRequestSchema = z.object({
   depth: PerpsBookDepthSchema.default(100),
 }) satisfies z.ZodType<FetchPerpsBookRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsBookRequest = {
   /** Perps instrument identifier whose order book should be fetched. */
   instrumentId: number;
@@ -314,7 +353,13 @@ export type FetchPerpsBookRequest = {
   depth?: PerpsBookDepth;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsBookError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsBookError = PerpsPublicReadError;
 
 /**
@@ -325,6 +370,8 @@ export const FetchPerpsBookError = PerpsPublicReadError;
  *
  * @throws {@link FetchPerpsBookError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function fetchPerpsBook(
   client: BaseClient,
@@ -368,6 +415,9 @@ const ListPerpsCandlesRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsCandlesRequest =
   | {
       /** Perps instrument identifier whose candles should be listed. */
@@ -386,7 +436,13 @@ export type ListPerpsCandlesRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsCandlesError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsCandlesError = PerpsPublicReadError;
 
 /**
@@ -397,6 +453,8 @@ export const ListPerpsCandlesError = PerpsPublicReadError;
  *
  * @throws {@link ListPerpsCandlesError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function listPerpsCandles(
   client: BaseClient,
@@ -491,6 +549,9 @@ const ListPerpsTradesCursorRequestSchema = z.object({
   Extract<ListPerpsTradesRequest, { cursor: PaginationCursor }>
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsFundingHistoryRequest =
   | {
       /** Perps instrument identifier whose funding history should be listed. */
@@ -507,7 +568,13 @@ export type ListPerpsFundingHistoryRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsFundingHistoryError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsFundingHistoryError = PerpsPublicReadError;
 
 /**
@@ -518,6 +585,8 @@ export const ListPerpsFundingHistoryError = PerpsPublicReadError;
  *
  * @throws {@link ListPerpsFundingHistoryError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function listPerpsFundingHistory(
   client: BaseClient,
@@ -578,6 +647,9 @@ const ListPerpsTradesRequestSchema = z.union([
   })),
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsTradesRequest =
   | {
       /** Perps instrument identifier whose recent trades should be listed. */
@@ -594,7 +666,13 @@ export type ListPerpsTradesRequest =
       cursor: PaginationCursor;
     };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ListPerpsTradesError = PerpsPublicReadError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsTradesError = PerpsPublicReadError;
 
 /**
@@ -605,6 +683,8 @@ export const ListPerpsTradesError = PerpsPublicReadError;
  *
  * @throws {@link ListPerpsTradesError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function listPerpsTrades(
   client: BaseClient,
@@ -665,11 +745,17 @@ export function listPerpsTrades(
   }, initialCursor);
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type FetchPerpsFeesError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsFeesError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
@@ -685,6 +771,8 @@ export const FetchPerpsFeesError = makeErrorGuard(
  *
  * @throws {@link FetchPerpsFeesError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function fetchPerpsFees(
   client: BaseClient,
@@ -889,6 +977,9 @@ const RevokePerpsCredentialsRequestSchema =
     proxy: expectEvmAddress(request.proxy),
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type CreatePerpsSessionRequest = {
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
@@ -899,15 +990,24 @@ type ParsedCreatePerpsSessionRequest = z.output<
   typeof CreatePerpsSessionRequestSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type ResumePerpsSessionRequest = {
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type OpenPerpsSessionRequest =
   | CreatePerpsSessionRequest
   | ResumePerpsSessionRequest;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type RevokePerpsCredentialsRequest = {
   /** Proxy address whose delegated credentials should be revoked. */
   proxy: string;
@@ -915,10 +1015,16 @@ export type RevokePerpsCredentialsRequest = {
 
 const PerpsBaseUnitAmountSchema = z.bigint().positive().max(MAX_UINT256);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsDepositWorkflowRequest =
   | GaslessWorkflowRequest
   | SendPerpsDepositTransactionRequest;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsDepositWorkflow = AsyncGenerator<
   PerpsDepositWorkflowRequest,
   TransactionHandle,
@@ -934,6 +1040,9 @@ const WithdrawFromPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
 }) satisfies z.ZodType<WithdrawFromPerpsRequest>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type DepositToPerpsRequest = {
   /** Collateral amount in base units. */
   amount: bigint;
@@ -941,11 +1050,17 @@ export type DepositToPerpsRequest = {
   metadata?: string;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type WithdrawFromPerpsRequest = {
   /** Collateral amount in base units. */
   amount: bigint;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type OpenPerpsSessionError =
   | RateLimitError
   | RequestRejectedError
@@ -953,6 +1068,9 @@ export type OpenPerpsSessionError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const OpenPerpsSessionError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
@@ -962,6 +1080,9 @@ export const OpenPerpsSessionError = makeErrorGuard(
   UserInputError,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type RevokePerpsCredentialsError =
   | RateLimitError
   | RequestRejectedError
@@ -969,6 +1090,9 @@ export type RevokePerpsCredentialsError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const RevokePerpsCredentialsError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
@@ -978,9 +1102,18 @@ export const RevokePerpsCredentialsError = makeErrorGuard(
   UserInputError,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PreparePerpsDepositError = UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PreparePerpsDepositError = makeErrorGuard(UserInputError);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type DepositToPerpsError =
   | RateLimitError
   | RequestRejectedError
@@ -989,6 +1122,9 @@ export type DepositToPerpsError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const DepositToPerpsError = makeErrorGuard(
   CancelledSigningError,
   RateLimitError,
@@ -999,6 +1135,9 @@ export const DepositToPerpsError = makeErrorGuard(
   UserInputError,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type WithdrawFromPerpsError =
   | RateLimitError
   | RequestRejectedError
@@ -1006,6 +1145,9 @@ export type WithdrawFromPerpsError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const WithdrawFromPerpsError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
@@ -1026,6 +1168,8 @@ export const WithdrawFromPerpsError = makeErrorGuard(
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function openPerpsSession(
   client: BaseSecureClient,
@@ -1048,6 +1192,8 @@ export async function openPerpsSession(
  *
  * @throws {@link RevokePerpsCredentialsError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function revokePerpsCredentials(
   client: BaseSecureClient,
@@ -1103,6 +1249,8 @@ export async function revokePerpsCredentials(
  *
  * @throws {@link PreparePerpsDepositError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function preparePerpsDeposit(
   client: BaseSecureClient,
@@ -1140,6 +1288,8 @@ export async function preparePerpsDeposit(
  *
  * @throws {@link DepositToPerpsError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function depositToPerps(
   client: BaseSecureClient,
@@ -1157,6 +1307,8 @@ export function depositToPerps(
  *
  * @throws {@link WithdrawFromPerpsError}
  * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function withdrawFromPerps(
   client: BaseSecureClient,

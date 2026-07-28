@@ -21,25 +21,35 @@ export type ServiceClientConfig = {
   resolveHeaders?: RequestHeadersResolver;
 };
 
+/**
+ * Request timeout in milliseconds, or `false` to disable the timeout.
+ * Defaults to the transport's standard timeout.
+ */
+type ServiceClientTimeout = number | false;
+
 export type ServiceClientGetOptions = {
   headers?: HeadersInit;
   params?: URLSearchParams;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientPostOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientPatchOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
 export type ServiceClientDeleteOptions = {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
+  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -141,6 +151,7 @@ export class ServiceClient {
       headers,
       method,
       searchParams: request.params,
+      ...(options.timeout !== undefined && { timeout: options.timeout }),
     });
   }
 
@@ -202,14 +213,18 @@ export class ServiceClient {
           return response;
         }
 
+        const retryAfter = this.#parseRetryAfterHeader(response);
+
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
+            { retryAfter },
           );
         }
 
         const message = await this.#extractResponseErrorMessage(response);
         throw new RequestRejectedError(message, {
+          retryAfter,
           status: response.status,
         });
       }),
@@ -224,6 +239,16 @@ export class ServiceClient {
         return TransportError.fromError(error);
       },
     );
+  }
+
+  #parseRetryAfterHeader(response: Response): number | undefined {
+    const value = response.headers.get('retry-after');
+
+    if (value === null || !/^\d+$/.test(value)) {
+      return undefined;
+    }
+
+    return Number(value);
   }
 
   async #extractResponseErrorMessage(response: Response) {

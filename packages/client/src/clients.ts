@@ -311,8 +311,8 @@ class BasePublicClient<
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rfq: new ServiceClient({
-        headers: config.environment.rfq.headers,
-        root: config.environment.rfq.rest,
+        headers: config.environment.combos.headers,
+        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         headers: config.environment.perps.headers,
@@ -551,8 +551,8 @@ class BaseSecureClient<
         root: config.environment.data.rest,
       }),
       rfq: new ServiceClient({
-        headers: config.environment.rfq.headers,
-        root: config.environment.rfq.rest,
+        headers: config.environment.combos.headers,
+        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         headers: config.environment.perps.headers,
@@ -565,6 +565,11 @@ class BaseSecureClient<
           ...(await this.#createL2Headers(request)),
         }),
         root: config.environment.clob.rest,
+      }),
+      combos: new ServiceClient({
+        headers: config.environment.combos.collateralReturn.headers,
+        resolveHeaders: (request) => this.resolveRelayerHeaders(request),
+        root: config.environment.combos.collateralReturn.rest,
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -581,9 +586,9 @@ class BaseSecureClient<
           chainId: config.environment.chainId,
           credentials: config.credentials,
           exchange: config.environment.contracts.exchangeV3,
-          headers: config.environment.rfq.headers,
+          headers: config.environment.combos.headers,
           signer: config.signer,
-          url: config.environment.rfq.ws,
+          url: config.environment.combos.ws,
         }),
         sports: new SportsWebSocketManager({
           headers: config.environment.sports.headers,
@@ -631,20 +636,14 @@ class BaseSecureClient<
     return this.context.signer;
   }
 
-  /**
-   * @deprecated `createSecureClient` now sets up the account wallet for its
-   * trading flow, so this is a no-op retained only for backward compatibility
-   * and returns the current secure client.
-   */
-  setupGaslessWallet(): Promise<SecureClient<TPublicActions, TSecureActions>> {
-    return Promise.resolve(
-      this as unknown as SecureClient<TPublicActions, TSecureActions>,
-    );
-  }
-
   /** @internal */
   get secureClob(): ServiceClient {
     return this.context.secureClob;
+  }
+
+  /** @internal */
+  get combos(): ServiceClient {
+    return this.context.combos;
   }
 
   /** @internal */
@@ -800,6 +799,8 @@ type SecureContext = PublicContext & {
   signer: Signer;
   /** @internal */
   secureClob: ServiceClient;
+  /** @internal */
+  combos: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };

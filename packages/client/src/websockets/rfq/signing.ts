@@ -1,5 +1,5 @@
 import { OrderSide, type PositionId, toBaseUnits } from '@polymarket/bindings';
-import type { RfqSignedOrder } from '@polymarket/bindings/rfq';
+import type { RfqSignedOrder } from '@polymarket/bindings/combos';
 import type { EvmAddress, EvmSignature, HexString } from '@polymarket/types';
 import { SigningError } from '../../errors';
 import {

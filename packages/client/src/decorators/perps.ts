@@ -113,6 +113,9 @@ export {
   WithdrawFromPerpsError,
 } from '../actions';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PublicPerpsActions = {
   /**
    * Fetches Perps instruments.
@@ -124,6 +127,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link FetchPerpsInstrumentsError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsInstruments(
     request?: FetchPerpsInstrumentsRequest,
@@ -139,6 +144,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link FetchPerpsTickerError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsTicker(request: FetchPerpsTickerRequest): Promise<PerpsTicker>;
 
@@ -152,6 +159,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link FetchPerpsTickersError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsTickers(request?: FetchPerpsTickersRequest): Promise<PerpsTicker[]>;
 
@@ -165,6 +174,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link FetchPerpsBookError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsBook(request: FetchPerpsBookRequest): Promise<PerpsBook>;
 
@@ -183,6 +194,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link ListPerpsCandlesError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listPerpsCandles(request: ListPerpsCandlesRequest): Paginated<PerpsCandle[]>;
 
@@ -200,6 +213,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link ListPerpsFundingHistoryError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listPerpsFundingHistory(
     request: ListPerpsFundingHistoryRequest,
@@ -217,6 +232,8 @@ export type PublicPerpsActions = {
    *
    * @throws {@link ListPerpsTradesError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listPerpsTrades(
     request: ListPerpsTradesRequest,
@@ -232,10 +249,15 @@ export type PublicPerpsActions = {
    *
    * @throws {@link FetchPerpsFeesError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsFees(): Promise<PerpsFeeScheduleEntry[]>;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type SecurePerpsActions = PublicPerpsActions & {
   /**
    * Deposits collateral into Perps for the authenticated signer account.
@@ -247,6 +269,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    *
    * @throws {@link DepositToPerpsError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   depositToPerps(request: DepositToPerpsRequest): Promise<TransactionHandle>;
 
@@ -266,6 +290,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    *
    * @throws {@link OpenPerpsSessionError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   openPerpsSession(request?: OpenPerpsSessionRequest): Promise<PerpsSession>;
 
@@ -282,6 +308,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    *
    * @throws {@link RevokePerpsCredentialsError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   revokePerpsCredentials(request: RevokePerpsCredentialsRequest): Promise<void>;
 
@@ -295,16 +323,30 @@ export type SecurePerpsActions = PublicPerpsActions & {
    *
    * @throws {@link WithdrawFromPerpsError}
    * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   withdrawFromPerps(
     request: WithdrawFromPerpsRequest,
   ): Promise<PerpsWithdrawalId>;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsActions = PublicPerpsActions;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function perpsActions(client: BasePublicClient): PublicPerpsActions;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function perpsActions(client: BaseSecureClient): SecurePerpsActions;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {

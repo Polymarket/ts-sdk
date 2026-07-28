@@ -219,7 +219,13 @@ export function erc20TransferCall(
   };
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsDepositCallError = UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsDepositCallError = makeErrorGuard(UserInputError);
 
 /**
@@ -227,6 +233,8 @@ export const PerpsDepositCallError = makeErrorGuard(UserInputError);
  *
  * @throws {@link PerpsDepositCallError}
  * Thrown when the deposit amount is invalid.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function perpsDepositCall(
   depositContractAddress: EvmAddress,
