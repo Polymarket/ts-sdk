@@ -279,11 +279,41 @@ export type PerpsNotificationEntry = z.infer<
   typeof PerpsNotificationEntrySchema
 >;
 
+// Probes only the discriminator so list entries carrying notification types
+// unknown to this SDK version can be skipped without failing the page read.
+const PerpsNotificationEntryTypeProbeSchema = z.object({
+  notification: z.object({ type: PerpsNotificationTypeSchema }),
+});
+
+const PerpsNotificationEntriesSchema = z
+  .array(z.unknown())
+  .transform((items, ctx) => {
+    const entries: PerpsNotificationEntry[] = [];
+    items.forEach((item, index) => {
+      if (!PerpsNotificationEntryTypeProbeSchema.safeParse(item).success) {
+        return;
+      }
+      const entry = PerpsNotificationEntrySchema.safeParse(item);
+      if (entry.success) {
+        entries.push(entry.data);
+        return;
+      }
+      for (const issue of entry.error.issues) {
+        ctx.addIssue({ ...issue, path: [index, ...issue.path] });
+      }
+    });
+    return entries;
+  });
+
 /**
+ * Entries with notification types unknown to this SDK version are omitted
+ * from `items` so newly introduced notification kinds cannot fail the read;
+ * recognized types still validate strictly.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const ListPerpsNotificationsResponseSchema = z.object({
-  items: z.array(PerpsNotificationEntrySchema),
+  items: PerpsNotificationEntriesSchema,
   unread: z.number().int().nonnegative(),
   durable_source_seq: z.number().int().nonnegative(),
   has_more: z.boolean(),

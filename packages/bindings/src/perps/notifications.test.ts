@@ -114,6 +114,11 @@ describe('ListPerpsNotificationsResponseSchema', () => {
           read_at: 1_767_225_700_000,
           ts: 1_767_225_600_000,
         },
+        {
+          notification: { id: NOTIFICATION_ID, type: 'future_notification' },
+          read_at: null,
+          ts: 1_767_225_600_000,
+        },
       ],
       unread: 3,
       durable_source_seq: 1043,
@@ -121,6 +126,9 @@ describe('ListPerpsNotificationsResponseSchema', () => {
       next_cursor: 'eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZSJ9',
     });
 
+    // The unknown-type entry is omitted so new notification kinds cannot
+    // fail the page read.
+    expect(response.items).toHaveLength(2);
     expect(response.items[0]).toMatchObject({
       notification: {
         type: 'position_opened',
@@ -145,5 +153,25 @@ describe('ListPerpsNotificationsResponseSchema', () => {
       has_more: true,
       next_cursor: 'eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZSJ9',
     });
+  });
+
+  it('fails the page when a recognized notification type is malformed', () => {
+    expect(
+      ListPerpsNotificationsResponseSchema.safeParse({
+        items: [
+          {
+            // position_opened is recognized, so its missing fields must
+            // surface as a validation error rather than a dropped entry.
+            notification: { id: NOTIFICATION_ID, type: 'position_opened' },
+            read_at: null,
+            ts: 1_767_225_600_000,
+          },
+        ],
+        unread: 0,
+        durable_source_seq: 0,
+        has_more: false,
+        next_cursor: null,
+      }).success,
+    ).toBe(false);
   });
 });
