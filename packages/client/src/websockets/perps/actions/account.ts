@@ -11,6 +11,7 @@ import {
   FetchPerpsOpenOrdersResponseSchema,
   FetchPerpsOrdersResponseSchema,
   FetchPerpsPortfolioResponseSchema,
+  FetchPerpsUnreadNotificationsCountResponseSchema,
   ListPerpsDepositsResponseSchema,
   ListPerpsEquityHistoryResponseSchema,
   ListPerpsFillsResponseSchema,
@@ -975,7 +976,7 @@ export async function fetchPerpsUnreadNotificationsCount(
       .get('/v1/account/notifications', {
         params: toPerpsSearchParams({ limit: 1 }),
       })
-      .andThen(validateWith(ListPerpsNotificationsResponseSchema)),
+      .andThen(validateWith(FetchPerpsUnreadNotificationsCountResponseSchema)),
   );
   return response.unread;
 }

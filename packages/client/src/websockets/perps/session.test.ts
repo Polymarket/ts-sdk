@@ -1111,7 +1111,7 @@ describe('PerpsSession', () => {
       expect(requests[1]?.get('cursor')).toBe('upstream-cursor-1');
     });
 
-    it('fetches the unread notifications count', async () => {
+    it('fetches the unread notifications count even alongside unknown notification types', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
         http.get(
@@ -1119,7 +1119,16 @@ describe('PerpsSession', () => {
           ({ request }) => {
             requests.push(new URL(request.url).searchParams);
             return HttpResponse.json({
-              items: [notificationEntry({ ts: 3000 })],
+              items: [
+                {
+                  notification: {
+                    id: NOTIFICATION_ID,
+                    type: 'future_notification',
+                  },
+                  read_at: null,
+                  ts: 3000,
+                },
+              ],
               unread: 7,
               durable_source_seq: 1043,
               has_more: true,

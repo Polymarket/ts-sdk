@@ -291,6 +291,17 @@ export const ListPerpsNotificationsResponseSchema = z.object({
 });
 
 /**
+ * Projection of the notifications list response for unread-count reads.
+ * Deliberately leaves `items` unvalidated so notification shapes unknown to
+ * this SDK version cannot fail a read that only needs the counter.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const FetchPerpsUnreadNotificationsCountResponseSchema = z.object({
+  unread: z.number().int().nonnegative(),
+});
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const MarkPerpsNotificationsReadResponseSchema = z.object({
