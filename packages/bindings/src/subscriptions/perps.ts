@@ -330,11 +330,17 @@ export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsNotificationUpdateEventSchema = perpsSessionEventSchema(
   'notification',
   'notifications',
   PerpsNotificationSchema,
 );
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsNotificationUpdateEvent = z.infer<
   typeof PerpsNotificationUpdateEventSchema
 >;
@@ -343,6 +349,8 @@ export type PerpsNotificationUpdateEvent = z.infer<
  * Backpressure control frame on the `notifications` channel. The server sends
  * it when one or more notification data frames were dropped; `sq` is the
  * highest engine sequence among the dropped notifications.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsNotificationsResyncFrameSchema = z
   .object({
@@ -353,7 +361,6 @@ export const PerpsNotificationsResyncFrameSchema = z
   })
   .transform(({ ch, ts, sq }) => ({
     type: 'resync' as const,
-    reason: 'server' as const,
     channel: ch,
     timestamp: ts,
     sequence: sq,

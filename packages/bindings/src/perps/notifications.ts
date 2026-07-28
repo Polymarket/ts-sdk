@@ -6,6 +6,9 @@ import {
   PerpsSideSchema,
 } from './common';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export enum PerpsNotificationType {
   PositionOpened = 'position_opened',
   PositionIncreased = 'position_increased',
@@ -16,6 +19,9 @@ export enum PerpsNotificationType {
   PositionLiquidated = 'position_liquidated',
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsNotificationTypeSchema = z.enum(PerpsNotificationType);
 
 /**
@@ -24,6 +30,8 @@ export const PerpsNotificationTypeSchema = z.enum(PerpsNotificationType);
  * aggressed or rested; otherwise an aggressor submitted without a limit price
  * is `market` and everything else, including a maker's resting order, is
  * `limit`.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export enum PerpsNotificationOrderType {
   Market = 'market',
@@ -32,17 +40,29 @@ export enum PerpsNotificationOrderType {
   StopLoss = 'stop_loss',
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsNotificationOrderTypeSchema = z.enum(
   PerpsNotificationOrderType,
 );
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export enum PerpsMarginType {
   Cross = 'cross',
   Isolated = 'isolated',
 }
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsMarginTypeSchema = z.enum(PerpsMarginType);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPositionChangeNotificationSchema = z
   .object({
     id: PerpsNotificationIdSchema,
@@ -69,10 +89,16 @@ export const PerpsPositionChangeNotificationSchema = z
     orderType: notification.order_type,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPositionChangeNotification = z.infer<
   typeof PerpsPositionChangeNotificationSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPositionClosedNotificationSchema = z
   .object({
     id: PerpsNotificationIdSchema,
@@ -95,10 +121,16 @@ export const PerpsPositionClosedNotificationSchema = z
     orderType: notification.order_type,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPositionClosedNotification = z.infer<
   typeof PerpsPositionClosedNotificationSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsLimitOrderCanceledNotificationSchema = z
   .object({
     id: PerpsNotificationIdSchema,
@@ -117,6 +149,9 @@ export const PerpsLimitOrderCanceledNotificationSchema = z
     price: notification.price,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsLimitOrderCanceledNotification = z.infer<
   typeof PerpsLimitOrderCanceledNotificationSchema
 >;
@@ -156,15 +191,27 @@ const PerpsCrossLiquidationWarningNotificationSchema = z
     affectedInstruments: notification.affected_instruments,
   }));
 
-export const PerpsLiquidationWarningNotificationSchema = z.union([
-  PerpsIsolatedLiquidationWarningNotificationSchema,
-  PerpsCrossLiquidationWarningNotificationSchema,
-]);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsLiquidationWarningNotificationSchema = z.discriminatedUnion(
+  'margin_type',
+  [
+    PerpsIsolatedLiquidationWarningNotificationSchema,
+    PerpsCrossLiquidationWarningNotificationSchema,
+  ],
+);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsLiquidationWarningNotification = z.infer<
   typeof PerpsLiquidationWarningNotificationSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsPositionLiquidatedNotificationSchema = z
   .object({
     id: PerpsNotificationIdSchema,
@@ -187,11 +234,17 @@ export const PerpsPositionLiquidatedNotificationSchema = z
     viaBackstop: notification.via_backstop,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsPositionLiquidatedNotification = z.infer<
   typeof PerpsPositionLiquidatedNotificationSchema
 >;
 
-export const PerpsNotificationSchema = z.union([
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsNotificationSchema = z.discriminatedUnion('type', [
   PerpsPositionChangeNotificationSchema,
   PerpsPositionClosedNotificationSchema,
   PerpsLimitOrderCanceledNotificationSchema,
@@ -199,8 +252,14 @@ export const PerpsNotificationSchema = z.union([
   PerpsPositionLiquidatedNotificationSchema,
 ]);
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsNotification = z.infer<typeof PerpsNotificationSchema>;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsNotificationEntrySchema = z
   .object({
     notification: PerpsNotificationSchema,
@@ -213,10 +272,16 @@ export const PerpsNotificationEntrySchema = z
     timestamp: entry.ts,
   }));
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsNotificationEntry = z.infer<
   typeof PerpsNotificationEntrySchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const ListPerpsNotificationsResponseSchema = z.object({
   items: z.array(PerpsNotificationEntrySchema),
   unread: z.number().int().nonnegative(),
@@ -225,6 +290,9 @@ export const ListPerpsNotificationsResponseSchema = z.object({
   next_cursor: z.string().nullable(),
 });
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const MarkPerpsNotificationsReadResponseSchema = z.object({
   status: z.enum(['ok', 'err']),
   error: z.string().optional(),
