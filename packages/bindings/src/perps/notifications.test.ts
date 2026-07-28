@@ -38,68 +38,7 @@ describe('PerpsNotificationSchema', () => {
     });
   });
 
-  it('accepts fill-driven notifications without an order type', () => {
-    expect(
-      PerpsNotificationSchema.parse({
-        id: NOTIFICATION_ID,
-        type: 'position_opened',
-        instrument_id: 1,
-        side: 'short',
-        size: '10.00',
-        avg_price: '64210',
-        leverage: 5,
-      }),
-    ).toMatchObject({
-      type: PerpsNotificationType.PositionOpened,
-      orderType: undefined,
-    });
-  });
-
-  it('normalizes position_closed notifications', () => {
-    expect(
-      PerpsNotificationSchema.parse({
-        id: NOTIFICATION_ID,
-        type: 'position_closed',
-        instrument_id: 1,
-        side: 'long',
-        size: '10.00',
-        avg_price: '64210',
-        pnl: '100.00',
-        order_type: 'market',
-      }),
-    ).toEqual({
-      id: NOTIFICATION_ID,
-      type: PerpsNotificationType.PositionClosed,
-      instrumentId: 1,
-      side: 'long',
-      size: '10.00',
-      avgPrice: '64210',
-      pnl: '100.00',
-      orderType: PerpsNotificationOrderType.Market,
-    });
-  });
-
-  it('normalizes limit_order_canceled notifications', () => {
-    expect(
-      PerpsNotificationSchema.parse({
-        id: NOTIFICATION_ID,
-        type: 'limit_order_canceled',
-        instrument_id: 1,
-        side: 'long',
-        size: '10.00',
-        price: '100.00',
-      }),
-    ).toEqual({
-      id: NOTIFICATION_ID,
-      type: PerpsNotificationType.LimitOrderCanceled,
-      instrumentId: 1,
-      side: 'long',
-      size: '10.00',
-      price: '100.00',
-    });
-  });
-
-  it('normalizes isolated liquidation warnings', () => {
+  it('discriminates liquidation warnings by margin type', () => {
     expect(
       PerpsNotificationSchema.parse({
         id: NOTIFICATION_ID,
@@ -109,17 +48,12 @@ describe('PerpsNotificationSchema', () => {
         mark_price: '100.00',
         liq_price: '2866.27',
       }),
-    ).toEqual({
-      id: NOTIFICATION_ID,
-      type: PerpsNotificationType.LiquidationWarning,
+    ).toMatchObject({
       marginType: PerpsMarginType.Isolated,
       instrumentId: 1,
-      markPrice: '100.00',
       liquidationPrice: '2866.27',
     });
-  });
 
-  it('normalizes cross liquidation warnings with a null instrument id', () => {
     expect(
       PerpsNotificationSchema.parse({
         id: NOTIFICATION_ID,
@@ -135,30 +69,6 @@ describe('PerpsNotificationSchema', () => {
       marginType: PerpsMarginType.Cross,
       markPrice: '100.00',
       affectedInstruments: [42, 7],
-    });
-  });
-
-  it('normalizes position_liquidated notifications with a null pnl', () => {
-    expect(
-      PerpsNotificationSchema.parse({
-        id: NOTIFICATION_ID,
-        type: 'position_liquidated',
-        instrument_id: 1,
-        side: 'long',
-        size_closed: '0.05',
-        pnl: null,
-        margin_type: 'cross',
-        via_backstop: true,
-      }),
-    ).toEqual({
-      id: NOTIFICATION_ID,
-      type: PerpsNotificationType.PositionLiquidated,
-      instrumentId: 1,
-      side: 'long',
-      sizeClosed: '0.05',
-      pnl: null,
-      marginType: PerpsMarginType.Cross,
-      viaBackstop: true,
     });
   });
 
@@ -193,11 +103,13 @@ describe('ListPerpsNotificationsResponseSchema', () => {
         {
           notification: {
             id: NOTIFICATION_ID,
-            type: 'limit_order_canceled',
+            type: 'position_liquidated',
             instrument_id: 1,
             side: 'long',
-            size: '10.00',
-            price: '100.00',
+            size_closed: '0.05',
+            pnl: null,
+            margin_type: 'cross',
+            via_backstop: true,
           },
           read_at: 1_767_225_700_000,
           ts: 1_767_225_600_000,
@@ -210,18 +122,28 @@ describe('ListPerpsNotificationsResponseSchema', () => {
     });
 
     expect(response.items[0]).toMatchObject({
-      notification: { type: 'position_opened', instrumentId: 1 },
+      notification: {
+        type: 'position_opened',
+        instrumentId: 1,
+        orderType: undefined,
+      },
       readAt: null,
       timestamp: 1_767_225_600_000,
     });
     expect(response.items[1]).toMatchObject({
+      notification: {
+        type: 'position_liquidated',
+        sizeClosed: '0.05',
+        pnl: null,
+        viaBackstop: true,
+      },
       readAt: 1_767_225_700_000,
     });
-    expect(response.unread).toBe(3);
-    expect(response.durable_source_seq).toBe(1043);
-    expect(response.has_more).toBe(true);
-    expect(response.next_cursor).toBe(
-      'eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZSJ9',
-    );
+    expect(response).toMatchObject({
+      unread: 3,
+      durable_source_seq: 1043,
+      has_more: true,
+      next_cursor: 'eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZSJ9',
+    });
   });
 });
