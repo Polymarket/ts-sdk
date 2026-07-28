@@ -1073,7 +1073,17 @@ describe('PerpsSession', () => {
 
             if (params.get('cursor') === null) {
               return HttpResponse.json({
-                items: [notificationEntry({ ts: 3000 })],
+                items: [
+                  notificationEntry({ ts: 3000 }),
+                  {
+                    notification: {
+                      id: NOTIFICATION_ID,
+                      type: 'future_notification',
+                    },
+                    read_at: null,
+                    ts: 2500,
+                  },
+                ],
                 unread: 2,
                 durable_source_seq: 1043,
                 has_more: true,
@@ -1095,6 +1105,8 @@ describe('PerpsSession', () => {
       const pages = session.listNotifications({ limit: 1, sinceSeq: 1000 });
 
       const first = await pages.firstPage();
+      // The unknown-type entry in the first page is omitted instead of
+      // failing the read.
       expect(first.items).toHaveLength(1);
       expect(first.hasMore).toBe(true);
 

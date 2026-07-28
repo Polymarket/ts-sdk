@@ -519,6 +519,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * processed before the gap and deduplicate merged results by notification
    * id. Follow-up pages keep the same `sinceSeq` bound automatically.
    *
+   * Notifications with types unknown to this SDK version are omitted from
+   * page items, so newly introduced notification kinds never fail the read.
+   *
    * @example
    * ```ts
    * const page = await session.listNotifications().firstPage();
