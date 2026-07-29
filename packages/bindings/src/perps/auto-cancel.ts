@@ -30,7 +30,7 @@ export const PerpsAutoCancelStatusSchema = z
   .object({
     deadline: EpochMillisecondsSchema,
     triggered: z.number().int().nonnegative(),
-    daily_limit: z.number().int().positive(),
+    daily_limit: z.number().int().nonnegative(),
     next_reset: EpochMillisecondsSchema,
   })
   .transform((status) => ({

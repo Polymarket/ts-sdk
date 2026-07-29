@@ -820,8 +820,9 @@ export const ArmPerpsAutoCancelError = makeErrorGuard(
   UserInputError,
 );
 
-// Rejection identifier reported by the API when arming is rate limited. The
-// rejection message is the identifier followed by request context.
+// Rejection identifier reported by the API when arming exceeds the daily
+// trigger limit. The rejection message is the identifier followed by request
+// context in parentheses.
 const AUTO_CANCEL_DAILY_LIMIT_REACHED = 'auto_cancel_daily_limit_reached';
 
 /**
@@ -853,7 +854,7 @@ export async function armPerpsAutoCancel(
       .andThen(validateWith(PerpsAutoCancelResponseSchema))
       .mapErr((error) =>
         error instanceof RequestRejectedError &&
-        error.message.startsWith(AUTO_CANCEL_DAILY_LIMIT_REACHED)
+        error.message.startsWith(`${AUTO_CANCEL_DAILY_LIMIT_REACHED} (`)
           ? new AutoCancelDailyLimitError(
               'Auto-cancel daily trigger limit reached.',
               { cause: error },

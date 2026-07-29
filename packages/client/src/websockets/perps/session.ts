@@ -797,7 +797,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * // Keep a 60-second dead man's switch alive by re-arming every 20 seconds.
    * await session.armAutoCancel({ cancelAt: Date.now() + 60_000 });
    * const rearm = setInterval(() => {
-   *   void session.armAutoCancel({ cancelAt: Date.now() + 60_000 });
+   *   // A missed re-arm is fail-safe: the previously armed switch still fires.
+   *   session.armAutoCancel({ cancelAt: Date.now() + 60_000 }).catch(() => {});
    * }, 20_000);
    *
    * // On graceful shutdown, stop re-arming and clear the schedule.
