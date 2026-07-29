@@ -807,7 +807,7 @@ export type AcceptComboQuoteResult =
       rfqId: RfqId;
       reason: ComboAcceptFailureReason;
 
-      /** Raw gateway error behind the failure, when provided. */
+      /** Raw error behind the failure, when provided. */
       error?: BuilderRfqError;
     };
 
@@ -1069,7 +1069,7 @@ export type WaitForComboFillResult =
       status: RfqStatus.Failed | RfqStatus.Expired | RfqStatus.Canceled;
       rfqId: RfqId;
 
-      /** Raw gateway error behind the failure, when provided. */
+      /** Raw error behind the failure, when provided. */
       error?: BuilderRfqError;
     };
 
