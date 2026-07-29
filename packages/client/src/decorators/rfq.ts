@@ -1,7 +1,24 @@
-import { openRfqSession, type RfqSession } from '../actions';
+import type {
+  AcceptComboQuoteParams,
+  AcceptComboQuoteResult,
+  RequestComboQuoteParams,
+  RequestComboQuoteResult,
+  RfqSession,
+  WaitForComboFillParams,
+  WaitForComboFillResult,
+} from '../actions';
+import {
+  acceptComboQuote,
+  openRfqSession,
+  requestComboQuote,
+  waitForComboFill,
+} from '../actions';
 import type { BaseSecureClient } from '../clients';
 
 export type {
+  BuilderRfqError,
+  ComboQuote,
+  FetchRfqStatusParams,
   RfqCancelQuoteAck,
   RfqCancelQuoteRejectedErrorOptions,
   RfqConfirmationAck,
@@ -20,12 +37,19 @@ export type {
   RfqQuoteSource,
   RfqRequestedSize,
   RfqRequestorPublicId,
+  RfqRequestRejectedErrorOptions,
   RfqSession,
+  RfqStatusResult,
   RfqTrade,
   RfqTradeEvent,
 } from '../actions/rfq';
 export {
+  AcceptComboQuoteError,
+  ComboAcceptFailureReason,
+  ComboQuoteUnavailableReason,
+  FetchRfqStatusError,
   OpenRfqSessionError,
+  RequestComboQuoteError,
   RfqCancelQuoteError,
   RfqCancelQuoteRejectedError,
   RfqConfirmationDecision,
@@ -36,9 +60,21 @@ export {
   RfqKnownErrorCode,
   RfqQuoteError,
   RfqQuoteRejectedError,
+  RfqRejectionCode,
   RfqRequestedSizeUnit,
+  RfqRequestRejectedError,
   RfqSide,
+  RfqStatus,
+  WaitForComboFillError,
 } from '../actions/rfq';
+export type {
+  AcceptComboQuoteParams,
+  AcceptComboQuoteResult,
+  RequestComboQuoteParams,
+  RequestComboQuoteResult,
+  WaitForComboFillParams,
+  WaitForComboFillResult,
+};
 
 export type SecureRfqActions = {
   /**
@@ -174,12 +210,113 @@ export type SecureRfqActions = {
    * Thrown on failure.
    */
   openRfqSession(): Promise<RfqSession>;
+
+  /**
+   * Requests a quote for a combo of positions.
+   *
+   * @remarks
+   * Resolves when the quote competition window closes. A request that
+   * attracts no usable quotes is a normal outcome, returned as `quote: null`
+   * with a reason rather than thrown.
+   *
+   * Requires a Builder API Key in the client configuration, via
+   * `builderApiKey(...)` or `remoteBuilderSigning(...)`.
+   *
+   * @throws {@link RequestComboQuoteError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const result = await client.requestComboQuote({
+   *   legPositionIds: ['123', '456'],
+   *   direction: OrderSide.BUY,
+   *   amount: 100,
+   * });
+   *
+   * if (result.quote !== null) {
+   *   // result.quote.blendedPrice: DecimalString
+   *   // result.quote.totalRequired: DecimalString
+   *   // result.quote.expiresAt: EpochMilliseconds
+   * }
+   * ```
+   */
+  requestComboQuote(
+    params: RequestComboQuoteParams,
+  ): Promise<RequestComboQuoteResult>;
+
+  /**
+   * Accepts a combo quote, signing the acceptance order for the
+   * authenticated account. The builder code is attached automatically.
+   *
+   * @remarks
+   * Resolves at the maker last-look outcome. A maker declining or the
+   * acceptance window expiring is a normal outcome, returned as
+   * `status: 'failed'`. `status: 'executing'` means the trade was handed off
+   * for onchain execution; follow it with `waitForComboFill`.
+   *
+   * Accepting is idempotent: retrying an already-accepted RFQ reports its
+   * current status instead of submitting a second order.
+   *
+   * @throws {@link AcceptComboQuoteError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const result = await client.requestComboQuote({
+   *   legPositionIds: ['123', '456'],
+   *   direction: OrderSide.BUY,
+   *   amount: 100,
+   * });
+   *
+   * if (result.quote !== null) {
+   *   const acceptance = await client.acceptComboQuote(result);
+   * }
+   * ```
+   */
+  acceptComboQuote(
+    params: AcceptComboQuoteParams,
+  ): Promise<AcceptComboQuoteResult>;
+
+  /**
+   * Waits for an accepted RFQ to reach a terminal state.
+   *
+   * @remarks
+   * Polls the RFQ status until it is filled (or confirmed onchain),
+   * `FAILED`, `EXPIRED`, or `CANCELED`. Terminal failure is a normal outcome
+   * and is returned, not thrown. A `TimeoutError` does not mean the trade
+   * failed; resume with the `fetchRfqStatus` action from
+   * `@polymarket/client/actions`.
+   *
+   * @throws {@link WaitForComboFillError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const fill = await client.waitForComboFill({ rfqId });
+   *
+   * if (fill.status === RfqStatus.Filled) {
+   *   // fill.txHash: TxHash
+   * }
+   * ```
+   */
+  waitForComboFill(
+    params: WaitForComboFillParams,
+  ): Promise<WaitForComboFillResult>;
 };
 
 export function rfqActions(client: BaseSecureClient): SecureRfqActions {
   return {
     openRfqSession() {
       return openRfqSession(client);
+    },
+    requestComboQuote(params: RequestComboQuoteParams) {
+      return requestComboQuote(client, params);
+    },
+    acceptComboQuote(params: AcceptComboQuoteParams) {
+      return acceptComboQuote(client, params);
+    },
+    waitForComboFill(params: WaitForComboFillParams) {
+      return waitForComboFill(client, params);
     },
   };
 }

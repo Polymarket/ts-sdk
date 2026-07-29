@@ -124,6 +124,11 @@ export class ConnectionLostError extends PolymarketError {
 export type RequestRejectedErrorOptions = {
   status: number;
   /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  code?: string;
+  /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
    */
@@ -139,6 +144,11 @@ export class RequestRejectedError extends PolymarketError {
 
   readonly status: number;
   /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  readonly code?: string;
+  /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
    */
@@ -150,6 +160,7 @@ export class RequestRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.status = options.status;
+    this.code = options.code;
     this.retryAfter = options.retryAfter;
   }
 }

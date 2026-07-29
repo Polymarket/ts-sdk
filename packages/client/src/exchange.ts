@@ -205,6 +205,28 @@ export function calculateExchangeOrderTakerAmount(
 }
 
 /** @internal */
+export type CreateExchangeOrderHashParams = {
+  domain: ExchangeOrderDomain;
+  order: ExchangeOrderInput;
+};
+
+/** @internal */
+export function createExchangeOrderHash(
+  params: CreateExchangeOrderHashParams,
+): HexString {
+  return expectHexString(
+    Hash.keccak256(
+      Bytes.concat(
+        Bytes.fromHex('0x1901'),
+        Bytes.fromHex(createExchangeOrderDomainSeparator(params.domain)),
+        Bytes.fromHex(createExchangeOrderContentsHash(params.order)),
+      ),
+      { as: 'Hex' },
+    ),
+  );
+}
+
+/** @internal */
 export function generateExchangeOrderSalt(): bigint {
   const bytes = new Uint8Array(8);
   globalThis.crypto.getRandomValues(bytes);
