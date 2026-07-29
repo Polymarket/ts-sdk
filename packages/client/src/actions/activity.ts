@@ -4,6 +4,7 @@ import {
 } from '@polymarket/bindings';
 import {
   type Activity,
+  ActivityType,
   ActivityTypeSchema,
   type ComboActivity,
   ListActivityResponseSchema,
@@ -242,6 +243,13 @@ export function listActivity(
     ListActivityRequestSchema,
   );
 
+  // The endpoint defaults excludeDepositsWithdrawals=true and drops DEPOSIT and
+  // WITHDRAWAL from the type filter even when requested explicitly, so opt out
+  // of the exclusion whenever the caller asks for those types.
+  const includesDepositOrWithdrawal = params.type?.some(
+    (type) => type === ActivityType.DEPOSIT || type === ActivityType.WITHDRAWAL,
+  );
+
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
@@ -249,6 +257,9 @@ export function listActivity(
       .get('/activity', {
         params: toDataSearchParams({
           ...params,
+          excludeDepositsWithdrawals: includesDepositOrWithdrawal
+            ? false
+            : undefined,
           limit: decoded.pageSize,
           offset: decoded.offset,
         }),
