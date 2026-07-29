@@ -517,6 +517,21 @@ export async function* buildProxyWalletExecuteRequest(
   };
 }
 
+function extractOnChainNonceFromSubmitError(
+  error: unknown,
+): string | undefined {
+  if (!(error instanceof RequestRejectedError) || error.status !== 400) {
+    return undefined;
+  }
+
+  const match =
+    /batch nonce\s+\d+\s+does not match on-chain nonce\s+(\d+)/i.exec(
+      error.message,
+    );
+
+  return match?.[1];
+}
+
 async function* prepareDepositWalletGaslessTransaction(
   client: BaseSecureClient,
   params: PrepareGaslessTransactionParams,
@@ -527,7 +542,28 @@ async function* prepareDepositWalletGaslessTransaction(
     params.metadata,
   );
 
-  return executeGasless(client, payload);
+  try {
+    return await executeGasless(client, payload);
+  } catch (error) {
+    const nonce = extractOnChainNonceFromSubmitError(error);
+    if (nonce === undefined) {
+      throw error;
+    }
+
+    const signature = expectEvmSignature(
+      yield signGaslessTypedData(
+        createDepositWalletBatchTypedDataPayload({
+          calls: params.calls.map(toDepositWalletCall),
+          chainId: client.environment.chainId,
+          deadline: payload.depositWalletParams.deadline,
+          nonce,
+          wallet: client.account.wallet,
+        }),
+      ),
+    );
+
+    return executeGasless(client, { ...payload, nonce, signature });
+  }
 }
 
 /**
