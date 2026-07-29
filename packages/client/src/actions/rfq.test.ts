@@ -91,6 +91,7 @@ describe('requestComboQuote', () => {
         signature_type: 0,
         signer_address: SIGNER,
       },
+      timeout: 30_000,
     });
     expect(result).toEqual({
       builderCode: BUILDER_CODE,
@@ -341,7 +342,7 @@ describe('acceptComboQuote', () => {
     });
   });
 
-  it('polls the status endpoint when the outcome is still pending and computes the order hash locally', async () => {
+  it('polls the status endpoint when the outcome is still pending and keeps the accepted order hash', async () => {
     const { client, gatewayGet } = createClient({
       getResults: [
         okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
@@ -360,14 +361,25 @@ describe('acceptComboQuote', () => {
     const result = await acceptComboQuote(client, acceptParams);
 
     expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1');
-    expect(result.status).toBe('executing');
-
-    if (result.status !== 'executing') {
-      expect.unreachable('Expected an executing result');
-    }
-
-    expect(result.takerOrderHash).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(result).toEqual({
+      rfqId: 'rfq-1',
+      status: 'executing',
+      takerOrderHash: TAKER_ORDER_HASH,
+    });
   }, 10_000);
+
+  it('omits the taker order hash when a retry attached to an existing acceptance', async () => {
+    const { client } = createClient({
+      postResults: [
+        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
+      ],
+    });
+
+    await expect(acceptComboQuote(client, acceptParams)).resolves.toEqual({
+      rfqId: 'rfq-1',
+      status: 'executing',
+    });
+  });
 });
 
 describe('waitForComboFill', () => {

@@ -190,14 +190,14 @@ const BuilderRfqQuoteReadyResponseSchema = z
 
 export type BuilderRfqFinalStateResponse = {
   rfqId: RfqId;
-  status: RfqStatus;
+  status: RfqStatus.Failed | RfqStatus.Expired | RfqStatus.Canceled;
   error?: BuilderRfqError;
 };
 
 const BuilderRfqFinalStateResponseSchema = z
   .object({
     rfq_id: RfqIdSchema,
-    status: z.enum(RfqStatus),
+    status: z.enum([RfqStatus.Failed, RfqStatus.Expired, RfqStatus.Canceled]),
     error: BuilderRfqErrorSchema.optional(),
   })
   .transform(

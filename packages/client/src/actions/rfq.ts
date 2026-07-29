@@ -65,7 +65,6 @@ import {
 } from '../errors';
 import type { ExchangeOrderDomain } from '../exchange';
 import {
-  createExchangeOrderHash,
   createExchangeOrderSignature,
   createExchangeOrderTypedDataPayload,
   createExchangeV3OrderDomain,
@@ -420,6 +419,9 @@ export async function openRfqSession(
 }
 
 const BUILDER_RFQ_REQUESTS_PATH = '/v1/builder/rfq/requests';
+// Quote requests are held through the quote competition and can take well
+// beyond the transport's standard timeout.
+const CREATE_QUOTE_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_POLL_INTERVAL_MS = 500;
 const DEFAULT_FILL_TIMEOUT_MS = 30_000;
@@ -428,14 +430,14 @@ const BYTES32_ZERO =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
 export type RfqRequestRejectedErrorOptions = {
-  /** HTTP status returned by the gateway. */
+  /** HTTP status of the rejection. */
   status: number;
   /** Classified rejection reason. */
   code: RfqRejectionCode;
 };
 
 /**
- * Error thrown when the builder gateway rejects an RFQ request or acceptance.
+ * Error thrown when an RFQ request or acceptance is rejected.
  *
  * @remarks
  * Inspect {@link RfqRequestRejectedError.code} to distinguish permanent input
@@ -449,7 +451,7 @@ export type RfqRequestRejectedErrorOptions = {
 export class RfqRequestRejectedError extends PolymarketError {
   override name = 'RfqRequestRejectedError' as const;
 
-  /** HTTP status returned by the gateway. */
+  /** HTTP status of the rejection. */
   readonly status: number;
 
   /** Classified rejection reason. */
@@ -706,7 +708,10 @@ export async function requestComboQuote(
 
   const response = await unwrap(
     client.builderGateway
-      .post(BUILDER_RFQ_REQUESTS_PATH, { json: request })
+      .post(BUILDER_RFQ_REQUESTS_PATH, {
+        json: request,
+        timeout: CREATE_QUOTE_TIMEOUT_MS,
+      })
       .andThen(validateWith(BuilderRfqCreateResponseSchema))
       .mapErr(toRfqRequestRejection),
   );
@@ -789,8 +794,13 @@ export type AcceptComboQuoteResult =
       status: 'executing';
       rfqId: RfqId;
 
-      /** Hash of the submitted acceptance order. */
-      takerOrderHash: string;
+      /**
+       * Hash of the recorded acceptance order.
+       *
+       * Absent when a retry attached to an acceptance recorded by an earlier
+       * attempt; the retried order was not the one recorded.
+       */
+      takerOrderHash?: string;
     }
   | {
       status: 'failed';
@@ -855,8 +865,10 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * `status: 'failed'`. `status: 'executing'` means the trade was handed off
  * for onchain execution; follow it with {@link waitForComboFill}.
  *
- * Accepting is idempotent: retrying an already-accepted RFQ reports its
- * current status instead of submitting a second order.
+ * A retry after a dropped connection is safe: an already-accepted RFQ
+ * reports its current status instead of executing twice. In that case
+ * `takerOrderHash` is absent because the retry's order was not the one
+ * recorded.
  *
  * @throws {@link AcceptComboQuoteError}
  * Thrown on failure.
@@ -910,6 +922,9 @@ export async function acceptComboQuote(
   }
 
   let status = accepted.value;
+  // Only the accept response carries the taker order hash; status polls do
+  // not, so capture it before entering the poll loop.
+  const takerOrderHash = accepted.value.takerOrderHash;
   const deadline = Date.now() + ACCEPT_OUTCOME_TIMEOUT_MS;
 
   // The gateway holds the accept through maker last look but responds with
@@ -942,8 +957,7 @@ export async function acceptComboQuote(
   return {
     rfqId: status.rfqId,
     status: 'executing',
-    takerOrderHash:
-      status.takerOrderHash ?? createExchangeOrderHash({ domain, order }),
+    ...(takerOrderHash === undefined ? {} : { takerOrderHash }),
   };
 }
 
