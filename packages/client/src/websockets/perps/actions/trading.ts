@@ -4,6 +4,7 @@ import {
   toDecimalString,
 } from '@polymarket/bindings';
 import {
+  PerpsAutoCancelResponseSchema,
   PerpsCancelAllOrdersResponseSchema,
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
@@ -24,10 +25,13 @@ import {
 import { expectPresent, invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  AutoCancelDailyLimitError,
   makeErrorGuard,
+  RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
@@ -774,6 +778,132 @@ export async function cancelAllOrders(
   );
 }
 
+const ArmPerpsAutoCancelRequestSchema = z.object({
+  cancelAt: z.number().int().positive(),
+  expiresAt: z.number().int().positive().optional(),
+}) satisfies z.ZodType<ArmPerpsAutoCancelRequest>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ArmPerpsAutoCancelRequest = {
+  /**
+   * Unix timestamp in milliseconds at which all open orders are cancelled.
+   * Must be at least five seconds in the future.
+   */
+  cancelAt: number;
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ArmPerpsAutoCancelError =
+  | AutoCancelDailyLimitError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const ArmPerpsAutoCancelError = makeErrorGuard(
+  AutoCancelDailyLimitError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+// Rejection identifier reported by the API when arming is rate limited. The
+// rejection message is the identifier followed by request context.
+const AUTO_CANCEL_DAILY_LIMIT_REACHED = 'auto_cancel_daily_limit_reached';
+
+/**
+ * Arms the one-shot auto-cancel switch that cancels all open Perps orders at
+ * the requested time. Arming again replaces the previous schedule.
+ *
+ * @throws {@link ArmPerpsAutoCancelError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function armPerpsAutoCancel(
+  client: ServiceClient,
+  signCommand: SignPerpsRestCommand,
+  request: ArmPerpsAutoCancelRequest,
+): Promise<void> {
+  const params = parseUserInput(request, ArmPerpsAutoCancelRequestSchema);
+  const op = ['autoCancel', [params.cancelAt]] as const satisfies PerpsSignedOp;
+  const command = signCommand(op, params.expiresAt);
+
+  await unwrap(
+    client
+      .patch('/v1/trade/auto-cancel', {
+        json: {
+          ...command,
+          op: toPerpsCommandBodyOp(op),
+        },
+      })
+      .andThen(validateWith(PerpsAutoCancelResponseSchema))
+      .mapErr((error) =>
+        error instanceof RequestRejectedError &&
+        error.message.startsWith(AUTO_CANCEL_DAILY_LIMIT_REACHED)
+          ? new AutoCancelDailyLimitError(
+              'Auto-cancel daily trigger limit reached.',
+              { cause: error },
+            )
+          : error,
+      ),
+  );
+}
+
+const ClearPerpsAutoCancelRequestSchema = z
+  .object({
+    expiresAt: z.number().int().positive().optional(),
+  })
+  .default({}) satisfies z.ZodType<ClearPerpsAutoCancelRequest>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ClearPerpsAutoCancelRequest = {
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
+
+/**
+ * Clears the auto-cancel schedule without triggering it. Clearing is allowed
+ * even when the daily trigger limit has been reached.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function clearPerpsAutoCancel(
+  client: ServiceClient,
+  signCommand: SignPerpsRestCommand,
+  request?: ClearPerpsAutoCancelRequest,
+): Promise<void> {
+  const params = parseUserInput(request, ClearPerpsAutoCancelRequestSchema);
+  const op = ['autoCancel', [0]] as const satisfies PerpsSignedOp;
+  const command = signCommand(op, params.expiresAt);
+
+  await unwrap(
+    client
+      .patch('/v1/trade/auto-cancel', {
+        json: {
+          ...command,
+          op: toPerpsCommandBodyOp(op),
+        },
+      })
+      .andThen(validateWith(PerpsAutoCancelResponseSchema)),
+  );
+}
+
 const UpdatePerpsLeverageRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   leverage: z.number().int().positive(),
@@ -926,6 +1056,10 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
     case 'cancelOrders':
     case 'cancelOrdersCOID':
       return { type, args };
+    case 'autoCancel': {
+      const [time] = args as readonly [number];
+      return { type, args: { time } };
+    }
     case 'cancelAll': {
       const [instrumentId] = args as readonly [PerpsInstrumentId | undefined];
       return {

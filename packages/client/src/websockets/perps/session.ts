@@ -3,6 +3,7 @@ import {
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
   type PerpsAccountStats,
+  type PerpsAutoCancelStatus,
   type PerpsBalance,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
@@ -49,6 +50,7 @@ import {
   type FetchPerpsOpenOrdersRequest,
   type FetchPerpsOrdersRequest,
   fetchPerpsAccountConfig,
+  fetchPerpsAutoCancel,
   fetchPerpsBalances,
   fetchPerpsOpenOrders,
   fetchPerpsOrders,
@@ -68,12 +70,16 @@ import {
   listPerpsWithdrawals,
 } from './actions/account';
 import {
+  type ArmPerpsAutoCancelRequest,
+  armPerpsAutoCancel,
   type CancelAllPerpsOrdersRequest,
   type CancelPerpsOrderRequest,
   type CancelPerpsOrdersRequest,
+  type ClearPerpsAutoCancelRequest,
   cancelAllOrders,
   cancelPerpsOrder,
   cancelPerpsOrders,
+  clearPerpsAutoCancel,
   hasPerpsTpSl,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
@@ -135,6 +141,7 @@ type EventWaiter = {
 };
 
 export type {
+  PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
   PerpsPostOrderAck,
   PerpsUpdateLeverageResult,
@@ -152,9 +159,11 @@ export type {
   ListPerpsWithdrawalsRequest,
 } from './actions/account';
 export type {
+  ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  ClearPerpsAutoCancelRequest,
   PerpsOrderRequest,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
@@ -167,7 +176,10 @@ export type {
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
 } from './actions/trading';
-export { UpdatePerpsLeverageError } from './actions/trading';
+export {
+  ArmPerpsAutoCancelError,
+  UpdatePerpsLeverageError,
+} from './actions/trading';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -380,6 +392,20 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request?: FetchPerpsAccountConfigRequest,
   ): Promise<PerpsAccountConfig[]> {
     return await fetchPerpsAccountConfig(this.#api, request);
+  }
+
+  /**
+   * Fetches the auto-cancel status for the authenticated account, including
+   * the armed deadline, today's trigger count, the daily trigger limit, and
+   * when the daily counter resets.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchAutoCancel(): Promise<PerpsAutoCancelStatus> {
+    return await fetchPerpsAutoCancel(this.#api);
   }
 
   /**
@@ -747,6 +773,67 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    */
   async cancelAllOrders(request?: CancelAllPerpsOrdersRequest): Promise<void> {
     await cancelAllOrders(
+      this.#api,
+      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
+      request,
+    );
+  }
+
+  /**
+   * Arms the auto-cancel switch that cancels all open Perps orders for the
+   * authenticated account at `cancelAt`.
+   *
+   * @remarks
+   * The switch is one-shot: once it fires and open orders are cancelled, the
+   * schedule clears itself and orders placed afterwards are unprotected.
+   * Re-arm periodically to keep protection active. Arming again replaces the
+   * previous schedule, and `cancelAt` must be at least five seconds in the
+   * future. Accounts may only trigger auto-cancel a limited number of times
+   * per UTC day; use {@link PerpsSession.fetchAutoCancel} to inspect the
+   * limit, today's trigger count, and when the counter resets.
+   *
+   * @example
+   * ```ts
+   * // Keep a 60-second dead man's switch alive by re-arming every 20 seconds.
+   * await session.armAutoCancel({ cancelAt: Date.now() + 60_000 });
+   * const rearm = setInterval(() => {
+   *   void session.armAutoCancel({ cancelAt: Date.now() + 60_000 });
+   * }, 20_000);
+   *
+   * // On graceful shutdown, stop re-arming and clear the schedule.
+   * clearInterval(rearm);
+   * await session.clearAutoCancel();
+   * ```
+   *
+   * @throws {@link ArmPerpsAutoCancelError}
+   * Thrown on failure, including `AutoCancelDailyLimitError` when the daily
+   * trigger limit has been reached.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async armAutoCancel(request: ArmPerpsAutoCancelRequest): Promise<void> {
+    await armPerpsAutoCancel(
+      this.#api,
+      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
+      request,
+    );
+  }
+
+  /**
+   * Clears the auto-cancel schedule for the authenticated account without
+   * triggering it.
+   *
+   * @remarks
+   * Clearing is always allowed, even when the daily trigger limit has been
+   * reached.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async clearAutoCancel(request?: ClearPerpsAutoCancelRequest): Promise<void> {
+    await clearPerpsAutoCancel(
       this.#api,
       (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
       request,
