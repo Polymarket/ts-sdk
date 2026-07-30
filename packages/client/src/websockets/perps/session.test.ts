@@ -94,6 +94,7 @@ describe('PerpsSession', () => {
             'funding',
             'deposits',
             'withdrawals',
+            'notifications',
             'tpsl',
           ],
         },
@@ -241,6 +242,7 @@ describe('PerpsSession', () => {
                 'funding',
                 'deposits',
                 'withdrawals',
+                'notifications',
                 'tpsl',
               ],
             },
@@ -941,6 +943,283 @@ describe('PerpsSession', () => {
     });
   });
 
+  describe('notifications', () => {
+    it('emits notification events from the notifications channel', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send(
+        notificationUpdate({ sequence: 1042, type: 'position_opened' }),
+      );
+
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'notifications',
+          payload: {
+            id: NOTIFICATION_ID,
+            type: 'position_opened',
+            instrumentId: 1,
+            side: 'long',
+            orderType: 'take_profit',
+          },
+          sequence: 1042,
+          type: 'notification',
+        },
+      });
+
+      await session.close();
+    });
+
+    it('drops server resync frames without emitting an event', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      // The server resync control frame is parsed but intentionally not
+      // surfaced until DEV-428; the notification sent afterwards arriving as
+      // the next event proves it was dropped without closing the session.
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'notifications',
+        sq: 1050,
+        ts: 1_700_000_000_000,
+        type: 'resync',
+      });
+      await connection.send(
+        notificationUpdate({ sequence: 1051, type: 'position_opened' }),
+      );
+
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'notifications',
+          sequence: 1051,
+          type: 'notification',
+        },
+      });
+
+      await session.close();
+    });
+
+    it('does not synthesize sequence-gap resyncs for notification sequences', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      // Notification frames carry sparse engine sequences: one event can emit
+      // several notifications sharing a sequence and unrelated events skip
+      // values. Neither shape may trigger a synthesized sequence_gap resync.
+      const first = waitForNextEvent(session);
+      await connection.send(
+        notificationUpdate({ sequence: 10, type: 'position_opened' }),
+      );
+      await expect(first).resolves.toMatchObject({
+        value: { sequence: 10, type: 'notification' },
+      });
+
+      const second = waitForNextEvent(session);
+      await connection.send(
+        notificationUpdate({ sequence: 10, type: 'position_increased' }),
+      );
+      await expect(second).resolves.toMatchObject({
+        value: { sequence: 10, type: 'notification' },
+      });
+
+      const third = waitForNextEvent(session);
+      await connection.send(
+        notificationUpdate({ sequence: 25, type: 'position_reduced' }),
+      );
+      await expect(third).resolves.toMatchObject({
+        value: { sequence: 25, type: 'notification' },
+      });
+
+      await session.close();
+    });
+
+    it('drops notification frames with unknown types without closing the session', async () => {
+      mockSuccessfulSession();
+      await expectDropsUnknownFrame({
+        expectedEvent: { channel: 'notifications', type: 'notification' },
+        link: perps,
+        server,
+        subscribe: async () => {
+          const session = createSession();
+          await session.connect();
+          return { close: () => session.close(), events: session };
+        },
+        unknownFrame: {
+          ch: 'notifications',
+          data: { id: NOTIFICATION_ID, type: 'future_notification' },
+          sq: 1,
+          ts: 1_700_000_000_000,
+        },
+        validFrame: notificationUpdate({
+          sequence: 2,
+          type: 'position_opened',
+        }),
+      });
+    });
+
+    it('pages notifications and pins since_seq across pages', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/notifications`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+
+            if (params.get('cursor') === null) {
+              return HttpResponse.json({
+                items: [
+                  notificationEntry({ ts: 3000 }),
+                  {
+                    notification: {
+                      id: NOTIFICATION_ID,
+                      type: 'future_notification',
+                    },
+                    read_at: null,
+                    ts: 2500,
+                  },
+                ],
+                unread: 2,
+                durable_source_seq: 1043,
+                has_more: true,
+                next_cursor: 'upstream-cursor-1',
+              });
+            }
+
+            return HttpResponse.json({
+              items: [notificationEntry({ ts: 2000 })],
+              unread: 2,
+              durable_source_seq: 1043,
+              has_more: false,
+              next_cursor: null,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+      const pages = session.listNotifications({ limit: 1, sinceSeq: 1000 });
+
+      const first = await pages.firstPage();
+      // The unknown-type entry in the first page is omitted instead of
+      // failing the read.
+      expect(first.items).toHaveLength(1);
+      expect(first.hasMore).toBe(true);
+
+      const second = await pages.from(first.nextCursor).firstPage();
+      expect(second.items).toHaveLength(1);
+      expect(second.hasMore).toBe(false);
+      expect(second.nextCursor).toBeUndefined();
+
+      expect(requests[0]?.get('since_seq')).toBe('1000');
+      expect(requests[0]?.get('limit')).toBe('1');
+      expect(requests[0]?.get('cursor')).toBeNull();
+      expect(requests[1]?.get('since_seq')).toBe('1000');
+      expect(requests[1]?.get('limit')).toBe('1');
+      expect(requests[1]?.get('cursor')).toBe('upstream-cursor-1');
+    });
+
+    it('fetches the unread notifications count even alongside unknown notification types', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/notifications`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            return HttpResponse.json({
+              items: [
+                {
+                  notification: {
+                    id: NOTIFICATION_ID,
+                    type: 'future_notification',
+                  },
+                  read_at: null,
+                  ts: 3000,
+                },
+              ],
+              unread: 7,
+              durable_source_seq: 1043,
+              has_more: true,
+              next_cursor: 'upstream-cursor-1',
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      await expect(session.fetchUnreadNotificationsCount()).resolves.toBe(7);
+      expect(requests[0]?.get('limit')).toBe('1');
+    });
+
+    it('marks notifications read by id', async () => {
+      const bodies: unknown[] = [];
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/account/notifications/read`,
+          async ({ request }) => {
+            bodies.push(await request.json());
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+
+      await session.markNotificationsRead({ ids: [NOTIFICATION_ID] });
+
+      expect(bodies).toEqual([{ ids: [NOTIFICATION_ID] }]);
+    });
+
+    it('marks notifications read up to a notification via a base64url cursor', async () => {
+      const bodies: Array<{ before?: string }> = [];
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/account/notifications/read`,
+          async ({ request }) => {
+            bodies.push((await request.json()) as { before?: string });
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+
+      await session.markNotificationsRead({
+        upTo: { id: NOTIFICATION_ID, timestamp: 1_767_225_600_000 },
+      });
+
+      const before = bodies[0]?.before;
+      expect(before).toBeDefined();
+      expect(before).not.toMatch(/[+/=]/);
+      expect(
+        JSON.parse(atob(String(before).replace(/-/g, '+').replace(/_/g, '/'))),
+      ).toEqual({ id: NOTIFICATION_ID, ts: 1_767_225_600_000 });
+    });
+
+    it('throws when the read request is rejected in-band', async () => {
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/account/notifications/read`,
+          () => HttpResponse.json({ status: 'err', error: 'unauthorized' }),
+        ),
+      );
+      const session = createSession();
+
+      await expect(
+        session.markNotificationsRead({ ids: [NOTIFICATION_ID] }),
+      ).rejects.toBeInstanceOf(RequestRejectedError);
+    });
+  });
+
   describe('account reads', () => {
     it('sends session credentials as REST auth headers', async () => {
       server.use(
@@ -1510,6 +1789,42 @@ function orderUpdate(status: string) {
     },
     sq: 1,
     ts: 1_700_000_000_000,
+  };
+}
+
+const NOTIFICATION_ID = '0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b';
+
+function notificationUpdate(request: { sequence: number; type: string }) {
+  return {
+    ch: 'notifications',
+    data: {
+      avg_price: '64210',
+      id: NOTIFICATION_ID,
+      instrument_id: 1,
+      leverage: 10,
+      order_type: 'take_profit',
+      side: 'long',
+      size: '10.00',
+      type: request.type,
+    },
+    sq: request.sequence,
+    ts: 1_700_000_000_000,
+  };
+}
+
+function notificationEntry(request: { ts: number }) {
+  return {
+    notification: {
+      avg_price: '64210',
+      id: NOTIFICATION_ID,
+      instrument_id: 1,
+      leverage: 10,
+      side: 'long',
+      size: '10.00',
+      type: 'position_opened',
+    },
+    read_at: null,
+    ts: request.ts,
   };
 }
 
