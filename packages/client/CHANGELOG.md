@@ -1,5 +1,22 @@
 # @polymarket/client
 
+## 0.3.0-beta.0
+
+### Minor Changes
+
+- 0bb6a4b: Add typed 30-second and 60-second Chainlink TWAP realtime subscriptions.
+
+### Patch Changes
+
+- dbd6f53: Stop populating `Page.totalCount` from the per-response `count` on cursor-paginated endpoints (open orders, account trades, earnings, builder lists). That value was the current page's item count, not a total across all pages.
+- 5c56abd: RequestRejectedError and RateLimitError now expose retryAfter, populated from the Retry-After response header, so callers can honor server-provided backoff.
+- 4ddf659: Expose the granular Combos RFQ quote-validation error codes.
+- Updated dependencies [0bb6a4b]
+- Updated dependencies [28813f6]
+- Updated dependencies [7463938]
+- Updated dependencies [4ddf659]
+  - @polymarket/bindings@0.3.0-beta.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -7,6 +7,11 @@ const stream = await client.subscribe([
     topic: 'prices.crypto.chainlink',
   },
   {
+    topic: 'prices.crypto.chainlink.twap',
+    windowSeconds: 30,
+    symbols: ['btc/usd'],
+  },
+  {
     topic: 'sports',
   },
 ]);
@@ -20,6 +25,12 @@ for await (const event of stream) {
     case 'prices.crypto.chainlink':
       console.log(
         `${new Date(event.payload.timestamp).toLocaleString()} - Chainlink price update: ${event.payload.value} ${event.payload.symbol}`,
+      );
+      break;
+
+    case 'prices.crypto.chainlink.twap':
+      console.log(
+        `${new Date(event.payload.timestamp).toLocaleString()} - Chainlink ${event.payload.windowSeconds}s TWAP update: ${event.payload.value} ${event.payload.symbol}`,
       );
       break;
 
