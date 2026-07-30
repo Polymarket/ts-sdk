@@ -28,6 +28,10 @@ export type PerpsClientOrderId = Tagged<string, 'PerpsClientOrderId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export type PerpsNotificationId = Tagged<string, 'PerpsNotificationId'>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -75,6 +79,13 @@ export const PerpsClientOrderIdSchema = z
   .string()
   .regex(/^[0-9a-f]{32}$/)
   .transform((value) => value as PerpsClientOrderId);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsNotificationIdSchema = z
+  .uuid()
+  .transform((value) => value as PerpsNotificationId);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
