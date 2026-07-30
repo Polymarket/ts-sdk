@@ -2,6 +2,7 @@ import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
   PerpsPnlInterval,
+  PerpsSortDirection,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { expectEvmAddress, expectPrivateKey } from '@polymarket/types';
@@ -28,6 +29,12 @@ import { PerpsSession } from './session';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
+
+/**
+ * Bounds `for await` pagination loops so a pager that never reports the end of
+ * the collection fails the surrounding assertion instead of spinning forever.
+ */
+const MAX_EXPECTED_PAGES = 3;
 
 const credentials = {
   expiresAt: Date.now() + 30 * 60_000,
@@ -1273,7 +1280,7 @@ describe('PerpsSession', () => {
 
       let thrown: unknown;
       try {
-        session.listFills({ cursor }).firstPage();
+        session.listFundingPayments({ cursor }).firstPage();
       } catch (error) {
         thrown = error;
       }
@@ -1285,83 +1292,233 @@ describe('PerpsSession', () => {
       });
     });
 
-    it('overlaps and dedupes descending account history pages', async () => {
+    it('pages fills with the native cursor while keeping the requested filters', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
         http.get(`${production.perps.rest}/v1/account/fills`, ({ request }) => {
           const params = new URL(request.url).searchParams;
           requests.push(params);
 
-          if (params.get('end_timestamp') === '3000') {
+          if (params.get('cursor') === null) {
             return HttpResponse.json({
-              data: [accountFill(1, 3000), accountFill(2, 2000)],
+              data: [accountFill(3, 3000), accountFill(2, 2000)],
               more: true,
             });
           }
 
           return HttpResponse.json({
-            data: [accountFill(2, 2000), accountFill(3, 1000)],
+            data: [accountFill(1, 1000)],
             more: false,
           });
         }),
       );
       const session = createSession();
-      const pages = session.listFills({ end: 3000, start: 0 });
 
-      const first = await pages.firstPage();
-      const second = await pages.from(first.nextCursor).firstPage();
+      const pages: number[][] = [];
+      for await (const page of session.listFills({ end: 3000, start: 0 })) {
+        pages.push(page.items.map((fill) => fill.tradeId));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
 
-      expect(first.items.map((fill) => fill.tradeId)).toEqual([1, 2]);
-      expect(second.items.map((fill) => fill.tradeId)).toEqual([3]);
+      expect(pages).toEqual([[3, 2], [1]]);
+      expect(requests.map((params) => params.toString())).toEqual([
+        'start_timestamp=0&end_timestamp=3000',
+        'start_timestamp=0&end_timestamp=3000&cursor=2',
+      ]);
+    });
+
+    it('forwards a sort direction and a caller-provided fills cursor as-is', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/fills`, ({ request }) => {
+          requests.push(new URL(request.url).searchParams);
+
+          return HttpResponse.json({
+            data: [accountFill(43, 4300), accountFill(44, 4400)],
+            more: false,
+          });
+        }),
+      );
+      const session = createSession();
+
+      const first = await session
+        .listFills({
+          cursor: toPaginationCursor('42'),
+          sort: PerpsSortDirection.Ascending,
+        })
+        .firstPage();
+
+      expect(first.items.map((fill) => fill.tradeId)).toEqual([43, 44]);
+      expect(first.hasMore).toBe(false);
+      expect(first.nextCursor).toBeUndefined();
+      expect(requests.map((params) => params.toString())).toEqual([
+        'sort=asc&cursor=42',
+      ]);
+    });
+
+    it('yields an overlapping window boundary item only once', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/funding`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+
+            if (params.get('end_timestamp') === '3000') {
+              return HttpResponse.json({
+                data: [fundingPayment('1', 3000), fundingPayment('2', 2000)],
+                more: true,
+              });
+            }
+
+            return HttpResponse.json({
+              data: [fundingPayment('2', 2000), fundingPayment('3', 1000)],
+              more: false,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: string[][] = [];
+      for await (const page of session.listFundingPayments({
+        end: 3000,
+        start: 0,
+      })) {
+        pages.push(page.items.map((payment) => payment.funding));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages.flat()).toEqual(['1', '2', '3']);
       expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
         '3000',
         '2000',
       ]);
     });
 
-    it('continues descending account history after a fully deduped boundary page', async () => {
+    it('keeps deduping while the window boundary timestamp holds', async () => {
       const requests: URLSearchParams[] = [];
+      const boundary = [
+        fundingPayment('1', 2000),
+        fundingPayment('2', 2000),
+        fundingPayment('3', 2000),
+      ];
+      let call = 0;
       server.use(
-        http.get(`${production.perps.rest}/v1/account/fills`, ({ request }) => {
-          const params = new URL(request.url).searchParams;
-          requests.push(params);
+        http.get(
+          `${production.perps.rest}/v1/account/funding`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            call += 1;
 
-          if (params.get('end_timestamp') === '3000') {
-            return HttpResponse.json({
-              data: [accountFill(1, 3000), accountFill(2, 2000)],
-              more: true,
-            });
-          }
+            if (call === 1) {
+              return HttpResponse.json({
+                data: boundary.slice(0, 2),
+                more: true,
+              });
+            }
 
-          if (params.get('end_timestamp') === '2000') {
-            return HttpResponse.json({
-              data: [accountFill(2, 2000)],
-              more: true,
-            });
-          }
-
-          return HttpResponse.json({
-            data: [accountFill(3, 1000)],
-            more: false,
-          });
-        }),
+            return HttpResponse.json({ data: boundary, more: call === 2 });
+          },
+        ),
       );
       const session = createSession();
-      const pages = session.listFills({ end: 3000, start: 0 });
 
-      const first = await pages.firstPage();
-      const second = await pages.from(first.nextCursor).firstPage();
-      const third = await pages.from(second.nextCursor).firstPage();
+      const pages: string[][] = [];
+      for await (const page of session.listFundingPayments({
+        end: 3000,
+        start: 0,
+      })) {
+        pages.push(page.items.map((payment) => payment.funding));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
 
-      expect(first.items.map((fill) => fill.tradeId)).toEqual([1, 2]);
-      expect(second.items).toEqual([]);
-      expect(second.hasMore).toBe(true);
-      expect(third.items.map((fill) => fill.tradeId)).toEqual([3]);
+      expect(pages).toEqual([['1', '2'], ['3'], []]);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+        '2000',
+      ]);
+    });
+
+    it('steps the window back past a fully deduped page', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/funding`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+
+            if (params.get('end_timestamp') === '3000') {
+              return HttpResponse.json({
+                data: [fundingPayment('1', 3000), fundingPayment('2', 2000)],
+                more: true,
+              });
+            }
+
+            if (params.get('end_timestamp') === '2000') {
+              return HttpResponse.json({
+                data: [fundingPayment('2', 2000)],
+                more: true,
+              });
+            }
+
+            return HttpResponse.json({
+              data: [fundingPayment('3', 1000)],
+              more: false,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: string[][] = [];
+      for await (const page of session.listFundingPayments({
+        end: 3000,
+        start: 0,
+      })) {
+        pages.push(page.items.map((payment) => payment.funding));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages).toEqual([['1', '2'], [], ['3']]);
       expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
         '3000',
         '2000',
         '1999',
       ]);
+    });
+
+    it('stops paging at the requested start timestamp', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/funding`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+
+            return HttpResponse.json({
+              data: [fundingPayment('1', 2000), fundingPayment('2', 1000)],
+              more: true,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: string[][] = [];
+      for await (const page of session.listFundingPayments({
+        end: 3000,
+        start: 1000,
+      })) {
+        pages.push(page.items.map((payment) => payment.funding));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages).toEqual([['1', '2']]);
+      expect(requests).toHaveLength(1);
     });
 
     it('continues ascending interval account history pages', async () => {
@@ -1688,6 +1845,17 @@ function accountFill(tradeId: number, timestamp: number) {
     taker: true,
     timestamp,
     trade_id: tradeId,
+  };
+}
+
+function fundingPayment(funding: string, timestamp: number) {
+  return {
+    funding,
+    funding_asset: 'USDC',
+    funding_rate: '0.0001',
+    instrument_id: 1,
+    size: '1',
+    timestamp,
   };
 }
 

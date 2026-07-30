@@ -427,7 +427,11 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
-   * Lists Perps fills with SDK-owned pagination.
+   * Lists Perps fills
+   *
+   * @remarks
+   * Fills are returned newest first by default; set `sort` to change the
+   * time direction. Page cursors are opaque values forwarded to the API.
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
