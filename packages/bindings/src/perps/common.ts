@@ -260,6 +260,14 @@ export enum PerpsPnlInterval {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export enum PerpsSortDirection {
+  Descending = 'desc',
+  Ascending = 'asc',
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -305,6 +313,10 @@ export const PerpsKlineIntervalSchema = z.enum(PerpsKlineInterval);
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsPnlIntervalSchema = z.enum(PerpsPnlInterval);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsSortDirectionSchema = z.enum(PerpsSortDirection);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
