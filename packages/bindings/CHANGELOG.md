@@ -1,5 +1,17 @@
 # @polymarket/bindings
 
+## 0.3.0-beta.0
+
+### Minor Changes
+
+- 0bb6a4b: Add typed 30-second and 60-second Chainlink TWAP realtime subscriptions.
+
+### Patch Changes
+
+- 28813f6: Add the DEPOSIT, WITHDRAWAL, and TAKER_REBATE activity types to the ActivityType enum, model them as typed account-level activities, and parse them in ActivitySchema so activity responses containing these rows no longer fail validation.
+- 7463938: Open order `createdAt` and `expiresAt` now parse epoch-seconds wire timestamps correctly instead of treating them as milliseconds.
+- 4ddf659: Expose the granular Combos RFQ quote-validation error codes.
+
 ## 0.2.0
 
 ### Minor Changes
