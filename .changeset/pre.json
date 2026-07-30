@@ -1,0 +1,18 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@polymarket/examples": "0.0.0",
+    "@polymarket/bindings": "0.2.0",
+    "@polymarket/client": "0.2.0",
+    "@polymarket/types": "0.1.0"
+  },
+  "changesets": [
+    "bright-tigers-stream",
+    "dev-469-missing-activity-types",
+    "dev-470-remove-per-page-total-count",
+    "dev-472-open-order-epoch-seconds-timestamps",
+    "dev-473-expose-retry-after",
+    "precise-rfq-quote-errors"
+  ]
+}
