@@ -517,6 +517,27 @@ export async function* buildProxyWalletExecuteRequest(
   };
 }
 
+/**
+ * Extracts the on-chain nonce reported by a submission rejection for a
+ * Deposit Wallet batch signed with a mismatched nonce, when present.
+ *
+ * @internal
+ */
+export function extractOnChainNonceFromSubmitError(
+  error: unknown,
+): string | undefined {
+  if (!(error instanceof RequestRejectedError) || error.status !== 400) {
+    return undefined;
+  }
+
+  const match =
+    /batch nonce\s+\d+\s+does not match on-chain nonce\s+(\d+)/i.exec(
+      error.message,
+    );
+
+  return match?.[1];
+}
+
 async function* prepareDepositWalletGaslessTransaction(
   client: BaseSecureClient,
   params: PrepareGaslessTransactionParams,
@@ -527,7 +548,23 @@ async function* prepareDepositWalletGaslessTransaction(
     params.metadata,
   );
 
-  return executeGasless(client, payload);
+  try {
+    return await executeGasless(client, payload);
+  } catch (error) {
+    const nonce = extractOnChainNonceFromSubmitError(error);
+    if (nonce === undefined) {
+      throw error;
+    }
+
+    const request = yield* resignDepositWalletExecuteRequest(
+      client,
+      payload,
+      params.calls,
+      nonce,
+    );
+
+    return executeGasless(client, request);
+  }
 }
 
 /**
@@ -578,6 +615,37 @@ export async function* buildDepositWalletExecuteRequest(
     to: client.environment.walletDerivation.depositWalletFactory,
     type: RelayerTransactionType.WALLET,
   };
+}
+
+/**
+ * Re-signs a previously built Deposit Wallet batch execution request with a
+ * corrected nonce, leaving the batch otherwise unchanged.
+ *
+ * @internal
+ */
+export async function* resignDepositWalletExecuteRequest(
+  client: BaseSecureClient,
+  request: RelayerDepositWalletExecuteRequest,
+  calls: NonEmptyArray<TransactionCall>,
+  nonce: string,
+): AsyncGenerator<
+  GaslessWorkflowRequest,
+  RelayerDepositWalletExecuteRequest,
+  EvmAddress | EvmSignature | TransactionHandle
+> {
+  const signature = expectEvmSignature(
+    yield signGaslessTypedData(
+      createDepositWalletBatchTypedDataPayload({
+        calls: calls.map(toDepositWalletCall),
+        chainId: client.environment.chainId,
+        deadline: request.depositWalletParams.deadline,
+        nonce,
+        wallet: client.account.wallet,
+      }),
+    ),
+  );
+
+  return { ...request, nonce, signature };
 }
 
 async function* prepareSafeWalletGaslessTransaction(
