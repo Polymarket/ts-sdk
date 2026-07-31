@@ -9,6 +9,7 @@ import {
   type RelayerDepositWalletExecuteRequest,
   RelayerExecuteResponseSchema,
   type RelayerLegacyExecuteRequest,
+  RelayerTransactionType,
 } from '@polymarket/bindings/relayer';
 import {
   delay,
@@ -39,9 +40,11 @@ import {
   buildDepositWalletExecuteRequest,
   buildProxyWalletExecuteRequest,
   buildSafeWalletExecuteRequest,
+  extractOnChainNonceFromSubmitError,
   GaslessTransactionHandle,
   type GaslessWorkflowRequest,
   isRetryableGaslessSubmitError,
+  resignDepositWalletExecuteRequest,
 } from './gasless';
 
 export {
@@ -179,11 +182,34 @@ export async function prepareCollateralReturnExecution(
       try {
         const envelope = yield* buildCollateralReturnEnvelope(client, calls);
 
-        return await submitCollateralReturnPlan(
-          client,
-          plan.planHash,
-          envelope,
-        );
+        try {
+          return await submitCollateralReturnPlan(
+            client,
+            plan.planHash,
+            envelope,
+          );
+        } catch (error) {
+          const nonce = extractOnChainNonceFromSubmitError(error);
+          if (
+            nonce === undefined ||
+            envelope.type !== RelayerTransactionType.WALLET
+          ) {
+            throw error;
+          }
+
+          const resignedEnvelope = yield* resignDepositWalletExecuteRequest(
+            client,
+            envelope,
+            calls,
+            nonce,
+          );
+
+          return await submitCollateralReturnPlan(
+            client,
+            plan.planHash,
+            resignedEnvelope,
+          );
+        }
       } catch (error) {
         if (
           !isRetryableGaslessSubmitError(error) ||
