@@ -42,6 +42,7 @@ import {
 } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
+import type { RateLimitUpdateListener } from './rate-limit';
 import { JsonRpcClient } from './rpc';
 import type { ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
@@ -74,6 +75,8 @@ type PublicContext = {
   apiKey?: ApiKeyAuthorization;
   /** @internal */
   environment: EnvironmentConfig;
+  /** @internal */
+  onRateLimitUpdate?: RateLimitUpdateListener;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -282,6 +285,7 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
 type PublicClientConfig = {
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
+  onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
 class BasePublicClient<
@@ -292,6 +296,7 @@ class BasePublicClient<
     super({
       apiKey: config.apiKey,
       environment: config.environment,
+      onRateLimitUpdate: config.onRateLimitUpdate,
       data: new ServiceClient({
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
@@ -302,6 +307,7 @@ class BasePublicClient<
       }),
       clob: new ServiceClient({
         headers: config.environment.clob.headers,
+        onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
@@ -490,6 +496,7 @@ class BasePublicClient<
       apiKey: this.context.apiKey,
       credentials,
       environment: this.environment,
+      onRateLimitUpdate: this.context.onRateLimitUpdate,
       signer,
     });
 
@@ -530,9 +537,11 @@ class BaseSecureClient<
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
+      onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
       clob: new ServiceClient({
         headers: config.environment.clob.headers,
+        onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
@@ -560,6 +569,7 @@ class BaseSecureClient<
       }),
       secureClob: new ServiceClient({
         headers: config.environment.clob.headers,
+        onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => ({
           ...(await this.resolveClobHeaders(request)),
           ...(await this.#createL2Headers(request)),
@@ -739,7 +749,7 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment } = this.context;
+    const { apiKey, environment, onRateLimitUpdate } = this.context;
 
     try {
       await deleteApiKey(this);
@@ -755,6 +765,7 @@ class BaseSecureClient<
     const client = new BasePublicClient({
       apiKey,
       environment,
+      onRateLimitUpdate,
     });
 
     for (const decorator of this.decorators) {
@@ -849,6 +860,17 @@ export type PublicClientOptions = {
    * Optional request authorization applied by the client when needed.
    */
   apiKey?: ApiKeyAuthorization;
+
+  /**
+   * Listener invoked whenever a response reports per-signer rate-limit state,
+   * as order and cancellation responses do.
+   *
+   * @remarks
+   * Use this to monitor remaining rate-limit capacity and warning-mode
+   * signals, and adjust request patterns before requests are rejected.
+   * Errors thrown by the listener are ignored.
+   */
+  onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
 export type SecureClientOptions = PublicClientOptions & {
@@ -899,6 +921,7 @@ export function createPublicClient(
   return new BasePublicClient({
     environment: options.environment ?? production,
     apiKey: options.apiKey,
+    onRateLimitUpdate: options.onRateLimitUpdate,
   }).extend(allActions);
 }
 
@@ -949,6 +972,7 @@ export async function createSecureClient(
   const client = createPublicClient({
     environment: options.environment,
     apiKey: options.apiKey,
+    onRateLimitUpdate: options.onRateLimitUpdate,
   });
   const wallet = await resolveRequestedWallet(client, options);
 

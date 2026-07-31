@@ -1,6 +1,11 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { RateLimitError, RequestRejectedError, TransportError } from './errors';
+import {
+  parseRateLimitHeaders,
+  type RateLimitUpdate,
+  type RateLimitUpdateListener,
+} from './rate-limit';
 
 export type ServiceRequest = {
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
@@ -19,6 +24,7 @@ export type ServiceClientConfig = {
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
+  onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
 /**
@@ -59,11 +65,18 @@ export class ServiceClient {
   readonly #client: KyInstance;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
+  readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
-  constructor({ root, headers, resolveHeaders }: ServiceClientConfig) {
+  constructor({
+    root,
+    headers,
+    resolveHeaders,
+    onRateLimitUpdate,
+  }: ServiceClientConfig) {
     this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
+    this.#onRateLimitUpdate = onRateLimitUpdate;
   }
 
   get(
@@ -209,6 +222,11 @@ export class ServiceClient {
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
+        const rateLimit = parseRateLimitHeaders(response.headers);
+        if (rateLimit !== undefined) {
+          this.#notifyRateLimitUpdate(rateLimit);
+        }
+
         if (response.ok) {
           return response;
         }
@@ -218,7 +236,7 @@ export class ServiceClient {
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
-            { retryAfter },
+            { rateLimit, retryAfter },
           );
         }
 
@@ -239,6 +257,14 @@ export class ServiceClient {
         return TransportError.fromError(error);
       },
     );
+  }
+
+  #notifyRateLimitUpdate(update: RateLimitUpdate): void {
+    try {
+      this.#onRateLimitUpdate?.(update);
+    } catch {
+      // A consumer-provided listener must never affect request handling.
+    }
   }
 
   #parseRetryAfterHeader(response: Response): number | undefined {
