@@ -102,6 +102,7 @@ describe('NotificationSchema', () => {
     expect(notification.payload.tokenId).toBe(orderPayload.asset_id);
     expect(notification.payload.conditionId).toBe(conditionId);
     expect(notification.payload.orderType).toBe('GTC');
+    expect(notification.payload.outcomeIndex).toBe(0);
     expect(notification.payload.transactionHash).toBe(transactionHash);
     expect(notification.payload.matchedSize).toBe('10');
   });

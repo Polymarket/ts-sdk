@@ -82,16 +82,17 @@ export const OrderNotificationPayloadSchema = z
       emptyStringToUndefined,
       TxHashSchema.optional(),
     ),
-    type: OrderTypeSchema.optional(),
+    type: z.preprocess(emptyStringToUndefined, OrderTypeSchema.optional()),
   })
   .transform(
     ({
       asset_id,
       market,
+      market_slug,
       matched_size,
       order_id,
       original_size,
-      market_slug,
+      outcome_index,
       remaining_size,
       trade_id,
       transaction_hash,
@@ -101,11 +102,12 @@ export const OrderNotificationPayloadSchema = z
       ...rest,
       conditionId: market,
       tokenId: asset_id,
+      marketSlug: market_slug,
       matchedSize: matched_size,
       orderId: order_id,
       orderType: type,
       originalSize: original_size,
-      marketSlug: market_slug,
+      outcomeIndex: outcome_index,
       remainingSize: remaining_size,
       tradeId: trade_id,
       transactionHash: transaction_hash,
@@ -174,8 +176,8 @@ export type MarketNotificationRewards = z.infer<
  */
 export const MarketNotificationPayloadSchema = z
   .object({
-    accepting_orders: z.boolean(),
     accepting_order_timestamp: DateLikeToIsoDateTimeStringSchema.nullish(),
+    accepting_orders: z.boolean(),
     active: z.boolean(),
     archived: z.boolean().optional(),
     closed: z.boolean(),
@@ -207,8 +209,8 @@ export const MarketNotificationPayloadSchema = z
   })
   .transform(
     ({
-      accepting_orders,
       accepting_order_timestamp,
+      accepting_orders,
       condition_id,
       enable_order_book,
       end_date_iso,
