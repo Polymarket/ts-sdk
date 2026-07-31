@@ -21,6 +21,7 @@ import {
   PerpsStatisticUpdateSchema,
   PerpsTickerEntrySchema,
 } from '../perps/market';
+import { PerpsNotificationSchema } from '../perps/notifications';
 import {
   PerpsAccountFillUpdateSchema,
   PerpsOrderUpdateSchema,
@@ -46,6 +47,7 @@ const PerpsSessionChannelSchema = z.enum([
   'funding',
   'deposits',
   'withdrawals',
+  'notifications',
 ]);
 
 const PerpsUpdateEnvelopeSchema = z.object({
@@ -328,6 +330,42 @@ export type PerpsWithdrawalUpdateEvent = z.infer<
   typeof PerpsWithdrawalUpdateEventSchema
 >;
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsNotificationUpdateEventSchema = perpsSessionEventSchema(
+  'notification',
+  'notifications',
+  PerpsNotificationSchema,
+);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsNotificationUpdateEvent = z.infer<
+  typeof PerpsNotificationUpdateEventSchema
+>;
+
+/**
+ * Backpressure control frame on the `notifications` channel. The server sends
+ * it when one or more notification data frames were dropped; `sq` is the
+ * highest engine sequence among the dropped notifications.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsNotificationsResyncFrameSchema = z
+  .object({
+    ch: z.literal('notifications'),
+    ts: EpochMillisecondsSchema,
+    sq: SequenceSchema,
+    type: z.literal('resync'),
+  })
+  .transform(({ ch, ts, sq }) => ({
+    type: 'resync' as const,
+    channel: ch,
+    timestamp: ts,
+    sequence: sq,
+  }));
+
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
   st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
@@ -367,6 +405,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,
+  PerpsNotificationUpdateEventSchema,
   PerpsTpSlUpdateEventSchema,
 ]);
 

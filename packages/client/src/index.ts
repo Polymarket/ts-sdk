@@ -14,8 +14,12 @@ export {
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
   PerpsKnownWithdrawalStatus,
+  PerpsMarginType,
+  PerpsNotificationOrderType,
+  PerpsNotificationType,
   PerpsOrderStatus,
   PerpsSide,
+  PerpsSortDirection,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 export type * from '@polymarket/bindings/relayer';

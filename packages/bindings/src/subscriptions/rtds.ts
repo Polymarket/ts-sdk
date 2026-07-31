@@ -10,6 +10,7 @@ import {
   DecimalishSchema,
   DecimalStringSchema,
   EpochMillisecondsSchema,
+  toDecimalString,
 } from '../shared';
 
 const CommentRemovedPayloadSchema = z.object({
@@ -78,9 +79,14 @@ export type PriceUpdatePayload = z.infer<typeof PriceUpdatePayloadSchema>;
 
 const CRYPTO_PRICES_BINANCE_TOPIC = 'prices.crypto.binance' as const;
 const CRYPTO_PRICES_CHAINLINK_TOPIC = 'prices.crypto.chainlink' as const;
+const CRYPTO_PRICES_CHAINLINK_TWAP_TOPIC =
+  'prices.crypto.chainlink.twap' as const;
 
 export type CryptoPricesBinanceTopic = typeof CRYPTO_PRICES_BINANCE_TOPIC;
 export type CryptoPricesChainlinkTopic = typeof CRYPTO_PRICES_CHAINLINK_TOPIC;
+export type CryptoPricesChainlinkTwapTopic =
+  typeof CRYPTO_PRICES_CHAINLINK_TWAP_TOPIC;
+export type CryptoPricesChainlinkTwapWindowSeconds = 30 | 60;
 export type CryptoPricesTopic =
   | CryptoPricesBinanceTopic
   | CryptoPricesChainlinkTopic;
@@ -88,6 +94,12 @@ export type CryptoPricesTopic =
 const RawCryptoPricesBinanceTopicSchema = z.literal('crypto_prices');
 const RawCryptoPricesChainlinkTopicSchema = z.literal(
   'crypto_prices_chainlink',
+);
+const RawCryptoPricesChainlinkTwapThirtyTopicSchema = z.literal(
+  'crypto_prices_twap_thirty',
+);
+const RawCryptoPricesChainlinkTwapSixtyTopicSchema = z.literal(
+  'crypto_prices_twap_sixty',
 );
 
 const CryptoPricesBinanceTopicSchema: z.ZodType<CryptoPricesBinanceTopic> =
@@ -98,6 +110,16 @@ const CryptoPricesBinanceTopicSchema: z.ZodType<CryptoPricesBinanceTopic> =
 const CryptoPricesChainlinkTopicSchema: z.ZodType<CryptoPricesChainlinkTopic> =
   RawCryptoPricesChainlinkTopicSchema.transform(() => {
     return CRYPTO_PRICES_CHAINLINK_TOPIC;
+  });
+
+const CryptoPricesChainlinkTwapThirtyTopicSchema =
+  RawCryptoPricesChainlinkTwapThirtyTopicSchema.transform(() => {
+    return CRYPTO_PRICES_CHAINLINK_TWAP_TOPIC;
+  });
+
+const CryptoPricesChainlinkTwapSixtyTopicSchema =
+  RawCryptoPricesChainlinkTwapSixtyTopicSchema.transform(() => {
+    return CRYPTO_PRICES_CHAINLINK_TWAP_TOPIC;
   });
 
 export const CryptoPricesBinanceEventSchema = z.object({
@@ -122,9 +144,88 @@ export type CryptoPricesChainlinkEvent = z.infer<
   typeof CryptoPricesChainlinkEventSchema
 >;
 
+const CHAINLINK_PRICE_SCALE = 1_000_000_000_000_000_000n;
+
+function chainlinkE18PriceToDecimalString(value: string) {
+  const scaledValue = BigInt(value);
+  const isNegative = scaledValue < 0n;
+  const absoluteValue = isNegative ? -scaledValue : scaledValue;
+  const whole = absoluteValue / CHAINLINK_PRICE_SCALE;
+  const fraction = (absoluteValue % CHAINLINK_PRICE_SCALE)
+    .toString()
+    .padStart(18, '0')
+    .replace(/0+$/, '');
+
+  return toDecimalString(
+    `${isNegative ? '-' : ''}${whole}${fraction === '' ? '' : `.${fraction}`}`,
+  );
+}
+
+// Chainlink publishes a float for display convenience and the exact
+// BenchmarkPrice as a signed E18 integer. Normalize from the exact field.
+const ChainlinkFullAccuracyPriceSchema = z
+  .string()
+  .regex(/^-?\d+$/)
+  .transform(chainlinkE18PriceToDecimalString);
+
+const CryptoPricesChainlinkTwapPayloadBaseSchema = z.object({
+  symbol: z.string(),
+  value: DecimalishSchema,
+  full_accuracy_value: ChainlinkFullAccuracyPriceSchema,
+  timestamp: EpochMillisecondsSchema,
+});
+
+function cryptoPricesChainlinkTwapPayloadSchema<
+  const TWindowSeconds extends CryptoPricesChainlinkTwapWindowSeconds,
+>(windowSeconds: TWindowSeconds) {
+  return CryptoPricesChainlinkTwapPayloadBaseSchema.extend({
+    window_s: z.literal(windowSeconds),
+  }).transform((payload) => {
+    return {
+      symbol: payload.symbol,
+      timestamp: payload.timestamp,
+      value: payload.full_accuracy_value,
+      windowSeconds: payload.window_s,
+    };
+  });
+}
+
+export const CryptoPricesChainlinkTwapThirtyEventSchema = z.object({
+  topic: CryptoPricesChainlinkTwapThirtyTopicSchema,
+  type: z.literal('update'),
+  timestamp: EpochMillisecondsSchema,
+  payload: cryptoPricesChainlinkTwapPayloadSchema(30),
+});
+
+export type CryptoPricesChainlinkTwapThirtyEvent = z.infer<
+  typeof CryptoPricesChainlinkTwapThirtyEventSchema
+>;
+
+export const CryptoPricesChainlinkTwapSixtyEventSchema = z.object({
+  topic: CryptoPricesChainlinkTwapSixtyTopicSchema,
+  type: z.literal('update'),
+  timestamp: EpochMillisecondsSchema,
+  payload: cryptoPricesChainlinkTwapPayloadSchema(60),
+});
+
+export type CryptoPricesChainlinkTwapSixtyEvent = z.infer<
+  typeof CryptoPricesChainlinkTwapSixtyEventSchema
+>;
+
+export const CryptoPricesChainlinkTwapEventSchema = z.union([
+  CryptoPricesChainlinkTwapThirtyEventSchema,
+  CryptoPricesChainlinkTwapSixtyEventSchema,
+]);
+
+export type CryptoPricesChainlinkTwapEvent = z.infer<
+  typeof CryptoPricesChainlinkTwapEventSchema
+>;
+
 export const CryptoPricesEventSchema = z.discriminatedUnion('topic', [
   CryptoPricesBinanceEventSchema,
   CryptoPricesChainlinkEventSchema,
+  CryptoPricesChainlinkTwapThirtyEventSchema,
+  CryptoPricesChainlinkTwapSixtyEventSchema,
 ]);
 
 export type CryptoPricesEvent = z.infer<typeof CryptoPricesEventSchema>;
