@@ -4,6 +4,7 @@ export * from './builder';
 export * from './cancel';
 export * from './market-data';
 export * from './neg-risk';
+export * from './notifications';
 export * from './order-book';
 export * from './order-response';
 export * from './pagination';
