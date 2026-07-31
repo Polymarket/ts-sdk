@@ -240,7 +240,11 @@ describe('ServiceClient', () => {
           }),
       ),
     );
-    const client = new ServiceClient({ root });
+    const updates: unknown[] = [];
+    const client = new ServiceClient({
+      onRateLimitUpdate: (update) => updates.push(update),
+      root,
+    });
 
     await expect(
       unwrap(client.post('/rate-limited-order')),
@@ -254,6 +258,14 @@ describe('ServiceClient', () => {
       },
       retryAfter: 3,
     });
+    expect(updates).toEqual([
+      {
+        remaining: -2,
+        reset: 1784913054,
+        tier: 'standard',
+        warning: false,
+      },
+    ]);
   });
 
   it('notifies the rate-limit listener when responses report rate-limit state', async () => {

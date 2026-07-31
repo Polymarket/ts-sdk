@@ -2,9 +2,10 @@
  * Per-signer rate-limit state reported by order and cancellation responses.
  *
  * @remarks
- * Fields mirror the `Poly-RateLimit-*` response headers. Every field is
- * populated independently, so any subset can be present depending on how the
- * request was evaluated.
+ * Fields mirror the `Poly-RateLimit-*` response headers. Each optional field
+ * is populated independently, so any subset can be present depending on how
+ * the request was evaluated; `warning` is `false` whenever the response does
+ * not report warning mode.
  */
 export type RateLimitUpdate = {
   /**
@@ -44,7 +45,7 @@ export function parseRateLimitHeaders(
 ): RateLimitUpdate | undefined {
   const remaining = parseNumericHeader(headers.get('Poly-RateLimit-Remaining'));
   const reset = parseNumericHeader(headers.get('Poly-RateLimit-Reset'));
-  const tier = headers.get('Poly-RateLimit-Tier') ?? undefined;
+  const tier = parseTextHeader(headers.get('Poly-RateLimit-Tier'));
   const warning =
     headers.get('Poly-RateLimit-Warning')?.trim().toLowerCase() === 'true';
 
@@ -67,4 +68,12 @@ function parseNumericHeader(value: string | null): number | undefined {
 
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseTextHeader(value: string | null): string | undefined {
+  if (value === null || value.trim() === '') {
+    return undefined;
+  }
+
+  return value;
 }
