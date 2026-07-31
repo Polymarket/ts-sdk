@@ -13,6 +13,9 @@
     "dev-470-remove-per-page-total-count",
     "dev-472-open-order-epoch-seconds-timestamps",
     "dev-473-expose-retry-after",
+    "dev-493-self-heal-deposit-wallet-nonce",
+    "eight-bells-listen",
+    "perps-fills-native-cursor",
     "precise-rfq-quote-errors"
   ]
 }

@@ -1,5 +1,19 @@
 # @polymarket/client
 
+## 0.3.0-beta.1
+
+### Minor Changes
+
+- 40dc38d: Add Perps account notifications support: `session.listNotifications()` with SDK-owned keyset pagination (including a `sinceSeq` backfill bound pinned across pages), `session.fetchUnreadNotificationsCount()`, `session.markNotificationsRead()` by ids or `upTo` a notification, and the `notifications` session WebSocket channel emitting typed `notification` events.
+
+### Patch Changes
+
+- 2f02252: Deposit-wallet gasless and collateral-return submits now self-heal nonce mismatches: when the relayer rejects a batch with the on-chain nonce in the error, the batch is re-signed with that nonce and resubmitted once.
+- c092352: Migrate Perps fills pagination to the API-native cursor and add a fills time sort direction option.
+- Updated dependencies [40dc38d]
+- Updated dependencies [c092352]
+  - @polymarket/bindings@0.3.0-beta.1
+
 ## 0.3.0-beta.0
 
 ### Minor Changes
