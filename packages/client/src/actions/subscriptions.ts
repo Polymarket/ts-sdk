@@ -27,13 +27,14 @@ import type {
 } from '@polymarket/bindings/subscriptions';
 import { invariant, type Prettify } from '@polymarket/types';
 import merge from 'it-merge';
+import { z } from 'zod';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
 import { makeErrorGuard, TransportError, UserInputError } from '../errors';
-import { validateTwapSubscriptionWindow } from '../subscription-validation';
+import { parseUserInput } from '../input';
 
 // Event types — re-exported from bindings for consumer convenience.
 export type {
@@ -280,6 +281,12 @@ export type SubscriptionHandle<TEvent> = {
 export type SubscribeError = TransportError | UserInputError;
 export const SubscribeError = makeErrorGuard(TransportError, UserInputError);
 
+const CryptoPricesChainlinkTwapSubscriptionSchema = z.object({
+  topic: z.literal('prices.crypto.chainlink.twap'),
+  windowSeconds: z.union([z.literal(30), z.literal(60)]),
+  symbols: z.array(z.string()).optional(),
+});
+
 /**
  * Starts one or more realtime subscriptions on this client.
  *
@@ -287,8 +294,7 @@ export const SubscribeError = makeErrorGuard(TransportError, UserInputError);
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
  * @throws {@link SubscribeError}
- * Thrown when a TWAP subscription requests an unsupported window or the
- * realtime connection fails.
+ * Thrown when subscription input is invalid or a realtime subscription fails.
  *
  * @example
  * ```ts
@@ -318,7 +324,9 @@ export async function subscribe(
   subscriptions: readonly SecureSubscriptionSpec[],
 ): Promise<SubscriptionHandle<unknown>> {
   for (const subscription of subscriptions) {
-    validateTwapSubscriptionWindow(subscription);
+    if (subscription.topic === 'prices.crypto.chainlink.twap') {
+      parseUserInput(subscription, CryptoPricesChainlinkTwapSubscriptionSchema);
+    }
   }
 
   const handles = await Promise.all(
