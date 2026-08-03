@@ -1,5 +1,13 @@
 name: Polybius PR Review
 
+# NOTE: this copy diverges from the canonical polymarket/brunson workflow —
+# ts-sdk is a PUBLIC repo, so it adds two gates the canonical (private-repo)
+# copy doesn't need:
+#   - fork PRs skip the review job (GitHub withholds secrets from fork
+#     pull_request runs; without the gate every fork PR gets a red check)
+#   - comment jobs only fire for OWNER/MEMBER/COLLABORATOR authors, so
+#     arbitrary public commenters can't trigger review sessions
+
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -14,7 +22,8 @@ jobs:
   review:
     if: >-
       github.event_name == 'pull_request' &&
-      !github.event.pull_request.draft
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Wait for Polybius to be reachable
@@ -70,21 +79,24 @@ jobs:
   comment:
     if: >-
       github.event_name == 'issue_comment' &&
-      github.event.issue.pull_request
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Polybius PR comment handler
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
         run: |
           jq -n \
             --arg type "pr_comment" \
             --arg channel "${{ secrets.POLYBIUS_CHANNEL_ID }}" \
             --arg repo "${{ github.repository }}" \
             --argjson pr_number ${{ github.event.issue.number }} \
-            --arg comment_author "${{ github.event.comment.user.login }}" \
+            --arg comment_author "$COMMENT_AUTHOR" \
             --arg comment_body "$COMMENT_BODY" \
-            --arg comment_url "${{ github.event.comment.html_url }}" \
+            --arg comment_url "$COMMENT_URL" \
             '{type:$type,channel:$channel,repo:$repo,pr_number:$pr_number,comment_author:$comment_author,comment_body:$comment_body,comment_url:$comment_url}' \
           | curl -sSf --max-time 10 -X POST "${{ secrets.POLYBIUS_WEBHOOK_URL }}/webhook" \
               -H "Authorization: Bearer ${{ secrets.POLYBIUS_WEBHOOK_SECRET }}" \
@@ -93,21 +105,24 @@ jobs:
 
   review_comment:
     if: >-
-      github.event_name == 'pull_request_review_comment'
+      github.event_name == 'pull_request_review_comment' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Polybius PR review comment handler
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
         run: |
           jq -n \
             --arg type "pr_comment" \
             --arg channel "${{ secrets.POLYBIUS_CHANNEL_ID }}" \
             --arg repo "${{ github.repository }}" \
             --argjson pr_number ${{ github.event.pull_request.number }} \
-            --arg comment_author "${{ github.event.comment.user.login }}" \
+            --arg comment_author "$COMMENT_AUTHOR" \
             --arg comment_body "$COMMENT_BODY" \
-            --arg comment_url "${{ github.event.comment.html_url }}" \
+            --arg comment_url "$COMMENT_URL" \
             '{type:$type,channel:$channel,repo:$repo,pr_number:$pr_number,comment_author:$comment_author,comment_body:$comment_body,comment_url:$comment_url}' \
           | curl -sSf --max-time 10 -X POST "${{ secrets.POLYBIUS_WEBHOOK_URL }}/webhook" \
               -H "Authorization: Bearer ${{ secrets.POLYBIUS_WEBHOOK_SECRET }}" \
