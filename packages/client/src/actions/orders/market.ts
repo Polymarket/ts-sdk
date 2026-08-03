@@ -1,5 +1,4 @@
 import {
-  type BuilderCode,
   BuilderCodeSchema,
   OrderSide,
   OrderType,
@@ -7,22 +6,19 @@ import {
   type TickSizeValue,
   TokenIdSchema,
 } from '@polymarket/bindings';
+import type { MarketFeeInfo, OrderBook } from '@polymarket/bindings/clob';
 import type { EvmAddress } from '@polymarket/types';
+import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import {
-  fetchBuilderFeeRates,
-  fetchMarketInfo,
-  fetchNegRisk,
-  fetchTickSize,
-  resolveConditionByToken,
-} from '../clob';
+import { fetchOrderBook } from '../clob';
+import { ensureBuilderFeeRates, ensureMarketMeta } from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
   validatePriceOnTickGrid,
 } from './context';
-import { resolveEstimatedMarketPrice } from './estimate';
+import { resolveMarketPriceFromOrderBook } from './estimate';
 import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
@@ -82,11 +78,11 @@ export async function prepareMarketOrderDraft(
 
 type ResolveMarketOrderAmountParams = {
   amount: number;
-  builderCode?: BuilderCode;
+  builderTakerFeeRate: number;
+  feeInfo: MarketFeeInfo;
   maxSpend?: number;
   price: number;
   side: OrderSide;
-  tokenId: string;
 };
 
 type MarketOrderContext = {
@@ -104,40 +100,50 @@ async function resolveMarketOrderContext(
   params: PrepareMarketOrderDraftParams,
 ): Promise<MarketOrderContext> {
   const account = client.account;
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
-  const price = await resolveMarketOrderPrice(client, params, amount, tickSize);
-  const negRisk = await fetchNegRisk(client, {
-    tokenId: params.tokenId,
-  });
-  const resolvedAmount = await resolveMarketOrderAmount(client, {
+  // Market metadata, live book depth, and builder fee rates have no
+  // interdependencies, so they resolve in parallel. The book request can fire
+  // even when metadata resolution ultimately fails; that is an accepted
+  // tradeoff for the shorter critical path.
+  const [meta, orderBook, builderTakerFeeRate] = await Promise.all([
+    ensureMarketMeta(client, params.tokenId),
+    hasProtectedPrice(params)
+      ? undefined
+      : fetchOrderBook(client, { tokenId: params.tokenId }),
+    resolveBuilderTakerFeeRate(client, params),
+  ]);
+  const price = resolveMarketOrderPrice(
+    params,
     amount,
-    builderCode: params.builderCode,
+    meta.tickSize,
+    orderBook,
+  );
+  const resolvedAmount = resolveMarketOrderAmount({
+    amount,
+    builderTakerFeeRate,
+    feeInfo: meta.feeInfo,
     maxSpend: params.side === OrderSide.BUY ? params.maxSpend : undefined,
     price,
     side: params.side,
-    tokenId: params.tokenId,
   });
 
   return {
-    exchangeAddress: resolveExchangeAddress(client, negRisk),
+    exchangeAddress: resolveExchangeAddress(client, meta.negRisk),
     funderAddress: account.wallet,
-    negRisk,
+    negRisk: meta.negRisk,
     price,
     resolvedAmount,
     signerAddress: account.signer,
-    tickSize,
+    tickSize: meta.tickSize,
   };
 }
 
-async function resolveMarketOrderPrice(
-  client: BaseSecureClient,
+function resolveMarketOrderPrice(
   params: PrepareMarketOrderDraftParams,
   amount: number,
   tickSize: TickSizeValue,
-): Promise<number> {
+  orderBook: OrderBook | undefined,
+): number {
   if (params.side === OrderSide.BUY && params.maxPrice !== undefined) {
     return validatePriceOnTickGrid(params.maxPrice, tickSize, 'maxPrice');
   }
@@ -146,13 +152,35 @@ async function resolveMarketOrderPrice(
     return validatePriceOnTickGrid(params.minPrice, tickSize, 'minPrice');
   }
 
-  return resolveEstimatedMarketPrice(client, {
+  invariant(
+    orderBook !== undefined,
+    'An order book is required to estimate an unprotected market price.',
+  );
+
+  return resolveMarketPriceFromOrderBook({
     amount,
+    orderBook,
     orderType: params.orderType,
     side: params.side,
     tickSize,
-    tokenId: params.tokenId,
   });
+}
+
+function resolveBuilderTakerFeeRate(
+  client: BaseSecureClient,
+  params: PrepareMarketOrderDraftParams,
+): Promise<number> | number {
+  if (
+    params.side !== OrderSide.BUY ||
+    params.maxSpend === undefined ||
+    params.builderCode === undefined
+  ) {
+    return 0;
+  }
+
+  return ensureBuilderFeeRates(client, params.builderCode).then(
+    (rates) => rates.taker,
+  );
 }
 
 function hasProtectedPrice(params: PrepareMarketOrderDraftParams): boolean {
@@ -213,57 +241,21 @@ export function computeMarketOrderAmounts(params: {
   };
 }
 
-async function resolveMarketOrderAmount(
-  client: BaseSecureClient,
+function resolveMarketOrderAmount(
   params: ResolveMarketOrderAmountParams,
-): Promise<number> {
+): number {
   if (params.side !== OrderSide.BUY || params.maxSpend === undefined) {
     return params.amount;
   }
 
-  const [feeInfo, builderTakerFeeRate] = await Promise.all([
-    fetchMarketFeeInfo(client, params.tokenId),
-    fetchBuilderTakerFeeRate(client, params.builderCode),
-  ]);
-
   return adjustBuyAmountForFees({
     amount: params.amount,
-    builderTakerFeeRate,
-    platformFeeExponent: feeInfo.exponent,
-    platformFeeRate: feeInfo.rate,
+    builderTakerFeeRate: params.builderTakerFeeRate,
+    platformFeeExponent: params.feeInfo.exponent,
+    platformFeeRate: params.feeInfo.rate,
     maxSpend: params.maxSpend,
     price: params.price,
   });
-}
-
-type MarketFeeInfo = {
-  rate: number;
-  exponent: number;
-};
-
-async function fetchMarketFeeInfo(
-  client: BaseSecureClient,
-  tokenId: string,
-): Promise<MarketFeeInfo> {
-  const conditionId = await resolveConditionByToken(client, { tokenId });
-  const marketInfo = await fetchMarketInfo(client, {
-    conditionId,
-  });
-
-  return marketInfo.feeInfo;
-}
-
-async function fetchBuilderTakerFeeRate(
-  client: BaseSecureClient,
-  builderCode: BuilderCode | undefined,
-): Promise<number> {
-  if (builderCode === undefined) {
-    return 0;
-  }
-
-  const builderFees = await fetchBuilderFeeRates(client, { builderCode });
-
-  return builderFees.taker;
 }
 
 export function adjustBuyAmountForFees(params: {

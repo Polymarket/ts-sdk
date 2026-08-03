@@ -10,7 +10,7 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { fetchNegRisk, fetchTickSize } from '../clob';
+import { ensureMarketMeta } from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
@@ -105,12 +105,7 @@ async function resolveLimitOrderContext(
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
   const account = client.account;
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
-  const negRisk = await fetchNegRisk(client, {
-    tokenId: params.tokenId,
-  });
+  const { negRisk, tickSize } = await ensureMarketMeta(client, params.tokenId);
 
   return {
     exchangeAddress: resolveExchangeAddress(client, negRisk),

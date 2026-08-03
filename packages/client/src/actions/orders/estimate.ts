@@ -4,7 +4,7 @@ import {
   PositiveDecimalNumberSchema,
   type TickSizeValue,
 } from '@polymarket/bindings';
-import type { OrderBookLevel } from '@polymarket/bindings/clob';
+import type { OrderBook, OrderBookLevel } from '@polymarket/bindings/clob';
 import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../../clients';
@@ -159,11 +159,32 @@ export async function resolveEstimatedMarketPrice(
     tokenId: params.tokenId,
   });
 
+  return resolveMarketPriceFromOrderBook({
+    amount: params.amount,
+    orderBook,
+    orderType: params.orderType,
+    side: params.side,
+    tickSize: params.tickSize,
+  });
+}
+
+/** @internal */
+export function resolveMarketPriceFromOrderBook(params: {
+  amount: number;
+  orderBook: OrderBook;
+  orderType: OrderType;
+  side: OrderSide;
+  tickSize: TickSizeValue;
+}): number {
   const price =
     params.side === OrderSide.BUY
-      ? calculateBuyMarketPrice(orderBook.asks, params.amount, params.orderType)
+      ? calculateBuyMarketPrice(
+          params.orderBook.asks,
+          params.amount,
+          params.orderType,
+        )
       : calculateSellMarketPrice(
-          orderBook.bids,
+          params.orderBook.bids,
           params.amount,
           params.orderType,
         );
