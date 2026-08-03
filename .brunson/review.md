@@ -21,11 +21,12 @@ How this file works (guidance for editors — safe to keep or delete):
 
 ## What this repo is
 
-Polymarket's TypeScript SDK monorepo (pnpm workspaces). The first shipping
-target is `@polymarket/client`, which unifies the CLOB, Gamma, Data, and
-relayer API surfaces behind one cohesive consumer interface. Breaking it
-breaks external integrators, so public API shape and semver discipline
-matter more here than in an internal service.
+Polymarket's TypeScript SDK monorepo (pnpm workspaces). The main package is
+`@polymarket/client`, which presents one cohesive consumer interface over
+Polymarket's API surfaces (CLOB, Gamma, Data, relayer) plus experimental
+Perps; more SDKs are planned, starting with `@polymarket/react`. Breaking
+these packages breaks external integrators, so public API shape and semver
+discipline matter more here than in an internal service.
 
 ## Always check on any PR here
 
