@@ -25,8 +25,7 @@ export type PublicSubscriptionsActions = {
    * Starts one or more realtime subscriptions on this client.
    *
    * @throws {@link SubscribeError}
-   * Thrown when a TWAP subscription requests an unsupported window or the
-   * realtime connection fails.
+   * Thrown when subscription input is invalid or a realtime subscription fails.
    *
    * @example
    * ```ts
@@ -49,8 +48,7 @@ export type SecureSubscriptionsActions = {
    * Starts one or more realtime subscriptions on this client.
    *
    * @throws {@link SubscribeError}
-   * Thrown when a TWAP subscription requests an unsupported window or the
-   * realtime connection fails.
+   * Thrown when subscription input is invalid or a realtime subscription fails.
    *
    * @example
    * ```ts
