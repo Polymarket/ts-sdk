@@ -1,4 +1,4 @@
-name: Polybius PR Review
+name: Brunson PR Review
 
 # NOTE: this copy diverges from the canonical polymarket/brunson workflow —
 # ts-sdk is a PUBLIC repo, so it adds two gates the canonical (private-repo)
