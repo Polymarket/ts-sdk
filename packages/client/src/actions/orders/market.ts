@@ -14,15 +14,10 @@ import type { BaseSecureClient } from '../../clients';
 import { fetchOrderBook } from '../clob';
 import {
   ensureBuilderFeeRates,
-  ensureMarketMeta,
-  type MarketMeta,
-  refreshMarketMeta,
+  ensureMarketMetaForPrices,
+  type GridPrice,
 } from './cache';
-import {
-  resolveExchangeAddress,
-  resolveRoundingConfig,
-  validatePriceOnTickGridWithRefresh,
-} from './context';
+import { resolveExchangeAddress, resolveRoundingConfig } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
 import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
@@ -110,20 +105,23 @@ async function resolveMarketOrderContext(
   // interdependencies, so they resolve in parallel. The book request can fire
   // even when metadata resolution ultimately fails; that is an accepted
   // tradeoff for the shorter critical path.
-  const [initialMeta, orderBook, builderTakerFeeRate] = await Promise.all([
-    ensureMarketMeta(client, params.tokenId),
-    hasProtectedPrice(params)
-      ? undefined
-      : fetchOrderBook(client, { tokenId: params.tokenId }),
+  const protectedPrice = resolveProtectedPrice(params);
+  const [meta, orderBook, builderTakerFeeRate] = await Promise.all([
+    ensureMarketMetaForPrices(
+      client,
+      params.tokenId,
+      protectedPrice === undefined ? [] : [protectedPrice],
+    ),
+    protectedPrice === undefined
+      ? fetchOrderBook(client, { tokenId: params.tokenId })
+      : undefined,
     resolveBuilderTakerFeeRate(client, params),
   ]);
-  const { meta, price } = await resolveMarketOrderPrice(
-    client,
-    params,
-    amount,
-    initialMeta,
-    orderBook,
-  );
+  // A protected price is guaranteed valid on the resolved grid; otherwise the
+  // price is derived from live book depth.
+  const price =
+    protectedPrice?.price ??
+    resolveUnprotectedMarketPrice(params, amount, meta.tickSize, orderBook);
   const resolvedAmount = resolveMarketOrderAmount({
     amount,
     builderTakerFeeRate,
@@ -144,45 +142,37 @@ async function resolveMarketOrderContext(
   };
 }
 
-function resolveMarketOrderPrice(
-  client: BaseSecureClient,
+function resolveProtectedPrice(
   params: PrepareMarketOrderDraftParams,
-  amount: number,
-  meta: MarketMeta,
-  orderBook: OrderBook | undefined,
-): Promise<{ meta: MarketMeta; price: number }> {
+): GridPrice | undefined {
   if (params.side === OrderSide.BUY && params.maxPrice !== undefined) {
-    return validatePriceOnTickGridWithRefresh({
-      field: 'maxPrice',
-      meta,
-      price: params.maxPrice,
-      refresh: () => refreshMarketMeta(client, params.tokenId),
-    });
+    return { field: 'maxPrice', price: params.maxPrice };
   }
 
   if (params.side === OrderSide.SELL && params.minPrice !== undefined) {
-    return validatePriceOnTickGridWithRefresh({
-      field: 'minPrice',
-      meta,
-      price: params.minPrice,
-      refresh: () => refreshMarketMeta(client, params.tokenId),
-    });
+    return { field: 'minPrice', price: params.minPrice };
   }
 
+  return undefined;
+}
+
+function resolveUnprotectedMarketPrice(
+  params: PrepareMarketOrderDraftParams,
+  amount: number,
+  tickSize: TickSizeValue,
+  orderBook: OrderBook | undefined,
+): number {
   invariant(
     orderBook !== undefined,
     'An order book is required to estimate an unprotected market price.',
   );
 
-  return Promise.resolve({
-    meta,
-    price: resolveMarketPriceFromOrderBook({
-      amount,
-      orderBook,
-      orderType: params.orderType,
-      side: params.side,
-      tickSize: meta.tickSize,
-    }),
+  return resolveMarketPriceFromOrderBook({
+    amount,
+    orderBook,
+    orderType: params.orderType,
+    side: params.side,
+    tickSize,
   });
 }
 
@@ -204,10 +194,7 @@ function resolveBuilderTakerFeeRate(
 }
 
 function hasProtectedPrice(params: PrepareMarketOrderDraftParams): boolean {
-  return (
-    (params.side === OrderSide.BUY && params.maxPrice !== undefined) ||
-    (params.side === OrderSide.SELL && params.minPrice !== undefined)
-  );
+  return resolveProtectedPrice(params) !== undefined;
 }
 
 export function computeMarketOrderAmounts(params: {

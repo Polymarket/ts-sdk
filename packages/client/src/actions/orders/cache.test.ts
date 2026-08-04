@@ -5,7 +5,7 @@ import {
 } from '@polymarket/bindings';
 import type { MarketInfo } from '@polymarket/bindings/clob';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { UnexpectedResponseError } from '../../errors';
+import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { OrderMetadataCache } from './cache';
 
 const TOKEN_YES = TokenIdSchema.parse('111');
@@ -152,6 +152,93 @@ describe('OrderMetadataCache.ensureMarketMeta', () => {
 
     // The stray token is re-resolved from scratch on every attempt.
     expect(deps.resolveCondition).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('OrderMetadataCache.ensureMarketMetaForPrices', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('never refreshes when the prices are valid on the cached grid', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(6_000);
+    const meta = await cache.ensureMarketMetaForPrices(TOKEN_YES, [
+      { field: 'Price', price: 0.52 },
+    ]);
+
+    expect(meta.tickSize).toBe(0.01);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
+  });
+
+  it('heals when the refreshed grid accepts a rejected price', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(6_000);
+    deps.fetchMarket.mockResolvedValueOnce({ ...marketInfo, tickSize: 0.001 });
+    const meta = await cache.ensureMarketMetaForPrices(TOKEN_YES, [
+      { field: 'Price', price: 0.505 },
+    ]);
+
+    expect(meta.tickSize).toBe(0.001);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(2);
+    expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects without refetching when the metadata is within the refresh holdoff', async () => {
+    const { cache, deps } = createCache();
+
+    await expect(
+      cache.ensureMarketMetaForPrices(TOKEN_YES, [
+        { field: 'Price', price: 0.505 },
+      ]),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows the original error when the refreshed grid is unchanged', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(6_000);
+
+    await expect(
+      cache.ensureMarketMetaForPrices(TOKEN_YES, [
+        { field: 'Price', price: 0.505 },
+      ]),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects prices that remain invalid on the refreshed grid', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(6_000);
+    deps.fetchMarket.mockResolvedValueOnce({ ...marketInfo, tickSize: 0.001 });
+
+    await expect(
+      cache.ensureMarketMetaForPrices(TOKEN_YES, [
+        { field: 'Price', price: 0.5005 },
+      ]),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(2);
+  });
+
+  it('resolves plain metadata when no prices are supplied', async () => {
+    const { cache, deps } = createCache();
+
+    const meta = await cache.ensureMarketMetaForPrices(TOKEN_YES, []);
+
+    expect(meta.conditionId).toBe(CONDITION_ID);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -11,12 +11,8 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { ensureMarketMeta, refreshMarketMeta } from './cache';
-import {
-  resolveExchangeAddress,
-  resolveRoundingConfig,
-  validatePriceOnTickGridWithRefresh,
-} from './context';
+import { ensureMarketMetaForPrices } from './cache';
+import { resolveExchangeAddress, resolveRoundingConfig } from './context';
 import {
   decimalPlaces,
   parseAmount,
@@ -106,18 +102,17 @@ async function resolveLimitOrderContext(
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
   const account = client.account;
-  const { meta, price } = await validatePriceOnTickGridWithRefresh({
-    field: 'Price',
-    meta: await ensureMarketMeta(client, params.tokenId),
-    price: params.price,
-    refresh: () => refreshMarketMeta(client, params.tokenId),
-  });
+  // The resolved grid is guaranteed to accept the price, so no further
+  // validation is needed downstream.
+  const meta = await ensureMarketMetaForPrices(client, params.tokenId, [
+    { field: 'Price', price: params.price },
+  ]);
 
   return {
     exchangeAddress: resolveExchangeAddress(client, meta.negRisk),
     funderAddress: account.wallet,
     negRisk: meta.negRisk,
-    price,
+    price: params.price,
     signerAddress: account.signer,
     tickSize: meta.tickSize,
   };

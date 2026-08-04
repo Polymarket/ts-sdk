@@ -10,12 +10,13 @@ import type {
   MarketInfo,
 } from '@polymarket/bindings/clob';
 import type { BaseClient } from '../../clients';
-import { UnexpectedResponseError } from '../../errors';
+import { UnexpectedResponseError, UserInputError } from '../../errors';
 import {
   fetchBuilderFeeRates,
   fetchMarketInfo,
   resolveConditionByToken,
 } from '../clob';
+import { validatePriceOnTickGrid } from './context';
 
 /**
  * Order-flow metadata cache.
@@ -48,6 +49,15 @@ export type MarketMeta = {
   feeInfo: MarketFeeInfo;
   negRisk: boolean;
   tickSize: TickSizeValue;
+};
+
+/**
+ * A user-supplied price to validate against the market's tick grid, with the
+ * caller's parameter name for error messages.
+ */
+export type GridPrice = {
+  field: string;
+  price: number;
 };
 
 /**
@@ -141,14 +151,48 @@ export class OrderMetadataCache {
   }
 
   /**
+   * Resolves market metadata whose tick grid accepts the given user-supplied
+   * prices, self-healing from tick-grid staleness before rejecting.
+   *
+   * Tick sizes only shrink, so a price that fails validation against a cached
+   * grid may be valid on the market's current, finer grid. When validation
+   * fails, the metadata is refreshed once (subject to the refresh holdoff)
+   * and revalidated; if the refreshed grid is unchanged, the original error
+   * is rethrown. Valid prices never trigger a refresh.
+   */
+  async ensureMarketMetaForPrices(
+    tokenId: TokenId,
+    prices: readonly GridPrice[],
+  ): Promise<MarketMeta> {
+    const meta = await this.ensureMarketMeta(tokenId);
+
+    try {
+      validatePricesOnTickGrid(prices, meta.tickSize);
+
+      return meta;
+    } catch (error) {
+      if (!(error instanceof UserInputError)) {
+        throw error;
+      }
+
+      const refreshed = await this.refreshMarketMeta(tokenId);
+
+      if (refreshed.tickSize === meta.tickSize) {
+        throw error;
+      }
+
+      validatePricesOnTickGrid(prices, refreshed.tickSize);
+
+      return refreshed;
+    }
+  }
+
+  /**
    * Resolves market metadata for a token, refetching ahead of the TTL when
    * the cached entry might be stale.
    *
-   * Used to self-heal from tick-grid staleness: tick sizes only shrink, so a
-   * price that fails validation against a cached grid may be valid on the
-   * market's current, finer grid. Entries younger than the refresh holdoff
-   * are returned as-is, and an in-flight fetch is joined, so failure-driven
-   * refreshes cannot loop.
+   * Entries younger than the refresh holdoff are returned as-is, and an
+   * in-flight fetch is joined, so failure-driven refreshes cannot loop.
    */
   async refreshMarketMeta(tokenId: TokenId): Promise<MarketMeta> {
     const conditionEntry = this.#conditions.get(tokenId);
@@ -240,6 +284,15 @@ function isJoinable<TValue>(entry: CacheEntry<TValue>, ttlMs: number): boolean {
   return entry.fetchedAt === undefined || Date.now() - entry.fetchedAt < ttlMs;
 }
 
+function validatePricesOnTickGrid(
+  prices: readonly GridPrice[],
+  tickSize: TickSizeValue,
+): void {
+  for (const { field, price } of prices) {
+    validatePriceOnTickGrid(price, tickSize, field);
+  }
+}
+
 // Cache state hangs off a module-level WeakMap keyed by the client instance,
 // so clients stay unaware of caching and state is collected together with the
 // client. Keying by client (rather than sharing by environment) is deliberate:
@@ -268,11 +321,12 @@ export function ensureBuilderFeeRates(
 }
 
 /** @internal */
-export function refreshMarketMeta(
+export function ensureMarketMetaForPrices(
   client: BaseClient,
   tokenId: TokenId,
+  prices: readonly GridPrice[],
 ): Promise<MarketMeta> {
-  return resolveCache(client).refreshMarketMeta(tokenId);
+  return resolveCache(client).ensureMarketMetaForPrices(tokenId, prices);
 }
 
 function resolveCache(client: BaseClient): OrderMetadataCache {
