@@ -155,6 +155,48 @@ describe('OrderMetadataCache.ensureMarketMeta', () => {
   });
 });
 
+describe('OrderMetadataCache.refreshMarketMeta', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('returns the cached entry without refetching within the refresh holdoff', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(4_000);
+    const meta = await cache.refreshMarketMeta(TOKEN_YES);
+
+    expect(meta.tickSize).toBe(0.01);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
+  });
+
+  it('refetches ahead of the TTL once past the holdoff, without re-resolving the condition', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    await cache.ensureMarketMeta(TOKEN_YES);
+    vi.advanceTimersByTime(6_000);
+    deps.fetchMarket.mockResolvedValueOnce({ ...marketInfo, tickSize: 0.001 });
+    const meta = await cache.refreshMarketMeta(TOKEN_YES);
+
+    expect(meta.tickSize).toBe(0.001);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(2);
+    expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
+  });
+
+  it('behaves like a cold lookup for an unseen token', async () => {
+    const { cache, deps } = createCache();
+
+    const meta = await cache.refreshMarketMeta(TOKEN_YES);
+
+    expect(meta.conditionId).toBe(CONDITION_ID);
+    expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
+    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('OrderMetadataCache.ensureBuilderFeeRates', () => {
   afterEach(() => {
     vi.useRealTimers();

@@ -35,6 +35,14 @@ import {
 const MUTABLE_METADATA_TTL_MS = 10 * 60 * 1000;
 const IMMUTABLE_TTL_MS = Number.POSITIVE_INFINITY;
 
+/**
+ * Minimum age before {@link OrderMetadataCache.refreshMarketMeta} refetches.
+ * A refresh request against an entry younger than this returns the cached
+ * value, so repeated validation failures (for example a caller retrying a
+ * genuinely invalid price) cannot turn into a fetch loop.
+ */
+const REFRESH_HOLDOFF_MS = 5 * 1000;
+
 export type MarketMeta = {
   conditionId: CtfConditionId;
   feeInfo: MarketFeeInfo;
@@ -130,6 +138,33 @@ export class OrderMetadataCache {
       negRisk: entry.negRisk,
       tickSize: entry.tickSize,
     };
+  }
+
+  /**
+   * Resolves market metadata for a token, refetching ahead of the TTL when
+   * the cached entry might be stale.
+   *
+   * Used to self-heal from tick-grid staleness: tick sizes only shrink, so a
+   * price that fails validation against a cached grid may be valid on the
+   * market's current, finer grid. Entries younger than the refresh holdoff
+   * are returned as-is, and an in-flight fetch is joined, so failure-driven
+   * refreshes cannot loop.
+   */
+  async refreshMarketMeta(tokenId: TokenId): Promise<MarketMeta> {
+    const conditionEntry = this.#conditions.get(tokenId);
+
+    if (conditionEntry?.fetchedAt !== undefined) {
+      const marketEntry = this.#markets.get(await conditionEntry.promise);
+
+      if (
+        marketEntry?.fetchedAt !== undefined &&
+        Date.now() - marketEntry.fetchedAt > REFRESH_HOLDOFF_MS
+      ) {
+        this.#markets.delete(await conditionEntry.promise);
+      }
+    }
+
+    return this.ensureMarketMeta(tokenId);
   }
 
   /**
@@ -230,6 +265,14 @@ export function ensureBuilderFeeRates(
   builderCode: BuilderCode,
 ): Promise<BuilderFeeRates> {
   return resolveCache(client).ensureBuilderFeeRates(builderCode);
+}
+
+/** @internal */
+export function refreshMarketMeta(
+  client: BaseClient,
+  tokenId: TokenId,
+): Promise<MarketMeta> {
+  return resolveCache(client).refreshMarketMeta(tokenId);
 }
 
 function resolveCache(client: BaseClient): OrderMetadataCache {

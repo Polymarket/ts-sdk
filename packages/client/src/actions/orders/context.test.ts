@@ -1,7 +1,12 @@
-import type { TickSizeValue } from '@polymarket/bindings';
-import { describe, expect, it } from 'vitest';
+import { CtfConditionIdSchema, type TickSizeValue } from '@polymarket/bindings';
+import { describe, expect, it, vi } from 'vitest';
 import { UserInputError } from '../../errors';
-import { resolveRoundingConfig, validatePriceOnTickGrid } from './context';
+import type { MarketMeta } from './cache';
+import {
+  resolveRoundingConfig,
+  validatePriceOnTickGrid,
+  validatePriceOnTickGridWithRefresh,
+} from './context';
 import { decimalPlaces } from './math';
 
 describe('resolveRoundingConfig', () => {
@@ -111,3 +116,73 @@ describe('validatePriceOnTickGrid', () => {
     }
   });
 });
+
+describe('validatePriceOnTickGridWithRefresh', () => {
+  const staleMeta = createMeta(0.01);
+  const refreshedMeta = createMeta(0.001);
+
+  it('does not refresh when the price is valid on the cached grid', async () => {
+    const refresh = vi.fn(async () => refreshedMeta);
+
+    const result = await validatePriceOnTickGridWithRefresh({
+      field: 'Price',
+      meta: staleMeta,
+      price: 0.52,
+      refresh,
+    });
+
+    expect(result).toEqual({ meta: staleMeta, price: 0.52 });
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('heals when the refreshed grid accepts the price', async () => {
+    const refresh = vi.fn(async () => refreshedMeta);
+
+    const result = await validatePriceOnTickGridWithRefresh({
+      field: 'Price',
+      meta: staleMeta,
+      price: 0.505,
+      refresh,
+    });
+
+    expect(result).toEqual({ meta: refreshedMeta, price: 0.505 });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('rethrows the original error when the refreshed grid is unchanged', async () => {
+    const refresh = vi.fn(async () => staleMeta);
+
+    await expect(
+      validatePriceOnTickGridWithRefresh({
+        field: 'Price',
+        meta: staleMeta,
+        price: 0.505,
+        refresh,
+      }),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects prices that remain invalid on the refreshed grid', async () => {
+    const refresh = vi.fn(async () => refreshedMeta);
+
+    await expect(
+      validatePriceOnTickGridWithRefresh({
+        field: 'Price',
+        meta: staleMeta,
+        price: 0.5005,
+        refresh,
+      }),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+function createMeta(tickSize: TickSizeValue): MarketMeta {
+  return {
+    conditionId: CtfConditionIdSchema.parse(`0x${'ab'.repeat(32)}`),
+    feeInfo: { rate: 0.02, exponent: 1 },
+    negRisk: false,
+    tickSize,
+  };
+}

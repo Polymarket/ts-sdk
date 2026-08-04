@@ -12,11 +12,16 @@ import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { fetchOrderBook } from '../clob';
-import { ensureBuilderFeeRates, ensureMarketMeta } from './cache';
+import {
+  ensureBuilderFeeRates,
+  ensureMarketMeta,
+  type MarketMeta,
+  refreshMarketMeta,
+} from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
-  validatePriceOnTickGrid,
+  validatePriceOnTickGridWithRefresh,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
 import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
@@ -105,17 +110,18 @@ async function resolveMarketOrderContext(
   // interdependencies, so they resolve in parallel. The book request can fire
   // even when metadata resolution ultimately fails; that is an accepted
   // tradeoff for the shorter critical path.
-  const [meta, orderBook, builderTakerFeeRate] = await Promise.all([
+  const [initialMeta, orderBook, builderTakerFeeRate] = await Promise.all([
     ensureMarketMeta(client, params.tokenId),
     hasProtectedPrice(params)
       ? undefined
       : fetchOrderBook(client, { tokenId: params.tokenId }),
     resolveBuilderTakerFeeRate(client, params),
   ]);
-  const price = resolveMarketOrderPrice(
+  const { meta, price } = await resolveMarketOrderPrice(
+    client,
     params,
     amount,
-    meta.tickSize,
+    initialMeta,
     orderBook,
   );
   const resolvedAmount = resolveMarketOrderAmount({
@@ -139,17 +145,28 @@ async function resolveMarketOrderContext(
 }
 
 function resolveMarketOrderPrice(
+  client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
   amount: number,
-  tickSize: TickSizeValue,
+  meta: MarketMeta,
   orderBook: OrderBook | undefined,
-): number {
+): Promise<{ meta: MarketMeta; price: number }> {
   if (params.side === OrderSide.BUY && params.maxPrice !== undefined) {
-    return validatePriceOnTickGrid(params.maxPrice, tickSize, 'maxPrice');
+    return validatePriceOnTickGridWithRefresh({
+      field: 'maxPrice',
+      meta,
+      price: params.maxPrice,
+      refresh: () => refreshMarketMeta(client, params.tokenId),
+    });
   }
 
   if (params.side === OrderSide.SELL && params.minPrice !== undefined) {
-    return validatePriceOnTickGrid(params.minPrice, tickSize, 'minPrice');
+    return validatePriceOnTickGridWithRefresh({
+      field: 'minPrice',
+      meta,
+      price: params.minPrice,
+      refresh: () => refreshMarketMeta(client, params.tokenId),
+    });
   }
 
   invariant(
@@ -157,12 +174,15 @@ function resolveMarketOrderPrice(
     'An order book is required to estimate an unprotected market price.',
   );
 
-  return resolveMarketPriceFromOrderBook({
-    amount,
-    orderBook,
-    orderType: params.orderType,
-    side: params.side,
-    tickSize,
+  return Promise.resolve({
+    meta,
+    price: resolveMarketPriceFromOrderBook({
+      amount,
+      orderBook,
+      orderType: params.orderType,
+      side: params.side,
+      tickSize: meta.tickSize,
+    }),
   });
 }
 

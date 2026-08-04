@@ -3,6 +3,7 @@ import type { EvmAddress } from '@polymarket/types';
 import { invariant } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
+import type { MarketMeta } from './cache';
 import { decimalPlaces, isMultipleOf } from './math';
 
 export type RoundingConfig = {
@@ -77,4 +78,54 @@ export function resolveExchangeAddress(
   return negRisk
     ? client.environment.contracts.negRiskExchange
     : client.environment.contracts.standardExchange;
+}
+
+/**
+ * Validates a user-supplied price against cached market metadata,
+ * self-healing from tick-grid staleness before rejecting.
+ *
+ * Tick sizes only shrink, so a price that fails validation against a cached
+ * grid may be valid on the market's current, finer grid. On a validation
+ * failure this refreshes the metadata through `refresh` and revalidates once;
+ * if the refreshed grid is unchanged, the original error is rethrown. Valid
+ * prices never trigger a refresh, and the cache's refresh holdoff bounds how
+ * often failing prices can refetch.
+ *
+ * @internal
+ */
+export async function validatePriceOnTickGridWithRefresh(params: {
+  field: string;
+  meta: MarketMeta;
+  price: number;
+  refresh: () => Promise<MarketMeta>;
+}): Promise<{ meta: MarketMeta; price: number }> {
+  try {
+    return {
+      meta: params.meta,
+      price: validatePriceOnTickGrid(
+        params.price,
+        params.meta.tickSize,
+        params.field,
+      ),
+    };
+  } catch (error) {
+    if (!(error instanceof UserInputError)) {
+      throw error;
+    }
+
+    const refreshed = await params.refresh();
+
+    if (refreshed.tickSize === params.meta.tickSize) {
+      throw error;
+    }
+
+    return {
+      meta: refreshed,
+      price: validatePriceOnTickGrid(
+        params.price,
+        refreshed.tickSize,
+        params.field,
+      ),
+    };
+  }
 }

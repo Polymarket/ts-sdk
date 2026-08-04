@@ -11,11 +11,11 @@ import {
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { ensureMarketMeta } from './cache';
+import { ensureMarketMeta, refreshMarketMeta } from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
-  validatePriceOnTickGrid,
+  validatePriceOnTickGridWithRefresh,
 } from './context';
 import {
   decimalPlaces,
@@ -106,15 +106,20 @@ async function resolveLimitOrderContext(
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
   const account = client.account;
-  const { negRisk, tickSize } = await ensureMarketMeta(client, params.tokenId);
+  const { meta, price } = await validatePriceOnTickGridWithRefresh({
+    field: 'Price',
+    meta: await ensureMarketMeta(client, params.tokenId),
+    price: params.price,
+    refresh: () => refreshMarketMeta(client, params.tokenId),
+  });
 
   return {
-    exchangeAddress: resolveExchangeAddress(client, negRisk),
+    exchangeAddress: resolveExchangeAddress(client, meta.negRisk),
     funderAddress: account.wallet,
-    negRisk,
-    price: validatePriceOnTickGrid(params.price, tickSize, 'Price'),
+    negRisk: meta.negRisk,
+    price,
     signerAddress: account.signer,
-    tickSize,
+    tickSize: meta.tickSize,
   };
 }
 
