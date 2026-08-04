@@ -82,6 +82,11 @@
 
 - Default client tests to integration-style coverage.
 - Do not mock API responses unless explicitly requested or unless mocking is necessary to isolate a boundary under test.
+- Never build local fake-client helpers in tests, such as partial objects cast to `BaseClient`/`BaseSecureClient` with stubbed `ServiceClient` responses. Tests against hand-written response fixtures stay green when upstream APIs diverge and stop being a specification of the system.
+- Cross-boundary behavior, such as request counts, caching, retries, and pagination against upstream APIs, must be proven in `packages/client/tests/integration` with real clients against live APIs.
+- Observing the real network in integration tests is fine, for example spying on global `fetch` to count requests or capture URLs. Stubbing or replacing responses is not.
+- Keep unit tests for pure, local logic: schema parsing, math, input validation, and other behavior that involves no network boundary.
+- If a behavior seems provable only by stubbing responses, treat that as a design smell and raise it instead of adding mocks.
 - For tests involving async iterators, especially integration tests, prefer idiomatic consumer usage such as `for await (...)` so the test reads like final SDK DX. Manual iterator calls like `iterator.next()` are acceptable in unit tests or narrow cases where they make the behavior materially easier to isolate or understand.
 - Add tests when they protect user-facing behavior, public API contracts, integration boundaries, or regressions that are likely to recur.
 - Do not add tests reflexively for every small implementation change. For narrow schema or mechanical changes, prefer existing broader coverage plus `typecheck` or build verification when that gives enough confidence.

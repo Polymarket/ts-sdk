@@ -6,13 +6,14 @@ import {
 } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
+  createSecureClient,
   InsufficientLiquidityError,
   type Market,
   type SecureClient,
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
-import { afterAll } from 'vitest';
+import { afterAll, type MockInstance, vi } from 'vitest';
 import {
   describe,
   expect,
@@ -213,6 +214,124 @@ describe('Orders', { timeout: 60_000 }, () => {
           tokenId: yesTokenId,
         }),
       ).rejects.toThrow(UserInputError);
+    });
+  });
+
+  describe('order metadata caching', () => {
+    it('reuses cached market metadata when preparing repeated limit orders', async ({
+      annotate,
+      randomEoaSigner,
+    }) => {
+      const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
+      annotate(`Market ID: ${market.id}`);
+      annotate(`Token ID: ${yesTokenId}`);
+      const secureClient = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        price: expectPresent(market.trading.minimumTickSize),
+        side: OrderSide.BUY,
+        size: expectPresent(market.trading.minimumOrderSize),
+        tokenId: yesTokenId,
+      };
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await secureClient.createLimitOrder(request);
+        const coldUrls = requestedUrls(fetchSpy);
+
+        expect(coldUrls.some((url) => url.includes('/markets-by-token/'))).toBe(
+          true,
+        );
+        expect(coldUrls.some((url) => url.includes('/clob-markets/'))).toBe(
+          true,
+        );
+
+        fetchSpy.mockClear();
+        await secureClient.createLimitOrder(request);
+
+        expect(requestedUrls(fetchSpy)).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('only refetches the live order book when preparing repeated market orders', async ({
+      annotate,
+      randomEoaSigner,
+    }) => {
+      const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
+      annotate(`Market ID: ${market.id}`);
+      annotate(`Token ID: ${yesTokenId}`);
+      const secureClient = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const amount = expectPresent(market.trading.minimumOrderSize);
+
+      await secureClient.createMarketOrder({
+        amount,
+        orderType: OrderType.FAK,
+        side: OrderSide.BUY,
+        tokenId: yesTokenId,
+      });
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await secureClient.createMarketOrder({
+          amount,
+          orderType: OrderType.FAK,
+          side: OrderSide.BUY,
+          tokenId: yesTokenId,
+        });
+        const warmUrls = requestedUrls(fetchSpy);
+
+        expect(warmUrls).toHaveLength(1);
+        expect(warmUrls[0]).toContain('/book');
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('shares one metadata fetch across concurrent cold preparations', async ({
+      annotate,
+      randomEoaSigner,
+    }) => {
+      const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
+      annotate(`Market ID: ${market.id}`);
+      annotate(`Token ID: ${yesTokenId}`);
+      const secureClient = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        price: expectPresent(market.trading.minimumTickSize),
+        side: OrderSide.BUY,
+        size: expectPresent(market.trading.minimumOrderSize),
+        tokenId: yesTokenId,
+      };
+
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await Promise.all([
+          secureClient.createLimitOrder(request),
+          secureClient.createLimitOrder(request),
+        ]);
+        const urls = requestedUrls(fetchSpy);
+
+        expect(
+          urls.filter((url) => url.includes('/markets-by-token/')),
+        ).toHaveLength(1);
+        expect(
+          urls.filter((url) => url.includes('/clob-markets/')),
+        ).toHaveLength(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
   });
 
@@ -525,4 +644,10 @@ async function cancelMarketOrderWithRetry(
     tokenId: order.tokenId,
     market: conditionId,
   });
+}
+
+function requestedUrls(fetchSpy: MockInstance<typeof fetch>): string[] {
+  return fetchSpy.mock.calls.map(([input]) =>
+    input instanceof Request ? input.url : String(input),
+  );
 }
