@@ -116,7 +116,10 @@ describe('waitForOrderFillSettlement', () => {
   it('discovers delayed order trade ids before waiting for settlement', async () => {
     listOpenOrders
       .mockReturnValueOnce({
-        firstPage: async () => ({ hasMore: false, items: [] }),
+        firstPage: async () => ({
+          hasMore: false,
+          items: [{ associateTrades: [], status: 'MATCHED' }],
+        }),
       } as unknown as ReturnType<typeof listOpenOrders>)
       .mockReturnValueOnce({
         firstPage: async () => ({
@@ -137,6 +140,29 @@ describe('waitForOrderFillSettlement', () => {
     expect(listOpenOrders).toHaveBeenCalledTimes(2);
     expect(listOpenOrders).toHaveBeenCalledWith(client, { id: '0xorder' });
     expect(listAccountTrades).toHaveBeenCalledWith(client, { id: 'trade-1' });
+  });
+
+  it.each([
+    'LIVE',
+    'INVALID',
+    'CANCELED',
+    'CANCELED_MARKET_RESOLVED',
+  ])('returns no hashes when a delayed order finishes with status %s without fills', async (status) => {
+    listOpenOrders.mockReturnValue({
+      firstPage: async () => ({
+        hasMore: false,
+        items: [{ associateTrades: [], status }],
+      }),
+    } as unknown as ReturnType<typeof listOpenOrders>);
+
+    const hashes = await waitForOrderFillSettlement(
+      client,
+      makeOrderResponse({ status: OrderPostStatus.DELAYED }),
+    );
+
+    expect(hashes).toEqual([]);
+    expect(listOpenOrders).toHaveBeenCalledTimes(1);
+    expect(listAccountTrades).not.toHaveBeenCalled();
   });
 
   it('does not discover trade ids for a matched response without them', async () => {

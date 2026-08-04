@@ -28,6 +28,12 @@ import { listAccountTrades, listOpenOrders } from '../account';
 
 const SETTLEMENT_POLL_INTERVAL_MS = 250;
 const DEFAULT_SETTLEMENT_TIMEOUT_MS = 30_000;
+const DELAYED_ORDER_NO_FILL_STATUSES = new Set([
+  'LIVE',
+  'INVALID',
+  'CANCELED',
+  'CANCELED_MARKET_RESOLVED',
+]);
 
 const WaitForOrderFillSettlementRequestFields = {
   timeoutMs: z.number().int().positive().optional(),
@@ -92,10 +98,10 @@ function isFailedTrade(trade: ClobTrade): boolean {
  * wait for later fills of any remaining quantity resting on the book;
  * subscribe to the `user` channel to follow those.
  *
- * Non-delayed orders without fill identifiers resolve immediately to any
- * transaction hashes carried by the order response, or an empty array. In the
- * rare case where some fills fail execution, the settled fills' hashes are
- * still returned; the failed fills simply contribute no hash.
+ * Orders that finish matching without fills resolve to any transaction hashes
+ * carried by the order response, or an empty array. In the rare case where
+ * some fills fail execution, the settled fills' hashes are still returned; the
+ * failed fills simply contribute no hash.
  *
  * @example
  * ```ts
@@ -170,7 +176,7 @@ export async function waitForOrderFillSettlement(
 
   const trades = [...settled.values()];
 
-  if (trades.every(isFailedTrade)) {
+  if (trades.length > 0 && trades.every(isFailedTrade)) {
     throw new TransactionFailedError(
       `Every fill of order ${order.orderId} failed execution: ${tradeIds.join(', ')}`,
     );
@@ -192,10 +198,15 @@ async function waitForDelayedOrderTradeIds(
 ): Promise<string[]> {
   while (true) {
     const page = await listOpenOrders(client, { id: orderId }).firstPage();
-    const tradeIds = [...new Set(page.items[0]?.associateTrades ?? [])];
+    const order = page.items[0];
+    const tradeIds = [...new Set(order?.associateTrades ?? [])];
 
     if (tradeIds.length > 0) {
       return tradeIds;
+    }
+
+    if (order && DELAYED_ORDER_NO_FILL_STATUSES.has(order.status)) {
+      return [];
     }
 
     if (Date.now() >= deadline) {
