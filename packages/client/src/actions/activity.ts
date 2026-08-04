@@ -199,6 +199,8 @@ export const ListActivityError = makeErrorGuard(
 /**
  * Lists wallet activity.
  *
+ * Deposit and withdrawal activity is only returned when explicitly included in the `type` filter.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
