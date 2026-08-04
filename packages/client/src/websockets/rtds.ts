@@ -13,7 +13,6 @@ import type {
   EquityPricesSubscription,
   SubscriptionHandle,
 } from '../actions/subscriptions';
-import { validateTwapSubscriptionWindow } from '../subscription-validation';
 import { createSubscriptionHandle } from './handle';
 import { RtdsWebSocketHeartbeat } from './heartbeat';
 import {
@@ -82,7 +81,6 @@ export class RtdsWebSocketManager
   async subscribe(
     subscription: RtdsSpec,
   ): Promise<SubscriptionHandle<RtdsEvent>> {
-    validateTwapSubscriptionWindow(subscription);
     const { change, entry } = this.#subscriptions.add(subscription, {
       matches: matcherFor(subscription),
     });

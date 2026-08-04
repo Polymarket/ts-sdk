@@ -32,7 +32,7 @@ describe('PublicClient.subscribe', () => {
     expect(error).toBeInstanceOf(UserInputError);
     expect(error).toHaveProperty(
       'message',
-      'TWAP window must be 30 or 60 seconds, received 45.',
+      expect.stringContaining('- windowSeconds: Invalid input'),
     );
     expect(subscribe).not.toHaveBeenCalled();
   });
