@@ -1,4 +1,4 @@
-name: Polybius PR Review
+name: Brunson PR Review
 
 # NOTE: this copy diverges from the canonical polymarket/brunson workflow —
 # ts-sdk is a PUBLIC repo, so it adds two gates the canonical (private-repo)
@@ -26,7 +26,7 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for Polybius to be reachable
+      - name: Wait for Brunson to be reachable
         # Polybius redeploys on every merge to its own main. The /data volume is
         # exclusive, so Railway cannot overlap containers: the old one is gone
         # while the new one boots (notes bootstrap + repo hydration + skills
@@ -61,7 +61,7 @@ jobs:
           done
           echo "Polybius is reachable."
 
-      - name: Trigger Polybius PR review
+      - name: Trigger Brunson PR review
         run: |
           jq -n \
             --arg type "pr_review" \
@@ -83,7 +83,7 @@ jobs:
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Polybius PR comment handler
+      - name: Trigger Brunson PR comment handler
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
@@ -109,7 +109,7 @@ jobs:
       contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Polybius PR review comment handler
+      - name: Trigger Brunson PR review comment handler
         env:
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
