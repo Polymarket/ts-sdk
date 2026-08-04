@@ -5,6 +5,7 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
+  type TokenId,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
@@ -58,7 +59,7 @@ export type PrepareLimitOrderDraftParams = z.output<
 
 type ResolveLimitOrderContextParams = {
   price: number;
-  tokenId: string;
+  tokenId: TokenId;
 };
 
 export async function prepareLimitOrderDraft(

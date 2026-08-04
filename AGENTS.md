@@ -86,7 +86,8 @@
 - Cross-boundary behavior, such as request counts, caching, retries, and pagination against upstream APIs, must be proven in `packages/client/tests/integration` with real clients against live APIs.
 - Observing the real network in integration tests is fine, for example spying on global `fetch` to count requests or capture URLs. Stubbing or replacing responses is not.
 - Keep unit tests for pure, local logic: schema parsing, math, input validation, and other behavior that involves no network boundary.
-- If a behavior seems provable only by stubbing responses, treat that as a design smell and raise it instead of adding mocks.
+- If stateful logic can only be exercised by injecting failures or time (caching, eviction, TTL, retry policies), extract it behind a consumer-defined dependency seam and unit test it through domain-typed dependencies, as `OrderMetadataCache` does. Test deps must traffic in parsed domain values, never wire shapes, so there is no response fixture that can diverge from the real API.
+- If a behavior seems provable only by stubbing transport responses, treat that as a design smell and extract a seam instead of adding mocks.
 - For tests involving async iterators, especially integration tests, prefer idiomatic consumer usage such as `for await (...)` so the test reads like final SDK DX. Manual iterator calls like `iterator.next()` are acceptable in unit tests or narrow cases where they make the behavior materially easier to isolate or understand.
 - Add tests when they protect user-facing behavior, public API contracts, integration boundaries, or regressions that are likely to recur.
 - Do not add tests reflexively for every small implementation change. For narrow schema or mechanical changes, prefer existing broader coverage plus `typecheck` or build verification when that gives enough confidence.
