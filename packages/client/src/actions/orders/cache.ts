@@ -33,6 +33,7 @@ import {
  */
 
 const MUTABLE_METADATA_TTL_MS = 10 * 60 * 1000;
+const IMMUTABLE_TTL_MS = Number.POSITIVE_INFINITY;
 
 export type MarketMeta = {
   conditionId: CtfConditionId;
@@ -55,15 +56,23 @@ export type OrderMetadataCacheDeps = {
 
 type MarketEntry = {
   feeInfo: MarketFeeInfo;
-  fetchedAt: number;
   negRisk: boolean;
   tickSize: TickSizeValue;
   tokenIds: ReadonlySet<TokenId>;
 };
 
-type BuilderFeesEntry = {
-  fetchedAt: number;
-  rates: BuilderFeeRates;
+/**
+ * A cached value is always represented by its promise, so in-flight fetches
+ * and settled values live in the same structure and concurrent lookups
+ * naturally join the pending fetch.
+ *
+ * `fetchedAt` doubles as the settlement marker: it is `undefined` while the
+ * fetch is in flight and set when it resolves. Rejected entries are evicted,
+ * so a transient failure never poisons a key.
+ */
+type CacheEntry<TValue> = {
+  promise: Promise<TValue>;
+  fetchedAt?: number;
 };
 
 /**
@@ -74,12 +83,9 @@ type BuilderFeesEntry = {
 export class OrderMetadataCache {
   readonly #deps: OrderMetadataCacheDeps;
 
-  readonly #builderFees = new Map<BuilderCode, BuilderFeesEntry>();
-  readonly #builderFetches = new Map<BuilderCode, Promise<BuilderFeeRates>>();
-  readonly #conditionByToken = new Map<TokenId, CtfConditionId>();
-  readonly #conditionFetches = new Map<TokenId, Promise<CtfConditionId>>();
-  readonly #marketFetches = new Map<CtfConditionId, Promise<MarketEntry>>();
-  readonly #markets = new Map<CtfConditionId, MarketEntry>();
+  readonly #builderFees = new Map<BuilderCode, CacheEntry<BuilderFeeRates>>();
+  readonly #conditions = new Map<TokenId, CacheEntry<CtfConditionId>>();
+  readonly #markets = new Map<CtfConditionId, CacheEntry<MarketEntry>>();
 
   constructor(deps: OrderMetadataCacheDeps) {
     this.#deps = deps;
@@ -94,129 +100,120 @@ export class OrderMetadataCache {
    * refresh costs one fetch. Warm lookups make none.
    */
   async ensureMarketMeta(tokenId: TokenId): Promise<MarketMeta> {
-    const cachedConditionId = this.#conditionByToken.get(tokenId);
-
-    if (cachedConditionId !== undefined) {
-      const entry = this.#markets.get(cachedConditionId);
-
-      if (entry !== undefined && isFresh(entry.fetchedAt)) {
-        return toMarketMeta(cachedConditionId, entry);
-      }
-
-      const refreshed = await this.#refreshMarket(cachedConditionId);
-
-      return toMarketMeta(cachedConditionId, refreshed);
-    }
-
-    const conditionId = await dedupeInFlight(
-      this.#conditionFetches,
+    const conditionId = await getOrFetch(
+      this.#conditions,
       tokenId,
+      IMMUTABLE_TTL_MS,
       () => this.#deps.resolveCondition(tokenId),
     );
-    const entry = await this.#refreshMarket(conditionId);
+    const entry = await getOrFetch(
+      this.#markets,
+      conditionId,
+      MUTABLE_METADATA_TTL_MS,
+      () => this.#fetchMarketEntry(conditionId),
+    );
 
     if (!entry.tokenIds.has(tokenId)) {
       // Inconsistent upstream data: the market resolved for this token does
-      // not include it. Nothing was cached for this token (refreshMarket only
-      // maps tokens present in the market), so a later call re-resolves from
-      // scratch instead of signing with another market's tick size or
-      // exchange.
+      // not include it. Evict the token's condition mapping so a later call
+      // re-resolves from scratch instead of signing with another market's
+      // tick size or exchange.
+      this.#conditions.delete(tokenId);
       throw new UnexpectedResponseError(
         `Market ${conditionId} does not include token ${tokenId}.`,
       );
     }
 
-    return toMarketMeta(conditionId, entry);
+    return {
+      conditionId,
+      feeInfo: entry.feeInfo,
+      negRisk: entry.negRisk,
+      tickSize: entry.tickSize,
+    };
   }
 
   /**
    * Resolves builder fee rates for a builder code, fetching on a miss or
    * after the TTL expires.
    */
-  async ensureBuilderFeeRates(
-    builderCode: BuilderCode,
-  ): Promise<BuilderFeeRates> {
-    const entry = this.#builderFees.get(builderCode);
+  ensureBuilderFeeRates(builderCode: BuilderCode): Promise<BuilderFeeRates> {
+    return getOrFetch(
+      this.#builderFees,
+      builderCode,
+      MUTABLE_METADATA_TTL_MS,
+      () => this.#deps.fetchBuilderFees(builderCode),
+    );
+  }
 
-    if (entry !== undefined && isFresh(entry.fetchedAt)) {
-      return entry.rates;
+  async #fetchMarketEntry(conditionId: CtfConditionId): Promise<MarketEntry> {
+    const marketInfo = await this.#deps.fetchMarket(conditionId);
+    const entry: MarketEntry = {
+      feeInfo: marketInfo.feeInfo,
+      negRisk: marketInfo.negRisk,
+      tickSize: marketInfo.tickSize,
+      tokenIds: new Set(marketInfo.tokens.map((token) => token.tokenId)),
+    };
+
+    // Warm the token-to-condition mapping for every token of the market, so
+    // sibling tokens skip their own resolution round trip.
+    for (const marketTokenId of entry.tokenIds) {
+      this.#conditions.set(marketTokenId, {
+        fetchedAt: Date.now(),
+        promise: Promise.resolve(conditionId),
+      });
     }
 
-    return dedupeInFlight(this.#builderFetches, builderCode, async () => {
-      const rates = await this.#deps.fetchBuilderFees(builderCode);
-      this.#builderFees.set(builderCode, { fetchedAt: Date.now(), rates });
-
-      return rates;
-    });
+    return entry;
   }
-
-  #refreshMarket(conditionId: CtfConditionId): Promise<MarketEntry> {
-    return dedupeInFlight(this.#marketFetches, conditionId, async () => {
-      const marketInfo = await this.#deps.fetchMarket(conditionId);
-      const entry: MarketEntry = {
-        feeInfo: marketInfo.feeInfo,
-        fetchedAt: Date.now(),
-        negRisk: marketInfo.negRisk,
-        tickSize: marketInfo.tickSize,
-        tokenIds: new Set(marketInfo.tokens.map((token) => token.tokenId)),
-      };
-
-      this.#markets.set(conditionId, entry);
-
-      for (const marketTokenId of entry.tokenIds) {
-        this.#conditionByToken.set(marketTokenId, conditionId);
-      }
-
-      return entry;
-    });
-  }
-}
-
-function isFresh(fetchedAt: number): boolean {
-  return Date.now() - fetchedAt < MUTABLE_METADATA_TTL_MS;
 }
 
 /**
- * Shares one in-flight fetch per key. Settled promises are always evicted
- * from the in-flight map, so a transient failure never poisons a key: results
- * live in the value caches, which only successful fetches populate.
+ * Returns the cached promise for a key, joining an in-flight fetch or a fresh
+ * settled value, and otherwise starts a new fetch. Rejected fetches evict
+ * their entry (unless it was already replaced) so the next lookup retries.
  */
-function dedupeInFlight<TKey, TValue>(
-  fetches: Map<TKey, Promise<TValue>>,
+function getOrFetch<TKey, TValue>(
+  entries: Map<TKey, CacheEntry<TValue>>,
   key: TKey,
+  ttlMs: number,
   start: () => Promise<TValue>,
 ): Promise<TValue> {
-  const pending = fetches.get(key);
+  const entry = entries.get(key);
 
-  if (pending !== undefined) {
-    return pending;
+  if (entry !== undefined && isJoinable(entry, ttlMs)) {
+    return entry.promise;
   }
 
-  const started = start().finally(() => {
-    fetches.delete(key);
-  });
-  fetches.set(key, started);
+  const created: CacheEntry<TValue> = { promise: start() };
+  created.promise.then(
+    () => {
+      created.fetchedAt = Date.now();
+    },
+    () => {
+      if (entries.get(key) === created) {
+        entries.delete(key);
+      }
+    },
+  );
+  entries.set(key, created);
 
-  return started;
+  return created.promise;
 }
 
-function toMarketMeta(
-  conditionId: CtfConditionId,
-  entry: MarketEntry,
-): MarketMeta {
-  return {
-    conditionId,
-    feeInfo: entry.feeInfo,
-    negRisk: entry.negRisk,
-    tickSize: entry.tickSize,
-  };
+/** An entry is joinable while its fetch is in flight or while it is fresh. */
+function isJoinable<TValue>(entry: CacheEntry<TValue>, ttlMs: number): boolean {
+  return entry.fetchedAt === undefined || Date.now() - entry.fetchedAt < ttlMs;
 }
 
 // Cache state hangs off a module-level WeakMap keyed by the client instance,
 // so clients stay unaware of caching and state is collected together with the
-// client. Note that `beginAuthentication` creates a new secure client from a
-// public client, so cache state does not transfer across that boundary; the
-// order flow only runs on secure clients, so this has no practical impact.
+// client. Keying by client (rather than sharing by environment) is deliberate:
+// client instances are the unit that carries environment and, in the future,
+// API-key configuration, and multiple clients ordering on the same market is
+// an unlikely workload. Note that `beginAuthentication` creates a new secure
+// client from a public client, so cache state does not transfer across that
+// boundary; the order flow only runs on secure clients, so this has no
+// practical impact.
 const cachesByClient = new WeakMap<BaseClient, OrderMetadataCache>();
 
 /** @internal */
