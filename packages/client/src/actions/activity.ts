@@ -4,7 +4,6 @@ import {
 } from '@polymarket/bindings';
 import {
   type Activity,
-  ActivityType,
   ActivityTypeSchema,
   type ComboActivity,
   ListActivityResponseSchema,
@@ -199,7 +198,7 @@ export const ListActivityError = makeErrorGuard(
 /**
  * Lists wallet activity.
  *
- * Deposit and withdrawal activity is only returned when explicitly included in the `type` filter.
+ * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -245,13 +244,6 @@ export function listActivity(
     ListActivityRequestSchema,
   );
 
-  // The endpoint defaults excludeDepositsWithdrawals=true and drops DEPOSIT and
-  // WITHDRAWAL from the type filter even when requested explicitly, so opt out
-  // of the exclusion whenever the caller asks for those types.
-  const includesDepositOrWithdrawal = params.type?.some(
-    (type) => type === ActivityType.DEPOSIT || type === ActivityType.WITHDRAWAL,
-  );
-
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
@@ -259,9 +251,11 @@ export function listActivity(
       .get('/activity', {
         params: toDataSearchParams({
           ...params,
-          excludeDepositsWithdrawals: includesDepositOrWithdrawal
-            ? false
-            : undefined,
+          // The endpoint defaults excludeDepositsWithdrawals=true and drops
+          // DEPOSIT and WITHDRAWAL from the type filter even when requested
+          // explicitly, so opt out unconditionally and let the type filter
+          // decide which rows come back.
+          excludeDepositsWithdrawals: false,
           limit: decoded.pageSize,
           offset: decoded.offset,
         }),

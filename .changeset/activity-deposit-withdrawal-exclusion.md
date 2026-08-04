@@ -2,4 +2,4 @@
 "@polymarket/client": patch
 ---
 
-Send excludeDepositsWithdrawals=false on activity requests whenever the type filter includes DEPOSIT or WITHDRAWAL. The endpoint excludes those rows by default and strips both values from the type filter, so requesting them previously returned no deposit or withdrawal rows.
+listActivity now returns all activity types by default, including deposits and withdrawals. The endpoint excludes DEPOSIT and WITHDRAWAL rows unless excludeDepositsWithdrawals=false and strips both values from the type filter, so the SDK now always opts out and the type filter alone decides which rows come back. Previously those rows never appeared, even when requested explicitly.

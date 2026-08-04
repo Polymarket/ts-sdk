@@ -23,22 +23,14 @@ describe('Activity actions', () => {
     server.close();
   });
 
-  it('disables the deposit/withdrawal exclusion when those types are requested', async () => {
+  it('disables the deposit/withdrawal exclusion by default', async () => {
     const requests = interceptActivityRequests();
 
-    await listActivity(createClient(), {
-      user,
-      type: [
-        ActivityType.DEPOSIT,
-        ActivityType.WITHDRAWAL,
-        ActivityType.TAKER_REBATE,
-      ],
-    }).firstPage();
+    await listActivity(createClient(), { user }).firstPage();
 
     expect(requests.map((params) => Object.fromEntries(params))).toEqual([
       {
         user,
-        type: 'DEPOSIT,WITHDRAWAL,TAKER_REBATE',
         excludeDepositsWithdrawals: 'false',
         limit: '20',
         offset: '0',
@@ -46,7 +38,7 @@ describe('Activity actions', () => {
     ]);
   });
 
-  it('disables the deposit/withdrawal exclusion for mixed type filters', async () => {
+  it('disables the deposit/withdrawal exclusion for type filters', async () => {
     const requests = interceptActivityRequests();
 
     await listActivity(createClient(), {
@@ -59,30 +51,6 @@ describe('Activity actions', () => {
         user,
         type: 'TRADE,DEPOSIT',
         excludeDepositsWithdrawals: 'false',
-        limit: '20',
-        offset: '0',
-      },
-    ]);
-  });
-
-  it('keeps the default exclusion when deposits and withdrawals are not requested', async () => {
-    const requests = interceptActivityRequests();
-
-    await listActivity(createClient(), {
-      user,
-      type: [ActivityType.TRADE, ActivityType.TAKER_REBATE],
-    }).firstPage();
-    await listActivity(createClient(), { user }).firstPage();
-
-    expect(requests.map((params) => Object.fromEntries(params))).toEqual([
-      {
-        user,
-        type: 'TRADE,TAKER_REBATE',
-        limit: '20',
-        offset: '0',
-      },
-      {
-        user,
         limit: '20',
         offset: '0',
       },
