@@ -1,4 +1,4 @@
-import { TradeStatus, TxHashSchema } from '@polymarket/bindings';
+import { TradeStatus, TxHashSchema, toOrderId } from '@polymarket/bindings';
 import {
   type AcceptedOrderResponse,
   type ClobTrade,
@@ -24,7 +24,7 @@ function makeOrderResponse(
   return {
     makingAmount: '50',
     ok: true,
-    orderId: '0xorder',
+    orderId: toOrderId('0xorder'),
     status: OrderPostStatus.MATCHED,
     takingAmount: '100',
     tradeIds: [],
