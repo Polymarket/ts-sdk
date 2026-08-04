@@ -1,4 +1,4 @@
-import { TradeStatus, TxHashSchema } from '@polymarket/bindings';
+import { TradeStatus, TxHashSchema, toOrderId } from '@polymarket/bindings';
 import {
   type AcceptedOrderResponse,
   type ClobTrade,
@@ -9,11 +9,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BaseSecureClient } from '../../clients';
 import { TimeoutError, TransactionFailedError } from '../../errors';
 
-// The action polls trades through `listAccountTrades`; mocking that module
-// isolates the settlement loop, which is the boundary under test.
-vi.mock('../account', () => ({ listAccountTrades: vi.fn() }));
+// The action discovers and polls trades through the account actions; mocking
+// that module isolates the settlement loop, which is the boundary under test.
+vi.mock('../account', () => ({
+  listAccountTrades: vi.fn(),
+  listOpenOrders: vi.fn(),
+}));
 
-const { listAccountTrades } = vi.mocked(await import('../account'));
+const { listAccountTrades, listOpenOrders } = vi.mocked(
+  await import('../account'),
+);
 const { waitForOrderFillSettlement } = await import('./settlement');
 
 const client = {} as BaseSecureClient;
@@ -24,7 +29,7 @@ function makeOrderResponse(
   return {
     makingAmount: '50',
     ok: true,
-    orderId: '0xorder',
+    orderId: toOrderId('0xorder'),
     status: OrderPostStatus.MATCHED,
     takingAmount: '100',
     tradeIds: [],
@@ -80,7 +85,9 @@ const OTHER_TX_HASH =
   '0x2222222222222222222222222222222222222222222222222222222222222222';
 
 afterEach(() => {
+  vi.useRealTimers();
   listAccountTrades.mockReset();
+  listOpenOrders.mockReset();
 });
 
 describe('waitForOrderFillSettlement', () => {
@@ -103,6 +110,63 @@ describe('waitForOrderFillSettlement', () => {
     );
 
     expect(hashes).toEqual([TX_HASH]);
+    expect(listAccountTrades).not.toHaveBeenCalled();
+  });
+
+  it('discovers delayed order trade ids before waiting for settlement', async () => {
+    listOpenOrders
+      .mockReturnValueOnce({
+        firstPage: async () => ({ hasMore: false, items: [] }),
+      } as unknown as ReturnType<typeof listOpenOrders>)
+      .mockReturnValueOnce({
+        firstPage: async () => ({
+          hasMore: false,
+          items: [{ associateTrades: ['trade-1'] }],
+        }),
+      } as unknown as ReturnType<typeof listOpenOrders>);
+    mockTradesPages([
+      makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH }),
+    ]);
+
+    const hashes = await waitForOrderFillSettlement(
+      client,
+      makeOrderResponse({ status: OrderPostStatus.DELAYED }),
+    );
+
+    expect(hashes).toEqual([TX_HASH]);
+    expect(listOpenOrders).toHaveBeenCalledTimes(2);
+    expect(listOpenOrders).toHaveBeenCalledWith(client, { id: '0xorder' });
+    expect(listAccountTrades).toHaveBeenCalledWith(client, { id: 'trade-1' });
+  });
+
+  it('does not discover trade ids for a matched response without them', async () => {
+    const hashes = await waitForOrderFillSettlement(
+      client,
+      makeOrderResponse({ status: OrderPostStatus.MATCHED }),
+    );
+
+    expect(hashes).toEqual([]);
+    expect(listOpenOrders).not.toHaveBeenCalled();
+  });
+
+  it('times out while waiting for a delayed order to match', async () => {
+    vi.useFakeTimers();
+    listOpenOrders.mockReturnValue({
+      firstPage: async () => ({ hasMore: false, items: [] }),
+    } as unknown as ReturnType<typeof listOpenOrders>);
+
+    const settlement = waitForOrderFillSettlement(
+      client,
+      makeOrderResponse({ status: OrderPostStatus.DELAYED }),
+      { timeoutMs: 1 },
+    );
+    const timeoutExpectation = expect(settlement).rejects.toThrow(
+      'Timed out waiting for delayed order 0xorder to match',
+    );
+
+    await vi.advanceTimersByTimeAsync(250);
+
+    await timeoutExpectation;
     expect(listAccountTrades).not.toHaveBeenCalled();
   });
 

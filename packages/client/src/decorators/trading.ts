@@ -190,14 +190,14 @@ export type SecureTradingActions = {
    * settlement outcome and returns the settlement transaction hashes.
    *
    * @remarks
-   * Settlement covers the fills listed in this order response. These are the
-   * fills that happened immediately when the order was accepted. It does not
-   * wait for later fills of any remaining quantity resting on the book;
-   * subscribe to the `user` channel to follow those.
+   * Settlement normally covers the fills listed in this order response. When
+   * the response is `delayed`, the SDK first waits for the order's associated
+   * fills to become available. It does not wait for later fills of any
+   * remaining quantity resting on the book; subscribe to the `user` channel to
+   * follow those.
    *
    * @throws {@link WaitForOrderFillSettlementError}
-   * Thrown on failure: a timeout while fills are still settling, or every
-   * fill failing execution. The order placement itself is unaffected.
+   * Thrown on failure.
    *
    * @example
    * ```ts

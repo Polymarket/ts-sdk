@@ -1,7 +1,13 @@
-import { TradeStatus, type TxHash, TxHashSchema } from '@polymarket/bindings';
-import type {
-  AcceptedOrderResponse,
-  ClobTrade,
+import {
+  type OrderId,
+  TradeStatus,
+  type TxHash,
+  TxHashSchema,
+} from '@polymarket/bindings';
+import {
+  type AcceptedOrderResponse,
+  type ClobTrade,
+  OrderPostStatus,
 } from '@polymarket/bindings/clob';
 import { delay } from '@polymarket/types';
 import { z } from 'zod';
@@ -18,7 +24,7 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { listAccountTrades } from '../account';
+import { listAccountTrades, listOpenOrders } from '../account';
 
 const SETTLEMENT_POLL_INTERVAL_MS = 250;
 const DEFAULT_SETTLEMENT_TIMEOUT_MS = 30_000;
@@ -75,20 +81,21 @@ function isFailedTrade(trade: ClobTrade): boolean {
 }
 
 /**
- * Waits until every fill listed in an order response reaches a terminal
- * settlement outcome and returns the settlement transaction hashes.
+ * Waits until every fill associated with an order reaches a terminal settlement
+ * outcome and returns the settlement transaction hashes.
  *
  * @remarks
- * Settlement covers the fills listed in this order response, identified by the
- * response's `tradeIds`. These are the fills that happened immediately when
- * the order was accepted. It does not wait for later fills of any remaining
- * quantity resting on the book; subscribe to the `user` channel to follow
- * those.
+ * Settlement normally covers the fills listed in this order response,
+ * identified by the response's `tradeIds`. When the response is `delayed`, the
+ * order has been accepted but matching has not happened yet, so the SDK first
+ * waits for the order's associated trade IDs to become available. It does not
+ * wait for later fills of any remaining quantity resting on the book;
+ * subscribe to the `user` channel to follow those.
  *
- * Orders without fill identifiers resolve immediately to any transaction
- * hashes carried by the order response, or an empty array. In the rare case
- * where some fills fail execution, the settled fills' hashes are still
- * returned; the failed fills simply contribute no hash.
+ * Non-delayed orders without fill identifiers resolve immediately to any
+ * transaction hashes carried by the order response, or an empty array. In the
+ * rare case where some fills fail execution, the settled fills' hashes are
+ * still returned; the failed fills simply contribute no hash.
  *
  * @example
  * ```ts
@@ -104,8 +111,7 @@ function isFailedTrade(trade: ClobTrade): boolean {
  * ```
  *
  * @throws {@link WaitForOrderFillSettlementError}
- * Thrown on failure: a timeout while fills are still settling, or every fill
- * failing execution. The order placement itself is unaffected.
+ * Thrown on failure.
  */
 export async function waitForOrderFillSettlement(
   client: BaseSecureClient,
@@ -117,14 +123,22 @@ export async function waitForOrderFillSettlement(
     WaitForOrderFillSettlementRequestSchema,
   );
 
-  const tradeIds = [...new Set(order.tradeIds)];
+  const deadline = Date.now() + timeoutMs;
+  let tradeIds = [...new Set(order.tradeIds)];
 
   if (tradeIds.length === 0) {
-    return [...order.transactionsHashes];
+    if (order.status !== OrderPostStatus.DELAYED) {
+      return [...order.transactionsHashes];
+    }
+
+    tradeIds = await waitForDelayedOrderTradeIds(
+      client,
+      order.orderId,
+      deadline,
+    );
   }
 
   const settled = new Map<string, ClobTrade>();
-  const deadline = Date.now() + timeoutMs;
 
   while (settled.size < tradeIds.length) {
     const pending = tradeIds.filter((id) => !settled.has(id));
@@ -169,4 +183,27 @@ export async function waitForOrderFillSettlement(
         .map((trade) => trade.transactionHash),
     ),
   ].map((hash) => TxHashSchema.parse(hash));
+}
+
+async function waitForDelayedOrderTradeIds(
+  client: BaseSecureClient,
+  orderId: OrderId,
+  deadline: number,
+): Promise<string[]> {
+  while (true) {
+    const page = await listOpenOrders(client, { id: orderId }).firstPage();
+    const tradeIds = [...new Set(page.items[0]?.associateTrades ?? [])];
+
+    if (tradeIds.length > 0) {
+      return tradeIds;
+    }
+
+    if (Date.now() >= deadline) {
+      throw new TimeoutError(
+        `Timed out waiting for delayed order ${orderId} to match`,
+      );
+    }
+
+    await delay(SETTLEMENT_POLL_INTERVAL_MS);
+  }
 }
