@@ -18,8 +18,8 @@ import {
 import { completeWith } from '../../workflow';
 import { updateBalanceAllowance } from '../account';
 import { approveErc20, approveErc1155ForAll } from '../approvals';
-import { fetchNegRisk } from '../clob';
 import { resolveCurrentAllowance } from './allowance';
+import { resolveOrderMarketMetadata } from './cache';
 import { resolveExchangeAddress } from './context';
 import { type PostOrderError, postOrder } from './post';
 import {
@@ -243,8 +243,8 @@ async function ensureOrderApproval(
   client: BaseSecureClient,
   order: SignedOrder,
 ): Promise<boolean> {
-  const negRisk = await fetchNegRisk(client, { tokenId: order.tokenId });
-  const exchangeAddress = resolveExchangeAddress(client, negRisk);
+  const metadata = await resolveOrderMarketMetadata(client, order.tokenId);
+  const exchangeAddress = resolveExchangeAddress(client, metadata.negRisk);
   const requiredAllowance = BigInt(order.makerAmount);
   const currentAllowance = await resolveCurrentAllowance(client, {
     spenderAddress: exchangeAddress,

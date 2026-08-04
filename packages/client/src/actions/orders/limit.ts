@@ -5,12 +5,14 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
+  type TokenId,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
-import { fetchNegRisk, fetchTickSize } from '../clob';
+import { UserInputError } from '../../errors';
+import { resolveOrderMarketMetadata } from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
@@ -58,7 +60,7 @@ export type PrepareLimitOrderDraftParams = z.output<
 
 type ResolveLimitOrderContextParams = {
   price: number;
-  tokenId: string;
+  tokenId: TokenId;
 };
 
 export async function prepareLimitOrderDraft(
@@ -94,7 +96,6 @@ export async function prepareLimitOrderDraft(
 type LimitOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  negRisk: boolean;
   price: number;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
@@ -105,21 +106,31 @@ async function resolveLimitOrderContext(
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
   const account = client.account;
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
-  const negRisk = await fetchNegRisk(client, {
-    tokenId: params.tokenId,
-  });
+  const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
+  const price = validateExactPriceOnTickGrid(params.price, metadata.tickSize);
 
   return {
-    exchangeAddress: resolveExchangeAddress(client, negRisk),
+    exchangeAddress: resolveExchangeAddress(client, metadata.negRisk),
     funderAddress: account.wallet,
-    negRisk,
-    price: validatePriceOnTickGrid(params.price, tickSize, 'Price'),
+    price,
     signerAddress: account.signer,
-    tickSize,
+    tickSize: metadata.tickSize,
   };
+}
+
+function validateExactPriceOnTickGrid(
+  price: number,
+  tickSize: TickSizeValue,
+): number {
+  try {
+    return validatePriceOnTickGrid(price, tickSize);
+  } catch (error) {
+    if (!(error instanceof UserInputError)) {
+      throw error;
+    }
+
+    throw new UserInputError(`Price ${error.message}`, { cause: error });
+  }
 }
 
 function computeLimitOrderAmounts(params: {
