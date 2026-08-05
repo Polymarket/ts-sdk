@@ -111,23 +111,35 @@ async function resolveProtectedMarketOrderContext(
       params.tokenId,
       params.builderCode,
     );
-    const price = resolveProtectedMarketOrderPrice(params, market.tickSize);
 
-    return {
-      exchangeAddress: resolveExchangeAddress(client, market.negRisk),
-      funderAddress: client.account.wallet,
-      price,
-      resolvedAmount: adjustBuyAmountForFees({
+    try {
+      return buildProtectedBuyMarketOrderContext(
+        client,
+        params,
         amount,
         builderTakerFeeRate,
-        maxSpend: params.maxSpend,
-        platformFeeExponent: market.feeInfo.exponent,
-        platformFeeRate: market.feeInfo.rate,
-        price,
-      }),
-      signerAddress: client.account.signer,
-      tickSize: market.tickSize,
-    };
+        params.maxSpend,
+        market,
+      );
+    } catch (error) {
+      if (!(error instanceof UserInputError)) {
+        throw error;
+      }
+
+      const currentMarket = await fetchCurrentOrderMarketMetadata(
+        client,
+        params.tokenId,
+      );
+
+      return buildProtectedBuyMarketOrderContext(
+        client,
+        params,
+        amount,
+        builderTakerFeeRate,
+        params.maxSpend,
+        currentMarket,
+      );
+    }
   }
 
   const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
@@ -151,6 +163,33 @@ async function resolveProtectedMarketOrderContext(
       currentMetadata,
     );
   }
+}
+
+function buildProtectedBuyMarketOrderContext(
+  client: BaseSecureClient,
+  params: PrepareMarketOrderDraftParams,
+  amount: number,
+  builderTakerFeeRate: number,
+  maxSpend: number,
+  metadata: OrderMarketMetadata,
+): MarketOrderContext {
+  const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
+
+  return {
+    exchangeAddress: resolveExchangeAddress(client, metadata.negRisk),
+    funderAddress: client.account.wallet,
+    price,
+    resolvedAmount: adjustBuyAmountForFees({
+      amount,
+      builderTakerFeeRate,
+      maxSpend,
+      platformFeeExponent: metadata.feeInfo.exponent,
+      platformFeeRate: metadata.feeInfo.rate,
+      price,
+    }),
+    signerAddress: client.account.signer,
+    tickSize: metadata.tickSize,
+  };
 }
 
 function buildProtectedMarketOrderContext(
