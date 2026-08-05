@@ -180,7 +180,13 @@ export function createExchangeV3OrderDomain(
   };
 }
 
-/** @internal */
+/**
+ * Amount the order owner gives, in e6 base units: `price * size` collateral
+ * rounded up for a BUY, the outcome-token `size` for a SELL. `price` and
+ * `size` are both e6-scaled.
+ *
+ * @internal
+ */
 export function calculateExchangeOrderMakerAmount(
   side: OrderSide,
   price: bigint,
@@ -191,7 +197,14 @@ export function calculateExchangeOrderMakerAmount(
   return ((price * size + 999_999n) / 1_000_000n).toString();
 }
 
-/** @internal */
+/**
+ * Amount the order owner receives, in e6 base units: the outcome-token
+ * `size` for a BUY, `price * size` collateral rounded down for a SELL.
+ * Rounding always favors the counterparty. `price` and `size` are both
+ * e6-scaled.
+ *
+ * @internal
+ */
 export function calculateExchangeOrderTakerAmount(
   side: OrderSide,
   price: bigint,
