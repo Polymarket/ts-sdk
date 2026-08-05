@@ -371,7 +371,7 @@ describe('Orders', { timeout: 60_000 }, () => {
       }
     });
 
-    it('fetches current builder fees for every attributed maxSpend preparation', async ({
+    it('caches builder fees for repeated attributed maxSpend preparations', async ({
       builderCode,
       randomEoaSigner,
     }) => {
@@ -394,7 +394,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
         await client.createMarketOrder(request);
 
-        expect(countRequests(fetchSpy, '/fees/builder-fees/')).toBe(2);
+        expect(countRequests(fetchSpy, '/fees/builder-fees/')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }

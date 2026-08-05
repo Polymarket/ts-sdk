@@ -12,10 +12,11 @@ import { type EvmAddress, invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
-import { fetchBuilderFeeRates, fetchOrderBook } from '../clob';
+import { fetchOrderBook } from '../clob';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
+  resolveBuilderTakerFeeRate,
   resolveOrderMarketMetadata,
 } from './cache';
 import {
@@ -389,23 +390,10 @@ async function resolveFeeInputs(
 ): Promise<FeeInputs> {
   const [market, builderTakerFeeRate] = await Promise.all([
     resolveOrderMarketMetadata(client, tokenId),
-    fetchBuilderTakerFeeRate(client, builderCode),
+    resolveBuilderTakerFeeRate(client, builderCode),
   ]);
 
   return { builderTakerFeeRate, market };
-}
-
-async function fetchBuilderTakerFeeRate(
-  client: BaseSecureClient,
-  builderCode: BuilderCode | undefined,
-): Promise<number> {
-  if (builderCode === undefined) {
-    return 0;
-  }
-
-  const builderFees = await fetchBuilderFeeRates(client, { builderCode });
-
-  return builderFees.taker;
 }
 
 export function adjustBuyAmountForFees(params: {

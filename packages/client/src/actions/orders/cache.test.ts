@@ -1,4 +1,8 @@
-import { CtfConditionIdSchema, TokenIdSchema } from '@polymarket/bindings';
+import {
+  BuilderCodeSchema,
+  CtfConditionIdSchema,
+  TokenIdSchema,
+} from '@polymarket/bindings';
 import type { MarketInfo } from '@polymarket/bindings/clob';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UnexpectedResponseError } from '../../errors';
@@ -8,7 +12,8 @@ const TOKEN_YES = TokenIdSchema.parse('111');
 const TOKEN_NO = TokenIdSchema.parse('222');
 const STRAY_TOKEN = TokenIdSchema.parse('999');
 const CONDITION_ID = CtfConditionIdSchema.parse(`0x${'ab'.repeat(32)}`);
-const MARKET_TTL_MS = 10 * 60 * 1000;
+const BUILDER_CODE = BuilderCodeSchema.parse(`0x${'cd'.repeat(32)}`);
+const METADATA_TTL_MS = 10 * 60 * 1000;
 
 const market: MarketInfo = {
   feeInfo: { exponent: 1, rate: 0.02 },
@@ -72,7 +77,7 @@ describe('OrderMetadataCache', () => {
     const { cache, deps } = createCache();
 
     await cache.resolveMarket(TOKEN_YES);
-    vi.advanceTimersByTime(MARKET_TTL_MS + 1);
+    vi.advanceTimersByTime(METADATA_TTL_MS + 1);
     deps.fetchMarket.mockResolvedValueOnce({ ...market, tickSize: 0.001 });
 
     expect(await cache.resolveMarket(TOKEN_YES)).toEqual({
@@ -118,10 +123,27 @@ describe('OrderMetadataCache', () => {
     expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
     expect(deps.fetchMarket).toHaveBeenCalledTimes(3);
   });
+
+  it('caches builder taker fees until the metadata TTL expires', async () => {
+    vi.useFakeTimers();
+    const { cache, deps } = createCache();
+
+    expect(await cache.resolveBuilderTakerFeeRate(undefined)).toBe(0);
+    expect(await cache.resolveBuilderTakerFeeRate(BUILDER_CODE)).toBe(0.01);
+    expect(await cache.resolveBuilderTakerFeeRate(BUILDER_CODE)).toBe(0.01);
+    expect(deps.fetchBuilderTakerFeeRate).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(METADATA_TTL_MS + 1);
+    deps.fetchBuilderTakerFeeRate.mockResolvedValueOnce(0.02);
+
+    expect(await cache.resolveBuilderTakerFeeRate(BUILDER_CODE)).toBe(0.02);
+    expect(deps.fetchBuilderTakerFeeRate).toHaveBeenCalledTimes(2);
+  });
 });
 
 function createCache() {
   const deps = {
+    fetchBuilderTakerFeeRate: vi.fn(async () => 0.01),
     fetchMarket: vi.fn(async () => market),
     resolveCondition: vi.fn(async () => CONDITION_ID),
   };

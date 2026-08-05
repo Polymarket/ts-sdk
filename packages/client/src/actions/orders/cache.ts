@@ -1,4 +1,5 @@
 import type {
+  BuilderCode,
   CtfConditionId,
   TickSizeValue,
   TokenId,
@@ -6,9 +7,13 @@ import type {
 import type { MarketFeeInfo, MarketInfo } from '@polymarket/bindings/clob';
 import type { BaseClient } from '../../clients';
 import { UnexpectedResponseError } from '../../errors';
-import { fetchMarketInfo, resolveConditionByToken } from '../clob';
+import {
+  fetchBuilderFeeRates,
+  fetchMarketInfo,
+  resolveConditionByToken,
+} from '../clob';
 
-const MARKET_TTL_MS = 10 * 60 * 1000;
+const METADATA_TTL_MS = 10 * 60 * 1000;
 const IMMUTABLE_TTL_MS = Number.POSITIVE_INFINITY;
 
 /** @internal */
@@ -20,6 +25,7 @@ export type OrderMarketMetadata = {
 
 /** @internal */
 export type OrderMetadataCacheDeps = {
+  fetchBuilderTakerFeeRate(builderCode: BuilderCode): Promise<number>;
   fetchMarket(conditionId: CtfConditionId): Promise<MarketInfo>;
   resolveCondition(tokenId: TokenId): Promise<CtfConditionId>;
 };
@@ -36,6 +42,7 @@ type CacheEntry<TValue> = {
 /** @internal */
 export class OrderMetadataCache {
   readonly #deps: OrderMetadataCacheDeps;
+  readonly #builderTakerFeeRates = new Map<BuilderCode, CacheEntry<number>>();
   readonly #conditions = new Map<TokenId, CacheEntry<CtfConditionId>>();
   readonly #markets = new Map<CtfConditionId, CacheEntry<MarketRecord>>();
 
@@ -53,6 +60,21 @@ export class OrderMetadataCache {
     };
   }
 
+  async resolveBuilderTakerFeeRate(
+    builderCode: BuilderCode | undefined,
+  ): Promise<number> {
+    if (builderCode === undefined) {
+      return 0;
+    }
+
+    return readThrough(
+      this.#builderTakerFeeRates,
+      builderCode,
+      METADATA_TTL_MS,
+      () => this.#deps.fetchBuilderTakerFeeRate(builderCode),
+    );
+  }
+
   async fetchCurrentMarket(tokenId: TokenId): Promise<OrderMarketMetadata> {
     const conditionId = await readThrough(
       this.#conditions,
@@ -63,7 +85,7 @@ export class OrderMetadataCache {
     const market = await this.#fetchMarket(conditionId);
 
     this.#assertMarketContainsToken(tokenId, conditionId, market);
-    this.#markets.set(conditionId, resolvedEntry(market, MARKET_TTL_MS));
+    this.#markets.set(conditionId, resolvedEntry(market, METADATA_TTL_MS));
 
     return {
       feeInfo: market.feeInfo,
@@ -82,7 +104,7 @@ export class OrderMetadataCache {
     const market = await readThrough(
       this.#markets,
       conditionId,
-      MARKET_TTL_MS,
+      METADATA_TTL_MS,
       () => this.#fetchMarket(conditionId),
     );
 
@@ -183,6 +205,14 @@ export function fetchCurrentOrderMarketMetadata(
   return resolveCache(client).fetchCurrentMarket(tokenId);
 }
 
+/** @internal */
+export function resolveBuilderTakerFeeRate(
+  client: BaseClient,
+  builderCode: BuilderCode | undefined,
+): Promise<number> {
+  return resolveCache(client).resolveBuilderTakerFeeRate(builderCode);
+}
+
 function resolveCache(client: BaseClient): OrderMetadataCache {
   const existing = cachesByClient.get(client);
 
@@ -191,6 +221,8 @@ function resolveCache(client: BaseClient): OrderMetadataCache {
   }
 
   const created = new OrderMetadataCache({
+    fetchBuilderTakerFeeRate: async (builderCode) =>
+      (await fetchBuilderFeeRates(client, { builderCode })).taker,
     fetchMarket: (conditionId) => fetchMarketInfo(client, { conditionId }),
     resolveCondition: (tokenId) => resolveConditionByToken(client, { tokenId }),
   });
