@@ -12,7 +12,11 @@ import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
-import { resolveOrderMarketMetadata } from './cache';
+import {
+  fetchCurrentOrderMarketMetadata,
+  type OrderMarketMetadata,
+  resolveOrderMarketMetadata,
+} from './cache';
 import {
   resolveExchangeAddress,
   resolveRoundingConfig,
@@ -105,15 +109,36 @@ async function resolveLimitOrderContext(
   client: BaseSecureClient,
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
-  const account = client.account;
   const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
+
+  try {
+    return buildLimitOrderContext(client, params, metadata);
+  } catch (error) {
+    if (!(error instanceof UserInputError)) {
+      throw error;
+    }
+
+    const currentMetadata = await fetchCurrentOrderMarketMetadata(
+      client,
+      params.tokenId,
+    );
+
+    return buildLimitOrderContext(client, params, currentMetadata);
+  }
+}
+
+function buildLimitOrderContext(
+  client: BaseSecureClient,
+  params: ResolveLimitOrderContextParams,
+  metadata: OrderMarketMetadata,
+): LimitOrderContext {
   const price = validateExactPriceOnTickGrid(params.price, metadata.tickSize);
 
   return {
     exchangeAddress: resolveExchangeAddress(client, metadata.negRisk),
-    funderAddress: account.wallet,
+    funderAddress: client.account.wallet,
     price,
-    signerAddress: account.signer,
+    signerAddress: client.account.signer,
     tickSize: metadata.tickSize,
   };
 }

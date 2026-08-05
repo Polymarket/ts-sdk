@@ -16,6 +16,7 @@ import { fetchBuilderFeeRates, fetchOrderBook } from '../clob';
 import {
   type CurrentOrderMarketMetadata,
   fetchCurrentOrderMarketMetadata,
+  type OrderMarketMetadata,
   resolveOrderMarketMetadata,
 } from './cache';
 import {
@@ -131,6 +132,34 @@ async function resolveProtectedMarketOrderContext(
   }
 
   const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
+
+  try {
+    return buildProtectedMarketOrderContext(client, params, amount, metadata);
+  } catch (error) {
+    if (!(error instanceof UserInputError)) {
+      throw error;
+    }
+
+    const currentMetadata = await fetchCurrentOrderMarketMetadata(
+      client,
+      params.tokenId,
+    );
+
+    return buildProtectedMarketOrderContext(
+      client,
+      params,
+      amount,
+      currentMetadata,
+    );
+  }
+}
+
+function buildProtectedMarketOrderContext(
+  client: BaseSecureClient,
+  params: PrepareMarketOrderDraftParams,
+  amount: number,
+  metadata: OrderMarketMetadata,
+): MarketOrderContext {
   const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
 
   return {

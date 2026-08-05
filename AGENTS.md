@@ -80,6 +80,18 @@
 - For any public SDK function export, including actions and client methods, document the public thrown-error surface explicitly. Export a flattened `...Error` union of the concrete public error types the function can throw through its public contract, dedupe the union, and do not include internal assertion-style errors such as `InvariantError` in that union.
 - Public SDK functions with a documented `...Error` union should include an `@throws` line in TSDoc that references that union. The accompanying sentence can be brief and generic; it does not need to enumerate every specific failure path.
 
+## Data Flow and Responsibility
+
+- Preserve one-way workflow data flow: resolve data, validate it, derive values, then build the result. Do not route operational data through a shared abstraction merely because multiple call sites need it.
+- Keep policy in the layer that owns it. Bindings normalize wire data, caches fetch and store reusable data, actions own workflow decisions and recovery, and public action boundaries attach user-facing parameter names and errors.
+- A helper should return the data or result named by its responsibility. Empty arrays, sentinel `undefined` values, refresh callbacks, or helpers returning unrelated values are signs that an abstraction is carrying multiple concerns.
+- Prefer explicit branches and small local duplication when workflows use different sources, freshness requirements, or error semantics. Do not force distinct workflows through a generic abstraction only to remove duplication.
+- Use one coherent source of truth for related values. Do not combine live and cached fields when one response provides the values required for a single operation.
+- Treat freshness as part of correctness. Cache a value only when bounded staleness cannot violate the public contract; keep inputs to hard guarantees current unless immutability or safe invalidation is proven.
+- Keep lower-level validation field-neutral. The action that owns a public parameter should attach its name and user-facing error context.
+- Implement recovery at the workflow that observes the failure. Fetch fresh data and run the normal local path again instead of teaching storage or transport layers about caller-specific validation and retry behavior.
+- Judge an abstraction primarily by whether it makes its callers easier to read top-to-bottom. If callers need to prepare descriptors, callbacks, or placeholder values for the abstraction, prefer a simpler local composition.
+
 ## Testing
 
 - Default client tests to integration-style coverage.

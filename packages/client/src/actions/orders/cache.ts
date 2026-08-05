@@ -64,7 +64,7 @@ export class OrderMetadataCache {
     );
     const market = await this.#fetchMarket(conditionId);
 
-    this.#validateMembership(tokenId, conditionId, market);
+    this.#assertMarketContainsToken(tokenId, conditionId, market);
     this.#markets.set(conditionId, resolvedEntry(market, MARKET_TTL_MS));
 
     return {
@@ -88,12 +88,12 @@ export class OrderMetadataCache {
       () => this.#fetchMarket(conditionId),
     );
 
-    this.#validateMembership(tokenId, conditionId, market);
+    this.#assertMarketContainsToken(tokenId, conditionId, market);
 
     return market;
   }
 
-  #validateMembership(
+  #assertMarketContainsToken(
     tokenId: TokenId,
     conditionId: CtfConditionId,
     market: MarketRecord,
