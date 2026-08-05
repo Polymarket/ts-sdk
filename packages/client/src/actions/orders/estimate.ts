@@ -4,7 +4,7 @@ import {
   PositiveDecimalNumberSchema,
   type TickSizeValue,
 } from '@polymarket/bindings';
-import type { OrderBookLevel } from '@polymarket/bindings/clob';
+import type { OrderBook, OrderBookLevel } from '@polymarket/bindings/clob';
 import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../../clients';
@@ -18,7 +18,7 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { fetchOrderBook, fetchTickSize } from '../clob';
+import { fetchOrderBook } from '../clob';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
   tokenId: z.string(),
@@ -130,16 +130,12 @@ export async function estimateMarketPrice(
   request: EstimateMarketPriceRequest,
 ): Promise<number> {
   const params = parseUserInput(request, EstimateMarketPriceRequestSchema);
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
   return resolveEstimatedMarketPrice(client, {
     amount,
     orderType: params.orderType,
     side: params.side,
-    tickSize,
     tokenId: params.tokenId,
   });
 }
@@ -152,12 +148,28 @@ export async function resolveEstimatedMarketPrice(
     orderType: OrderType;
     side: OrderSide;
     tokenId: string;
-    tickSize: TickSizeValue;
   },
 ): Promise<number> {
   const orderBook = await fetchOrderBook(client, {
     tokenId: params.tokenId,
   });
+
+  return resolveMarketPriceFromOrderBook({
+    amount: params.amount,
+    orderBook,
+    orderType: params.orderType,
+    side: params.side,
+  });
+}
+
+/** @internal */
+export function resolveMarketPriceFromOrderBook(params: {
+  amount: number;
+  orderBook: OrderBook;
+  orderType: OrderType;
+  side: OrderSide;
+}): number {
+  const { orderBook } = params;
 
   const price =
     params.side === OrderSide.BUY
@@ -169,8 +181,8 @@ export async function resolveEstimatedMarketPrice(
         );
 
   invariant(
-    isValidPrice(price, params.tickSize),
-    `Resolved market price fell outside the valid range for tick size ${params.tickSize}.`,
+    isValidPrice(price, orderBook.tickSize),
+    `Resolved market price fell outside the valid range for tick size ${orderBook.tickSize}.`,
   );
 
   return price;

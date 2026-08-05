@@ -37,33 +37,31 @@ export function resolveRoundingConfig(tickSize: TickSizeValue): RoundingConfig {
  * Grid membership is fully determined by the tick size: valid prices have at
  * most as many decimals as the tick and are integer multiples of it. This
  * mirrors the exchange's own validation, which divides the price by the
- * market's minimum tick and requires an integer result. `field` names the
- * caller's parameter and prefixes every error message.
+ * market's minimum tick and requires an integer result.
  *
  * @internal
  */
 export function validatePriceOnTickGrid(
   price: number,
   tickSize: TickSizeValue,
-  field: string,
 ): number {
   const tickDecimals = decimalPlaces(tickSize);
 
   if (price < tickSize || price > 1 - tickSize) {
     throw new UserInputError(
-      `${field} must be between ${tickSize} and ${1 - tickSize} for tick size ${tickSize}.`,
+      `must be between ${tickSize} and ${1 - tickSize} for tick size ${tickSize}.`,
     );
   }
 
   if (decimalPlaces(price) > tickDecimals) {
     throw new UserInputError(
-      `${field} must conform to tick size ${tickSize} with at most ${tickDecimals} decimal places.`,
+      `must conform to tick size ${tickSize} with at most ${tickDecimals} decimal places.`,
     );
   }
 
   if (!isMultipleOf(price, tickSize)) {
     throw new UserInputError(
-      `${field} ${price} must be a multiple of tick size ${tickSize}.`,
+      `${price} must be a multiple of tick size ${tickSize}.`,
     );
   }
 

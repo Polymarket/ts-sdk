@@ -57,6 +57,10 @@
 - Do not leak `ky` details outside of `ServiceClient`. Keep `ky` instances, types, and option shapes internal, and expose Polymarket-specific abstractions instead.
 - Wallet-library integrations must stay isolated to their entry points and optional peer dependencies. If `viem` is an optional peer tied to the `viem` entry point, non-`viem` code paths must not import `viem`. Apply the same rule to future entry points for other wallet libraries such as Ethers, Privy, Safe SDK, or Turnkey.
 
+## Platform Invariants
+
+- A market's minimum tick size may become finer, such as `0.01` to `0.001`, but it cannot become coarser, such as `0.001` to `0.01`. SDK caching and recovery logic may rely on this monotonic behavior and should not add defensive handling for tick-size coarsening.
+
 ## TypeScript config
 
 - Root `tsconfig.json` and package-level `tsconfig.json` files are for editor tooling and source navigation only.
@@ -94,10 +98,25 @@
 - For any public SDK function export, including actions and client methods, document the public thrown-error surface explicitly. Export a flattened `...Error` union of the concrete public error types the function can throw through its public contract, dedupe the union, and do not include internal assertion-style errors such as `InvariantError` in that union.
 - Public SDK functions with a documented `...Error` union should include an `@throws` line in TSDoc that references that union. The accompanying sentence can be brief and generic; it does not need to enumerate every specific failure path.
 
+## Data Flow and Responsibility
+
+- Preserve one-way workflow data flow: resolve data, validate it, derive values, then build the result. Do not route operational data through a shared abstraction merely because multiple call sites need it.
+- Keep policy in the layer that owns it. Bindings normalize wire data, caches fetch and store reusable data, actions own workflow decisions and recovery, and public action boundaries attach user-facing parameter names and errors.
+- A helper should return the data or result named by its responsibility. Empty arrays, sentinel `undefined` values, refresh callbacks, or helpers returning unrelated values are signs that an abstraction is carrying multiple concerns.
+- Prefer explicit branches and small local duplication when workflows use different sources, freshness requirements, or error semantics. Do not force distinct workflows through a generic abstraction only to remove duplication.
+- Use one coherent source of truth for related values. Do not combine live and cached fields when one response provides the values required for a single operation.
+- Treat freshness as part of correctness. Cache a value only when bounded staleness cannot violate the public contract; keep inputs to hard guarantees current unless immutability or safe invalidation is proven.
+- Keep lower-level validation field-neutral. The action that owns a public parameter should attach its name and user-facing error context.
+- Implement recovery at the workflow that observes the failure. Fetch fresh data and run the normal local path again instead of teaching storage or transport layers about caller-specific validation and retry behavior.
+- Judge an abstraction primarily by whether it makes its callers easier to read top-to-bottom. If callers need to prepare descriptors, callbacks, or placeholder values for the abstraction, prefer a simpler local composition.
+
 ## Testing
 
 - Default client tests to integration-style coverage.
 - Do not mock API responses unless explicitly requested or unless mocking is necessary to isolate a boundary under test.
+- Never build local fake-client helpers by casting partial objects to `BaseClient` or `BaseSecureClient` and stubbing transport responses. Those fixtures can silently diverge from upstream behavior.
+- Prove cross-boundary behavior such as request counts, caching, retries, and pagination in `packages/client/tests/integration` with real clients and live APIs. Observing the real network with a `fetch` spy is fine; replacing responses is not.
+- When stateful policy requires controlled time or failures, extract it behind a consumer-defined, domain-typed dependency seam and unit test that logic without clients, transports, responses, or wire-format fixtures.
 - For tests involving async iterators, especially integration tests, prefer idiomatic consumer usage such as `for await (...)` so the test reads like final SDK DX. Manual iterator calls like `iterator.next()` are acceptable in unit tests or narrow cases where they make the behavior materially easier to isolate or understand.
 - Add tests when they protect user-facing behavior, public API contracts, integration boundaries, or regressions that are likely to recur.
 - Do not add tests reflexively for every small implementation change. For narrow schema or mechanical changes, prefer existing broader coverage plus `typecheck` or build verification when that gives enough confidence.

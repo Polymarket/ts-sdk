@@ -3,6 +3,7 @@ import {
   CtfConditionIdSchema,
   DecimalStringSchema,
   OrderSideSchema,
+  TickSizeValueSchema,
   TokenIdSchema,
 } from '../shared';
 
@@ -129,10 +130,14 @@ export const MarketTokenSchema = z
 export const MarketInfoSchema = z
   .object({
     fd: MarketFeeInfoSchema.nullish(),
+    mts: TickSizeValueSchema,
+    nr: z.boolean().optional(),
     t: z.array(MarketTokenSchema),
   })
-  .transform(({ fd, t }) => ({
+  .transform(({ fd, mts, nr, t }) => ({
     feeInfo: fd ?? { rate: 0, exponent: 0 },
+    negRisk: nr ?? false,
+    tickSize: mts,
     tokens: t,
   }));
 
