@@ -3,6 +3,8 @@ import { z } from 'zod';
 import {
   type DecimalString,
   DecimalStringSchema,
+  type OrderId,
+  OrderIdSchema,
   TxHashSchema,
 } from '../shared';
 
@@ -63,7 +65,7 @@ export const OrderResponseErrorCodeSchema = z.nativeEnum(
 export type AcceptedOrderResponse = {
   ok: true;
   /** Unique identifier of the placed order. */
-  orderId: string;
+  orderId: OrderId;
   /** Placement outcome. Fills only exist when the status is `matched`. */
   status: OrderPostStatus;
   /** Amount of the maker asset committed by fills at placement. `'0'` when the order did not match. */
@@ -108,7 +110,7 @@ export type OrderResponses = OrderResponse[];
 
 export const AcceptedOrderResponseSchema = z.object({
   ok: z.literal(true),
-  orderId: z.string().min(1),
+  orderId: OrderIdSchema.refine((orderId) => orderId.length > 0),
   status: OrderPostStatusSchema,
   makingAmount: DecimalStringSchema,
   takingAmount: DecimalStringSchema,

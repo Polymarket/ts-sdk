@@ -196,8 +196,7 @@ export type SecureTradingActions = {
    * subscribe to the `user` channel to follow those.
    *
    * @throws {@link WaitForOrderFillSettlementError}
-   * Thrown on failure: a timeout while fills are still settling, or every
-   * fill failing execution. The order placement itself is unaffected.
+   * Thrown on failure.
    *
    * @example
    * ```ts

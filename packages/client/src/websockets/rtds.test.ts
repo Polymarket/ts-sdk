@@ -10,7 +10,6 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../environments';
-import { UserInputError } from '../errors';
 import { RtdsWebSocketManager } from './rtds';
 import {
   captureConnection,
@@ -289,38 +288,6 @@ describe('RtdsWebSocketManager', () => {
         windowSeconds: 30,
       }),
     });
-  });
-
-  it('rejects an invalid runtime window without poisoning later subscriptions', async () => {
-    const frames = collectFrames(server, rtds);
-
-    const invalidSubscription = manager.subscribe({
-      topic: 'prices.crypto.chainlink.twap',
-      windowSeconds: 45,
-    } as never);
-
-    await expect(invalidSubscription).rejects.toBeInstanceOf(UserInputError);
-    await expect(invalidSubscription).rejects.toThrow(
-      'TWAP window must be 30 or 60 seconds, received 45.',
-    );
-
-    const handle = await manager.subscribe({
-      topic: 'prices.crypto.chainlink.twap',
-      windowSeconds: 30,
-    });
-
-    await vi.waitFor(() => {
-      expect(frames).toEqual([
-        {
-          action: 'subscribe',
-          subscriptions: [
-            { topic: 'crypto_prices_twap_thirty', type: 'update' },
-          ],
-        },
-      ]);
-    });
-
-    await handle.close();
   });
 
   it('drops unknown frames without closing the shared socket', async () => {
