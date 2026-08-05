@@ -94,6 +94,7 @@ export type {
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
 export {
@@ -109,6 +110,7 @@ export {
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
   UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
 
