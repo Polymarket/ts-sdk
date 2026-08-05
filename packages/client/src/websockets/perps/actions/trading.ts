@@ -852,7 +852,28 @@ export type UpdatePerpsMarginRequest = {
 };
 
 /**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsMarginError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsMarginError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UserInputError,
+);
+
+/**
  * Adjusts isolated margin for an instrument position.
+ *
+ * @throws {@link UpdatePerpsMarginError}
+ * Thrown on failure.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
