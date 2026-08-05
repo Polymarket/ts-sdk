@@ -894,7 +894,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * });
    * ```
    *
-   * @throws {@link PerpsSessionTradingError}
+   * @throws {@link UpdatePerpsMarginError}
    * Thrown on failure.
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
