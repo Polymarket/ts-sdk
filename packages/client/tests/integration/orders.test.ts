@@ -343,7 +343,7 @@ describe('Orders', { timeout: 60_000 }, () => {
       ).rejects.toThrow('maxPrice must be between');
     });
 
-    it('fetches current market fees for every maxSpend preparation', async ({
+    it('caches market fees for repeated maxSpend preparations', async ({
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
@@ -365,7 +365,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
 
         expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(2);
+        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }

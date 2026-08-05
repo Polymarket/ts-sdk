@@ -14,7 +14,6 @@ import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchBuilderFeeRates, fetchOrderBook } from '../clob';
 import {
-  type CurrentOrderMarketMetadata,
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
   resolveOrderMarketMetadata,
@@ -107,7 +106,7 @@ async function resolveProtectedMarketOrderContext(
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
   if (params.side === OrderSide.BUY && params.maxSpend !== undefined) {
-    const { builderTakerFeeRate, market } = await resolveCurrentFeeInputs(
+    const { builderTakerFeeRate, market } = await resolveFeeInputs(
       client,
       params.tokenId,
       params.builderCode,
@@ -179,9 +178,9 @@ async function resolveUnprotectedMarketOrderContext(
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
   const feeInputs =
     params.side === OrderSide.BUY && params.maxSpend !== undefined
-      ? resolveCurrentFeeInputs(client, params.tokenId, params.builderCode)
+      ? resolveFeeInputs(client, params.tokenId, params.builderCode)
       : undefined;
-  const [orderBook, currentFeeInputs] = await Promise.all([
+  const [orderBook, resolvedFeeInputs] = await Promise.all([
     fetchOrderBook(client, { tokenId: params.tokenId }),
     feeInputs,
   ]);
@@ -207,7 +206,7 @@ async function resolveUnprotectedMarketOrderContext(
       params,
       amount,
       price,
-      currentFeeInputs,
+      resolvedFeeInputs,
     ),
     signerAddress: client.account.signer,
     tickSize: orderBook.tickSize,
@@ -218,7 +217,7 @@ function resolveUnprotectedMarketOrderAmount(
   params: PrepareMarketOrderDraftParams,
   amount: number,
   price: number,
-  feeInputs: CurrentFeeInputs | undefined,
+  feeInputs: FeeInputs | undefined,
 ): number {
   if (
     params.side !== OrderSide.BUY ||
@@ -339,18 +338,18 @@ export function computeMarketOrderAmounts(params: {
   };
 }
 
-type CurrentFeeInputs = {
+type FeeInputs = {
   builderTakerFeeRate: number;
-  market: CurrentOrderMarketMetadata;
+  market: OrderMarketMetadata;
 };
 
-async function resolveCurrentFeeInputs(
+async function resolveFeeInputs(
   client: BaseSecureClient,
   tokenId: TokenId,
   builderCode: BuilderCode | undefined,
-): Promise<CurrentFeeInputs> {
+): Promise<FeeInputs> {
   const [market, builderTakerFeeRate] = await Promise.all([
-    fetchCurrentOrderMarketMetadata(client, tokenId),
+    resolveOrderMarketMetadata(client, tokenId),
     fetchBuilderTakerFeeRate(client, builderCode),
   ]);
 

@@ -13,13 +13,9 @@ const IMMUTABLE_TTL_MS = Number.POSITIVE_INFINITY;
 
 /** @internal */
 export type OrderMarketMetadata = {
+  feeInfo: MarketFeeInfo;
   negRisk: boolean;
   tickSize: TickSizeValue;
-};
-
-/** @internal */
-export type CurrentOrderMarketMetadata = OrderMarketMetadata & {
-  feeInfo: MarketFeeInfo;
 };
 
 /** @internal */
@@ -28,7 +24,7 @@ export type OrderMetadataCacheDeps = {
   resolveCondition(tokenId: TokenId): Promise<CtfConditionId>;
 };
 
-type MarketRecord = CurrentOrderMarketMetadata & {
+type MarketRecord = OrderMarketMetadata & {
   tokenIds: ReadonlySet<TokenId>;
 };
 
@@ -50,12 +46,14 @@ export class OrderMetadataCache {
   async resolveMarket(tokenId: TokenId): Promise<OrderMarketMetadata> {
     const market = await this.#resolveMarket(tokenId);
 
-    return { negRisk: market.negRisk, tickSize: market.tickSize };
+    return {
+      feeInfo: market.feeInfo,
+      negRisk: market.negRisk,
+      tickSize: market.tickSize,
+    };
   }
 
-  async fetchCurrentMarket(
-    tokenId: TokenId,
-  ): Promise<CurrentOrderMarketMetadata> {
+  async fetchCurrentMarket(tokenId: TokenId): Promise<OrderMarketMetadata> {
     const conditionId = await readThrough(
       this.#conditions,
       tokenId,
@@ -181,7 +179,7 @@ export function resolveOrderMarketMetadata(
 export function fetchCurrentOrderMarketMetadata(
   client: BaseClient,
   tokenId: TokenId,
-): Promise<CurrentOrderMarketMetadata> {
+): Promise<OrderMarketMetadata> {
   return resolveCache(client).fetchCurrentMarket(tokenId);
 }
 

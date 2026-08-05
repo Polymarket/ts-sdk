@@ -29,6 +29,7 @@ describe('OrderMetadataCache', () => {
     const { cache, deps } = createCache();
 
     expect(await cache.resolveMarket(TOKEN_YES)).toEqual({
+      feeInfo: market.feeInfo,
       negRisk: false,
       tickSize: 0.01,
     });
@@ -57,6 +58,7 @@ describe('OrderMetadataCache', () => {
 
     await expect(cache.resolveMarket(TOKEN_YES)).rejects.toThrow('boom');
     await expect(cache.resolveMarket(TOKEN_YES)).resolves.toEqual({
+      feeInfo: market.feeInfo,
       negRisk: false,
       tickSize: 0.01,
     });
@@ -74,6 +76,7 @@ describe('OrderMetadataCache', () => {
     deps.fetchMarket.mockResolvedValueOnce({ ...market, tickSize: 0.001 });
 
     expect(await cache.resolveMarket(TOKEN_YES)).toEqual({
+      feeInfo: market.feeInfo,
       negRisk: false,
       tickSize: 0.001,
     });
@@ -107,6 +110,7 @@ describe('OrderMetadataCache', () => {
     });
     await cache.fetchCurrentMarket(TOKEN_YES);
     expect(await cache.resolveMarket(TOKEN_YES)).toEqual({
+      feeInfo: market.feeInfo,
       negRisk: false,
       tickSize: 0.01,
     });
