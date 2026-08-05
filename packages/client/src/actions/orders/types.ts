@@ -2,6 +2,7 @@ import type {
   BuilderCode,
   OrderSide,
   OrderType,
+  TickSizeValue,
   TokenId,
 } from '@polymarket/bindings';
 import type { OrderResponse, SignatureType } from '@polymarket/bindings/clob';
@@ -29,6 +30,27 @@ type BasePrepareMarketOrderRequest = {
    * @defaultValue OrderType.FAK
    */
   orderType?: OrderType.FAK | OrderType.FOK;
+
+  /**
+   * Market minimum tick size, supplied to skip the per-order `tick-size`
+   * network fetch.
+   *
+   * Latency-sensitive integrators that already stream a market's tick size can
+   * pass it here to remove a round-trip from the click-to-sign path. When
+   * omitted, the SDK fetches it. Must be a valid tick size for the market; an
+   * incorrect value produces an invalid order.
+   */
+  tickSize?: TickSizeValue;
+
+  /**
+   * Whether the token belongs to a negative-risk market, supplied to skip the
+   * per-order `neg-risk` network fetch.
+   *
+   * The value selects the exchange contract the order is signed against, so an
+   * incorrect value produces an order that cannot fill. When omitted, the SDK
+   * fetches it.
+   */
+  negRisk?: boolean;
 };
 
 export type PrepareMarketBuyOrderRequest = BasePrepareMarketOrderRequest & {
@@ -137,6 +159,27 @@ export type PrepareLimitOrderRequest = {
    * When omitted, the SDK prepares a Good-Til-Cancelled (GTC) limit order.
    */
   expiration?: number;
+
+  /**
+   * Market minimum tick size, supplied to skip the per-order `tick-size`
+   * network fetch.
+   *
+   * Latency-sensitive integrators that already stream a market's tick size can
+   * pass it here to remove a round-trip from the click-to-sign path. When
+   * omitted, the SDK fetches it. Must be a valid tick size for the market; an
+   * incorrect value produces an invalid order.
+   */
+  tickSize?: TickSizeValue;
+
+  /**
+   * Whether the token belongs to a negative-risk market, supplied to skip the
+   * per-order `neg-risk` network fetch.
+   *
+   * The value selects the exchange contract the order is signed against, so an
+   * incorrect value produces an order that cannot fill. When omitted, the SDK
+   * fetches it.
+   */
+  negRisk?: boolean;
 };
 
 export type OrderDraft = {

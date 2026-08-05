@@ -5,6 +5,7 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
+  TickSizeValueSchema,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
@@ -32,6 +33,8 @@ const BasePrepareMarketOrderParamsSchema = z.object({
   orderType: z
     .union([z.literal(OrderType.FAK), z.literal(OrderType.FOK)])
     .default(OrderType.FAK),
+  tickSize: TickSizeValueSchema.optional(),
+  negRisk: z.boolean().optional(),
 });
 
 export const PrepareMarketOrderParamsSchema = z.discriminatedUnion('side', [
@@ -104,14 +107,12 @@ async function resolveMarketOrderContext(
   params: PrepareMarketOrderDraftParams,
 ): Promise<MarketOrderContext> {
   const account = client.account;
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
+  const [tickSize, negRisk] = await Promise.all([
+    params.tickSize ?? fetchTickSize(client, { tokenId: params.tokenId }),
+    params.negRisk ?? fetchNegRisk(client, { tokenId: params.tokenId }),
+  ]);
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
   const price = await resolveMarketOrderPrice(client, params, amount, tickSize);
-  const negRisk = await fetchNegRisk(client, {
-    tokenId: params.tokenId,
-  });
   const resolvedAmount = await resolveMarketOrderAmount(client, {
     amount,
     builderCode: params.builderCode,

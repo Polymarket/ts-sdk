@@ -5,6 +5,7 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
+  TickSizeValueSchema,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
@@ -36,6 +37,8 @@ export const PrepareLimitOrderParamsSchema = z
     builderCode: BuilderCodeSchema.optional(),
     postOnly: z.boolean().default(false),
     expiration: z.number().int().nonnegative().optional(),
+    tickSize: TickSizeValueSchema.optional(),
+    negRisk: z.boolean().optional(),
   })
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
@@ -57,7 +60,9 @@ export type PrepareLimitOrderDraftParams = z.output<
 >;
 
 type ResolveLimitOrderContextParams = {
+  negRisk?: boolean;
   price: number;
+  tickSize?: TickSizeValue;
   tokenId: string;
 };
 
@@ -66,7 +71,9 @@ export async function prepareLimitOrderDraft(
   params: PrepareLimitOrderDraftParams,
 ): Promise<OrderDraft> {
   const context = await resolveLimitOrderContext(client, {
+    negRisk: params.negRisk,
     price: params.price,
+    tickSize: params.tickSize,
     tokenId: params.tokenId,
   });
   const amounts = computeLimitOrderAmounts({
@@ -105,12 +112,10 @@ async function resolveLimitOrderContext(
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
   const account = client.account;
-  const tickSize = await fetchTickSize(client, {
-    tokenId: params.tokenId,
-  });
-  const negRisk = await fetchNegRisk(client, {
-    tokenId: params.tokenId,
-  });
+  const [tickSize, negRisk] = await Promise.all([
+    params.tickSize ?? fetchTickSize(client, { tokenId: params.tokenId }),
+    params.negRisk ?? fetchNegRisk(client, { tokenId: params.tokenId }),
+  ]);
 
   return {
     exchangeAddress: resolveExchangeAddress(client, negRisk),
