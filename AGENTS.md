@@ -43,6 +43,10 @@
 - Do not leak `ky` details outside of `ServiceClient`. Keep `ky` instances, types, and option shapes internal, and expose Polymarket-specific abstractions instead.
 - Wallet-library integrations must stay isolated to their entry points and optional peer dependencies. If `viem` is an optional peer tied to the `viem` entry point, non-`viem` code paths must not import `viem`. Apply the same rule to future entry points for other wallet libraries such as Ethers, Privy, Safe SDK, or Turnkey.
 
+## Platform Invariants
+
+- A market's minimum tick size may become finer, such as `0.01` to `0.001`, but it cannot become coarser, such as `0.001` to `0.01`. SDK caching and recovery logic may rely on this monotonic behavior and should not add defensive handling for tick-size coarsening.
+
 ## TypeScript config
 
 - Root `tsconfig.json` and package-level `tsconfig.json` files are for editor tooling and source navigation only.
