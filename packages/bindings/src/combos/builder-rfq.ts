@@ -30,7 +30,7 @@ import {
   type RfqSignedOrder,
 } from './rfq';
 
-/** Lifecycle status of an RFQ, as reported by the builder gateway. */
+/** Lifecycle status of an RFQ. */
 export enum RfqStatus {
   AwaitingRequesterAcceptance = 'AWAITING_REQUESTER_ACCEPTANCE',
   AwaitingMakerConfirmation = 'AWAITING_MAKER_CONFIRMATION',
@@ -42,11 +42,10 @@ export enum RfqStatus {
 }
 
 /**
- * Machine-readable reason for an RFQ rejection by the builder gateway.
+ * Machine-readable reason an RFQ request or acceptance was rejected.
  *
  * @remarks
- * The gateway error-code vocabulary is larger and grows faster than SDK
- * releases; codes not enumerated here are classified as
+ * Codes not enumerated in this SDK release are classified as
  * {@link RfqRejectionCode.InvalidRfq} with the original error preserved on
  * `cause`.
  */
@@ -99,7 +98,7 @@ export type BuilderRfqAcceptRequest = {
   signed_order: RfqSignedOrder;
 };
 
-/** Structured gateway error carried inside builder gateway responses. */
+/** Structured error carried inside combo RFQ responses. */
 export type BuilderRfqError = {
   code: RfqErrorCode;
   message: string;
@@ -119,7 +118,7 @@ const BuilderRfqErrorSchema = z
     }),
   );
 
-/** The winning quote for an RFQ, as returned by the builder gateway. */
+/** The winning quote for an RFQ. */
 export type BuilderRfqQuote = {
   quoteId: RfqQuoteId;
   /** Blended price across legs, in collateral per outcome token. */
@@ -218,11 +217,11 @@ export type BuilderRfqCreateResponse =
   | BuilderRfqFinalStateResponse;
 
 /**
- * Status projection served by the builder gateway on accept responses and
- * post-acceptance status reads.
+ * Status projection returned on accept responses and post-acceptance status
+ * reads.
  *
  * @remarks
- * The gateway merges onchain execution progress into the top-level `status`:
+ * Onchain execution progress is merged into the top-level `status`:
  * {@link RfqExecutionStatus} values surface alongside the RFQ lifecycle
  * (`MATCHED` is reported as {@link RfqStatus.Executing}).
  */
