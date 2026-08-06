@@ -1,5 +1,8 @@
 import { OrderSide } from '@polymarket/bindings';
-import type { ComboMarket } from '@polymarket/bindings/combos';
+import {
+  ComboAcceptFailureReason,
+  type ComboMarket,
+} from '@polymarket/bindings/combos';
 import {
   createSecureClient,
   FetchRfqStatusError,
@@ -108,7 +111,7 @@ describe('Builder gateway combo RFQ integration', () => {
       });
 
       if (result.quote === null) {
-        annotate(`No quote available: ${result.reason}`);
+        skip(`No quote available: ${result.reason}`);
         return;
       }
 
@@ -119,7 +122,15 @@ describe('Builder gateway combo RFQ integration', () => {
       const acceptance = await client.acceptComboQuote(result);
 
       if (acceptance.status === 'failed') {
-        annotate(`Acceptance did not execute: ${acceptance.reason}`);
+        // A maker declining or the window expiring is a market outcome; a
+        // failure to execute an accepted quote is a defect.
+        if (acceptance.reason === ComboAcceptFailureReason.ExecutionFailed) {
+          expect.fail(
+            `Acceptance of RFQ ${acceptance.rfqId} failed to execute: ${JSON.stringify(acceptance.error)}`,
+          );
+        }
+
+        skip(`Acceptance did not execute: ${acceptance.reason}`);
         return;
       }
 
@@ -130,9 +141,13 @@ describe('Builder gateway combo RFQ integration', () => {
 
       annotate(`Terminal RFQ state: ${fill.status}`);
 
-      if (fill.status === RfqStatus.Filled) {
-        expect(fill.txHash).toMatch(/^0x/);
+      if (fill.status !== RfqStatus.Filled) {
+        expect.fail(
+          `RFQ ${acceptance.rfqId} was handed off for execution but ended ${fill.status}: ${JSON.stringify(fill.error)}`,
+        );
       }
+
+      expect(fill.txHash).toMatch(/^0x/);
     },
   );
 });
