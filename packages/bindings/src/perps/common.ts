@@ -36,6 +36,10 @@ export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export type PerpsFundingPaymentId = Tagged<number, 'PerpsFundingPaymentId'>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsWithdrawalId = Tagged<number, 'PerpsWithdrawalId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -95,6 +99,15 @@ export const PerpsTradeIdSchema = z
   .int()
   .nonnegative()
   .transform(taggedInteger<PerpsTradeId>);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsFundingPaymentIdSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .transform(taggedInteger<PerpsFundingPaymentId>);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

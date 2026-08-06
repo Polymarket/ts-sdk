@@ -191,6 +191,31 @@ describe('PerpsSession', () => {
 
       await session.close();
     });
+
+    it('emits a funding event with the funding payment id', async () => {
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+
+      await session.connect();
+
+      await connection.send(fundingUpdate({ id: 3_055_723_280_187_747 }));
+
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: false,
+        value: {
+          channel: 'funding',
+          payload: {
+            funding: '0.5',
+            id: 3_055_723_280_187_747,
+            instrumentId: 1,
+          },
+          sequence: 1,
+          type: 'funding',
+        },
+      });
+
+      await session.close();
+    });
   });
 
   describe('reconnects', () => {
@@ -1454,15 +1479,18 @@ describe('PerpsSession', () => {
       const session = createSession();
 
       const pages: string[][] = [];
+      const ids: number[] = [];
       for await (const page of session.listFundingPayments({
         end: 3000,
         start: 0,
       })) {
         pages.push(page.items.map((payment) => payment.funding));
+        ids.push(...page.items.map((payment) => payment.id));
         if (pages.length > MAX_EXPECTED_PAGES) break;
       }
 
       expect(pages.flat()).toEqual(['1', '2', '3']);
+      expect(ids).toEqual([1, 2, 3]);
       expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
         '3000',
         '2000',
@@ -1842,6 +1870,23 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
   };
 }
 
+function fundingUpdate(request: { id: number }) {
+  return {
+    ch: 'funding',
+    data: {
+      fr: '0.0001',
+      fua: 'USDC',
+      fund: '0.5',
+      id: request.id,
+      iid: 1,
+      sz: '10.00',
+      ts: 1_700_000_000_000,
+    },
+    sq: 1,
+    ts: 1_700_000_000_000,
+  };
+}
+
 function orderUpdate(status: string) {
   return {
     ch: 'orders',
@@ -1927,6 +1972,7 @@ function fundingPayment(funding: string, timestamp: number) {
     funding,
     funding_asset: 'USDC',
     funding_rate: '0.0001',
+    id: Number(funding),
     instrument_id: 1,
     size: '1',
     timestamp,
