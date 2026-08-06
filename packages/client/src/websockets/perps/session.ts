@@ -1200,6 +1200,7 @@ function createPendingResponse<T>(
 function isRejectedPerpsAck(
   value: unknown,
 ): value is Extract<PerpsCommandAck, { status: 'err' }> {
+  // Array schemas own per-item error policy; only schema failures recurse into them.
   if (Array.isArray(value)) return false;
   return errorAckFrom(value) !== undefined;
 }
