@@ -214,10 +214,7 @@ export type PerpsEventCommandExecutor = PerpsCommandExecutor & {
   executeCommandWithEvent<TResponse, TEvent extends PerpsSessionEvent>(
     request: PerpsCommandRequest,
     responseSchema: z.ZodType<TResponse>,
-    predicate: (
-      event: PerpsSessionEvent,
-      response: TResponse | undefined,
-    ) => event is TEvent,
+    predicate: (event: PerpsSessionEvent) => event is TEvent,
   ): Promise<readonly [TResponse, TEvent]>;
 };
 
@@ -1065,19 +1062,8 @@ function randomClientOrderId(): PerpsClientOrderId {
 }
 
 function isOrderUpdateFor(clientOrderId: PerpsClientOrderId) {
-  return (
-    event: PerpsSessionEvent,
-    acknowledgements: PerpsPostOrderAck[] | undefined,
-  ): event is PerpsOrderUpdateEvent => {
-    if (event.type !== 'order') return false;
-
-    const entryAcknowledgement = acknowledgements?.[0];
-    return (
-      event.payload.clientOrderId === clientOrderId ||
-      (entryAcknowledgement?.status === 'ok' &&
-        event.payload.id === entryAcknowledgement.orderId)
-    );
-  };
+  return (event: PerpsSessionEvent): event is PerpsOrderUpdateEvent =>
+    event.type === 'order' && event.payload.clientOrderId === clientOrderId;
 }
 
 function placedOrderFrom(

@@ -358,37 +358,6 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('falls back to the acknowledged order id when the update omits the client order id', async () => {
-      mockOrderPlacementSession({
-        includeClientOrderIdInUpdate: false,
-        status: 'open',
-      });
-      const session = createSession();
-      await session.connect();
-
-      try {
-        await expect(
-          session.placeOrder({
-            clientOrderId: '0123456789abcdef0123456789abcdef',
-            instrumentId: 1,
-            postOnly: false,
-            price: '100.00',
-            quantity: '1.5',
-            side: OrderSide.BUY,
-            timeInForce: PerpsTimeInForce.GTC,
-          }),
-        ).resolves.toMatchObject({
-          order: {
-            id: 123,
-            restingQuantity: '1.5',
-            status: 'open',
-          },
-        });
-      } finally {
-        await session.close();
-      }
-    });
-
     it('uses a matching private order update received before the acknowledgement', async () => {
       const frames = mockOrderPlacementSession({
         status: 'open',
@@ -1749,7 +1718,6 @@ function mockCommandSession(
 }
 
 function mockOrderPlacementSession(request: {
-  includeClientOrderIdInUpdate?: boolean;
   status: string;
   updateBeforeAck?: boolean;
 }): unknown[] {
@@ -1762,12 +1730,10 @@ function mockOrderPlacementSession(request: {
         frames.push(frame);
 
         if (frame.op?.type === 'createOrders') {
-          const update = orderUpdate(request.status, {
-            clientOrderId:
-              request.includeClientOrderIdInUpdate === false
-                ? undefined
-                : clientOrderIdFromFrame(frame),
-          });
+          const update = orderUpdate(
+            request.status,
+            clientOrderIdFromFrame(frame),
+          );
           if (request.updateBeforeAck) {
             client.send(JSON.stringify(update));
           }
@@ -1798,13 +1764,18 @@ function mockOrderPlacementSession(request: {
 
 function clientOrderIdFromFrame(frame: {
   op?: { args?: unknown; type?: string };
-}): string | undefined {
+}): string {
   const [order] = Array.isArray(frame.op?.args) ? frame.op.args : [];
-  if (typeof order !== 'object' || order === null || !('c' in order)) {
-    return undefined;
+  if (
+    typeof order !== 'object' ||
+    order === null ||
+    !('c' in order) ||
+    typeof order.c !== 'string'
+  ) {
+    throw new Error('Expected Perps command client order ID.');
   }
 
-  return typeof order.c === 'string' ? order.c : undefined;
+  return order.c;
 }
 
 function responseForFrame(frame: {
@@ -1938,12 +1909,12 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
   };
 }
 
-function orderUpdate(status: string, request: { clientOrderId?: string } = {}) {
+function orderUpdate(status: string, clientOrderId: string) {
   return {
     ch: 'orders',
     data: {
       buy: true,
-      coid: request.clientOrderId ?? '0123456789abcdef0123456789abcdef',
+      coid: clientOrderId,
       cts: 1_700_000_000_000,
       fill: status === 'filled' ? '1.5' : '0',
       iid: 1,

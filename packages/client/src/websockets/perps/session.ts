@@ -844,26 +844,16 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async executeCommandWithEvent<TResponse, TEvent extends PerpsSessionEvent>(
     request: PerpsCommandRequest,
     responseSchema: z.ZodType<TResponse>,
-    predicate: (
-      event: PerpsSessionEvent,
-      response: TResponse | undefined,
-    ) => event is TEvent,
+    predicate: (event: PerpsSessionEvent) => event is TEvent,
   ): Promise<readonly [TResponse, TEvent]> {
-    let response: TResponse | undefined;
-    const waiter = this.#createEventWaiter(
-      (event) => predicate(event, response),
-      COMMAND_TIMEOUT_MS,
-    );
+    const waiter = this.#createEventWaiter(predicate, COMMAND_TIMEOUT_MS);
 
     try {
-      const [commandResponse, event] = await Promise.all([
-        this.executeCommand(request, responseSchema).then((value) => {
-          response = value;
-          return value;
-        }),
+      const [response, event] = await Promise.all([
+        this.executeCommand(request, responseSchema),
         waiter.promise,
       ]);
-      return [commandResponse, event as TEvent];
+      return [response, event as TEvent];
     } finally {
       this.#removeEventWaiter(waiter);
     }
