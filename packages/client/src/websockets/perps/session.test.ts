@@ -19,7 +19,12 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { RequestRejectedError, UserInputError } from '../../errors';
+import {
+  RequestRejectedError,
+  TimeoutError,
+  TransportError,
+  UserInputError,
+} from '../../errors';
 import {
   captureConnection,
   expectDropsUnknownFrame,
@@ -389,6 +394,64 @@ describe('PerpsSession', () => {
             args: [{ c: expect.stringMatching(/^[0-9a-f]{32}$/) }],
           },
         });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('times out waiting for an order update after the acknowledgement', async () => {
+      const session = createSession();
+      await session.connect();
+      vi.useFakeTimers();
+
+      try {
+        const placement = session.placeOrder({
+          instrumentId: 1,
+          postOnly: false,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
+        });
+        const rejection =
+          expect(placement).rejects.toBeInstanceOf(TimeoutError);
+
+        await vi.advanceTimersByTimeAsync(2000);
+
+        await rejection;
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('uses the command timeout while waiting for the acknowledgement', async () => {
+      server.resetHandlers();
+      mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders'
+          ? NO_RESPONSE
+          : responseForFrame(frame),
+      );
+      const session = createSession();
+      await session.connect();
+      vi.useFakeTimers();
+
+      try {
+        const placement = session.placeOrder({
+          instrumentId: 1,
+          postOnly: false,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
+        });
+        const rejection = expect(placement).rejects.toMatchObject({
+          message: 'Perps command response timed out.',
+          name: TransportError.name,
+        });
+
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        await rejection;
       } finally {
         await session.close();
       }
@@ -1691,6 +1754,8 @@ function createSession(): PerpsSession {
   });
 }
 
+const NO_RESPONSE = Symbol('NO_RESPONSE');
+
 function mockCommandSession(
   responder: (frame: {
     op?: { args?: unknown; type?: string };
@@ -1704,10 +1769,12 @@ function mockCommandSession(
       client.addEventListener('message', (event) => {
         const frame = JSON.parse(String(event.data));
         frames.push(frame);
+        const response = responder(frame);
+        if (response === NO_RESPONSE) return;
         client.send(
           JSON.stringify({
             id: frame.id,
-            data: responder(frame),
+            data: response,
           }),
         );
       });

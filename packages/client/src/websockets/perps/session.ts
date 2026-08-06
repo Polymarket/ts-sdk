@@ -98,6 +98,8 @@ import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
 const COMMAND_TIMEOUT_MS = 30_000;
+// Purposefully generous: backend order updates are expected in the ~100ms range.
+const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 2000;
 const PERPS_SESSION_CHANNELS = [
   'balances',
   'portfolio',
@@ -144,7 +146,7 @@ type EventWaiter = {
   predicate(event: PerpsSessionEvent): boolean;
   reject(error: Error): void;
   resolve(event: PerpsSessionEvent): void;
-  timeout: ReturnType<typeof setNonBlockingTimeout>;
+  timeout?: ReturnType<typeof setNonBlockingTimeout>;
 };
 
 export type {
@@ -846,14 +848,24 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     responseSchema: z.ZodType<TResponse>,
     predicate: (event: PerpsSessionEvent) => event is TEvent,
   ): Promise<readonly [TResponse, TEvent]> {
-    const waiter = this.#createEventWaiter(predicate, COMMAND_TIMEOUT_MS);
+    const waiter = this.#createEventWaiter(predicate);
+    const command = this.executeCommand(request, responseSchema);
+    // The waiter is already active; its deadline begins after acknowledgement.
+    void command.then(
+      () =>
+        this.#startEventWaiterTimeout(
+          waiter,
+          ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
+        ),
+      () => undefined,
+    );
 
     try {
-      const [response, event] = await Promise.all([
-        this.executeCommand(request, responseSchema),
+      const [commandResponse, event] = await Promise.all([
+        command,
         waiter.promise,
       ]);
-      return [response, event as TEvent];
+      return [commandResponse, event as TEvent];
     } finally {
       this.#removeEventWaiter(waiter);
     }
@@ -1033,7 +1045,6 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   #createEventWaiter(
     predicate: (event: PerpsSessionEvent) => boolean,
-    timeoutMs: number,
   ): EventWaiter {
     let resolve!: (event: PerpsSessionEvent) => void;
     let reject!: (error: Error) => void;
@@ -1048,13 +1059,17 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       predicate,
       reject,
       resolve,
-      timeout: setNonBlockingTimeout(() => {
-        this.#removeEventWaiter(waiter);
-        reject(new TimeoutError('Perps event wait timed out.'));
-      }, timeoutMs),
     };
     this.#eventWaiters.add(waiter);
     return waiter;
+  }
+
+  #startEventWaiterTimeout(waiter: EventWaiter, timeoutMs: number): void {
+    if (!this.#eventWaiters.has(waiter)) return;
+    waiter.timeout = setNonBlockingTimeout(() => {
+      this.#removeEventWaiter(waiter);
+      waiter.reject(new TimeoutError('Perps event wait timed out.'));
+    }, timeoutMs);
   }
 
   #resolveEventWaiters(event: PerpsSessionEvent): void {
@@ -1068,7 +1083,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   #removeEventWaiter(waiter: EventWaiter): void {
     if (!this.#eventWaiters.delete(waiter)) return;
-    clearTimeout(waiter.timeout);
+    if (waiter.timeout !== undefined) clearTimeout(waiter.timeout);
   }
 
   #rejectEventWaiters(error: Error): void {
