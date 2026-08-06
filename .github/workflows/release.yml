@@ -33,6 +33,9 @@ jobs:
   changesets:
     name: Changesets
     runs-on: ubuntu-latest
+    outputs:
+      has_changesets: ${{ steps.release.outputs.hasChangesets }}
+      published: ${{ steps.release.outputs.published }}
     needs:
       - verify
       - test
@@ -47,6 +50,7 @@ jobs:
         uses: ./.github/actions/setup
 
       - name: Create Or Update Release PR
+        id: release
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         with:
           version: pnpm version:bump
@@ -61,11 +65,8 @@ jobs:
     name: Publish Canary
     runs-on: ubuntu-latest
     needs:
-      - verify
-      - test
-      # Temporarily do not block canary publishing while we solve the integration test runner issue.
-      # - integration-tests
-    if: "${{ !contains(github.event.head_commit.message, 'chore: bumps package versions') }}"
+      - changesets
+    if: "${{ needs.changesets.outputs.has_changesets == 'true' && needs.changesets.outputs.published != 'true' }}"
 
     steps:
       - name: Checkout Repository
