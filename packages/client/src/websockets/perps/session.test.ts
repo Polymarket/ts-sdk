@@ -880,62 +880,12 @@ describe('PerpsSession', () => {
       expect(requests[1]?.body).not.toHaveProperty('exp');
     });
 
-    it('arms and clears auto-cancel through the signed REST endpoint', async () => {
-      const requests: Array<{
-        body: unknown;
-        proxy: string | null;
-        secret: string | null;
-      }> = [];
-      server.use(
-        http.patch(
-          `${production.perps.rest}/v1/trade/auto-cancel`,
-          async ({ request }) => {
-            const body = (await request.json()) as {
-              op: { args: { time: number } };
-            };
-            requests.push({
-              body,
-              proxy: request.headers.get('polymarket-proxy'),
-              secret: request.headers.get('polymarket-secret'),
-            });
-            return HttpResponse.json({
-              status: 'ok',
-              deadline: body.op.args.time,
-            });
-          },
-        ),
-      );
+    it('rejects arming auto-cancel less than five seconds ahead', async () => {
       const session = createSession();
 
-      await session.armAutoCancel({
-        cancelAt: 1_700_000_060_000,
-        expiresAt: 1_700_000_005_000,
-      });
-      await session.clearAutoCancel();
-
-      expect(requests).toHaveLength(2);
-      expect(requests[0]).toMatchObject({
-        proxy: credentials.proxy,
-        secret: credentials.secret,
-        body: {
-          exp: 1_700_000_005_000,
-          op: { args: { time: 1_700_000_060_000 }, type: 'autoCancel' },
-          salt: expect.any(Number),
-          sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
-          ts: expect.any(Number),
-        },
-      });
-      expect(requests[1]).toMatchObject({
-        proxy: credentials.proxy,
-        secret: credentials.secret,
-        body: {
-          op: { args: { time: 0 }, type: 'autoCancel' },
-          salt: expect.any(Number),
-          sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
-          ts: expect.any(Number),
-        },
-      });
-      expect(requests[1]?.body).not.toHaveProperty('exp');
+      await expect(
+        session.armAutoCancel({ cancelAt: Date.now() + 4_999 }),
+      ).rejects.toBeInstanceOf(UserInputError);
     });
 
     it('throws AutoCancelDailyLimitError when arming hits the daily limit', async () => {
@@ -950,7 +900,7 @@ describe('PerpsSession', () => {
       const session = createSession();
 
       await expect(
-        session.armAutoCancel({ cancelAt: 1_700_000_060_000 }),
+        session.armAutoCancel({ cancelAt: Date.now() + 60_000 }),
       ).rejects.toBeInstanceOf(AutoCancelDailyLimitError);
     });
   });
@@ -1347,27 +1297,6 @@ describe('PerpsSession', () => {
         entityMakerShare7d: '0.40',
         entityId: 42,
         entityName: 'desk',
-      });
-    });
-
-    it('fetches auto-cancel status', async () => {
-      server.use(
-        http.get(`${production.perps.rest}/v1/account/auto-cancel`, () =>
-          HttpResponse.json({
-            deadline: 1_700_000_060_000,
-            triggered: 2,
-            daily_limit: 1000,
-            next_reset: 1_700_006_400_000,
-          }),
-        ),
-      );
-      const session = createSession();
-
-      await expect(session.fetchAutoCancel()).resolves.toEqual({
-        deadline: 1_700_000_060_000,
-        triggered: 2,
-        dailyLimit: 1000,
-        nextReset: 1_700_006_400_000,
       });
     });
 

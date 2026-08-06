@@ -88,7 +88,7 @@ export type {
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
-  ClearPerpsAutoCancelRequest,
+  DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,

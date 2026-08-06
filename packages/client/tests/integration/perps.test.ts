@@ -217,6 +217,33 @@ describe('Perps integration', () => {
   );
 
   it.runIf(runMeteredTests)(
+    'arms, reads, and disarms the auto-cancel switch',
+    async ({ secureClientWithDepositWallet }) => {
+      const session = await secureClientWithDepositWallet.openPerpsSession();
+
+      try {
+        // Far enough out that the switch can never fire mid-suite.
+        const cancelAt = Date.now() + 10 * 60_000;
+
+        try {
+          await session.armAutoCancel({ cancelAt });
+
+          const armed = await session.fetchAutoCancelStatus();
+          expect(armed.deadline).toBe(cancelAt);
+          expect(armed.dailyLimit).toBeGreaterThan(0);
+        } finally {
+          await session.disarmAutoCancel();
+        }
+
+        const disarmed = await session.fetchAutoCancelStatus();
+        expect(disarmed.deadline).toBeNull();
+      } finally {
+        await session.close();
+      }
+    },
+  );
+
+  it.runIf(runMeteredTests)(
     'resumes existing delegated Perps credentials',
     async ({ secureClientWithDepositWallet }) => {
       const initialSession =

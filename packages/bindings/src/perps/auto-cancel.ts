@@ -1,16 +1,22 @@
 import { z } from 'zod';
-import { EpochMillisecondsSchema } from '../shared';
+import { EpochMillisecondsSchema, toEpochMilliseconds } from '../shared';
+
+// The API reports an unarmed schedule as `deadline: 0`.
+const AutoCancelDeadlineSchema = z
+  .number()
+  .int()
+  .transform((value) => (value === 0 ? null : toEpochMilliseconds(value)));
 
 /**
  * Acknowledgement for a Perps auto-cancel update. `deadline` echoes the armed
- * cancellation time in Unix milliseconds, or `0` when the schedule was
- * cleared.
+ * cancellation time in Unix milliseconds, or `null` when the schedule was
+ * disarmed.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsAutoCancelResponseSchema = z.object({
   status: z.literal('ok'),
-  deadline: EpochMillisecondsSchema,
+  deadline: AutoCancelDeadlineSchema,
 });
 
 /**
@@ -21,14 +27,14 @@ export type PerpsAutoCancelResponse = z.infer<
 >;
 
 /**
- * Current auto-cancel state for an account. `deadline` is `0` when no
+ * Current auto-cancel state for an account. `deadline` is `null` when no
  * schedule is armed.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsAutoCancelStatusSchema = z
   .object({
-    deadline: EpochMillisecondsSchema,
+    deadline: AutoCancelDeadlineSchema,
     triggered: z.number().int().nonnegative(),
     daily_limit: z.number().int().nonnegative(),
     next_reset: EpochMillisecondsSchema,
@@ -48,4 +54,5 @@ export type PerpsAutoCancelStatus = z.infer<typeof PerpsAutoCancelStatusSchema>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export const FetchPerpsAutoCancelResponseSchema = PerpsAutoCancelStatusSchema;
+export const FetchPerpsAutoCancelStatusResponseSchema =
+  PerpsAutoCancelStatusSchema;

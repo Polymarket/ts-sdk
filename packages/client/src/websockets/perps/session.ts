@@ -52,7 +52,7 @@ import {
   type FetchPerpsOpenOrdersRequest,
   type FetchPerpsOrdersRequest,
   fetchPerpsAccountConfig,
-  fetchPerpsAutoCancel,
+  fetchPerpsAutoCancelStatus,
   fetchPerpsBalances,
   fetchPerpsOpenOrders,
   fetchPerpsOrders,
@@ -82,11 +82,11 @@ import {
   type CancelAllPerpsOrdersRequest,
   type CancelPerpsOrderRequest,
   type CancelPerpsOrdersRequest,
-  type ClearPerpsAutoCancelRequest,
   cancelAllOrders,
   cancelPerpsOrder,
   cancelPerpsOrders,
-  clearPerpsAutoCancel,
+  type DisarmPerpsAutoCancelRequest,
+  disarmPerpsAutoCancel,
   hasPerpsTpSl,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
@@ -181,7 +181,7 @@ export type {
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
-  ClearPerpsAutoCancelRequest,
+  DisarmPerpsAutoCancelRequest,
   PerpsOrderRequest,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
@@ -422,8 +422,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  async fetchAutoCancel(): Promise<PerpsAutoCancelStatus> {
-    return await fetchPerpsAutoCancel(this.#api);
+  async fetchAutoCancelStatus(): Promise<PerpsAutoCancelStatus> {
+    return await fetchPerpsAutoCancelStatus(this.#api);
   }
 
   /**
@@ -887,7 +887,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * Re-arm periodically to keep protection active. Arming again replaces the
    * previous schedule, and `cancelAt` must be at least five seconds in the
    * future. Accounts may only trigger auto-cancel a limited number of times
-   * per UTC day; use {@link PerpsSession.fetchAutoCancel} to inspect the
+   * per UTC day; use {@link PerpsSession.fetchAutoCancelStatus} to inspect the
    * limit, today's trigger count, and when the counter resets.
    *
    * @example
@@ -899,9 +899,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *   session.armAutoCancel({ cancelAt: Date.now() + 60_000 }).catch(() => {});
    * }, 20_000);
    *
-   * // On graceful shutdown, stop re-arming and clear the schedule.
+   * // On graceful shutdown, stop re-arming and disarm the schedule.
    * clearInterval(rearm);
-   * await session.clearAutoCancel();
+   * await session.disarmAutoCancel();
    * ```
    *
    * @throws {@link ArmPerpsAutoCancelError}
@@ -919,11 +919,11 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
-   * Clears the auto-cancel schedule for the authenticated account without
+   * Disarms the auto-cancel schedule for the authenticated account without
    * triggering it.
    *
    * @remarks
-   * Clearing is always allowed, even when the daily trigger limit has been
+   * Disarming is always allowed, even when the daily trigger limit has been
    * reached.
    *
    * @throws {@link PerpsSessionTradingError}
@@ -931,8 +931,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  async clearAutoCancel(request?: ClearPerpsAutoCancelRequest): Promise<void> {
-    await clearPerpsAutoCancel(
+  async disarmAutoCancel(
+    request?: DisarmPerpsAutoCancelRequest,
+  ): Promise<void> {
+    await disarmPerpsAutoCancel(
       this.#api,
       (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
       request,

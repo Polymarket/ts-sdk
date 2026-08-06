@@ -7,7 +7,7 @@ import {
 import {
   FetchPerpsAccountConfigResponseSchema,
   FetchPerpsAccountStatsResponseSchema,
-  FetchPerpsAutoCancelResponseSchema,
+  FetchPerpsAutoCancelStatusResponseSchema,
   FetchPerpsBalancesResponseSchema,
   FetchPerpsOpenOrdersResponseSchema,
   FetchPerpsOrdersResponseSchema,
@@ -163,13 +163,13 @@ export async function fetchPerpsStats(
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export async function fetchPerpsAutoCancel(
+export async function fetchPerpsAutoCancelStatus(
   api: ServiceClient,
 ): Promise<PerpsAutoCancelStatus> {
   return await unwrap(
     api
       .get('/v1/account/auto-cancel')
-      .andThen(validateWith(FetchPerpsAutoCancelResponseSchema)),
+      .andThen(validateWith(FetchPerpsAutoCancelStatusResponseSchema)),
   );
 }
 

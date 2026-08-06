@@ -778,10 +778,24 @@ export async function cancelAllOrders(
   );
 }
 
-const ArmPerpsAutoCancelRequestSchema = z.object({
-  cancelAt: z.number().int().positive(),
-  expiresAt: z.number().int().positive().optional(),
-}) satisfies z.ZodType<ArmPerpsAutoCancelRequest>;
+const MINIMUM_AUTO_CANCEL_DELAY_MILLISECONDS = 5_000;
+
+const ArmPerpsAutoCancelRequestSchema = z
+  .object({
+    cancelAt: z.number().int().positive(),
+    expiresAt: z.number().int().positive().optional(),
+  })
+  .superRefine((params, context) => {
+    const minimumCancelAt = Date.now() + MINIMUM_AUTO_CANCEL_DELAY_MILLISECONDS;
+
+    if (params.cancelAt < minimumCancelAt) {
+      context.addIssue({
+        code: 'custom',
+        message: 'cancelAt must be at least 5 seconds in the future.',
+        path: ['cancelAt'],
+      });
+    }
+  }) satisfies z.ZodType<ArmPerpsAutoCancelRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -864,32 +878,32 @@ export async function armPerpsAutoCancel(
   );
 }
 
-const ClearPerpsAutoCancelRequestSchema = z
+const DisarmPerpsAutoCancelRequestSchema = z
   .object({
     expiresAt: z.number().int().positive().optional(),
   })
-  .default({}) satisfies z.ZodType<ClearPerpsAutoCancelRequest>;
+  .default({}) satisfies z.ZodType<DisarmPerpsAutoCancelRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type ClearPerpsAutoCancelRequest = {
+export type DisarmPerpsAutoCancelRequest = {
   /** Optional command expiration timestamp in milliseconds. */
   expiresAt?: number;
 };
 
 /**
- * Clears the auto-cancel schedule without triggering it. Clearing is allowed
- * even when the daily trigger limit has been reached.
+ * Disarms the auto-cancel schedule without triggering it. Disarming is
+ * allowed even when the daily trigger limit has been reached.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export async function clearPerpsAutoCancel(
+export async function disarmPerpsAutoCancel(
   client: ServiceClient,
   signCommand: SignPerpsRestCommand,
-  request?: ClearPerpsAutoCancelRequest,
+  request?: DisarmPerpsAutoCancelRequest,
 ): Promise<void> {
-  const params = parseUserInput(request, ClearPerpsAutoCancelRequestSchema);
+  const params = parseUserInput(request, DisarmPerpsAutoCancelRequestSchema);
   const op = ['autoCancel', [0]] as const satisfies PerpsSignedOp;
   const command = signCommand(op, params.expiresAt);
 
