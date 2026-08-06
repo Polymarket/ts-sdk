@@ -76,7 +76,7 @@ import {
   cancelPerpsOrder,
   cancelPerpsOrders,
   type PerpsCommandRequest,
-  type PerpsRestCommandRequest,
+  type PerpsDeleteCommandRequest,
   type PlacePerpsOrderRequest,
   type PlacePerpsOrderRequestWithOptions,
   type PlacePerpsOrderResult,
@@ -875,7 +875,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @internal
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  async executeRestCommand<T>(request: PerpsRestCommandRequest<T>): Promise<T> {
+  async executeDeleteCommand<T>(
+    request: PerpsDeleteCommandRequest<T>,
+  ): Promise<T> {
     const command = this.#createSignedCommand(request.op, request.expiresAt);
     return await unwrap(
       this.#api

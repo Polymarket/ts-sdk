@@ -219,16 +219,15 @@ export type PerpsEventCommandExecutor = PerpsCommandExecutor & {
 };
 
 /** @internal */
-export type PerpsRestCommandRequest<T> = PerpsCommandRequest & {
-  method: 'delete';
+export type PerpsDeleteCommandRequest<T> = PerpsCommandRequest & {
   path: string;
   responseSchema: z.ZodType<T>;
 };
 
 /** @internal */
-export type PerpsRestCommandExecutor = {
+export type PerpsDeleteCommandExecutor = {
   /** @internal */
-  executeRestCommand<T>(request: PerpsRestCommandRequest<T>): Promise<T>;
+  executeDeleteCommand<T>(request: PerpsDeleteCommandRequest<T>): Promise<T>;
 };
 
 /**
@@ -919,7 +918,7 @@ export type CancelAllPerpsOrdersRequest = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelAllOrders(
-  client: PerpsRestCommandExecutor,
+  client: PerpsDeleteCommandExecutor,
   request?: CancelAllPerpsOrdersRequest,
 ): Promise<void> {
   const params = parseUserInput(request, CancelAllPerpsOrdersRequestSchema);
@@ -927,8 +926,7 @@ export async function cancelAllOrders(
     'cancelAll',
     params.instrumentId === undefined ? [] : [params.instrumentId],
   ] as const satisfies PerpsSignedOp;
-  await client.executeRestCommand({
-    method: 'delete',
+  await client.executeDeleteCommand({
     path: '/v1/trade/orders/all',
     op,
     responseSchema: PerpsCancelAllOrdersResponseSchema,
