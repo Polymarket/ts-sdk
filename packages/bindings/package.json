@@ -1,6 +1,6 @@
 {
   "name": "@polymarket/bindings",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Internal package. Contains generated bindings for the Polymarket API. Not intended for direct use.",
   "repository": {
     "type": "git",
