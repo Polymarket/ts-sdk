@@ -9,6 +9,7 @@ import {
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
   PerpsClientOrderIdSchema,
+  PerpsCommandAckSchema,
   type PerpsDecimalInput,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
@@ -978,6 +979,65 @@ export async function updatePerpsLeverage(
   });
 }
 
+const UpdatePerpsMarginRequestSchema = z.object({
+  instrumentId: PerpsInstrumentIdSchema,
+  amount: PerpsDecimalInputSchema,
+}) satisfies z.ZodType<UpdatePerpsMarginRequest>;
+
+/**
+ * Request parameters for adjusting isolated margin on a Perps position.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsMarginRequest = {
+  /** Perps instrument identifier whose isolated margin should be adjusted. */
+  instrumentId: number;
+  /** Margin adjustment. Positive values add margin; negative values remove it. */
+  amount: PerpsDecimalInput;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsMarginError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsMarginError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UserInputError,
+);
+
+/**
+ * Adjusts isolated margin for an instrument position.
+ *
+ * @throws {@link UpdatePerpsMarginError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function updatePerpsMargin(
+  transport: PerpsTradingTransport,
+  request: UpdatePerpsMarginRequest,
+): Promise<void> {
+  const params = parseUserInput(request, UpdatePerpsMarginRequestSchema);
+  const amount = toDecimalString(params.amount);
+  const ack = await transport.sendSignedWsCommand({
+    op: ['updateMargin', [params.instrumentId, amount]],
+    responseSchema: PerpsCommandAckSchema,
+    timeoutMessage: 'Perps update margin acknowledgement timed out.',
+  });
+  if (ack.status === 'err') {
+    throw new RequestRejectedError(ack.error, { status: 200 });
+  }
+}
+
 type RawPerpsOrderInput = readonly [
   PerpsInstrumentId,
   boolean,
@@ -1094,6 +1154,19 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
           cross: crossMargin,
           iid: instrumentId,
           lev: leverage,
+        },
+      };
+    }
+    case 'updateMargin': {
+      const [instrumentId, amount] = args as readonly [
+        PerpsInstrumentId,
+        string,
+      ];
+      return {
+        type,
+        args: {
+          amt: amount,
+          iid: instrumentId,
         },
       };
     }

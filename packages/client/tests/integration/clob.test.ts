@@ -19,7 +19,7 @@ describe('CLOB', () => {
       expect(result.tokenId).toBe(tokenId);
       expect(Array.isArray(result.bids)).toBe(true);
       expect(Array.isArray(result.asks)).toBe(true);
-      expect(result.tickSize).toEqual(expect.any(String));
+      expect(result.tickSize).toEqual(expect.any(Number));
       expect(result.minOrderSize).toEqual(expect.any(String));
       expect(result.negRisk).toEqual(expect.any(Boolean));
       expect(result.hash).toEqual(expect.any(String));

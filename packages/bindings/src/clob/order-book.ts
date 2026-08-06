@@ -6,6 +6,8 @@ import {
   DecimalStringSchema,
   type EpochMilliseconds,
   EpochMillisecondsStringSchema,
+  type TickSizeValue,
+  TickSizeValueSchema,
   type TokenId,
   TokenIdSchema,
 } from '../shared';
@@ -31,7 +33,7 @@ export type OrderBook = {
   asks: OrderBookLevel[];
 
   minOrderSize: DecimalString;
-  tickSize: DecimalString;
+  tickSize: TickSizeValue;
   negRisk: boolean;
   lastTradePrice?: DecimalString | null;
   hash: OrderBookHash;
@@ -47,6 +49,9 @@ export const OrderBookHashSchema = z
   .regex(/^[a-f0-9]{40}$/)
   .transform((value) => value as OrderBookHash);
 
+const OrderBookTickSizeSchema =
+  DecimalStringSchema.transform(Number).pipe(TickSizeValueSchema);
+
 export const OrderBookSchema = z
   .object({
     market: CtfConditionIdSchema,
@@ -55,7 +60,7 @@ export const OrderBookSchema = z
     bids: z.array(OrderBookLevelSchema),
     asks: z.array(OrderBookLevelSchema),
     min_order_size: DecimalStringSchema,
-    tick_size: DecimalStringSchema,
+    tick_size: OrderBookTickSizeSchema,
     neg_risk: z.boolean(),
     last_trade_price: DecimalStringSchema.nullish(),
     hash: OrderBookHashSchema,

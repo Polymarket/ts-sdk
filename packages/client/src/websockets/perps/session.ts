@@ -100,7 +100,9 @@ import {
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
+  type UpdatePerpsMarginRequest,
   updatePerpsLeverage,
+  updatePerpsMargin,
 } from './actions/trading';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
@@ -193,10 +195,12 @@ export type {
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
 } from './actions/trading';
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
 } from './actions/trading';
 
 /**
@@ -962,6 +966,29 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: UpdatePerpsLeverageRequest,
   ): Promise<PerpsUpdateLeverageResult> {
     return await updatePerpsLeverage(this.#tradingTransport(), request);
+  }
+
+  /**
+   * Adjusts isolated margin for an instrument position.
+   *
+   * @remarks
+   * A positive amount adds isolated margin. A negative amount removes it.
+   *
+   * @example
+   * ```ts
+   * await session.updateMargin({
+   *   instrumentId: 1,
+   *   amount: '100.25',
+   * });
+   * ```
+   *
+   * @throws {@link UpdatePerpsMarginError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async updateMargin(request: UpdatePerpsMarginRequest): Promise<void> {
+    await updatePerpsMargin(this.#tradingTransport(), request);
   }
 
   async #connect(emitResync: boolean): Promise<void> {
