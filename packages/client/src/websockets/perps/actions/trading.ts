@@ -752,11 +752,13 @@ export async function placePerpsPositionTpSl(
     );
   }
 
-  const acknowledgements = await placePerpsOrderGroup(client, {
-    expiresAt: params.expiresAt,
-    group: PerpsTpSlScope.Position,
-    orders,
-  });
+  const acknowledgements = await client.executeCommand(
+    {
+      op: ['createOrders', orders, PerpsTpSlScope.Position],
+      expiresAt: params.expiresAt,
+    },
+    z.array(PerpsPostOrderAckSchema),
+  );
 
   for (const acknowledgement of acknowledgements) {
     if (acknowledgement.status === 'err') {
@@ -1157,23 +1159,6 @@ function toRawPerpsTpSlOrder(request: {
       request.kind,
     ],
   ];
-}
-
-async function placePerpsOrderGroup(
-  client: PerpsCommandExecutor,
-  request: {
-    orders: RawPerpsOrderInput[];
-    group: PerpsTpSlScope;
-    expiresAt?: number;
-  },
-): Promise<PerpsPostOrderAck[]> {
-  return await client.executeCommand(
-    {
-      op: ['createOrders', request.orders, request.group],
-      expiresAt: request.expiresAt,
-    },
-    z.array(PerpsPostOrderAckSchema),
-  );
 }
 
 /**
