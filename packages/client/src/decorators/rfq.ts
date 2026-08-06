@@ -254,10 +254,10 @@ export type SecureRfqActions = {
    * `status: 'failed'`. `status: 'executing'` means the trade was handed off
    * for onchain execution; follow it with `waitForComboFill`.
    *
-   * A retry after a dropped connection is safe: an already-accepted RFQ
-   * reports its current status instead of executing twice. In that case
-   * `takerOrderHash` is absent because the retry's order was not the one
-   * recorded.
+   * A connection dropped during the acceptance is retried once automatically;
+   * this is safe because an already-accepted RFQ reports its current status
+   * instead of executing twice. After such a retry `takerOrderHash` is absent
+   * because the retried order was not the one recorded.
    *
    * @throws {@link AcceptComboQuoteError}
    * Thrown on failure.

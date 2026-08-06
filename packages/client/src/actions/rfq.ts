@@ -749,7 +749,11 @@ function toQuoteUnavailableResult(
     default:
       throw new RfqRequestRejectedError(
         response.error?.message ?? 'The combo quote request failed.',
-        { code: toRfqRejectionCode(response.error?.code), status: 200 },
+        {
+          code: toRfqRejectionCode(response.error?.code),
+          status: 200,
+          ...(response.error === undefined ? {} : { cause: response.error }),
+        },
       );
   }
 }
@@ -865,10 +869,10 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * `status: 'failed'`. `status: 'executing'` means the trade was handed off
  * for onchain execution; follow it with {@link waitForComboFill}.
  *
- * A retry after a dropped connection is safe: an already-accepted RFQ
- * reports its current status instead of executing twice. In that case
- * `takerOrderHash` is absent because the retry's order was not the one
- * recorded.
+ * A connection dropped during the acceptance is retried once automatically;
+ * this is safe because an already-accepted RFQ reports its current status
+ * instead of executing twice. After such a retry `takerOrderHash` is absent
+ * because the retried order was not the one recorded.
  *
  * @throws {@link AcceptComboQuoteError}
  * Thrown on failure.
@@ -904,12 +908,22 @@ export async function acceptComboQuote(
     signed_order: signedOrder,
   };
 
-  const accepted = await client.builderGateway
-    .post(
-      `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
-      { json: request },
-    )
-    .andThen(validateWith(BuilderRfqStatusResponseSchema));
+  function postAcceptance() {
+    return client.builderGateway
+      .post(
+        `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
+        { json: request },
+      )
+      .andThen(validateWith(BuilderRfqStatusResponseSchema));
+  }
+
+  let accepted = await postAcceptance();
+
+  // Acceptance is idempotent server-side, so a single retry safely covers a
+  // connection dropped while the request is held through maker last look.
+  if (accepted.isErr() && accepted.error instanceof TransportError) {
+    accepted = await postAcceptance();
+  }
 
   if (accepted.isErr()) {
     const expired = toAcceptanceExpiredResult(input.rfqId, accepted.error);

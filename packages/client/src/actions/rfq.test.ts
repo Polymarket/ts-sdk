@@ -15,7 +15,12 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseSecureClient } from '../clients';
 import { production } from '../environments';
-import { RequestRejectedError, TimeoutError, UserInputError } from '../errors';
+import {
+  RequestRejectedError,
+  TimeoutError,
+  TransportError,
+  UserInputError,
+} from '../errors';
 import type { Signer } from '../types';
 import {
   acceptComboQuote,
@@ -205,6 +210,34 @@ describe('requestComboQuote', () => {
     });
   });
 
+  it('preserves the original error when a final-state failure code is unknown', async () => {
+    const { client } = createClient({
+      postResults: [
+        okAsync(
+          jsonResponse({
+            rfq_id: 'rfq-3',
+            status: 'FAILED',
+            builder_code: BUILDER_CODE,
+            error: { code: 'SOMETHING_NEW', message: 'something new' },
+          }),
+        ),
+      ],
+    });
+
+    await expect(
+      requestComboQuote(client, {
+        amount: 100,
+        direction: OrderSide.BUY,
+        legPositionIds: LEGS,
+      }),
+    ).rejects.toMatchObject({
+      cause: { code: 'SOMETHING_NEW', message: 'something new' },
+      code: RfqRejectionCode.InvalidRfq,
+      name: 'RfqRequestRejectedError',
+      status: 200,
+    });
+  });
+
   it('falls back to INVALID_RFQ for rejection codes unknown to this SDK version', async () => {
     const rejection = new RequestRejectedError('something new', {
       code: 'SOMETHING_NEW',
@@ -264,6 +297,31 @@ describe('acceptComboQuote', () => {
         }),
       }),
     );
+    expect(result).toEqual({
+      rfqId: 'rfq-1',
+      status: 'executing',
+      takerOrderHash: TAKER_ORDER_HASH,
+    });
+  });
+
+  it('retries the acceptance once after a dropped connection', async () => {
+    const { client, gatewayPost, signTypedData } = createClient({
+      postResults: [
+        errAsync(new TransportError('socket hang up')),
+        okAsync(
+          jsonResponse({
+            rfq_id: 'rfq-1',
+            status: 'EXECUTING',
+            taker_order_hash: TAKER_ORDER_HASH,
+          }),
+        ),
+      ],
+    });
+
+    const result = await acceptComboQuote(client, acceptParams);
+
+    expect(signTypedData).toHaveBeenCalledTimes(1);
+    expect(gatewayPost).toHaveBeenCalledTimes(2);
     expect(result).toEqual({
       rfqId: 'rfq-1',
       status: 'executing',
@@ -482,7 +540,10 @@ describe('fetchRfqStatus', () => {
   });
 });
 
-type GatewayResult = ResultAsync<Response, RequestRejectedError>;
+type GatewayResult = ResultAsync<
+  Response,
+  RequestRejectedError | TransportError
+>;
 
 type CreateClientOptions = {
   getResults?: GatewayResult[];
