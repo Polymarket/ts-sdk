@@ -12,6 +12,7 @@ declare namespace NodeJS {
     PRIVY_TEST_APP_SECRET: string | undefined;
     PRIVY_TEST_WALLET_ID: string | undefined;
     POLYMARKET_BUILDER_API_KEY: string | undefined;
+    POLYMARKET_COMBO_LEG_POSITION_IDS: string | undefined;
     POLYMARKET_BUILDER_SECRET: string | undefined;
     POLYMARKET_BUILDER_PASSPHRASE: string | undefined;
     POLYMARKET_RELAYER_API_KEY: string | undefined;

@@ -1,7 +1,9 @@
 import { OrderSide } from '@polymarket/bindings';
+import type { ComboMarket } from '@polymarket/bindings/combos';
 import {
   createSecureClient,
   FetchRfqStatusError,
+  type PublicClient,
   RfqStatus,
 } from '@polymarket/client';
 import { fetchRfqStatus } from '@polymarket/client/actions';
@@ -13,6 +15,41 @@ function loadComboLegPositionIds(): string[] | undefined {
     .filter((leg) => leg !== '');
 
   return legs !== undefined && legs.length >= 2 ? legs : undefined;
+}
+
+// Combo-enabled markets churn as games resolve, so a fixed leg pair goes
+// stale within days. Discover legs from the live catalog instead: YES
+// positions of two unrelated markets (no shared slug prefix, so never the
+// same event) cannot be contradictory, and mid-priced markets with volume
+// are the likeliest to attract a maker quote.
+async function discoverComboLegPositionIds(
+  client: PublicClient,
+): Promise<string[] | undefined> {
+  const page = await client.listComboMarkets({ pageSize: 100 }).firstPage();
+  const picked: ComboMarket[] = [];
+
+  for (const market of page.items) {
+    const price = Number(market.outcomes.yes.price);
+
+    if (price < 0.05 || price > 0.95 || market.volume <= 0) continue;
+    if (
+      picked.some(
+        (other) =>
+          market.slug.startsWith(other.slug) ||
+          other.slug.startsWith(market.slug),
+      )
+    ) {
+      continue;
+    }
+
+    picked.push(market);
+
+    if (picked.length === 2) {
+      return picked.map((leg) => leg.outcomes.yes.positionId);
+    }
+  }
+
+  return undefined;
 }
 
 describe('Builder gateway combo RFQ integration', () => {
@@ -44,12 +81,17 @@ describe('Builder gateway combo RFQ integration', () => {
       builderAuthentication,
       depositWalletAddress,
       depositWalletSigner,
+      publicClient,
       skip,
     }) => {
-      const legPositionIds = loadComboLegPositionIds();
+      const legPositionIds =
+        loadComboLegPositionIds() ??
+        (await discoverComboLegPositionIds(publicClient));
 
       if (legPositionIds === undefined) {
-        skip('Set POLYMARKET_COMBO_LEG_POSITION_IDS to run this test.');
+        skip(
+          'No combo legs discoverable; set POLYMARKET_COMBO_LEG_POSITION_IDS to override.',
+        );
         return;
       }
 
