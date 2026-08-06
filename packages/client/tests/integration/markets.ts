@@ -31,6 +31,7 @@ function hasRequiredOrderFields(candidate: Market) {
     candidate.state.acceptingOrders !== false &&
     candidate.trading.minimumOrderSize !== null &&
     candidate.trading.minimumOrderSize !== undefined &&
+    (candidate.trading.secondsDelay ?? 0) === 0 &&
     candidate.outcomes.yes.tokenId !== null
   );
 }

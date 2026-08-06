@@ -4,10 +4,12 @@ import {
   toDecimalString,
 } from '@polymarket/bindings';
 import {
+  PerpsAutoCancelResponseSchema,
   PerpsCancelAllOrdersResponseSchema,
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
   PerpsClientOrderIdSchema,
+  PerpsCommandAckSchema,
   type PerpsDecimalInput,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
@@ -24,10 +26,13 @@ import {
 import { expectPresent, invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  AutoCancelDailyLimitError,
   makeErrorGuard,
+  RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
@@ -774,6 +779,147 @@ export async function cancelAllOrders(
   );
 }
 
+const MINIMUM_AUTO_CANCEL_DELAY_MILLISECONDS = 5_000;
+
+const ArmPerpsAutoCancelRequestSchema = z
+  .object({
+    cancelAt: z.number().int().positive(),
+    expiresAt: z.number().int().positive().optional(),
+  })
+  .superRefine((params, context) => {
+    const minimumCancelAt = Date.now() + MINIMUM_AUTO_CANCEL_DELAY_MILLISECONDS;
+
+    if (params.cancelAt < minimumCancelAt) {
+      context.addIssue({
+        code: 'custom',
+        message: 'cancelAt must be at least 5 seconds in the future.',
+        path: ['cancelAt'],
+      });
+    }
+  }) satisfies z.ZodType<ArmPerpsAutoCancelRequest>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ArmPerpsAutoCancelRequest = {
+  /**
+   * Unix timestamp in milliseconds at which all open orders are cancelled.
+   * Must be at least five seconds in the future.
+   */
+  cancelAt: number;
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ArmPerpsAutoCancelError =
+  | AutoCancelDailyLimitError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const ArmPerpsAutoCancelError = makeErrorGuard(
+  AutoCancelDailyLimitError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+// Rejection identifier reported by the API when arming exceeds the daily
+// trigger limit. The rejection message is the identifier followed by request
+// context in parentheses.
+const AUTO_CANCEL_DAILY_LIMIT_REACHED = 'auto_cancel_daily_limit_reached';
+
+/**
+ * Arms the one-shot auto-cancel switch that cancels all open Perps orders at
+ * the requested time. Arming again replaces the previous schedule.
+ *
+ * @throws {@link ArmPerpsAutoCancelError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function armPerpsAutoCancel(
+  client: ServiceClient,
+  signCommand: SignPerpsRestCommand,
+  request: ArmPerpsAutoCancelRequest,
+): Promise<void> {
+  const params = parseUserInput(request, ArmPerpsAutoCancelRequestSchema);
+  const op = ['autoCancel', [params.cancelAt]] as const satisfies PerpsSignedOp;
+  const command = signCommand(op, params.expiresAt);
+
+  await unwrap(
+    client
+      .patch('/v1/trade/auto-cancel', {
+        json: {
+          ...command,
+          op: toPerpsCommandBodyOp(op),
+        },
+      })
+      .andThen(validateWith(PerpsAutoCancelResponseSchema))
+      .mapErr((error) =>
+        error instanceof RequestRejectedError &&
+        error.message.startsWith(`${AUTO_CANCEL_DAILY_LIMIT_REACHED} (`)
+          ? new AutoCancelDailyLimitError(
+              'Auto-cancel daily trigger limit reached.',
+              { cause: error },
+            )
+          : error,
+      ),
+  );
+}
+
+const DisarmPerpsAutoCancelRequestSchema = z
+  .object({
+    expiresAt: z.number().int().positive().optional(),
+  })
+  .default({}) satisfies z.ZodType<DisarmPerpsAutoCancelRequest>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type DisarmPerpsAutoCancelRequest = {
+  /** Optional command expiration timestamp in milliseconds. */
+  expiresAt?: number;
+};
+
+/**
+ * Disarms the auto-cancel schedule without triggering it. Disarming is
+ * allowed even when the daily trigger limit has been reached.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function disarmPerpsAutoCancel(
+  client: ServiceClient,
+  signCommand: SignPerpsRestCommand,
+  request?: DisarmPerpsAutoCancelRequest,
+): Promise<void> {
+  const params = parseUserInput(request, DisarmPerpsAutoCancelRequestSchema);
+  const op = ['autoCancel', [0]] as const satisfies PerpsSignedOp;
+  const command = signCommand(op, params.expiresAt);
+
+  await unwrap(
+    client
+      .patch('/v1/trade/auto-cancel', {
+        json: {
+          ...command,
+          op: toPerpsCommandBodyOp(op),
+        },
+      })
+      .andThen(validateWith(PerpsAutoCancelResponseSchema)),
+  );
+}
+
 const UpdatePerpsLeverageRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   leverage: z.number().int().positive(),
@@ -831,6 +977,65 @@ export async function updatePerpsLeverage(
     responseSchema: PerpsUpdateLeverageResultSchema,
     timeoutMessage: 'Perps update leverage response timed out.',
   });
+}
+
+const UpdatePerpsMarginRequestSchema = z.object({
+  instrumentId: PerpsInstrumentIdSchema,
+  amount: PerpsDecimalInputSchema,
+}) satisfies z.ZodType<UpdatePerpsMarginRequest>;
+
+/**
+ * Request parameters for adjusting isolated margin on a Perps position.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsMarginRequest = {
+  /** Perps instrument identifier whose isolated margin should be adjusted. */
+  instrumentId: number;
+  /** Margin adjustment. Positive values add margin; negative values remove it. */
+  amount: PerpsDecimalInput;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsMarginError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsMarginError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UserInputError,
+);
+
+/**
+ * Adjusts isolated margin for an instrument position.
+ *
+ * @throws {@link UpdatePerpsMarginError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function updatePerpsMargin(
+  transport: PerpsTradingTransport,
+  request: UpdatePerpsMarginRequest,
+): Promise<void> {
+  const params = parseUserInput(request, UpdatePerpsMarginRequestSchema);
+  const amount = toDecimalString(params.amount);
+  const ack = await transport.sendSignedWsCommand({
+    op: ['updateMargin', [params.instrumentId, amount]],
+    responseSchema: PerpsCommandAckSchema,
+    timeoutMessage: 'Perps update margin acknowledgement timed out.',
+  });
+  if (ack.status === 'err') {
+    throw new RequestRejectedError(ack.error, { status: 200 });
+  }
 }
 
 type RawPerpsOrderInput = readonly [
@@ -926,6 +1131,10 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
     case 'cancelOrders':
     case 'cancelOrdersCOID':
       return { type, args };
+    case 'autoCancel': {
+      const [time] = args as readonly [number];
+      return { type, args: { time } };
+    }
     case 'cancelAll': {
       const [instrumentId] = args as readonly [PerpsInstrumentId | undefined];
       return {
@@ -945,6 +1154,19 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
           cross: crossMargin,
           iid: instrumentId,
           lev: leverage,
+        },
+      };
+    }
+    case 'updateMargin': {
+      const [instrumentId, amount] = args as readonly [
+        PerpsInstrumentId,
+        string,
+      ];
+      return {
+        type,
+        args: {
+          amt: amount,
+          iid: instrumentId,
         },
       };
     }

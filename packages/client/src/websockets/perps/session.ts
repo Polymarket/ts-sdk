@@ -3,6 +3,7 @@ import {
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
   type PerpsAccountStats,
+  type PerpsAutoCancelStatus,
   type PerpsBalance,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
@@ -51,6 +52,7 @@ import {
   type FetchPerpsOpenOrdersRequest,
   type FetchPerpsOrdersRequest,
   fetchPerpsAccountConfig,
+  fetchPerpsAutoCancelStatus,
   fetchPerpsBalances,
   fetchPerpsOpenOrders,
   fetchPerpsOrders,
@@ -75,12 +77,16 @@ import {
   markPerpsNotificationsRead,
 } from './actions/account';
 import {
+  type ArmPerpsAutoCancelRequest,
+  armPerpsAutoCancel,
   type CancelAllPerpsOrdersRequest,
   type CancelPerpsOrderRequest,
   type CancelPerpsOrdersRequest,
   cancelAllOrders,
   cancelPerpsOrder,
   cancelPerpsOrders,
+  type DisarmPerpsAutoCancelRequest,
+  disarmPerpsAutoCancel,
   hasPerpsTpSl,
   type PerpsSignedWsCommandRequest,
   type PerpsTradingTransport,
@@ -94,7 +100,9 @@ import {
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
+  type UpdatePerpsMarginRequest,
   updatePerpsLeverage,
+  updatePerpsMargin,
 } from './actions/trading';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
@@ -151,6 +159,7 @@ type EventWaiter = {
 };
 
 export type {
+  PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
   PerpsPostOrderAck,
   PerpsUpdateLeverageResult,
@@ -170,9 +179,11 @@ export type {
   MarkPerpsNotificationsReadRequest,
 } from './actions/account';
 export type {
+  ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  DisarmPerpsAutoCancelRequest,
   PerpsOrderRequest,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
@@ -184,8 +195,13 @@ export type {
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
 } from './actions/trading';
-export { UpdatePerpsLeverageError } from './actions/trading';
+export {
+  ArmPerpsAutoCancelError,
+  UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
+} from './actions/trading';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -398,6 +414,20 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request?: FetchPerpsAccountConfigRequest,
   ): Promise<PerpsAccountConfig[]> {
     return await fetchPerpsAccountConfig(this.#api, request);
+  }
+
+  /**
+   * Fetches the auto-cancel status for the authenticated account, including
+   * the armed deadline, today's trigger count, the daily trigger limit, and
+   * when the daily counter resets.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchAutoCancelStatus(): Promise<PerpsAutoCancelStatus> {
+    return await fetchPerpsAutoCancelStatus(this.#api);
   }
 
   /**
@@ -852,6 +882,70 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
+   * Arms the auto-cancel switch that cancels all open Perps orders for the
+   * authenticated account at `cancelAt`.
+   *
+   * @remarks
+   * The switch is one-shot: once it fires and open orders are cancelled, the
+   * schedule clears itself and orders placed afterwards are unprotected.
+   * Re-arm periodically to keep protection active. Arming again replaces the
+   * previous schedule, and `cancelAt` must be at least five seconds in the
+   * future. Accounts may only trigger auto-cancel a limited number of times
+   * per UTC day; use {@link PerpsSession.fetchAutoCancelStatus} to inspect the
+   * limit, today's trigger count, and when the counter resets.
+   *
+   * @example
+   * ```ts
+   * // Keep a 60-second dead man's switch alive by re-arming every 20 seconds.
+   * await session.armAutoCancel({ cancelAt: Date.now() + 60_000 });
+   * const rearm = setInterval(() => {
+   *   // A missed re-arm is fail-safe: the previously armed switch still fires.
+   *   session.armAutoCancel({ cancelAt: Date.now() + 60_000 }).catch(() => {});
+   * }, 20_000);
+   *
+   * // On graceful shutdown, stop re-arming and disarm the schedule.
+   * clearInterval(rearm);
+   * await session.disarmAutoCancel();
+   * ```
+   *
+   * @throws {@link ArmPerpsAutoCancelError}
+   * Thrown on failure, including `AutoCancelDailyLimitError` when the daily
+   * trigger limit has been reached.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async armAutoCancel(request: ArmPerpsAutoCancelRequest): Promise<void> {
+    await armPerpsAutoCancel(
+      this.#api,
+      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
+      request,
+    );
+  }
+
+  /**
+   * Disarms the auto-cancel schedule for the authenticated account without
+   * triggering it.
+   *
+   * @remarks
+   * Disarming is always allowed, even when the daily trigger limit has been
+   * reached.
+   *
+   * @throws {@link PerpsSessionTradingError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async disarmAutoCancel(
+    request?: DisarmPerpsAutoCancelRequest,
+  ): Promise<void> {
+    await disarmPerpsAutoCancel(
+      this.#api,
+      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
+      request,
+    );
+  }
+
+  /**
    * Updates Perps leverage and margin mode for an instrument.
    *
    * @example
@@ -872,6 +966,29 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: UpdatePerpsLeverageRequest,
   ): Promise<PerpsUpdateLeverageResult> {
     return await updatePerpsLeverage(this.#tradingTransport(), request);
+  }
+
+  /**
+   * Adjusts isolated margin for an instrument position.
+   *
+   * @remarks
+   * A positive amount adds isolated margin. A negative amount removes it.
+   *
+   * @example
+   * ```ts
+   * await session.updateMargin({
+   *   instrumentId: 1,
+   *   amount: '100.25',
+   * });
+   * ```
+   *
+   * @throws {@link UpdatePerpsMarginError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async updateMargin(request: UpdatePerpsMarginRequest): Promise<void> {
+    await updatePerpsMargin(this.#tradingTransport(), request);
   }
 
   async #connect(emitResync: boolean): Promise<void> {

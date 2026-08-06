@@ -19,7 +19,11 @@ import {
   vi,
 } from 'vitest';
 import { production } from '../../environments';
-import { RequestRejectedError, UserInputError } from '../../errors';
+import {
+  AutoCancelDailyLimitError,
+  RequestRejectedError,
+  UserInputError,
+} from '../../errors';
 import {
   captureConnection,
   expectDropsUnknownFrame,
@@ -764,6 +768,78 @@ describe('PerpsSession', () => {
       }
     });
 
+    it('updates isolated margin over the session socket', async () => {
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.updateMargin({
+          amount: '-1234567890.123456789012345678',
+          instrumentId: 7,
+        }),
+      ).resolves.toBeUndefined();
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: {
+            amt: '-1234567890.123456789012345678',
+            iid: 7,
+          },
+          type: 'updateMargin',
+        },
+        req: 'post',
+        salt: expect.any(Number),
+        sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
+        ts: expect.any(Number),
+      });
+
+      await session.close();
+    });
+
+    it('validates isolated margin updates before sending a command', async () => {
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateMargin({ amount: '1', instrumentId: -1 }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        await expect(
+          session.updateMargin({
+            // @ts-expect-error Runtime validation rejects non-decimal inputs.
+            amount: true,
+            instrumentId: 7,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('throws when an isolated margin update is rejected', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'updateMargin') {
+          return { status: 'err', error: 'invalid margin adjustment' };
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateMargin({ amount: '1', instrumentId: 7 }),
+        ).rejects.toMatchObject({
+          message: 'invalid margin adjustment',
+          name: RequestRejectedError.name,
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('cancels a single order by client order id', async () => {
       const session = createSession();
       await session.connect();
@@ -874,6 +950,30 @@ describe('PerpsSession', () => {
         },
       });
       expect(requests[1]?.body).not.toHaveProperty('exp');
+    });
+
+    it('rejects arming auto-cancel less than five seconds ahead', async () => {
+      const session = createSession();
+
+      await expect(
+        session.armAutoCancel({ cancelAt: Date.now() + 4_999 }),
+      ).rejects.toBeInstanceOf(UserInputError);
+    });
+
+    it('throws AutoCancelDailyLimitError when arming hits the daily limit', async () => {
+      server.use(
+        http.patch(`${production.perps.rest}/v1/trade/auto-cancel`, () =>
+          HttpResponse.json(
+            { status: 'err', error: 'auto_cancel_daily_limit_reached' },
+            { status: 422 },
+          ),
+        ),
+      );
+      const session = createSession();
+
+      await expect(
+        session.armAutoCancel({ cancelAt: Date.now() + 60_000 }),
+      ).rejects.toBeInstanceOf(AutoCancelDailyLimitError);
     });
   });
 
@@ -1663,6 +1763,8 @@ function responseForFrame(frame: {
     }
     case 'updateLeverage':
       return { status: 'ok', instrument_id: 1, leverage: 5, cross: false };
+    case 'updateMargin':
+      return { status: 'ok' };
     case 'cancelOrdersCOID':
       return [
         {

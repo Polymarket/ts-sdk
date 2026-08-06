@@ -31,9 +31,10 @@ import type {
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError } from '../index';
+import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
@@ -89,6 +90,7 @@ describe('public Perps exports', () => {
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
       UpdatePerpsLeverageRequest,
+      UpdatePerpsMarginRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -103,5 +105,6 @@ describe('public Perps exports', () => {
 
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
+    void UpdatePerpsMarginError;
   });
 });

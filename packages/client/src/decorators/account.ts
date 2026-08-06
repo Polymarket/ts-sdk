@@ -260,6 +260,8 @@ export type PublicAccountActions = Prettify<
     /**
      * Lists wallet activity.
      *
+     * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
+     *
      * @throws {@link ListActivityError}
      * Thrown on failure.
      *
@@ -396,6 +398,8 @@ export type SecureAccountActions = Prettify<
      * Lists wallet activity.
      *
      * Defaults to the authenticated account's wallet when `user` is omitted.
+     *
+     * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
      *
      * @throws {@link ListActivityError}
      * Thrown on failure.

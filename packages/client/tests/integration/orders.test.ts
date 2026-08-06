@@ -6,13 +6,14 @@ import {
 } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
+  createSecureClient,
   InsufficientLiquidityError,
   type Market,
   type SecureClient,
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
-import { afterAll } from 'vitest';
+import { afterAll, type MockInstance, vi } from 'vitest';
 import {
   describe,
   expect,
@@ -213,6 +214,190 @@ describe('Orders', { timeout: 60_000 }, () => {
           tokenId: yesTokenId,
         }),
       ).rejects.toThrow(UserInputError);
+    });
+  });
+
+  describe('order metadata caching', () => {
+    it('reuses cached metadata for repeated limit and protected market orders', async ({
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await client.createLimitOrder({
+          price: expectPresent(market.trading.minimumTickSize),
+          side: OrderSide.BUY,
+          size: expectPresent(market.trading.minimumOrderSize),
+          tokenId,
+        });
+
+        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+
+        fetchSpy.mockClear();
+        await client.createLimitOrder({
+          price: expectPresent(market.trading.minimumTickSize),
+          side: OrderSide.BUY,
+          size: expectPresent(market.trading.minimumOrderSize),
+          tokenId,
+        });
+        await client.createMarketOrder({
+          amount: expectPresent(market.trading.minimumOrderSize),
+          maxPrice: expectPresent(market.trading.minimumTickSize),
+          side: OrderSide.BUY,
+          tokenId,
+        });
+
+        expect(requestedUrls(fetchSpy)).toEqual([]);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('uses only the live order book for unprotected market orders without maxSpend', async ({
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        amount: expectPresent(market.trading.minimumOrderSize),
+        orderType: OrderType.FAK as const,
+        side: OrderSide.BUY as const,
+        tokenId,
+      };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await client.createMarketOrder(request);
+        await client.createMarketOrder(request);
+
+        expect(requestedUrls(fetchSpy)).toHaveLength(2);
+        expect(countRequests(fetchSpy, '/book')).toBe(2);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('coalesces concurrent cold metadata reads', async ({
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        price: expectPresent(market.trading.minimumTickSize),
+        side: OrderSide.BUY as const,
+        size: expectPresent(market.trading.minimumOrderSize),
+        tokenId,
+      };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await Promise.all([
+          client.createLimitOrder(request),
+          client.createLimitOrder(request),
+        ]);
+
+        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('adds action input names to tick-grid validation errors', async ({
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const invalidPrice = expectPresent(market.trading.minimumTickSize) / 2;
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+
+      await expect(
+        client.createLimitOrder({
+          price: invalidPrice,
+          side: OrderSide.BUY,
+          size: expectPresent(market.trading.minimumOrderSize),
+          tokenId,
+        }),
+      ).rejects.toThrow('Price must be between');
+      await expect(
+        client.createMarketOrder({
+          amount: expectPresent(market.trading.minimumOrderSize),
+          maxPrice: invalidPrice,
+          side: OrderSide.BUY,
+          tokenId,
+        }),
+      ).rejects.toThrow('maxPrice must be between');
+    });
+
+    it('caches market fees for repeated maxSpend preparations', async ({
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        amount: expectPresent(market.trading.minimumOrderSize),
+        maxPrice: expectPresent(market.trading.minimumTickSize),
+        maxSpend: expectPresent(market.trading.minimumOrderSize),
+        side: OrderSide.BUY as const,
+        tokenId,
+      };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await client.createMarketOrder(request);
+        await client.createMarketOrder(request);
+
+        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('caches builder fees for repeated attributed maxSpend preparations', async ({
+      builderCode,
+      randomEoaSigner,
+    }) => {
+      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const client = await createSecureClient({
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+      const request = {
+        amount: expectPresent(market.trading.minimumOrderSize),
+        builderCode,
+        maxPrice: expectPresent(market.trading.minimumTickSize),
+        maxSpend: expectPresent(market.trading.minimumOrderSize),
+        side: OrderSide.BUY as const,
+        tokenId,
+      };
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await client.createMarketOrder(request);
+        await client.createMarketOrder(request);
+
+        expect(countRequests(fetchSpy, '/fees/builder-fees/')).toBe(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
     });
   });
 
@@ -525,4 +710,17 @@ async function cancelMarketOrderWithRetry(
     tokenId: order.tokenId,
     market: conditionId,
   });
+}
+
+function requestedUrls(fetchSpy: MockInstance<typeof fetch>): string[] {
+  return fetchSpy.mock.calls.map(([input]) =>
+    input instanceof Request ? input.url : String(input),
+  );
+}
+
+function countRequests(
+  fetchSpy: MockInstance<typeof fetch>,
+  path: string,
+): number {
+  return requestedUrls(fetchSpy).filter((url) => url.includes(path)).length;
 }

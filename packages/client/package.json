@@ -1,6 +1,6 @@
 {
   "name": "@polymarket/client",
-  "version": "0.3.0-beta.1",
+  "version": "0.4.0",
   "description": "The Polymarket TypeScript client",
   "repository": {
     "type": "git",
