@@ -295,7 +295,7 @@ export type PlacePerpsOrderRequest =
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -316,7 +316,7 @@ export type PlacePerpsOrderRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -337,7 +337,7 @@ export type PlacePerpsOrderRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -364,7 +364,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -388,7 +388,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -411,7 +411,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -434,7 +434,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -457,7 +457,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
@@ -480,7 +480,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
-      /** Optional caller-supplied idempotency identifier. */
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
