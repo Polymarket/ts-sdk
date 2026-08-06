@@ -358,6 +358,73 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('falls back to the acknowledged order id when the update omits the client order id', async () => {
+      mockOrderPlacementSession({
+        includeClientOrderIdInUpdate: false,
+        status: 'open',
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            clientOrderId: '0123456789abcdef0123456789abcdef',
+            instrumentId: 1,
+            postOnly: false,
+            price: '100.00',
+            quantity: '1.5',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          }),
+        ).resolves.toMatchObject({
+          order: {
+            id: 123,
+            restingQuantity: '1.5',
+            status: 'open',
+          },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('uses a matching private order update received before the acknowledgement', async () => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            postOnly: false,
+            price: '100.00',
+            quantity: '1.5',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          }),
+        ).resolves.toMatchObject({
+          order: {
+            clientOrderId: expect.stringMatching(/^[0-9a-f]{32}$/),
+            id: 123,
+            restingQuantity: '1.5',
+            status: 'open',
+          },
+        });
+        expect(frames[2]).toMatchObject({
+          op: {
+            args: [{ c: expect.stringMatching(/^[0-9a-f]{32}$/) }],
+          },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('returns terminal placement updates after the ack', async () => {
       mockOrderPlacementSession({
         status: 'post_only_rejected',
@@ -553,7 +620,10 @@ describe('PerpsSession', () => {
     });
 
     it('places an order with take-profit and stop-loss triggers', async () => {
-      const frames = mockOrderPlacementSession({ status: 'open' });
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
       const session = createSession();
       await session.connect();
 
@@ -590,6 +660,7 @@ describe('PerpsSession', () => {
           args: [
             {
               buy: true,
+              c: expect.stringMatching(/^[0-9a-f]{32}$/),
               iid: 1,
               p: '100.00',
               po: false,
@@ -1677,7 +1748,11 @@ function mockCommandSession(
   return frames;
 }
 
-function mockOrderPlacementSession(request: { status: string }): unknown[] {
+function mockOrderPlacementSession(request: {
+  includeClientOrderIdInUpdate?: boolean;
+  status: string;
+  updateBeforeAck?: boolean;
+}): unknown[] {
   const frames: unknown[] = [];
 
   server.use(
@@ -1687,14 +1762,24 @@ function mockOrderPlacementSession(request: { status: string }): unknown[] {
         frames.push(frame);
 
         if (frame.op?.type === 'createOrders') {
-          const update = orderUpdate(request.status);
+          const update = orderUpdate(request.status, {
+            clientOrderId:
+              request.includeClientOrderIdInUpdate === false
+                ? undefined
+                : clientOrderIdFromFrame(frame),
+          });
+          if (request.updateBeforeAck) {
+            client.send(JSON.stringify(update));
+          }
           client.send(
             JSON.stringify({
               id: frame.id,
               data: responseForFrame(frame),
             }),
           );
-          setTimeout(() => client.send(JSON.stringify(update)), 0);
+          if (!request.updateBeforeAck) {
+            setTimeout(() => client.send(JSON.stringify(update)), 0);
+          }
           return;
         }
 
@@ -1709,6 +1794,17 @@ function mockOrderPlacementSession(request: { status: string }): unknown[] {
   );
 
   return frames;
+}
+
+function clientOrderIdFromFrame(frame: {
+  op?: { args?: unknown; type?: string };
+}): string | undefined {
+  const [order] = Array.isArray(frame.op?.args) ? frame.op.args : [];
+  if (typeof order !== 'object' || order === null || !('c' in order)) {
+    return undefined;
+  }
+
+  return typeof order.c === 'string' ? order.c : undefined;
 }
 
 function responseForFrame(frame: {
@@ -1842,12 +1938,12 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
   };
 }
 
-function orderUpdate(status: string) {
+function orderUpdate(status: string, request: { clientOrderId?: string } = {}) {
   return {
     ch: 'orders',
     data: {
       buy: true,
-      coid: '0123456789abcdef0123456789abcdef',
+      coid: request.clientOrderId ?? '0123456789abcdef0123456789abcdef',
       cts: 1_700_000_000_000,
       fill: status === 'filled' ? '1.5' : '0',
       iid: 1,

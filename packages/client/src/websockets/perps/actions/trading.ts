@@ -7,13 +7,17 @@ import {
   PerpsCancelAllOrdersResponseSchema,
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
+  type PerpsClientOrderId,
   PerpsClientOrderIdSchema,
   PerpsCommandAckSchema,
   type PerpsDecimalInput,
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
+  type PerpsOrder,
+  type PerpsOrderId,
   PerpsOrderIdSchema,
+  type PerpsPortfolio,
   type PerpsPostOrderAck,
   PerpsPostOrderAckSchema,
   PerpsTimeInForce,
@@ -22,7 +26,11 @@ import {
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
-import { expectPresent, invariant, unwrap } from '@polymarket/types';
+import type {
+  PerpsOrderUpdateEvent,
+  PerpsSessionEvent,
+} from '@polymarket/bindings/subscriptions';
+import { expectPresent, invariant } from '@polymarket/types';
 import { z } from 'zod';
 import {
   makeErrorGuard,
@@ -32,8 +40,6 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import { validateWith } from '../../../response';
-import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
 
 const PerpsOrderBaseInputSchema = z.object({
@@ -187,30 +193,46 @@ const PerpsTpSlPairSchema = z.union([
   }),
 ]) satisfies z.ZodType<PerpsTpSlPairRequest>;
 
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsSignedWsCommandRequest<T> = {
+/** @internal */
+export type PerpsCommandRequest = {
   op: PerpsSignedOp;
-  responseSchema: z.ZodType<T>;
-  timeoutMessage: string;
   expiresAt?: number;
 };
 
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsTradingTransport = {
-  sendSignedWsCommand<T>(request: PerpsSignedWsCommandRequest<T>): Promise<T>;
+/** @internal */
+export type PerpsCommandExecutor = {
+  /** @internal */
+  executeCommand<T>(
+    request: PerpsCommandRequest,
+    responseSchema: z.ZodType<T>,
+  ): Promise<T>;
 };
 
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type SignPerpsRestCommand = (
-  op: PerpsSignedOp,
-  expiresAt?: number,
-) => Record<string, unknown>;
+/** @internal */
+export type PerpsEventCommandExecutor = PerpsCommandExecutor & {
+  /** @internal */
+  executeCommandWithEvent<TResponse, TEvent extends PerpsSessionEvent>(
+    request: PerpsCommandRequest,
+    responseSchema: z.ZodType<TResponse>,
+    predicate: (
+      event: PerpsSessionEvent,
+      response: TResponse | undefined,
+    ) => event is TEvent,
+  ): Promise<readonly [TResponse, TEvent]>;
+};
+
+/** @internal */
+export type PerpsRestCommandRequest<T> = PerpsCommandRequest & {
+  method: 'delete';
+  path: string;
+  responseSchema: z.ZodType<T>;
+};
+
+/** @internal */
+export type PerpsRestCommandExecutor = {
+  /** @internal */
+  executeRestCommand<T>(request: PerpsRestCommandRequest<T>): Promise<T>;
+};
 
 /**
  * Request parameters for posting one or more Perps orders.
@@ -233,16 +255,17 @@ const PostPerpsOrdersRequestSchema = z.object({
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function postPerpsOrders(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: PostPerpsOrdersRequest,
 ): Promise<PerpsPostOrderAck[]> {
   const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
-  return await transport.sendSignedWsCommand({
-    op: ['createOrders', params.orders.map(toRawPerpsOrder)],
-    responseSchema: z.array(PerpsPostOrderAckSchema),
-    timeoutMessage: 'Perps post order acknowledgement timed out.',
-    expiresAt: params.expiresAt,
-  });
+  return await client.executeCommand(
+    {
+      op: ['createOrders', params.orders.map(toRawPerpsOrder)],
+      expiresAt: params.expiresAt,
+    },
+    z.array(PerpsPostOrderAckSchema),
+  );
 }
 
 const PlacePerpsOrderWithTpSlRequestSchema = z.intersection(
@@ -250,6 +273,7 @@ const PlacePerpsOrderWithTpSlRequestSchema = z.intersection(
   z.intersection(
     PerpsTpSlPairSchema,
     z.object({
+      clientOrderId: PerpsClientOrderIdSchema.default(randomClientOrderId),
       expiresAt: z.number().int().positive().optional(),
     }),
   ),
@@ -476,22 +500,112 @@ export type PlacePerpsOrderRequestWithOptions =
   | PlacePerpsOrderRequest
   | PlacePerpsOrderWithTpSlRequest;
 
+const PlacePerpsOrderRequestSchema = z.intersection(
+  PerpsOrderRequestSchema,
+  z.object({
+    clientOrderId: PerpsClientOrderIdSchema.default(randomClientOrderId),
+    expiresAt: z.number().int().positive().optional(),
+    takeProfit: z.never().optional(),
+    stopLoss: z.never().optional(),
+  }),
+) satisfies z.ZodType<PlacePerpsOrderRequest>;
+
+const SuccessfulPerpsPostOrderAcksSchema = z
+  .array(PerpsPostOrderAckSchema)
+  .min(1)
+  .refine(
+    (acknowledgements) =>
+      acknowledgements.every(
+        (acknowledgement) => acknowledgement.status === 'ok',
+      ),
+    'Expected successful Perps order acknowledgements.',
+  );
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export function hasPerpsTpSl(
+export type PerpsPlacedTpSlOrder = {
+  orderId: PerpsOrderId;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPlacedTpSlOrders = {
+  takeProfit?: PerpsPlacedTpSlOrder;
+  stopLoss?: PerpsPlacedTpSlOrder;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PlacePerpsOrderResult = {
+  order: PerpsOrder;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
+  tpSl: PerpsPlacedTpSlOrders;
+};
+
+function hasPerpsTpSl(
   request: PlacePerpsOrderRequestWithOptions,
 ): request is PlacePerpsOrderWithTpSlRequest {
   return request.takeProfit !== undefined || request.stopLoss !== undefined;
 }
 
 /**
+ * Places one Perps order and resolves with the first matching orders update.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export async function placePerpsOrderWithTpSl(
-  transport: PerpsTradingTransport,
+export async function placePerpsOrder(
+  client: PerpsEventCommandExecutor,
   request: PlacePerpsOrderWithTpSlRequest,
-): Promise<PerpsPostOrderAck[]> {
+): Promise<PlacePerpsOrderWithTpSlResult>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function placePerpsOrder(
+  client: PerpsEventCommandExecutor,
+  request: PlacePerpsOrderRequest,
+): Promise<PlacePerpsOrderResult>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function placePerpsOrder(
+  client: PerpsEventCommandExecutor,
+  request: PlacePerpsOrderRequestWithOptions,
+): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function placePerpsOrder(
+  client: PerpsEventCommandExecutor,
+  request: PlacePerpsOrderRequestWithOptions,
+): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
+  if (hasPerpsTpSl(request)) {
+    return await placePerpsOrderWithTpSl(client, request);
+  }
+
+  const params = parseUserInput(request, PlacePerpsOrderRequestSchema);
+  const [, update] = await client.executeCommandWithEvent(
+    {
+      op: ['createOrders', [toRawPerpsOrder(params)]],
+      expiresAt: params.expiresAt,
+    },
+    SuccessfulPerpsPostOrderAcksSchema,
+    isOrderUpdateFor(params.clientOrderId),
+  );
+  return { order: update.payload };
+}
+
+async function placePerpsOrderWithTpSl(
+  client: PerpsEventCommandExecutor,
+  request: PlacePerpsOrderWithTpSlRequest,
+): Promise<PlacePerpsOrderWithTpSlResult> {
   const params = parseUserInput(request, PlacePerpsOrderWithTpSlRequestSchema);
   const orders: RawPerpsOrderInput[] = [toRawPerpsOrder(params)];
   const exitBuy = params.side === OrderSide.SELL;
@@ -519,11 +633,35 @@ export async function placePerpsOrderWithTpSl(
     );
   }
 
-  return await placePerpsOrderGroup(transport, {
-    expiresAt: params.expiresAt,
-    group: PerpsTpSlScope.Order,
-    orders,
-  });
+  const [acknowledgements, update] = await client.executeCommandWithEvent(
+    {
+      op: ['createOrders', orders, PerpsTpSlScope.Order],
+      expiresAt: params.expiresAt,
+    },
+    SuccessfulPerpsPostOrderAcksSchema,
+    isOrderUpdateFor(params.clientOrderId),
+  );
+
+  let triggerIndex = 1;
+  const tpSl: PerpsPlacedTpSlOrders = {};
+  if (params.takeProfit !== undefined) {
+    tpSl.takeProfit = placedOrderFrom(
+      expectPresent(
+        acknowledgements[triggerIndex++],
+        'Expected Perps take-profit acknowledgement.',
+      ),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    tpSl.stopLoss = placedOrderFrom(
+      expectPresent(
+        acknowledgements[triggerIndex],
+        'Expected Perps stop-loss acknowledgement.',
+      ),
+    );
+  }
+
+  return { order: update.payload, tpSl };
 }
 
 /**
@@ -570,32 +708,35 @@ const PlacePerpsPositionTpSlRequestSchema = z.intersection(
   }),
 ) satisfies z.ZodType<PlacePerpsPositionTpSlRequest>;
 
-const PlacePerpsPositionTpSlCommandRequestSchema = z.intersection(
-  PlacePerpsPositionTpSlRequestSchema,
-  z.object({ buy: z.boolean() }),
-);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PlacePerpsPositionTpSlResult = {
+  tpSl: PerpsPlacedTpSlOrders;
+};
 
-type PlacePerpsPositionTpSlCommandRequest = PlacePerpsPositionTpSlRequest & {
-  buy: boolean;
+type PerpsPortfolioReader = {
+  fetchPortfolio(): Promise<PerpsPortfolio>;
 };
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function placePerpsPositionTpSl(
-  transport: PerpsTradingTransport,
-  request: PlacePerpsPositionTpSlCommandRequest,
-): Promise<PerpsPostOrderAck[]> {
-  const params = parseUserInput(
-    request,
-    PlacePerpsPositionTpSlCommandRequestSchema,
+  client: PerpsCommandExecutor & PerpsPortfolioReader,
+  request: PlacePerpsPositionTpSlRequest,
+): Promise<PlacePerpsPositionTpSlResult> {
+  const params = parseUserInput(request, PlacePerpsPositionTpSlRequestSchema);
+  const buy = positionTpSlExitBuy(
+    await client.fetchPortfolio(),
+    params.instrumentId,
   );
   const orders: RawPerpsOrderInput[] = [];
 
   if (params.takeProfit !== undefined) {
     orders.push(
       toRawPerpsTpSlOrder({
-        buy: params.buy,
+        buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: '0',
@@ -606,7 +747,7 @@ export async function placePerpsPositionTpSl(
   if (params.stopLoss !== undefined) {
     orders.push(
       toRawPerpsTpSlOrder({
-        buy: params.buy,
+        buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: '0',
@@ -615,11 +756,38 @@ export async function placePerpsPositionTpSl(
     );
   }
 
-  return await placePerpsOrderGroup(transport, {
+  const acknowledgements = await placePerpsOrderGroup(client, {
     expiresAt: params.expiresAt,
     group: PerpsTpSlScope.Position,
     orders,
   });
+
+  for (const acknowledgement of acknowledgements) {
+    if (acknowledgement.status === 'err') {
+      throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+    }
+  }
+
+  let triggerIndex = 0;
+  const tpSl: PerpsPlacedTpSlOrders = {};
+  if (params.takeProfit !== undefined) {
+    tpSl.takeProfit = placedOrderFrom(
+      expectPresent(
+        acknowledgements[triggerIndex++],
+        'Expected Perps take-profit acknowledgement.',
+      ),
+    );
+  }
+  if (params.stopLoss !== undefined) {
+    tpSl.stopLoss = placedOrderFrom(
+      expectPresent(
+        acknowledgements[triggerIndex],
+        'Expected Perps stop-loss acknowledgement.',
+      ),
+    );
+  }
+
+  return { tpSl };
 }
 
 const CancelPerpsOrderRequestSchema = z.union([
@@ -658,17 +826,17 @@ export type CancelPerpsOrderRequest =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelPerpsOrder(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: CancelPerpsOrderRequest,
 ): Promise<PerpsCancelOrderResult> {
   const params = parseUserInput(request, CancelPerpsOrderRequestSchema);
   const [result] =
     params.orderId !== undefined
-      ? await cancelPerpsOrders(transport, {
+      ? await cancelPerpsOrders(client, {
           orderIds: [params.orderId],
           expiresAt: params.expiresAt,
         })
-      : await cancelPerpsOrders(transport, {
+      : await cancelPerpsOrders(client, {
           clientOrderIds: [params.clientOrderId],
           expiresAt: params.expiresAt,
         });
@@ -711,24 +879,26 @@ export type CancelPerpsOrdersRequest =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelPerpsOrders(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: CancelPerpsOrdersRequest,
 ): Promise<PerpsCancelOrderResult[]> {
   const params = parseUserInput(request, CancelPerpsOrdersRequestSchema);
   if (params.orderIds !== undefined) {
-    return await transport.sendSignedWsCommand({
-      op: ['cancelOrders', params.orderIds],
-      responseSchema: z.array(PerpsCancelOrderResultSchema),
-      timeoutMessage: 'Perps cancel order response timed out.',
-      expiresAt: params.expiresAt,
-    });
+    return await client.executeCommand(
+      {
+        op: ['cancelOrders', params.orderIds],
+        expiresAt: params.expiresAt,
+      },
+      z.array(PerpsCancelOrderResultSchema),
+    );
   }
-  return await transport.sendSignedWsCommand({
-    op: ['cancelOrdersCOID', params.clientOrderIds],
-    responseSchema: z.array(PerpsCancelOrderResultSchema),
-    timeoutMessage: 'Perps cancel order response timed out.',
-    expiresAt: params.expiresAt,
-  });
+  return await client.executeCommand(
+    {
+      op: ['cancelOrdersCOID', params.clientOrderIds],
+      expiresAt: params.expiresAt,
+    },
+    z.array(PerpsCancelOrderResultSchema),
+  );
 }
 
 const CancelAllPerpsOrdersRequestSchema = z
@@ -752,8 +922,7 @@ export type CancelAllPerpsOrdersRequest = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelAllOrders(
-  client: ServiceClient,
-  signCommand: SignPerpsRestCommand,
+  client: PerpsRestCommandExecutor,
   request?: CancelAllPerpsOrdersRequest,
 ): Promise<void> {
   const params = parseUserInput(request, CancelAllPerpsOrdersRequestSchema);
@@ -761,18 +930,13 @@ export async function cancelAllOrders(
     'cancelAll',
     params.instrumentId === undefined ? [] : [params.instrumentId],
   ] as const satisfies PerpsSignedOp;
-  const command = signCommand(op, params.expiresAt);
-
-  await unwrap(
-    client
-      .del('/v1/trade/orders/all', {
-        json: {
-          ...command,
-          op: toPerpsCommandBodyOp(op),
-        },
-      })
-      .andThen(validateWith(PerpsCancelAllOrdersResponseSchema)),
-  );
+  await client.executeRestCommand({
+    method: 'delete',
+    path: '/v1/trade/orders/all',
+    op,
+    responseSchema: PerpsCancelAllOrdersResponseSchema,
+    expiresAt: params.expiresAt,
+  });
 }
 
 const UpdatePerpsLeverageRequestSchema = z.object({
@@ -820,18 +984,19 @@ export const UpdatePerpsLeverageError = makeErrorGuard(
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function updatePerpsLeverage(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: UpdatePerpsLeverageRequest,
 ): Promise<PerpsUpdateLeverageResult> {
   const params = parseUserInput(request, UpdatePerpsLeverageRequestSchema);
-  return await transport.sendSignedWsCommand({
-    op: [
-      'updateLeverage',
-      [params.instrumentId, params.leverage, params.crossMargin],
-    ],
-    responseSchema: PerpsUpdateLeverageResultSchema,
-    timeoutMessage: 'Perps update leverage response timed out.',
-  });
+  return await client.executeCommand(
+    {
+      op: [
+        'updateLeverage',
+        [params.instrumentId, params.leverage, params.crossMargin],
+      ],
+    },
+    PerpsUpdateLeverageResultSchema,
+  );
 }
 
 const UpdatePerpsMarginRequestSchema = z.object({
@@ -878,19 +1043,76 @@ export const UpdatePerpsMarginError = makeErrorGuard(
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function updatePerpsMargin(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: UpdatePerpsMarginRequest,
 ): Promise<void> {
   const params = parseUserInput(request, UpdatePerpsMarginRequestSchema);
   const amount = toDecimalString(params.amount);
-  const ack = await transport.sendSignedWsCommand({
-    op: ['updateMargin', [params.instrumentId, amount]],
-    responseSchema: PerpsCommandAckSchema,
-    timeoutMessage: 'Perps update margin acknowledgement timed out.',
-  });
+  const ack = await client.executeCommand(
+    { op: ['updateMargin', [params.instrumentId, amount]] },
+    PerpsCommandAckSchema,
+  );
   if (ack.status === 'err') {
     throw new RequestRejectedError(ack.error, { status: 200 });
   }
+}
+
+function randomClientOrderId(): PerpsClientOrderId {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  return PerpsClientOrderIdSchema.parse(
+    Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+  );
+}
+
+function isOrderUpdateFor(clientOrderId: PerpsClientOrderId) {
+  return (
+    event: PerpsSessionEvent,
+    acknowledgements: PerpsPostOrderAck[] | undefined,
+  ): event is PerpsOrderUpdateEvent => {
+    if (event.type !== 'order') return false;
+
+    const entryAcknowledgement = acknowledgements?.[0];
+    return (
+      event.payload.clientOrderId === clientOrderId ||
+      (entryAcknowledgement?.status === 'ok' &&
+        event.payload.id === entryAcknowledgement.orderId)
+    );
+  };
+}
+
+function placedOrderFrom(
+  acknowledgement: PerpsPostOrderAck,
+): PerpsPlacedTpSlOrder {
+  if (acknowledgement.status === 'err') {
+    throw new RequestRejectedError(acknowledgement.error, { status: 200 });
+  }
+
+  return { orderId: acknowledgement.orderId };
+}
+
+function positionTpSlExitBuy(
+  portfolio: PerpsPortfolio,
+  instrumentId: PerpsInstrumentId,
+): boolean {
+  const position = portfolio.positions.find(
+    (item) => item.instrumentId === instrumentId,
+  );
+  const sign = position === undefined ? 0 : decimalSign(position.size);
+
+  if (sign === 0) {
+    throw new UserInputError(
+      `No open Perps position for instrument ${instrumentId}.`,
+    );
+  }
+
+  return sign < 0;
+}
+
+function decimalSign(value: string): -1 | 0 | 1 {
+  const trimmed = value.trim();
+  const digits = trimmed.replace(/^[+-]/, '').replace('.', '');
+  if (/^0*$/.test(digits)) return 0;
+  return trimmed.startsWith('-') ? -1 : 1;
 }
 
 type RawPerpsOrderInput = readonly [
@@ -954,19 +1176,20 @@ function toRawPerpsTpSlOrder(request: {
 }
 
 async function placePerpsOrderGroup(
-  transport: PerpsTradingTransport,
+  client: PerpsCommandExecutor,
   request: {
     orders: RawPerpsOrderInput[];
     group: PerpsTpSlScope;
     expiresAt?: number;
   },
 ): Promise<PerpsPostOrderAck[]> {
-  return await transport.sendSignedWsCommand({
-    op: ['createOrders', request.orders, request.group],
-    responseSchema: z.array(PerpsPostOrderAckSchema),
-    timeoutMessage: 'Perps place TP/SL order acknowledgement timed out.',
-    expiresAt: request.expiresAt,
-  });
+  return await client.executeCommand(
+    {
+      op: ['createOrders', request.orders, request.group],
+      expiresAt: request.expiresAt,
+    },
+    z.array(PerpsPostOrderAckSchema),
+  );
 }
 
 /**

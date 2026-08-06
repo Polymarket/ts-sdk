@@ -12,7 +12,6 @@ import {
   type PerpsEquityPoint,
   type PerpsNotificationEntry,
   type PerpsOrder,
-  type PerpsOrderId,
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
@@ -21,16 +20,10 @@ import {
 } from '@polymarket/bindings/perps';
 import {
   PerpsNotificationsResyncFrameSchema,
-  type PerpsOrderUpdateEvent,
   type PerpsSessionEvent,
   PerpsSessionUpdateEventSchema,
 } from '@polymarket/bindings/subscriptions';
-import {
-  expectNonEmptyArray,
-  expectPresent,
-  invariant,
-  setNonBlockingTimeout,
-} from '@polymarket/types';
+import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
@@ -40,9 +33,10 @@ import {
   TimeoutError,
   TransportError,
   type UnexpectedResponseError,
-  UserInputError,
+  type UserInputError,
 } from '../../errors';
 import type { Paginated } from '../../pagination';
+import { validateWith } from '../../response';
 import { ServiceClient } from '../../ServiceClient';
 import { PerpsWebSocketHeartbeat } from '../heartbeat';
 import { ReconnectScheduler, WebSocketConnection } from '../lifecycle';
@@ -81,15 +75,17 @@ import {
   cancelAllOrders,
   cancelPerpsOrder,
   cancelPerpsOrders,
-  hasPerpsTpSl,
-  type PerpsSignedWsCommandRequest,
-  type PerpsTradingTransport,
+  type PerpsCommandRequest,
+  type PerpsRestCommandRequest,
   type PlacePerpsOrderRequest,
   type PlacePerpsOrderRequestWithOptions,
+  type PlacePerpsOrderResult,
   type PlacePerpsOrderWithTpSlRequest,
+  type PlacePerpsOrderWithTpSlResult,
   type PlacePerpsPositionTpSlRequest,
+  type PlacePerpsPositionTpSlResult,
   type PostPerpsOrdersRequest,
-  placePerpsOrderWithTpSl,
+  placePerpsOrder,
   placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
@@ -101,9 +97,7 @@ import {
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
-const ACK_TIMEOUT_MS = 30_000;
-// Purposefully generous: backend order updates are expected in the ~100ms range.
-const ORDER_PLACEMENT_UPDATE_TIMEOUT_MS = 2000;
+const COMMAND_TIMEOUT_MS = 30_000;
 const PERPS_SESSION_CHANNELS = [
   'balances',
   'portfolio',
@@ -146,6 +140,7 @@ type PendingResponse = {
 };
 
 type EventWaiter = {
+  promise: Promise<PerpsSessionEvent>;
   predicate(event: PerpsSessionEvent): boolean;
   reject(error: Error): void;
   resolve(event: PerpsSessionEvent): void;
@@ -176,14 +171,19 @@ export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   PerpsOrderRequest,
+  PerpsPlacedTpSlOrder,
+  PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
   PerpsTpSlTrigger,
   PlacePerpsOrderRequest,
+  PlacePerpsOrderResult,
   PlacePerpsOrderWithTpSlRequest,
+  PlacePerpsOrderWithTpSlResult,
   PlacePerpsPositionTpSlRequest,
+  PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
@@ -227,45 +227,10 @@ export type PerpsSessionTradingError =
   | RateLimitError
   | RequestRejectedError
   | SigningError
+  | TimeoutError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsPlacedTpSlOrder = {
-  orderId: PerpsOrderId;
-};
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsPlacedTpSlOrders = {
-  takeProfit?: PerpsPlacedTpSlOrder;
-  stopLoss?: PerpsPlacedTpSlOrder;
-};
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PlacePerpsOrderResult = {
-  order: PerpsOrder;
-};
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PlacePerpsOrderWithTpSlResult = PlacePerpsOrderResult & {
-  tpSl: PerpsPlacedTpSlOrders;
-};
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PlacePerpsPositionTpSlResult = {
-  tpSl: PerpsPlacedTpSlOrders;
-};
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -642,25 +607,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async placeOrder(
     request: PlacePerpsOrderRequestWithOptions,
   ): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
-    if (hasPerpsTpSl(request)) {
-      return await this.#placeOrderWithTpSl(request);
-    }
-
-    const [acknowledgement] = await postPerpsOrders(this.#tradingTransport(), {
-      orders: [request],
-      expiresAt: request.expiresAt,
-    }).then(expectNonEmptyArray);
-
-    if (acknowledgement.status === 'err') {
-      throw new RequestRejectedError(acknowledgement.error, { status: 200 });
-    }
-
-    const update = await this.#waitForEvent(
-      (event): event is PerpsOrderUpdateEvent =>
-        event.type === 'order' && event.payload.id === acknowledgement.orderId,
-      ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
-    );
-    return { order: update.payload };
+    return await placePerpsOrder(this, request);
   }
 
   /**
@@ -677,51 +624,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async postOrders(
     request: PostPerpsOrdersRequest,
   ): Promise<PerpsPostOrderAck[]> {
-    return await postPerpsOrders(this.#tradingTransport(), request);
-  }
-
-  async #placeOrderWithTpSl(
-    request: PlacePerpsOrderWithTpSlRequest,
-  ): Promise<PlacePerpsOrderWithTpSlResult> {
-    const acknowledgements = await placePerpsOrderWithTpSl(
-      this.#tradingTransport(),
-      request,
-    ).then(expectNonEmptyArray);
-
-    for (const acknowledgement of acknowledgements) {
-      if (acknowledgement.status === 'err') {
-        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
-      }
-    }
-
-    const [entryAcknowledgement] = acknowledgements;
-    const entryPlacement = placedOrderFrom(entryAcknowledgement);
-    const update = await this.#waitForEvent(
-      (event): event is PerpsOrderUpdateEvent =>
-        event.type === 'order' && event.payload.id === entryPlacement.orderId,
-      ORDER_PLACEMENT_UPDATE_TIMEOUT_MS,
-    );
-
-    let triggerIndex = 1;
-    const tpSl: PerpsPlacedTpSlOrders = {};
-    if (request.takeProfit !== undefined) {
-      tpSl.takeProfit = placedOrderFrom(
-        expectPresent(
-          acknowledgements[triggerIndex++],
-          'Expected Perps take-profit acknowledgement.',
-        ),
-      );
-    }
-    if (request.stopLoss !== undefined) {
-      tpSl.stopLoss = placedOrderFrom(
-        expectPresent(
-          acknowledgements[triggerIndex],
-          'Expected Perps stop-loss acknowledgement.',
-        ),
-      );
-    }
-
-    return { order: update.payload, tpSl };
+    return await postPerpsOrders(this, request);
   }
 
   /**
@@ -750,56 +653,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async placePositionTpSl(
     request: PlacePerpsPositionTpSlRequest,
   ): Promise<PlacePerpsPositionTpSlResult> {
-    const acknowledgements = await placePerpsPositionTpSl(
-      this.#tradingTransport(),
-      {
-        ...request,
-        buy: await this.#positionTpSlExitBuy(request.instrumentId),
-      },
-    ).then(expectNonEmptyArray);
-
-    for (const acknowledgement of acknowledgements) {
-      if (acknowledgement.status === 'err') {
-        throw new RequestRejectedError(acknowledgement.error, { status: 200 });
-      }
-    }
-
-    let triggerIndex = 0;
-    const tpSl: PerpsPlacedTpSlOrders = {};
-    if (request.takeProfit !== undefined) {
-      tpSl.takeProfit = placedOrderFrom(
-        expectPresent(
-          acknowledgements[triggerIndex++],
-          'Expected Perps take-profit acknowledgement.',
-        ),
-      );
-    }
-    if (request.stopLoss !== undefined) {
-      tpSl.stopLoss = placedOrderFrom(
-        expectPresent(
-          acknowledgements[triggerIndex],
-          'Expected Perps stop-loss acknowledgement.',
-        ),
-      );
-    }
-
-    return { tpSl };
-  }
-
-  async #positionTpSlExitBuy(instrumentId: number): Promise<boolean> {
-    const portfolio = await this.fetchPortfolio();
-    const position = portfolio.positions.find(
-      (item) => item.instrumentId === instrumentId,
-    );
-    const sign = position === undefined ? 0 : decimalSign(position.size);
-
-    if (sign === 0) {
-      throw new UserInputError(
-        `No open Perps position for instrument ${instrumentId}.`,
-      );
-    }
-
-    return sign < 0;
+    return await placePerpsPositionTpSl(this, request);
   }
 
   /**
@@ -816,7 +670,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async cancelOrder(
     request: CancelPerpsOrderRequest,
   ): Promise<PerpsCancelOrderResult> {
-    return await cancelPerpsOrder(this.#tradingTransport(), request);
+    return await cancelPerpsOrder(this, request);
   }
 
   /**
@@ -833,7 +687,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async cancelOrders(
     request: CancelPerpsOrdersRequest,
   ): Promise<PerpsCancelOrderResult[]> {
-    return await cancelPerpsOrders(this.#tradingTransport(), request);
+    return await cancelPerpsOrders(this, request);
   }
 
   /**
@@ -850,11 +704,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async cancelAllOrders(request?: CancelAllPerpsOrdersRequest): Promise<void> {
-    await cancelAllOrders(
-      this.#api,
-      (op, expiresAt) => this.#createSignedCommand(op, expiresAt),
-      request,
-    );
+    await cancelAllOrders(this, request);
   }
 
   /**
@@ -877,7 +727,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async updateLeverage(
     request: UpdatePerpsLeverageRequest,
   ): Promise<PerpsUpdateLeverageResult> {
-    return await updatePerpsLeverage(this.#tradingTransport(), request);
+    return await updatePerpsLeverage(this, request);
   }
 
   /**
@@ -900,7 +750,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async updateMargin(request: UpdatePerpsMarginRequest): Promise<void> {
-    await updatePerpsMargin(this.#tradingTransport(), request);
+    await updatePerpsMargin(this, request);
   }
 
   async #connect(emitResync: boolean): Promise<void> {
@@ -952,7 +802,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         chs: PERPS_SESSION_CHANNELS,
       },
       PerpsSessionAckSchema,
-      ACK_TIMEOUT_MS,
+      COMMAND_TIMEOUT_MS,
       'Perps session subscription timed out.',
     );
   }
@@ -964,14 +814,13 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     };
   }
 
-  #tradingTransport(): PerpsTradingTransport {
-    return {
-      sendSignedWsCommand: (request) => this.#sendSignedWsCommand(request),
-    };
-  }
-
-  async #sendSignedWsCommand<T>(
-    request: PerpsSignedWsCommandRequest<T>,
+  /**
+   * @internal
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async executeCommand<T>(
+    request: PerpsCommandRequest,
+    responseSchema: z.ZodType<T>,
   ): Promise<T> {
     const bodyOp = toPerpsCommandBodyOp(request.op);
     const command = this.#createSignedCommand(request.op, request.expiresAt);
@@ -982,9 +831,59 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         op: bodyOp,
         req: 'post',
       },
-      request.responseSchema,
-      ACK_TIMEOUT_MS,
-      request.timeoutMessage,
+      responseSchema,
+      COMMAND_TIMEOUT_MS,
+      'Perps command response timed out.',
+    );
+  }
+
+  /**
+   * @internal
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async executeCommandWithEvent<TResponse, TEvent extends PerpsSessionEvent>(
+    request: PerpsCommandRequest,
+    responseSchema: z.ZodType<TResponse>,
+    predicate: (
+      event: PerpsSessionEvent,
+      response: TResponse | undefined,
+    ) => event is TEvent,
+  ): Promise<readonly [TResponse, TEvent]> {
+    let response: TResponse | undefined;
+    const waiter = this.#createEventWaiter(
+      (event) => predicate(event, response),
+      COMMAND_TIMEOUT_MS,
+    );
+
+    try {
+      const [commandResponse, event] = await Promise.all([
+        this.executeCommand(request, responseSchema).then((value) => {
+          response = value;
+          return value;
+        }),
+        waiter.promise,
+      ]);
+      return [commandResponse, event as TEvent];
+    } finally {
+      this.#removeEventWaiter(waiter);
+    }
+  }
+
+  /**
+   * @internal
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async executeRestCommand<T>(request: PerpsRestCommandRequest<T>): Promise<T> {
+    const command = this.#createSignedCommand(request.op, request.expiresAt);
+    return await unwrap(
+      this.#api
+        .del(request.path, {
+          json: {
+            ...command,
+            op: toPerpsCommandBodyOp(request.op),
+          },
+        })
+        .andThen(validateWith(request.responseSchema)),
     );
   }
 
@@ -1142,33 +1041,30 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.#queue.push(event);
   }
 
-  #waitForEvent<TEvent extends PerpsSessionEvent>(
-    predicate: (event: PerpsSessionEvent) => event is TEvent,
-    timeoutMs: number,
-  ): Promise<TEvent> {
-    return this.#createEventWaiter(predicate, timeoutMs).then(
-      (event) => event as TEvent,
-    );
-  }
-
   #createEventWaiter(
     predicate: (event: PerpsSessionEvent) => boolean,
     timeoutMs: number,
-  ): Promise<PerpsSessionEvent> {
-    let waiter!: EventWaiter;
-    const promise = new Promise<PerpsSessionEvent>((resolve, reject) => {
-      waiter = {
-        predicate,
-        reject,
-        resolve,
-        timeout: setNonBlockingTimeout(() => {
-          this.#removeEventWaiter(waiter);
-          reject(new TimeoutError('Perps event wait timed out.'));
-        }, timeoutMs),
-      };
-    });
+  ): EventWaiter {
+    let resolve!: (event: PerpsSessionEvent) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<PerpsSessionEvent>(
+      (resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      },
+    );
+    const waiter: EventWaiter = {
+      promise,
+      predicate,
+      reject,
+      resolve,
+      timeout: setNonBlockingTimeout(() => {
+        this.#removeEventWaiter(waiter);
+        reject(new TimeoutError('Perps event wait timed out.'));
+      }, timeoutMs),
+    };
     this.#eventWaiters.add(waiter);
-    return promise;
+    return waiter;
   }
 
   #resolveEventWaiters(event: PerpsSessionEvent): void {
@@ -1209,11 +1105,19 @@ function createPendingResponse<T>(
 function isRejectedPerpsAck(
   value: unknown,
 ): value is Extract<PerpsCommandAck, { status: 'err' }> {
+  if (Array.isArray(value)) return false;
   return errorAckFrom(value) !== undefined;
 }
 
 function errorAckFrom(value: unknown): { error: string } | undefined {
-  if (Array.isArray(value) || typeof value !== 'object' || value === null) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const error = errorAckFrom(item);
+      if (error !== undefined) return error;
+    }
+    return undefined;
+  }
+  if (typeof value !== 'object' || value === null) {
     return undefined;
   }
 
@@ -1223,25 +1127,6 @@ function errorAckFrom(value: unknown): { error: string } | undefined {
   return {
     error: typeof ack.error === 'string' ? ack.error : 'Perps command failed.',
   };
-}
-
-function placedOrderFrom(
-  acknowledgement: PerpsPostOrderAck,
-): PerpsPlacedTpSlOrder {
-  if (acknowledgement.status === 'err') {
-    throw new RequestRejectedError(acknowledgement.error, { status: 200 });
-  }
-
-  return {
-    orderId: acknowledgement.orderId,
-  };
-}
-
-function decimalSign(value: string): -1 | 0 | 1 {
-  const trimmed = value.trim();
-  const digits = trimmed.replace(/^[+-]/, '').replace('.', '');
-  if (/^0*$/.test(digits)) return 0;
-  return trimmed.startsWith('-') ? -1 : 1;
 }
 
 function randomUint32(): number {
