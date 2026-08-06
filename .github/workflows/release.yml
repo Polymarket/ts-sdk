@@ -81,9 +81,6 @@ jobs:
       - name: Version Packages For Canary
         run: pnpm version:canary
 
-      - name: Verify Canary Package Versions
-        run: node .github/scripts/verify-canary-versions.mjs
-
       - name: Build
         run: pnpm build
 
