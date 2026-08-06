@@ -20,6 +20,7 @@ import {
 } from 'vitest';
 import { production } from '../../environments';
 import {
+  AutoCancelDailyLimitError,
   RequestRejectedError,
   TimeoutError,
   TransportError,
@@ -1049,6 +1050,30 @@ describe('PerpsSession', () => {
         },
       });
       expect(requests[1]?.body).not.toHaveProperty('exp');
+    });
+
+    it('rejects arming auto-cancel less than five seconds ahead', async () => {
+      const session = createSession();
+
+      await expect(
+        session.armAutoCancel({ cancelAt: Date.now() + 4_999 }),
+      ).rejects.toBeInstanceOf(UserInputError);
+    });
+
+    it('throws AutoCancelDailyLimitError when arming hits the daily limit', async () => {
+      server.use(
+        http.patch(`${production.perps.rest}/v1/trade/auto-cancel`, () =>
+          HttpResponse.json(
+            { status: 'err', error: 'auto_cancel_daily_limit_reached' },
+            { status: 422 },
+          ),
+        ),
+      );
+      const session = createSession();
+
+      await expect(
+        session.armAutoCancel({ cancelAt: Date.now() + 60_000 }),
+      ).rejects.toBeInstanceOf(AutoCancelDailyLimitError);
     });
   });
 
