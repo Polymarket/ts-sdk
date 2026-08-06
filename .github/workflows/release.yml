@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   verify:
@@ -80,6 +80,9 @@ jobs:
 
       - name: Version Packages For Canary
         run: pnpm version:canary
+
+      - name: Verify Canary Package Versions
+        run: node .github/scripts/verify-canary-versions.mjs
 
       - name: Build
         run: pnpm build
