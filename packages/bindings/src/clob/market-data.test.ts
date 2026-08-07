@@ -63,16 +63,13 @@ describe('SpreadsSchema', () => {
 });
 
 describe('LastTradePriceSchema', () => {
-  it('normalizes an empty side for a token without trades', () => {
+  it('returns null for a token without trades', () => {
     expect(
       LastTradePriceSchema.parse({
         price: '0.5',
         side: '',
       }),
-    ).toEqual({
-      price: '0.5',
-      side: null,
-    });
+    ).toBeNull();
   });
 
   it('rejects an unknown side', () => {

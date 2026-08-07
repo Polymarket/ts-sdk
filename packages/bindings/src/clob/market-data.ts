@@ -2,7 +2,6 @@ import { z } from 'zod';
 import {
   CtfConditionIdSchema,
   DecimalStringSchema,
-  emptyStringToNull,
   OrderSideSchema,
   TickSizeValueSchema,
   TokenIdSchema,
@@ -48,10 +47,12 @@ export type Spread = z.infer<typeof SpreadSchema>;
 export const SpreadsSchema = z.record(TokenIdSchema, DecimalStringSchema);
 export type Spreads = z.infer<typeof SpreadsSchema>;
 
-export const LastTradePriceSchema = z.object({
-  price: DecimalStringSchema,
-  side: z.preprocess(emptyStringToNull, OrderSideSchema.nullable()),
-});
+export const LastTradePriceSchema = z
+  .object({
+    price: DecimalStringSchema,
+    side: z.union([OrderSideSchema, z.literal('')]),
+  })
+  .transform(({ price, side }) => (side === '' ? null : { price, side }));
 export type LastTradePrice = z.infer<typeof LastTradePriceSchema>;
 
 const LastTradePriceForTokenResponseSchema = z
