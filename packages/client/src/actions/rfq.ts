@@ -422,6 +422,9 @@ const BUILDER_RFQ_REQUESTS_PATH = '/v1/builder/rfq/requests';
 // Quote requests are held through the quote competition and can take well
 // beyond the transport's standard timeout.
 const CREATE_QUOTE_TIMEOUT_MS = 30_000;
+// Accept processing includes synchronous validation and reservation work before
+// the gateway briefly holds the request for a maker last-look outcome.
+const ACCEPT_QUOTE_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_POLL_INTERVAL_MS = 500;
 const DEFAULT_FILL_TIMEOUT_MS = 30_000;
@@ -942,7 +945,7 @@ export async function acceptComboQuote(
     return client.builderGateway
       .post(
         `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
-        { json: request },
+        { json: request, timeout: ACCEPT_QUOTE_TIMEOUT_MS },
       )
       .andThen(validateWith(BuilderRfqStatusResponseSchema));
   }

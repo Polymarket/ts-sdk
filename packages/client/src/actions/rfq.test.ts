@@ -330,6 +330,7 @@ describe('acceptComboQuote', () => {
             tokenId: '789',
           }),
         }),
+        timeout: 30_000,
       }),
     );
     expect(result).toEqual({
