@@ -119,10 +119,7 @@ describe('Builder gateway combo RFQ integration', () => {
         `Quoted RFQ ${result.rfqId} at ${result.quote.blendedPrice} for ${result.quote.totalRequired} total`,
       );
 
-      const acceptance = await client.acceptComboQuote({
-        quoteId: result.quote.quoteId,
-        rfqId: result.rfqId,
-      });
+      const acceptance = await client.acceptComboQuote(result.quote);
 
       if (acceptance.status === 'failed') {
         // A maker declining or the window expiring is a market outcome; a

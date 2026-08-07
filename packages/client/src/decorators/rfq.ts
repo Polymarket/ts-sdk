@@ -219,6 +219,9 @@ export type SecureRfqActions = {
    * attracts no usable quotes is a normal outcome, returned as `quote: null`
    * with a reason rather than thrown.
    *
+   * A winning quote is self-contained JSON data and may be persisted or
+   * routed to another process before acceptance.
+   *
    * Requires a Builder API Key in the client configuration, via
    * `builderApiKey(...)` or `remoteBuilderSigning(...)`.
    *
@@ -245,8 +248,8 @@ export type SecureRfqActions = {
   ): Promise<RequestComboQuoteResult>;
 
   /**
-   * Accepts a combo quote, signing the acceptance order for the
-   * authenticated account. The builder code is attached automatically.
+   * Accepts a self-contained combo quote, signing the acceptance order for
+   * the authenticated account.
    *
    * @remarks
    * Resolves at the maker last-look outcome. A maker declining or the
@@ -259,8 +262,9 @@ export type SecureRfqActions = {
    * instead of executing twice. After such a retry `takerOrderHash` is absent
    * because the retried order was not the one recorded.
    *
-   * The quote must be accepted with the same client instance that requested
-   * it; the client retains the signed-order inputs until they are needed here.
+   * The quote is JSON-serializable and may cross process boundaries before
+   * acceptance. The accepting client must represent the same account and
+   * builder identity used to request it.
    *
    * @throws {@link AcceptComboQuoteError}
    * Thrown on failure.
@@ -274,10 +278,7 @@ export type SecureRfqActions = {
    * });
    *
    * if (result.quote !== null) {
-   *   const acceptance = await client.acceptComboQuote({
-   *     rfqId: result.rfqId,
-   *     quoteId: result.quote.quoteId,
-   *   });
+   *   const acceptance = await client.acceptComboQuote(result.quote);
    * }
    * ```
    */

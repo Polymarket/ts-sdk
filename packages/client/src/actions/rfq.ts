@@ -1,5 +1,4 @@
 import type {
-  BaseUnits,
   BuilderCode,
   DecimalString,
   EpochMilliseconds,
@@ -9,6 +8,7 @@ import type {
 import {
   OrderSide,
   toBaseUnits,
+  toBuilderCode,
   toPositionId,
   toRfqId,
   toRfqQuoteId,
@@ -21,7 +21,6 @@ import type {
   BuilderRfqCreateRequest,
   BuilderRfqError,
   BuilderRfqFinalStateResponse,
-  BuilderRfqQuote,
   BuilderRfqStatusResponse,
   RfqConfirmationRequest,
   RfqErrorCode,
@@ -429,7 +428,6 @@ const ACCEPT_OUTCOME_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_POLL_INTERVAL_MS = 500;
 const DEFAULT_FILL_TIMEOUT_MS = 30_000;
 const DEFAULT_FILL_POLL_INTERVAL_MS = 1_000;
-const MAX_COMBO_QUOTE_ACCEPTANCE_CONTEXTS = 100;
 const BYTES32_ZERO =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
@@ -567,31 +565,45 @@ function scaleE6DecimalParts(whole: string, fraction: string): bigint {
   return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 
-function decimalStringToBaseUnits(value: DecimalString): BaseUnits {
-  const [whole = '0', fraction = ''] = value.split('.');
-  return toBaseUnits(scaleE6DecimalParts(whole, fraction).toString());
-}
+/**
+ * A self-contained winning combo quote.
+ *
+ * @remarks
+ * The quote is plain JSON data and carries every input needed to accept it.
+ * It may be persisted or routed between processes before being passed to
+ * {@link acceptComboQuote}.
+ */
+export type ComboQuote = {
+  /** RFQ identifier. */
+  rfqId: RfqId;
 
-/** The winning quote for a combo quote request. */
-export type ComboQuote = BuilderRfqQuote & {
+  /** Winning quote identifier. */
+  quoteId: RfqQuoteId;
+
+  /** Builder code attached to the signed acceptance order. */
+  builderCode: BuilderCode;
+
+  /** Trade direction of the original request. */
+  direction: OrderSide;
+
+  /** Combo YES position traded by the acceptance order. */
+  positionId: PositionId;
+
+  /** Maker amount of the requester's acceptance order. */
+  makerAmount: DecimalString;
+
+  /** Taker amount of the requester's acceptance order. */
+  takerAmount: DecimalString;
+
+  /** Blended price across legs, in collateral per outcome token. */
+  blendedPrice: DecimalString;
+
+  /** Total balance required to accept the quote. */
+  totalRequired: DecimalString;
+
   /** Acceptance deadline (Unix ms). */
   expiresAt: EpochMilliseconds;
 };
-
-type ComboQuoteAcceptanceContext = {
-  builderCode: BuilderCode;
-  direction: OrderSide;
-  makerAmount: BaseUnits;
-  positionId: PositionId;
-  quoteId: RfqQuoteId;
-  rfqId: RfqId;
-  takerAmount: BaseUnits;
-};
-
-const comboQuoteAcceptanceContexts = new WeakMap<
-  BaseSecureClient,
-  Map<string, ComboQuoteAcceptanceContext>
->();
 
 export type RequestComboQuoteParams = {
   /** Position IDs of the combo legs. Between 2 and 50, no duplicates. */
@@ -683,6 +695,9 @@ export const RequestComboQuoteError = makeErrorGuard(
  * no usable quotes is a normal outcome, returned as `quote: null` with a
  * reason rather than thrown.
  *
+ * A winning quote is self-contained JSON data and may be persisted or routed
+ * to another process before acceptance.
+ *
  * @throws {@link RequestComboQuoteError}
  * Thrown on failure.
  *
@@ -733,18 +748,15 @@ export async function requestComboQuote(
   );
 
   if ('quote' in response) {
-    rememberComboQuoteAcceptance(client, {
-      builderCode: response.builderCode,
-      direction: input.direction,
-      makerAmount: decimalStringToBaseUnits(response.quote.makerAmount),
-      positionId: response.yesPositionId,
-      quoteId: response.quote.quoteId,
-      rfqId: response.rfqId,
-      takerAmount: decimalStringToBaseUnits(response.quote.takerAmount),
-    });
-
     return {
-      quote: { ...response.quote, expiresAt: response.expiresAt },
+      quote: {
+        ...response.quote,
+        builderCode: response.builderCode,
+        direction: input.direction,
+        expiresAt: response.expiresAt,
+        positionId: response.yesPositionId,
+        rfqId: response.rfqId,
+      },
       rfqId: response.rfqId,
     };
   }
@@ -780,13 +792,8 @@ function toQuoteUnavailableResult(
   }
 }
 
-export type AcceptComboQuoteParams = {
-  /** RFQ identifier returned by the quote request. */
-  rfqId: string;
-
-  /** Winning quote identifier returned by the quote request. */
-  quoteId: string;
-};
+/** A self-contained quote returned by {@link requestComboQuote}. */
+export type AcceptComboQuoteParams = ComboQuote;
 
 export type AcceptComboQuoteResult =
   | {
@@ -811,57 +818,27 @@ export type AcceptComboQuoteResult =
     };
 
 const AcceptComboQuoteParamsSchema = z.object({
+  blendedPrice: z.string(),
+  builderCode: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/, 'builderCode must be a 32-byte hex string.')
+    .transform(toBuilderCode),
+  direction: z.enum(OrderSide),
+  expiresAt: z.number().int().nonnegative(),
+  makerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
+  positionId: z
+    .string()
+    .regex(/^\d+$/, 'positionId must be a numeric string.')
+    .transform(toPositionId),
   quoteId: z.string().min(1).transform(toRfqQuoteId),
   rfqId: z.string().min(1).transform(toRfqId),
+  takerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
+  totalRequired: z.string(),
 });
 
 type ParsedAcceptComboQuoteParams = z.infer<
   typeof AcceptComboQuoteParamsSchema
 >;
-
-function rememberComboQuoteAcceptance(
-  client: BaseSecureClient,
-  context: ComboQuoteAcceptanceContext,
-): void {
-  let contexts = comboQuoteAcceptanceContexts.get(client);
-
-  if (contexts === undefined) {
-    contexts = new Map();
-    comboQuoteAcceptanceContexts.set(client, contexts);
-  }
-
-  const key = comboQuoteAcceptanceKey(context.rfqId, context.quoteId);
-  contexts.delete(key);
-  contexts.set(key, context);
-
-  if (contexts.size <= MAX_COMBO_QUOTE_ACCEPTANCE_CONTEXTS) return;
-
-  const oldestKey = contexts.keys().next().value;
-  if (oldestKey !== undefined) {
-    contexts.delete(oldestKey);
-  }
-}
-
-function resolveComboQuoteAcceptance(
-  client: BaseSecureClient,
-  params: ParsedAcceptComboQuoteParams,
-): ComboQuoteAcceptanceContext {
-  const context = comboQuoteAcceptanceContexts
-    .get(client)
-    ?.get(comboQuoteAcceptanceKey(params.rfqId, params.quoteId));
-
-  if (context === undefined) {
-    throw new UserInputError(
-      `No quote ${params.quoteId} for RFQ ${params.rfqId} was requested with this client instance.`,
-    );
-  }
-
-  return context;
-}
-
-function comboQuoteAcceptanceKey(rfqId: RfqId, quoteId: RfqQuoteId): string {
-  return JSON.stringify([rfqId, quoteId]);
-}
 
 export type AcceptComboQuoteError =
   | CancelledSigningError
@@ -884,8 +861,8 @@ export const AcceptComboQuoteError = makeErrorGuard(
 );
 
 /**
- * Accepts a combo quote, signing the acceptance order for the authenticated
- * account. The builder code is attached automatically.
+ * Accepts a self-contained combo quote, signing the acceptance order for the
+ * authenticated account.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -900,8 +877,9 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * instead of executing twice. After such a retry `takerOrderHash` is absent
  * because the retried order was not the one recorded.
  *
- * The quote must be accepted with the same client instance that requested it;
- * the client retains the signed-order inputs until they are needed here.
+ * The quote is JSON-serializable and may cross process boundaries before
+ * acceptance. The accepting client must represent the same account and
+ * builder identity used to request it.
  *
  * @throws {@link AcceptComboQuoteError}
  * Thrown on failure.
@@ -915,10 +893,7 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * });
  *
  * if (result.quote !== null) {
- *   const acceptance = await acceptComboQuote(client, {
- *     rfqId: result.rfqId,
- *     quoteId: result.quote.quoteId,
- *   });
+ *   const acceptance = await acceptComboQuote(client, result.quote);
  * }
  * ```
  */
@@ -928,13 +903,12 @@ export async function acceptComboQuote(
 ): Promise<AcceptComboQuoteResult> {
   const input = parseUserInput(params, AcceptComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
-  const acceptanceContext = resolveComboQuoteAcceptance(client, input);
 
   const domain = createExchangeV3OrderDomain({
     chainId: client.environment.chainId,
     exchange: client.environment.contracts.exchangeV3,
   });
-  const order = createComboAcceptanceOrder(client, acceptanceContext);
+  const order = createComboAcceptanceOrder(client, input);
   const signedOrder = await signComboAcceptanceOrder(client, domain, order);
   const request: BuilderRfqAcceptRequest = {
     quote_id: input.quoteId,
@@ -1044,7 +1018,7 @@ function toComboAcceptFailureReason(
 
 function createComboAcceptanceOrder(
   client: BaseSecureClient,
-  input: ComboQuoteAcceptanceContext,
+  input: ParsedAcceptComboQuoteParams,
 ): Omit<RfqSignedOrder, 'signature'> {
   const identity = resolveOrderIdentity(client.account);
 
