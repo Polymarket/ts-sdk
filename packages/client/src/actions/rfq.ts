@@ -792,8 +792,45 @@ function toQuoteUnavailableResult(
   }
 }
 
-/** A self-contained quote returned by {@link requestComboQuote}. */
-export type AcceptComboQuoteParams = ComboQuote;
+/**
+ * Plain JSON representation of a self-contained combo quote.
+ *
+ * @remarks
+ * {@link ComboQuote} is assignable to this type, while quotes restored from a
+ * typed transport or persistence boundary do not need to recreate the SDK's
+ * branded return types.
+ */
+export type AcceptComboQuoteParams = {
+  /** RFQ identifier. */
+  rfqId: string;
+
+  /** Winning quote identifier. */
+  quoteId: string;
+
+  /** Builder code attached to the signed acceptance order. */
+  builderCode: string;
+
+  /** Trade direction of the original request. */
+  direction: OrderSide;
+
+  /** Combo YES position traded by the acceptance order. */
+  positionId: string;
+
+  /** Maker amount of the requester's acceptance order. */
+  makerAmount: number | string;
+
+  /** Taker amount of the requester's acceptance order. */
+  takerAmount: number | string;
+
+  /** Blended price across legs, in collateral per outcome token. */
+  blendedPrice: string;
+
+  /** Total balance required to accept the quote. */
+  totalRequired: string;
+
+  /** Acceptance deadline (Unix ms). */
+  expiresAt: number;
+};
 
 export type AcceptComboQuoteResult =
   | {

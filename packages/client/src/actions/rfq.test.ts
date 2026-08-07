@@ -23,8 +23,8 @@ import {
 } from '../errors';
 import type { Signer } from '../types';
 import {
+  type AcceptComboQuoteParams,
   acceptComboQuote,
-  type ComboQuote,
   type RequestComboQuoteParams,
   RfqRequestRejectedError,
   requestComboQuote,
@@ -78,7 +78,7 @@ const comboQuote = {
   rfqId: 'rfq-1',
   takerAmount: '1.932381',
   totalRequired: '1',
-} as ComboQuote;
+} satisfies AcceptComboQuoteParams;
 
 describe('requestComboQuote', () => {
   it('builds the BUY request and returns a self-contained quote', async () => {
@@ -256,9 +256,7 @@ describe('acceptComboQuote', () => {
       expect.unreachable('Expected a winning quote');
     }
 
-    const serializedQuote = JSON.parse(
-      JSON.stringify(requested.quote),
-    ) as ComboQuote;
+    const serializedQuote = JSON.parse(JSON.stringify(requested.quote));
     const result = await acceptComboQuote(acceptor.client, serializedQuote);
 
     expect(acceptor.signTypedData).toHaveBeenCalledTimes(1);
