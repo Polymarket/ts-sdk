@@ -15,7 +15,7 @@ describe('RFQ live quoting integration', () => {
     { timeout: 180_000 },
     async ({ secureClientWithDepositWallet, annotate }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
-      const inFlightQuotes = new Set<Promise<void>>();
+      const inFlightQuotes = new Set<Promise<unknown>>();
       let confirmedExecution = false;
 
       try {
@@ -31,17 +31,8 @@ describe('RFQ live quoting integration', () => {
               continue;
             }
 
-            const quote: Promise<void> = event
+            const quote: Promise<unknown> = event
               .quote({ price: 0.1, size: 0.01 })
-              .then((reference) => {
-                if (confirmedExecution) {
-                  return;
-                }
-
-                annotate(
-                  `Accepted RFQ quote: ${reference.rfqId} / ${reference.quoteId}`,
-                );
-              })
               .catch((error) => {
                 if (confirmedExecution) {
                   return;
