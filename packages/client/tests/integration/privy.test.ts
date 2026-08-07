@@ -3,6 +3,7 @@ import { AssetType } from '@polymarket/bindings/clob';
 import {
   type ApiKeyAuthorization,
   createSecureClient,
+  type EnvironmentConfig,
   type EvmAddress,
   WalletType,
 } from '@polymarket/client';
@@ -33,13 +34,16 @@ let privyTestAccountPromise: Promise<PrivyTestAccount> | undefined;
 describe('privy', () => {
   it('authenticates a secure client', async ({
     builderAuthentication,
+    environment,
     skip,
   }) => {
     const account = await setupPrivyTestAccount({
       builderAuthentication,
+      environment,
       skip,
     });
     const secureClient = await createSecureClient({
+      environment,
       signer: signerFrom(account.wallet),
       wallet: account.walletAddress,
     });
@@ -49,9 +53,10 @@ describe('privy', () => {
 
   it.runIf(runMeteredTests)(
     'places and cancels a limit order',
-    async ({ builderAuthentication, publicClient, skip }) => {
+    async ({ builderAuthentication, environment, publicClient, skip }) => {
       const account = await setupPrivyTestAccount({
         builderAuthentication,
+        environment,
         skip,
       });
 
@@ -66,6 +71,7 @@ describe('privy', () => {
       const price = expectPresent(market.trading.minimumTickSize);
       const size = expectPresent(market.trading.minimumOrderSize);
       const secureClient = await createSecureClient({
+        environment,
         signer: signerFrom(account.wallet),
         wallet: account.walletAddress,
       });
@@ -94,6 +100,7 @@ describe('privy', () => {
 
 type SetupPrivyTestAccountRequest = {
   builderAuthentication: ApiKeyAuthorization;
+  environment: EnvironmentConfig;
   skip: Skip;
 };
 
@@ -105,6 +112,7 @@ function setupPrivyTestAccount(request: SetupPrivyTestAccountRequest) {
 
 async function createPrivyTestAccount({
   builderAuthentication,
+  environment,
   skip,
 }: SetupPrivyTestAccountRequest): Promise<PrivyTestAccount> {
   const wallet: PrivyWalletConfig = {
@@ -116,6 +124,7 @@ async function createPrivyTestAccount({
   };
   const secureClient = await createSecureClient({
     apiKey: builderAuthentication,
+    environment,
     signer: signerFrom(wallet),
   });
   expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);

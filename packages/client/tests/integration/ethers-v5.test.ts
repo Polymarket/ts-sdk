@@ -5,17 +5,14 @@ import { signerFrom } from '@polymarket/client/ethers-v5';
 import { expectPresent } from '@polymarket/types';
 import { ethers } from 'ethers-v5';
 import { polygon } from 'viem/chains';
-import { describe, expect, it, runMeteredTests } from './fixtures';
+import { describe, environment, expect, it, runMeteredTests } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
 
-const provider = new ethers.providers.JsonRpcProvider(
-  polygon.rpcUrls.default.http[0],
-  {
-    chainId: polygon.id,
-    name: polygon.name,
-  },
-);
+const provider = new ethers.providers.JsonRpcProvider(environment.rpc, {
+  chainId: polygon.id,
+  name: polygon.name,
+});
 
 describe('ethers-v5', () => {
   it('authenticates a secure client', async ({
@@ -23,6 +20,7 @@ describe('ethers-v5', () => {
     depositWalletPrivateKey,
   }) => {
     const secureClient = await createSecureClient({
+      environment,
       wallet: depositWalletAddress,
       signer: signerFrom(new ethers.Wallet(depositWalletPrivateKey, provider)),
     });
@@ -44,6 +42,7 @@ describe('ethers-v5', () => {
       const size = expectPresent(market.trading.minimumOrderSize);
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         wallet: depositWalletAddress,
         signer: signerFrom(
           new ethers.Wallet(depositWalletPrivateKey, provider),

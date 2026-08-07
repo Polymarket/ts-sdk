@@ -7,10 +7,12 @@ describe('Transfers', () => {
     it('submits a self-transfer for the collateral token', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
