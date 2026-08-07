@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdResponseSchema,
   DecimalishSchema,
   type DecimalString,
   DecimalStringSchema,
@@ -87,6 +87,7 @@ export type MarketState = {
 export type MarketOutcome = {
   label: string;
   tokenId: TokenId | null;
+  positionId: PositionId | null;
   price: DecimalString | null;
 };
 
@@ -167,7 +168,7 @@ export type MarketTag = {
 export type Market = {
   id: MarketId;
   slug?: string | null;
-  conditionId: CtfConditionId | null;
+  conditionId: ConditionId | null;
   question?: string | null;
   groupItemTitle?: string | null;
   description?: string | null;
@@ -184,6 +185,7 @@ export type Market = {
   sports: MarketSportsMetadata;
   events: MarketEvent[];
   tags: MarketTag[];
+  /** @deprecated Use the position ID on each outcome. */
   positionIds: PositionId[];
 };
 
@@ -191,7 +193,7 @@ export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
   question: z.string().nullish(),
   conditionId: z
-    .preprocess(emptyStringToNull, CtfConditionIdSchema.nullish())
+    .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())
     .transform(nullishToNull),
   slug: z.string().nullish(),
   twitterCardImage: z.string().nullish(),
@@ -527,16 +529,17 @@ function normalizeOutcomes(market: GammaMarket) {
   }
 
   const [yesLabel, noLabel] = market.outcomes as [string, string];
-
   return {
     yes: {
       label: yesLabel,
       tokenId: market.clobTokenIds[0] ?? null,
+      positionId: market.positionIds[0] ?? null,
       price: market.outcomePrices[0] ?? null,
     },
     no: {
       label: noLabel,
       tokenId: market.clobTokenIds[1] ?? null,
+      positionId: market.positionIds[1] ?? null,
       price: market.outcomePrices[1] ?? null,
     },
   };

@@ -4,8 +4,8 @@ import {
   ComboActivityIdSchema,
   type ComboConditionId,
   ComboConditionIdSchema,
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
   DecimalishSchema,
   type DecimalString,
   type EpochMilliseconds,
@@ -85,7 +85,7 @@ export type ClobTradeActivity = TradeActivityBase & {
   /** CLOB market trades are binary market outcome-token trades. */
   isCombo: false;
   /** Condition id of the market traded by the wallet. */
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   /** Outcome token id bought or sold by the wallet. */
   tokenId: TokenId;
   /** Display label of the outcome token traded by the wallet. */
@@ -113,7 +113,7 @@ export type SplitActivity = ActivityBase & {
   /** Splitting collateral into a complete market set. */
   type: 'SPLIT';
   /** Condition id of the market whose complete set was created. */
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   /** The collateral amount split into the complete set in USD. */
   amount: DecimalString;
   /** Human-readable title of the market whose complete set was created. */
@@ -130,7 +130,7 @@ export type MergeActivity = ActivityBase & {
   /** Merging a complete market set into collateral. */
   type: 'MERGE';
   /** Condition id of the market whose complete set was merged. */
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   /** The collateral amount received from merging the complete set in USD. */
   amount: DecimalString;
   /** Human-readable title of the market whose complete set was merged. */
@@ -147,7 +147,7 @@ export type RedeemActivity = ActivityBase & {
   /** Redeeming resolved market proceeds. */
   type: 'REDEEM';
   /** Condition id of the market redeemed by the wallet. */
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   /** The proceeds redeemed from the resolved market in USD. */
   amount: DecimalString;
   /** Human-readable title of the market redeemed by the wallet. */
@@ -164,7 +164,7 @@ export type ConversionActivity = ActivityBase & {
   /** A market conversion or migration activity. */
   type: 'CONVERSION';
   /** Condition id of the market involved in the conversion. */
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   /** The amount converted or migrated for the market in USD. */
   amount: DecimalString;
   /** Human-readable title of the market involved in the conversion. */
@@ -338,7 +338,7 @@ export const TradeSchema = z
     proxyWallet: AddressSchema.nullish(),
     side: SideSchema.nullish(),
     asset: TokenIdSchema.nullish(),
-    conditionId: CtfConditionIdSchema.nullish(),
+    conditionId: ConditionIdSchema.nullish(),
     size: DecimalishSchema.nullish(),
     price: DecimalishSchema.nullish(),
     timestamp: EpochSecondsToMillisecondsSchema.nullish(),
@@ -497,7 +497,7 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        conditionId: CtfConditionIdSchema.parse(
+        conditionId: ConditionIdSchema.parse(
           expectPresent(activity.conditionId, 'conditionId'),
         ),
         amount: inferAmount(activity),
@@ -552,7 +552,7 @@ function normalizeTradeActivity(
   return {
     ...trade,
     isCombo: false,
-    conditionId: CtfConditionIdSchema.parse(
+    conditionId: ConditionIdSchema.parse(
       expectPresent(activity.conditionId, 'conditionId'),
     ),
     tokenId: TokenIdSchema.parse(expectPresent(activity.asset, 'asset')),

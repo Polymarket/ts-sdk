@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   DecimalStringSchema,
   OrderSideSchema,
   TickSizeValueSchema,
@@ -96,7 +96,7 @@ export type PriceHistory = z.infer<typeof PriceHistorySchema>;
 
 export const ConditionByTokenSchema = z
   .object({
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
   })
   .transform(({ condition_id }) => condition_id);
 
