@@ -817,9 +817,44 @@ const AcceptComboQuoteParamsSchema = z.object({
 
 type AcceptComboQuoteParamsInput = z.input<typeof AcceptComboQuoteParamsSchema>;
 
-type ParsedAcceptComboQuoteParams = z.output<
-  typeof AcceptComboQuoteParamsSchema
->;
+type AcceptComboQuoteParamsFields = {
+  /** RFQ identifier. */
+  rfqId: string;
+
+  /** Winning quote identifier. */
+  quoteId: string;
+
+  /** Builder code attached to the signed acceptance order. */
+  builderCode: string;
+
+  /** Trade direction of the original request. */
+  direction: `${OrderSide}`;
+
+  /** Combo YES position traded by the acceptance order. */
+  positionId: string;
+
+  /** Maker amount of the requester's acceptance order. */
+  makerAmount: number | string;
+
+  /** Taker amount of the requester's acceptance order. */
+  takerAmount: number | string;
+
+  /** Blended price across legs, in collateral per outcome token. */
+  blendedPrice: string;
+
+  /** Total balance required to accept the quote. */
+  totalRequired: string;
+
+  /** Acceptance deadline (Unix ms). */
+  expiresAt: number;
+};
+
+type AcceptComboQuoteParamsSchemaMatch =
+  AcceptComboQuoteParamsFields extends AcceptComboQuoteParamsInput
+    ? AcceptComboQuoteParamsInput extends AcceptComboQuoteParamsFields
+      ? unknown
+      : never
+    : never;
 
 /**
  * Plain JSON representation of a self-contained combo quote.
@@ -827,40 +862,17 @@ type ParsedAcceptComboQuoteParams = z.output<
  * @remarks
  * {@link ComboQuote} is assignable to this type, while quotes restored from a
  * typed transport or persistence boundary do not need to recreate the SDK's
- * branded return types. Its fields are derived from the runtime input schema;
- * the explicit properties below preserve field-level documentation.
+ * branded return types. Its fields are checked against the runtime input
+ * schema at compile time.
  */
-export type AcceptComboQuoteParams = AcceptComboQuoteParamsInput & {
-  /** RFQ identifier. */
-  rfqId: AcceptComboQuoteParamsInput['rfqId'];
+export type AcceptComboQuoteParams = AcceptComboQuoteParamsInput &
+  AcceptComboQuoteParamsFields &
+  AcceptComboQuoteParamsSchemaMatch;
 
-  /** Winning quote identifier. */
-  quoteId: AcceptComboQuoteParamsInput['quoteId'];
-
-  /** Builder code attached to the signed acceptance order. */
-  builderCode: AcceptComboQuoteParamsInput['builderCode'];
-
-  /** Trade direction of the original request. */
-  direction: AcceptComboQuoteParamsInput['direction'];
-
-  /** Combo YES position traded by the acceptance order. */
-  positionId: AcceptComboQuoteParamsInput['positionId'];
-
-  /** Maker amount of the requester's acceptance order. */
-  makerAmount: AcceptComboQuoteParamsInput['makerAmount'];
-
-  /** Taker amount of the requester's acceptance order. */
-  takerAmount: AcceptComboQuoteParamsInput['takerAmount'];
-
-  /** Blended price across legs, in collateral per outcome token. */
-  blendedPrice: AcceptComboQuoteParamsInput['blendedPrice'];
-
-  /** Total balance required to accept the quote. */
-  totalRequired: AcceptComboQuoteParamsInput['totalRequired'];
-
-  /** Acceptance deadline (Unix ms). */
-  expiresAt: AcceptComboQuoteParamsInput['expiresAt'];
-};
+type ParsedAcceptComboQuoteParams = z.output<
+  typeof AcceptComboQuoteParamsSchema
+> &
+  AcceptComboQuoteParamsSchemaMatch;
 
 export type AcceptComboQuoteResult =
   | {
