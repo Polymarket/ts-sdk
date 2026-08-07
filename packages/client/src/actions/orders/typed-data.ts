@@ -2,7 +2,6 @@ import type { Erc1271Signature, EvmSignature } from '@polymarket/types';
 import {
   createExchangeOrderSignature,
   createExchangeOrderTypedDataPayload,
-  ExchangeOrderProtocolVersion,
 } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { UnsignedOrder } from './types';
@@ -31,6 +30,6 @@ function createOrderExchangeDomain(order: UnsignedOrder) {
   return {
     chainId: order.chainId,
     exchange: order.exchangeAddress,
-    protocolVersion: ExchangeOrderProtocolVersion.V2,
+    protocolVersion: order.protocolVersion,
   };
 }

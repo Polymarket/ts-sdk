@@ -19,8 +19,13 @@ import { completeWith } from '../../workflow';
 import { updateBalanceAllowance } from '../account';
 import { approveErc20, approveErc1155ForAll } from '../approvals';
 import { resolveCurrentAllowance } from './allowance';
+import {
+  isPositionOrderAsset,
+  resolveOrderAsset,
+  resolveOrderAssetId,
+} from './asset';
 import { resolveOrderMarketMetadata } from './cache';
-import { resolveExchangeAddress } from './context';
+import { resolveOrderExchangeAddress } from './context';
 import { type PostOrderError, postOrder } from './post';
 import {
   type PrepareLimitOrderError,
@@ -31,6 +36,7 @@ import {
 import type {
   PrepareLimitOrderRequest,
   PrepareMarketOrderRequest,
+  ResolvedOrderAsset,
   SignedOrder,
 } from './types';
 
@@ -116,7 +122,7 @@ export function placeMarketOrder(
   request: PrepareMarketOrderRequest,
 ): Promise<OrderResponse> {
   return createMarketOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order),
+    postOrderWithAllowanceRecovery(client, order, resolveOrderAsset(request)),
   );
 }
 
@@ -188,13 +194,14 @@ export function placeLimitOrder(
   request: PrepareLimitOrderRequest,
 ): Promise<OrderResponse> {
   return createLimitOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order),
+    postOrderWithAllowanceRecovery(client, order, resolveOrderAsset(request)),
   );
 }
 
 async function postOrderWithAllowanceRecovery(
   client: BaseSecureClient,
   order: SignedOrder,
+  asset: ResolvedOrderAsset,
 ): Promise<OrderResponse> {
   const postSignedOrder = postOrder(client);
 
@@ -208,6 +215,7 @@ async function postOrderWithAllowanceRecovery(
     const retryResponse = await approveOrderAndRetry(
       client,
       order,
+      asset,
       postSignedOrder,
     );
 
@@ -222,9 +230,10 @@ async function postOrderWithAllowanceRecovery(
 async function approveOrderAndRetry(
   client: BaseSecureClient,
   order: SignedOrder,
+  asset: ResolvedOrderAsset,
   postSignedOrder: (order: SignedOrder) => Promise<OrderResponse>,
 ): Promise<OrderResponse | undefined> {
-  const approved = await ensureOrderApproval(client, order);
+  const approved = await ensureOrderApproval(client, order, asset);
 
   return approved ? postSignedOrder(order) : undefined;
 }
@@ -242,14 +251,20 @@ function isBalanceOrAllowanceRequestRejection(
 async function ensureOrderApproval(
   client: BaseSecureClient,
   order: SignedOrder,
+  asset: ResolvedOrderAsset,
 ): Promise<boolean> {
-  const metadata = await resolveOrderMarketMetadata(client, order.tokenId);
-  const exchangeAddress = resolveExchangeAddress(client, metadata.negRisk);
+  const assetId = resolveOrderAssetId(asset);
+  const metadata = await resolveOrderMarketMetadata(client, assetId);
+  const exchangeAddress = resolveOrderExchangeAddress(
+    client,
+    asset,
+    metadata.negRisk,
+  );
   const requiredAllowance = BigInt(order.makerAmount);
   const currentAllowance = await resolveCurrentAllowance(client, {
+    assetId,
     spenderAddress: exchangeAddress,
     side: order.side,
-    tokenId: order.tokenId,
   });
 
   if (currentAllowance >= requiredAllowance) {
@@ -265,7 +280,9 @@ async function ensureOrderApproval(
         })
       : await approveErc1155ForAll(client, {
           operatorAddress: exchangeAddress,
-          tokenAddress: client.environment.contracts.conditionalTokens,
+          tokenAddress: isPositionOrderAsset(asset)
+            ? client.environment.contracts.positionManager
+            : client.environment.contracts.conditionalTokens,
         });
 
   await handle.wait();
@@ -275,7 +292,7 @@ async function ensureOrderApproval(
       order.side === OrderSide.BUY
         ? AssetType.COLLATERAL
         : AssetType.CONDITIONAL,
-    tokenId: order.side === OrderSide.SELL ? order.tokenId : undefined,
+    tokenId: order.side === OrderSide.SELL ? assetId : undefined,
   });
 
   return true;

@@ -1,8 +1,14 @@
-import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
+import {
+  OrderSide,
+  OrderType,
+  toPositionId,
+  toTokenId,
+} from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -86,10 +92,26 @@ describe('createUnsignedOrder', () => {
     expect(Number(order.salt)).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
     expect(Number.parseInt(order.salt, 10).toString()).toBe(order.salt);
   });
+
+  it('preserves a position ID and selects the V3 signing domain', () => {
+    const positionId = toPositionId('2');
+    const order = createUnsignedOrder(
+      { ...createOrderDraft(DEPOSIT_WALLET), asset: { positionId } },
+      {
+        signer: SIGNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
+
+    expect(order.tokenId).toBe(positionId);
+    expect(order.protocolVersion).toBe(ExchangeOrderProtocolVersion.V3);
+  });
 });
 
 function createOrderDraft(funderAddress: EvmAddress): OrderDraft {
   return {
+    asset: { tokenId: toTokenId('1') },
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,
@@ -99,6 +121,5 @@ function createOrderDraft(funderAddress: EvmAddress): OrderDraft {
     requestedAmount: 500000n,
     side: OrderSide.BUY,
     signer: SIGNER,
-    tokenId: toTokenId('1'),
   };
 }
