@@ -169,6 +169,9 @@ export type DataActions = {
   /**
    * Fetches the last traded price for a token.
    *
+   * When the token has not traded, `side` is `null` and `price` is the `"0.5"`
+   * placeholder.
+   *
    * @throws {@link FetchLastTradePriceError}
    * Thrown on failure.
    *

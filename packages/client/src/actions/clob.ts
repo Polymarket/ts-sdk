@@ -806,6 +806,9 @@ export const FetchLastTradePriceError = makeErrorGuard(
 /**
  * Fetches the last traded price for a token.
  *
+ * When the token has not traded, `side` is `null` and `price` is the `"0.5"`
+ * placeholder.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { OrderSide, TokenIdSchema } from '../shared';
 import {
+  LastTradePriceSchema,
   MarketInfoSchema,
   MidpointsSchema,
   PricesSchema,
@@ -58,6 +59,41 @@ describe('SpreadsSchema', () => {
     });
 
     expect(spreads[tokenId]).toBe('0.02');
+  });
+});
+
+describe('LastTradePriceSchema', () => {
+  it('parses a traded price and side', () => {
+    expect(
+      LastTradePriceSchema.parse({
+        price: '0.53',
+        side: OrderSide.BUY,
+      }),
+    ).toEqual({
+      price: '0.53',
+      side: OrderSide.BUY,
+    });
+  });
+
+  it('normalizes an empty side for a token without trades', () => {
+    expect(
+      LastTradePriceSchema.parse({
+        price: '0.5',
+        side: '',
+      }),
+    ).toEqual({
+      price: '0.5',
+      side: null,
+    });
+  });
+
+  it('rejects an unknown side', () => {
+    expect(() =>
+      LastTradePriceSchema.parse({
+        price: '0.53',
+        side: 'HOLD',
+      }),
+    ).toThrow();
   });
 });
 
