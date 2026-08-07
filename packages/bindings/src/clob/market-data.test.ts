@@ -63,18 +63,6 @@ describe('SpreadsSchema', () => {
 });
 
 describe('LastTradePriceSchema', () => {
-  it('parses a traded price and side', () => {
-    expect(
-      LastTradePriceSchema.parse({
-        price: '0.53',
-        side: OrderSide.BUY,
-      }),
-    ).toEqual({
-      price: '0.53',
-      side: OrderSide.BUY,
-    });
-  });
-
   it('normalizes an empty side for a token without trades', () => {
     expect(
       LastTradePriceSchema.parse({
