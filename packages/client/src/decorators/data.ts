@@ -176,21 +176,28 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const price = await client.fetchLastTradePrice({ tokenId: '123' });
+   * const trade = await client.fetchLastTradePrice({ tokenId: '123' });
+   *
+   * // trade === LastTradePrice | null
    * ```
    */
   fetchLastTradePrice(
     request: FetchLastTradePriceRequest,
-  ): Promise<LastTradePrice>;
+  ): Promise<LastTradePrice | null>;
   /**
    * Fetches last traded prices for multiple tokens.
+   *
+   * Tokens without trades are omitted from the response. Match returned rows by
+   * `tokenId`; the array is not positionally aligned with the request.
    *
    * @throws {@link FetchLastTradePricesError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const prices = await client.fetchLastTradePrices([{ tokenId: '123' }]);
+   * const tokenId = '123';
+   * const trades = await client.fetchLastTradePrices([{ tokenId }]);
+   * const trade = trades.find((candidate) => candidate.tokenId === tokenId);
    * ```
    */
   fetchLastTradePrices(
