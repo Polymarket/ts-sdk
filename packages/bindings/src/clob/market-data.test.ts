@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import { OrderSide, TokenIdSchema } from '../shared';
 import {
+  type LastTradePrice,
   LastTradePriceSchema,
   MarketInfoSchema,
   MidpointsSchema,
@@ -64,12 +65,13 @@ describe('SpreadsSchema', () => {
 
 describe('LastTradePriceSchema', () => {
   it('returns null for a token without trades', () => {
-    expect(
-      LastTradePriceSchema.parse({
-        price: '0.5',
-        side: '',
-      }),
-    ).toBeNull();
+    const result = LastTradePriceSchema.parse({
+      price: '0.5',
+      side: '',
+    });
+
+    expectTypeOf(result).toEqualTypeOf<LastTradePrice | null>();
+    expect(result).toBeNull();
   });
 
   it('rejects an unknown side', () => {

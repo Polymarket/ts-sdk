@@ -53,12 +53,11 @@ const LastTradePriceValueSchema = z.object({
 });
 export type LastTradePrice = z.infer<typeof LastTradePriceValueSchema>;
 
-export const LastTradePriceSchema = z
-  .object({
-    price: DecimalStringSchema,
-    side: z.union([OrderSideSchema, z.literal('')]),
-  })
-  .transform(({ price, side }) => (side === '' ? null : { price, side }));
+export const LastTradePriceSchema = LastTradePriceValueSchema.extend({
+  side: z.union([OrderSideSchema, z.literal('')]),
+}).transform((lastTrade) =>
+  lastTrade.side === '' ? null : LastTradePriceValueSchema.parse(lastTrade),
+);
 
 const LastTradePriceForTokenResponseSchema = z
   .object({
