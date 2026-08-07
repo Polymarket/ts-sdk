@@ -8,6 +8,7 @@ import {
   PerpsAssetSchema,
   PerpsDataResponseSchema,
   PerpsEntityIdSchema,
+  PerpsFundingPaymentIdSchema,
   PerpsInstrumentIdSchema,
 } from './common';
 
@@ -168,6 +169,7 @@ export const FetchPerpsPortfolioResponseSchema = PerpsPortfolioSchema;
  */
 export const PerpsAccountFundingPaymentSchema = z
   .object({
+    id: PerpsFundingPaymentIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
     size: DecimalStringSchema,
     funding_rate: DecimalStringSchema,
@@ -176,6 +178,7 @@ export const PerpsAccountFundingPaymentSchema = z
     timestamp: EpochMillisecondsSchema,
   })
   .transform((funding) => ({
+    id: funding.id,
     instrumentId: funding.instrument_id,
     size: funding.size,
     fundingRate: funding.funding_rate,
@@ -203,6 +206,7 @@ export const ListPerpsFundingPaymentsResponseSchema = PerpsDataResponseSchema(
  */
 export const PerpsAccountFundingPaymentEntrySchema = z
   .object({
+    id: PerpsFundingPaymentIdSchema,
     iid: PerpsInstrumentIdSchema,
     sz: DecimalStringSchema,
     fr: DecimalStringSchema,
@@ -211,6 +215,7 @@ export const PerpsAccountFundingPaymentEntrySchema = z
     ts: EpochMillisecondsSchema,
   })
   .transform((funding) => ({
+    id: funding.id,
     instrumentId: funding.iid,
     size: funding.sz,
     fundingRate: funding.fr,
