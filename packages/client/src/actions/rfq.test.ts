@@ -70,7 +70,7 @@ const quoteReadyWire = {
 const comboQuote = {
   blendedPrice: '0.45',
   builderCode: BUILDER_CODE,
-  direction: OrderSide.BUY,
+  direction: 'BUY',
   expiresAt: 1_773_890_765_500,
   makerAmount: '0.966191',
   positionId: '789',

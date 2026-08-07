@@ -265,6 +265,8 @@ export type SecureRfqActions = {
    * The quote is JSON-serializable and may cross process boundaries before
    * acceptance. The accepting client must represent the same account and
    * builder identity used to request it.
+   * Treat the quote as signing-sensitive data: preserve its integrity across
+   * process boundaries and do not accept fields modified by an untrusted client.
    *
    * @throws {@link AcceptComboQuoteError}
    * Thrown on failure.

@@ -7,6 +7,7 @@ import type {
 } from '@polymarket/bindings';
 import {
   OrderSide,
+  OrderSideSchema,
   toBaseUnits,
   toBuilderCode,
   toPositionId,
@@ -792,44 +793,73 @@ function toQuoteUnavailableResult(
   }
 }
 
+const AcceptComboQuoteDirectionSchema: z.ZodType<OrderSide, `${OrderSide}`> =
+  OrderSideSchema;
+
+const AcceptComboQuoteParamsSchema = z.object({
+  blendedPrice: z.string(),
+  builderCode: z
+    .string()
+    .regex(/^0x[0-9a-fA-F]{64}$/, 'builderCode must be a 32-byte hex string.')
+    .transform(toBuilderCode),
+  direction: AcceptComboQuoteDirectionSchema,
+  expiresAt: z.number().int().nonnegative(),
+  makerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
+  positionId: z
+    .string()
+    .regex(/^\d+$/, 'positionId must be a numeric string.')
+    .transform(toPositionId),
+  quoteId: z.string().min(1).transform(toRfqQuoteId),
+  rfqId: z.string().min(1).transform(toRfqId),
+  takerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
+  totalRequired: z.string(),
+});
+
+type AcceptComboQuoteParamsInput = z.input<typeof AcceptComboQuoteParamsSchema>;
+
+type ParsedAcceptComboQuoteParams = z.output<
+  typeof AcceptComboQuoteParamsSchema
+>;
+
 /**
  * Plain JSON representation of a self-contained combo quote.
  *
  * @remarks
  * {@link ComboQuote} is assignable to this type, while quotes restored from a
  * typed transport or persistence boundary do not need to recreate the SDK's
- * branded return types.
+ * branded return types. Its fields are derived from the runtime input schema;
+ * the explicit properties below preserve field-level documentation.
  */
-export type AcceptComboQuoteParams = {
+export type AcceptComboQuoteParams = AcceptComboQuoteParamsInput & {
   /** RFQ identifier. */
-  rfqId: string;
+  rfqId: AcceptComboQuoteParamsInput['rfqId'];
 
   /** Winning quote identifier. */
-  quoteId: string;
+  quoteId: AcceptComboQuoteParamsInput['quoteId'];
 
   /** Builder code attached to the signed acceptance order. */
-  builderCode: string;
+  builderCode: AcceptComboQuoteParamsInput['builderCode'];
 
   /** Trade direction of the original request. */
-  direction: OrderSide;
+  direction: AcceptComboQuoteParamsInput['direction'];
 
   /** Combo YES position traded by the acceptance order. */
-  positionId: string;
+  positionId: AcceptComboQuoteParamsInput['positionId'];
 
   /** Maker amount of the requester's acceptance order. */
-  makerAmount: number | string;
+  makerAmount: AcceptComboQuoteParamsInput['makerAmount'];
 
   /** Taker amount of the requester's acceptance order. */
-  takerAmount: number | string;
+  takerAmount: AcceptComboQuoteParamsInput['takerAmount'];
 
   /** Blended price across legs, in collateral per outcome token. */
-  blendedPrice: string;
+  blendedPrice: AcceptComboQuoteParamsInput['blendedPrice'];
 
   /** Total balance required to accept the quote. */
-  totalRequired: string;
+  totalRequired: AcceptComboQuoteParamsInput['totalRequired'];
 
   /** Acceptance deadline (Unix ms). */
-  expiresAt: number;
+  expiresAt: AcceptComboQuoteParamsInput['expiresAt'];
 };
 
 export type AcceptComboQuoteResult =
@@ -853,29 +883,6 @@ export type AcceptComboQuoteResult =
       /** Raw error behind the failure, when provided. */
       error?: BuilderRfqError;
     };
-
-const AcceptComboQuoteParamsSchema = z.object({
-  blendedPrice: z.string(),
-  builderCode: z
-    .string()
-    .regex(/^0x[0-9a-fA-F]{64}$/, 'builderCode must be a 32-byte hex string.')
-    .transform(toBuilderCode),
-  direction: z.enum(OrderSide),
-  expiresAt: z.number().int().nonnegative(),
-  makerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
-  positionId: z
-    .string()
-    .regex(/^\d+$/, 'positionId must be a numeric string.')
-    .transform(toPositionId),
-  quoteId: z.string().min(1).transform(toRfqQuoteId),
-  rfqId: z.string().min(1).transform(toRfqId),
-  takerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
-  totalRequired: z.string(),
-});
-
-type ParsedAcceptComboQuoteParams = z.infer<
-  typeof AcceptComboQuoteParamsSchema
->;
 
 export type AcceptComboQuoteError =
   | CancelledSigningError
@@ -917,6 +924,8 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * The quote is JSON-serializable and may cross process boundaries before
  * acceptance. The accepting client must represent the same account and
  * builder identity used to request it.
+ * Treat the quote as signing-sensitive data: preserve its integrity across
+ * process boundaries and do not accept fields modified by an untrusted client.
  *
  * @throws {@link AcceptComboQuoteError}
  * Thrown on failure.
