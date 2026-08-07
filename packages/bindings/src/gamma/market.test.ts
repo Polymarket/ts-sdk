@@ -67,7 +67,7 @@ describe('MarketSchema', () => {
       marketPositionIds: ['21', '22'],
     },
     {
-      name: 'legacy market with Combos',
+      name: 'CTF market with Combos',
       identifiers: {
         clobTokenIds: '["11", "12"]',
         positionIds: '["21", "22"]',
@@ -105,6 +105,15 @@ describe('MarketSchema', () => {
     });
 
     expect(market.conditionId).toBe(conditionId);
+  });
+
+  it('reports a non-hex condition ID as a validation failure', () => {
+    const result = MarketSchema.safeParse({
+      ...rawBinaryMarket,
+      conditionId: 'not-hex',
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it('fails validation instead of throwing for multi-outcome markets', () => {

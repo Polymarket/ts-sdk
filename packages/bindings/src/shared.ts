@@ -307,6 +307,8 @@ export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
 export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
 export const ConditionIdSchema = z.string().transform(toConditionId);
+// Upstream responses are required to contain usable hex, but their byte layout
+// does not determine the protocol. SDK-owned inputs retain stricter validation.
 export const ConditionIdResponseSchema = z.custom<ConditionId>(
   isHexString,
   'Expected a hex-encoded market condition ID',
