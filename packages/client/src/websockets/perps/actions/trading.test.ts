@@ -3,7 +3,7 @@ import { PerpsTimeInForce } from '@polymarket/bindings/perps';
 import { describe, expect, it } from 'vitest';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
-  type PerpsTradingTransport,
+  type PerpsCommandExecutor,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -17,8 +17,8 @@ const UPDATE_MARGIN_DATA_HASH =
 describe('Perps trading actions', () => {
   describe('createPerpsOpTypedDataPayload', () => {
     it('signs entry orders with backend-compatible createOrders bytes', async () => {
-      const transport: PerpsTradingTransport = {
-        async sendSignedWsCommand(request) {
+      const client: PerpsCommandExecutor = {
+        async executeCommand(request, responseSchema) {
           const payload = createPerpsOpTypedDataPayload({
             chainId: 31_337,
             op: request.op,
@@ -45,12 +45,12 @@ describe('Perps trading actions', () => {
             type: 'createOrders',
           });
 
-          return request.responseSchema.parse([{ oid: 123, status: 'ok' }]);
+          return responseSchema.parse([{ oid: 123, status: 'ok' }]);
         },
       };
 
       await expect(
-        postPerpsOrders(transport, {
+        postPerpsOrders(client, {
           orders: [
             {
               instrumentId: 1,
@@ -66,8 +66,8 @@ describe('Perps trading actions', () => {
     });
 
     it('serializes reduce-only entry orders', async () => {
-      const transport: PerpsTradingTransport = {
-        async sendSignedWsCommand(request) {
+      const client: PerpsCommandExecutor = {
+        async executeCommand(request, responseSchema) {
           expect(toPerpsCommandBodyOp(request.op)).toEqual({
             args: [
               {
@@ -83,12 +83,12 @@ describe('Perps trading actions', () => {
             type: 'createOrders',
           });
 
-          return request.responseSchema.parse([{ oid: 123, status: 'ok' }]);
+          return responseSchema.parse([{ oid: 123, status: 'ok' }]);
         },
       };
 
       await expect(
-        postPerpsOrders(transport, {
+        postPerpsOrders(client, {
           orders: [
             {
               instrumentId: 1,
@@ -104,8 +104,8 @@ describe('Perps trading actions', () => {
     });
 
     it('signs isolated margin adjustments with backend-compatible bytes', async () => {
-      const transport: PerpsTradingTransport = {
-        async sendSignedWsCommand(request) {
+      const client: PerpsCommandExecutor = {
+        async executeCommand(request, responseSchema) {
           const payload = createPerpsOpTypedDataPayload({
             chainId: 31_337,
             op: request.op,
@@ -126,12 +126,12 @@ describe('Perps trading actions', () => {
             type: 'updateMargin',
           });
 
-          return request.responseSchema.parse({ status: 'ok' });
+          return responseSchema.parse({ status: 'ok' });
         },
       };
 
       await expect(
-        updatePerpsMargin(transport, {
+        updatePerpsMargin(client, {
           amount: '-1234567890.123456789012345678',
           instrumentId: 7,
         }),
