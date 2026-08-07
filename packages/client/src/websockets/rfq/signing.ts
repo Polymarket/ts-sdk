@@ -13,7 +13,6 @@ import {
   createExchangeOrderTypedDataPayload,
   createExchangeV3OrderDomain,
   encodeExchangeOrderSide,
-  generateExchangeOrderSalt,
 } from '../../exchange';
 import type { Signer } from '../../types';
 import type { AccountIdentity } from '../../wallet';
@@ -52,7 +51,7 @@ export async function signRfqQuoteOrder(
       ),
     ),
     metadata: BYTES32_ZERO,
-    salt: generateExchangeOrderSalt().toString(),
+    salt: generateRfqOrderSalt().toString(),
     side: encodeExchangeOrderSide(params.orderSide),
     signatureType: identity.signatureType,
     signer: identity.signer,
@@ -80,4 +79,13 @@ export async function signRfqQuoteOrder(
     ...order,
     signature: createExchangeOrderSignature({ domain, order, signature }),
   };
+}
+
+function generateRfqOrderSalt(): bigint {
+  const bytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(bytes);
+
+  return BigInt(
+    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
 }
