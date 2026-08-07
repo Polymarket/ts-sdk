@@ -54,7 +54,7 @@ describe('createUnsignedOrder', () => {
     wallet,
     walletType,
   }) => {
-    const order = createUnsignedOrder(createOrderDraft(wallet), {
+    const order = createUnsignedOrder(createOrderDraft({ wallet }), {
       signer: SIGNER,
       wallet,
       walletType,
@@ -82,11 +82,14 @@ describe('createUnsignedOrder', () => {
       },
     });
 
-    const order = createUnsignedOrder(createOrderDraft(DEPOSIT_WALLET), {
-      signer: SIGNER,
-      wallet: DEPOSIT_WALLET,
-      walletType: WalletType.DEPOSIT_WALLET,
-    });
+    const order = createUnsignedOrder(
+      createOrderDraft({ wallet: DEPOSIT_WALLET }),
+      {
+        signer: SIGNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
 
     expect(order.salt).toBe((2n ** 53n - 1n).toString());
     expect(Number(order.salt)).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
@@ -96,7 +99,11 @@ describe('createUnsignedOrder', () => {
   it('preserves a position ID and selects the V3 signing domain', () => {
     const positionId = toPositionId('2');
     const order = createUnsignedOrder(
-      { ...createOrderDraft(DEPOSIT_WALLET), asset: { positionId } },
+      createOrderDraft({
+        assetId: positionId,
+        exchangeVersion: ExchangeOrderProtocolVersion.V3,
+        wallet: DEPOSIT_WALLET,
+      }),
       {
         signer: SIGNER,
         wallet: DEPOSIT_WALLET,
@@ -109,17 +116,25 @@ describe('createUnsignedOrder', () => {
   });
 });
 
-function createOrderDraft(funderAddress: EvmAddress): OrderDraft {
-  return {
-    asset: { tokenId: toTokenId('1') },
+type CreateOrderDraftParams = { wallet: EvmAddress } & Partial<OrderDraft>;
+
+function createOrderDraft({
+  wallet,
+  ...overrides
+}: CreateOrderDraftParams): OrderDraft {
+  const draft: OrderDraft = {
+    assetId: toTokenId('1'),
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,
-    funderAddress,
+    exchangeVersion: ExchangeOrderProtocolVersion.V2,
+    funderAddress: wallet,
     offeredAmount: 1000000n,
     orderType: OrderType.GTC,
     requestedAmount: 500000n,
     side: OrderSide.BUY,
     signer: SIGNER,
   };
+
+  return Object.assign(draft, overrides, { funderAddress: wallet });
 }

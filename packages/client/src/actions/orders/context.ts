@@ -3,9 +3,9 @@ import type { EvmAddress } from '@polymarket/types';
 import { invariant } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
-import { isPositionOrderAsset } from './asset';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
+import type { OrderRouting } from './asset';
 import { decimalPlaces, isMultipleOf } from './math';
-import type { ResolvedOrderAsset } from './types';
 
 export type RoundingConfig = {
   amount: number;
@@ -82,10 +82,10 @@ export function resolveExchangeAddress(
 /** @internal */
 export function resolveOrderExchangeAddress(
   client: BaseSecureClient,
-  asset: ResolvedOrderAsset,
+  routing: OrderRouting,
   negRisk: boolean,
 ): EvmAddress {
-  return isPositionOrderAsset(asset)
+  return routing.exchangeVersion === ExchangeOrderProtocolVersion.V3
     ? client.environment.contracts.exchangeV3
     : resolveExchangeAddress(client, negRisk);
 }

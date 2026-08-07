@@ -7,42 +7,58 @@ import {
   toTokenId,
 } from '@polymarket/bindings';
 import { z } from 'zod';
-import type { OrderAsset, ResolvedOrderAsset } from './types';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
 
-const TokenOrderAssetSchema = z.object({
+/**
+ * Identifies the asset to trade. Provide exactly one identifier.
+ */
+export type OrderAsset =
+  | {
+      /** CTF token identifier. */
+      tokenId: string;
+      positionId?: never;
+    }
+  | {
+      /** Polymarket V2 position identifier. */
+      positionId: string;
+      tokenId?: never;
+    };
+
+/** @internal */
+export const TokenOrderAssetSchema = z.object({
   tokenId: TokenIdSchema,
   positionId: z.never().optional(),
 });
 
-const PositionOrderAssetSchema = z.object({
+/** @internal */
+export const PositionOrderAssetSchema = z.object({
   positionId: PositionIdSchema,
   tokenId: z.never().optional(),
 });
 
 /** @internal */
-export const OrderAssetParamsSchema = z.union([
-  TokenOrderAssetSchema,
-  PositionOrderAssetSchema,
-]);
-
-/** @internal */
 export type OrderAssetId = PositionId | TokenId;
 
 /** @internal */
-export function resolveOrderAsset(request: OrderAsset): ResolvedOrderAsset {
+export type OrderRouting =
+  | {
+      assetId: TokenId;
+      exchangeVersion: ExchangeOrderProtocolVersion.V2;
+    }
+  | {
+      assetId: PositionId;
+      exchangeVersion: ExchangeOrderProtocolVersion.V3;
+    };
+
+/** @internal */
+export function createOrderRouting(request: OrderAsset): OrderRouting {
   return request.positionId !== undefined
-    ? { positionId: toPositionId(request.positionId) }
-    : { tokenId: toTokenId(request.tokenId) };
-}
-
-/** @internal */
-export function resolveOrderAssetId(asset: ResolvedOrderAsset): OrderAssetId {
-  return asset.positionId ?? asset.tokenId;
-}
-
-/** @internal */
-export function isPositionOrderAsset(
-  asset: ResolvedOrderAsset,
-): asset is Extract<ResolvedOrderAsset, { positionId: PositionId }> {
-  return asset.positionId !== undefined;
+    ? {
+        assetId: toPositionId(request.positionId),
+        exchangeVersion: ExchangeOrderProtocolVersion.V3,
+      }
+    : {
+        assetId: toTokenId(request.tokenId),
+        exchangeVersion: ExchangeOrderProtocolVersion.V2,
+      };
 }

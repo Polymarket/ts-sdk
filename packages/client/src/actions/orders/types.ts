@@ -15,32 +15,9 @@ import type {
 import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { SignOrderRequest } from '../../workflow';
+import type { OrderAsset, OrderRouting } from './asset';
 
-/**
- * Identifies the asset to trade. Provide exactly one identifier.
- */
-export type OrderAsset =
-  | {
-      /** Legacy conditional-token asset identifier. */
-      tokenId: string;
-      positionId?: never;
-    }
-  | {
-      /** Position asset identifier. */
-      positionId: string;
-      tokenId?: never;
-    };
-
-/** @internal */
-export type ResolvedOrderAsset =
-  | {
-      tokenId: TokenId;
-      positionId?: never;
-    }
-  | {
-      positionId: PositionId;
-      tokenId?: never;
-    };
+export type { OrderAsset } from './asset';
 
 type BasePrepareMarketOrderRequest = OrderAsset & {
   /** Optional builder attribution code. */
@@ -160,8 +137,7 @@ export type PrepareLimitOrderRequest = OrderAsset & {
   expiration?: number;
 };
 
-export type OrderDraft = {
-  asset: ResolvedOrderAsset;
+type BaseOrderDraft = {
   builderCode?: BuilderCode;
   chainId: number;
   exchangeAddress: EvmAddress;
@@ -173,6 +149,9 @@ export type OrderDraft = {
   signer: EvmAddress;
   requestedAmount: bigint;
 };
+
+/** @internal */
+export type OrderDraft = BaseOrderDraft & OrderRouting;
 
 /**
  * @internal
@@ -211,7 +190,7 @@ export type SignedOrder = {
   timestamp: string;
   /**
    * Asset identifier encoded in the exchange order. The protocol field is
-   * named `tokenId` for both legacy token IDs and position IDs.
+   * named `tokenId` for both CTF token IDs and Polymarket V2 position IDs.
    */
   tokenId: PositionId | TokenId;
   signature: EvmSignature | Erc1271Signature;
