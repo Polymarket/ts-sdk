@@ -259,6 +259,9 @@ export type SecureRfqActions = {
    * instead of executing twice. After such a retry `takerOrderHash` is absent
    * because the retried order was not the one recorded.
    *
+   * The quote must be accepted with the same client instance that requested
+   * it; the client retains the signed-order inputs until they are needed here.
+   *
    * @throws {@link AcceptComboQuoteError}
    * Thrown on failure.
    *
@@ -271,7 +274,10 @@ export type SecureRfqActions = {
    * });
    *
    * if (result.quote !== null) {
-   *   const acceptance = await client.acceptComboQuote(result);
+   *   const acceptance = await client.acceptComboQuote({
+   *     rfqId: result.rfqId,
+   *     quoteId: result.quote.quoteId,
+   *   });
    * }
    * ```
    */

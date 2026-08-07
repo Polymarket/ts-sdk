@@ -50,6 +50,18 @@ export enum RfqStatus {
  * `cause`.
  */
 export enum RfqRejectionCode {
+  /** The request body could not be decoded as JSON. */
+  InvalidJson = 'INVALID_JSON',
+  /** The request message is malformed. */
+  InvalidMessage = 'INVALID_MESSAGE',
+  /** The authenticated role is not valid for this request. */
+  InvalidRole = 'INVALID_ROLE',
+  /** The authenticated role is not authorized for this request. */
+  UnauthorizedRole = 'UNAUTHORIZED_ROLE',
+  /** Authentication credentials are missing or invalid. */
+  Unauthenticated = 'UNAUTHENTICATED',
+  /** The authenticated address does not match the request. */
+  AddressMismatch = 'ADDRESS_MISMATCH',
   /** The request is malformed or references invalid legs. */
   InvalidRfq = 'INVALID_RFQ',
   /** The legs are mutually exclusive (e.g. YES and NO on the same market). */
@@ -62,6 +74,30 @@ export enum RfqRejectionCode {
   InvalidQuote = 'INVALID_QUOTE',
   /** The order signature failed verification. */
   InvalidSignature = 'INVALID_SIGNATURE',
+  /** The request identity is invalid. */
+  InvalidIdentity = 'INVALID_IDENTITY',
+  /** The RFQ does not exist for the authenticated requester. */
+  UnknownRfq = 'UNKNOWN_RFQ',
+  /** The RFQ acceptance window has expired. */
+  ExpiredRfq = 'EXPIRED_RFQ',
+  /** The RFQ is not in a state that permits this operation. */
+  InvalidRfqState = 'INVALID_RFQ_STATE',
+  /** The quote does not match the RFQ being accepted. */
+  QuoteMismatch = 'QUOTE_MISMATCH',
+  /** The submission window is closed. */
+  SubmissionWindowClosed = 'SUBMISSION_WINDOW_CLOSED',
+  /** A required service is temporarily unavailable. */
+  ServiceUnavailable = 'SERVICE_UNAVAILABLE',
+  /** Balance reservation failed before execution. */
+  PreExecutionBalanceReservationFailed = 'PRE_EXECUTION_BALANCE_RESERVATION_FAILED',
+  /** The requester does not have sufficient balance. */
+  BalanceValidationFailed = 'BALANCE_VALIDATION_FAILED',
+  /** The requester does not have sufficient allowance. */
+  AllowanceValidationFailed = 'ALLOWANCE_VALIDATION_FAILED',
+  /** The accepted trade could not be submitted for execution. */
+  TradeSubmissionFailed = 'TRADE_SUBMISSION_FAILED',
+  /** The request failed without a more specific classification. */
+  RequestFailed = 'REQUEST_FAILED',
 }
 
 /** Reason no quote was returned for a combo quote request. */

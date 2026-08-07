@@ -1,6 +1,7 @@
 import type {
+  BaseUnits,
   BuilderCode,
-  ComboConditionId,
+  DecimalString,
   EpochMilliseconds,
   PositionId,
   TxHash,
@@ -8,7 +9,6 @@ import type {
 import {
   OrderSide,
   toBaseUnits,
-  toBuilderCode,
   toPositionId,
   toRfqId,
   toRfqQuoteId,
@@ -48,7 +48,7 @@ import {
   type RfqTrade,
 } from '@polymarket/bindings/combos';
 import type { EvmSignature } from '@polymarket/types';
-import { delay, invariant, PolymarketError, unwrap } from '@polymarket/types';
+import { delay, PolymarketError, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -426,6 +426,7 @@ const ACCEPT_OUTCOME_TIMEOUT_MS = 30_000;
 const ACCEPT_OUTCOME_POLL_INTERVAL_MS = 500;
 const DEFAULT_FILL_TIMEOUT_MS = 30_000;
 const DEFAULT_FILL_POLL_INTERVAL_MS = 1_000;
+const MAX_COMBO_QUOTE_ACCEPTANCE_CONTEXTS = 100;
 const BYTES32_ZERO =
   '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
 
@@ -502,10 +503,11 @@ function toRfqRejectionCode(code: string | undefined): RfqRejectionCode {
 }
 
 function assertBuilderAuthorization(client: BaseSecureClient): void {
-  invariant(
-    client.hasBuilderApiKey,
-    'Combo RFQ requests require a Builder API Key in the client configuration, via builderApiKey(...) or remoteBuilderSigning(...).',
-  );
+  if (!client.hasBuilderApiKey) {
+    throw new UserInputError(
+      'Combo RFQ requests require a Builder API Key in the client configuration, via builderApiKey(...) or remoteBuilderSigning(...).',
+    );
+  }
 }
 
 const ComboLegPositionIdsSchema = z
@@ -513,7 +515,7 @@ const ComboLegPositionIdsSchema = z
     z
       .string()
       .regex(/^\d+$/, 'Leg position IDs must be numeric strings.')
-      .transform(toPositionId),
+      .transform((value) => toPositionId(BigInt(value).toString())),
   )
   .min(2, 'Combo requests require at least 2 legs.')
   .max(50, 'Combo requests allow at most 50 legs.')
@@ -545,8 +547,7 @@ const ComboAmountToBaseUnitsSchema = z
       return z.NEVER;
     }
 
-    const scaledValue =
-      BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+    const scaledValue = scaleE6DecimalParts(whole, fraction);
 
     if (scaledValue <= 0n) {
       context.addIssue({
@@ -559,11 +560,35 @@ const ComboAmountToBaseUnitsSchema = z
     return scaledValue.toString();
   });
 
+function scaleE6DecimalParts(whole: string, fraction: string): bigint {
+  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
+}
+
+function decimalStringToBaseUnits(value: DecimalString): BaseUnits {
+  const [whole = '0', fraction = ''] = value.split('.');
+  return toBaseUnits(scaleE6DecimalParts(whole, fraction).toString());
+}
+
 /** The winning quote for a combo quote request. */
 export type ComboQuote = BuilderRfqQuote & {
   /** Acceptance deadline (Unix ms). */
   expiresAt: EpochMilliseconds;
 };
+
+type ComboQuoteAcceptanceContext = {
+  builderCode: BuilderCode;
+  direction: OrderSide;
+  makerAmount: BaseUnits;
+  positionId: PositionId;
+  quoteId: RfqQuoteId;
+  rfqId: RfqId;
+  takerAmount: BaseUnits;
+};
+
+const comboQuoteAcceptanceContexts = new WeakMap<
+  BaseSecureClient,
+  Map<string, ComboQuoteAcceptanceContext>
+>();
 
 export type RequestComboQuoteParams = {
   /** Position IDs of the combo legs. Between 2 and 50, no duplicates. */
@@ -606,18 +631,6 @@ export type RequestComboQuoteResult =
 
       /** The winning quote. */
       quote: ComboQuote;
-
-      /** Trade direction of the request, echoed for the acceptance order. */
-      direction: OrderSide;
-
-      /** Combo YES position the acceptance order trades. */
-      positionId: PositionId;
-
-      /** Combo condition backing the position. */
-      conditionId: ComboConditionId;
-
-      /** Builder code the acceptance order must carry. */
-      builderCode: BuilderCode;
     }
   | {
       rfqId: RfqId;
@@ -717,11 +730,17 @@ export async function requestComboQuote(
   );
 
   if ('quote' in response) {
-    return {
+    rememberComboQuoteAcceptance(client, {
       builderCode: response.builderCode,
-      conditionId: response.conditionId,
       direction: input.direction,
+      makerAmount: decimalStringToBaseUnits(response.quote.makerAmount),
       positionId: response.yesPositionId,
+      quoteId: response.quote.quoteId,
+      rfqId: response.rfqId,
+      takerAmount: decimalStringToBaseUnits(response.quote.takerAmount),
+    });
+
+    return {
       quote: { ...response.quote, expiresAt: response.expiresAt },
       rfqId: response.rfqId,
     };
@@ -762,35 +781,8 @@ export type AcceptComboQuoteParams = {
   /** RFQ identifier returned by the quote request. */
   rfqId: string;
 
-  /** Trade direction of the original request. */
-  direction: OrderSide;
-
-  /** Combo YES position the acceptance order trades. */
-  positionId: string;
-
-  /** Builder code attached to the signed acceptance order. */
-  builderCode: string;
-
-  /** The winning quote to accept. */
-  quote: {
-    quoteId: string;
-
-    /**
-     * Maker amount of the acceptance order, as returned with the quote.
-     *
-     * For a BUY this is collateral in USDC; for a SELL it is outcome tokens.
-     * Human-readable amounts, not 6-decimal base units.
-     */
-    makerAmount: number | string;
-
-    /**
-     * Taker amount of the acceptance order, as returned with the quote.
-     *
-     * For a BUY this is outcome tokens; for a SELL it is collateral in USDC.
-     * Human-readable amounts, not 6-decimal base units.
-     */
-    takerAmount: number | string;
-  };
+  /** Winning quote identifier returned by the quote request. */
+  quoteId: string;
 };
 
 export type AcceptComboQuoteResult =
@@ -816,26 +808,57 @@ export type AcceptComboQuoteResult =
     };
 
 const AcceptComboQuoteParamsSchema = z.object({
-  builderCode: z
-    .string()
-    .regex(/^0x[0-9a-fA-F]{64}$/, 'builderCode must be a 32-byte hex string.')
-    .transform(toBuilderCode),
-  direction: z.enum(OrderSide),
-  positionId: z
-    .string()
-    .regex(/^\d+$/, 'positionId must be a numeric string.')
-    .transform(toPositionId),
-  quote: z.object({
-    makerAmount: ComboAmountToBaseUnitsSchema,
-    quoteId: z.string().min(1).transform(toRfqQuoteId),
-    takerAmount: ComboAmountToBaseUnitsSchema,
-  }),
+  quoteId: z.string().min(1).transform(toRfqQuoteId),
   rfqId: z.string().min(1).transform(toRfqId),
 });
 
 type ParsedAcceptComboQuoteParams = z.infer<
   typeof AcceptComboQuoteParamsSchema
 >;
+
+function rememberComboQuoteAcceptance(
+  client: BaseSecureClient,
+  context: ComboQuoteAcceptanceContext,
+): void {
+  let contexts = comboQuoteAcceptanceContexts.get(client);
+
+  if (contexts === undefined) {
+    contexts = new Map();
+    comboQuoteAcceptanceContexts.set(client, contexts);
+  }
+
+  const key = comboQuoteAcceptanceKey(context.rfqId, context.quoteId);
+  contexts.delete(key);
+  contexts.set(key, context);
+
+  if (contexts.size <= MAX_COMBO_QUOTE_ACCEPTANCE_CONTEXTS) return;
+
+  const oldestKey = contexts.keys().next().value;
+  if (oldestKey !== undefined) {
+    contexts.delete(oldestKey);
+  }
+}
+
+function resolveComboQuoteAcceptance(
+  client: BaseSecureClient,
+  params: ParsedAcceptComboQuoteParams,
+): ComboQuoteAcceptanceContext {
+  const context = comboQuoteAcceptanceContexts
+    .get(client)
+    ?.get(comboQuoteAcceptanceKey(params.rfqId, params.quoteId));
+
+  if (context === undefined) {
+    throw new UserInputError(
+      `No quote ${params.quoteId} for RFQ ${params.rfqId} was requested with this client instance.`,
+    );
+  }
+
+  return context;
+}
+
+function comboQuoteAcceptanceKey(rfqId: RfqId, quoteId: RfqQuoteId): string {
+  return JSON.stringify([rfqId, quoteId]);
+}
 
 export type AcceptComboQuoteError =
   | CancelledSigningError
@@ -874,6 +897,9 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * instead of executing twice. After such a retry `takerOrderHash` is absent
  * because the retried order was not the one recorded.
  *
+ * The quote must be accepted with the same client instance that requested it;
+ * the client retains the signed-order inputs until they are needed here.
+ *
  * @throws {@link AcceptComboQuoteError}
  * Thrown on failure.
  *
@@ -886,7 +912,10 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * });
  *
  * if (result.quote !== null) {
- *   const acceptance = await acceptComboQuote(client, result);
+ *   const acceptance = await acceptComboQuote(client, {
+ *     rfqId: result.rfqId,
+ *     quoteId: result.quote.quoteId,
+ *   });
  * }
  * ```
  */
@@ -896,15 +925,16 @@ export async function acceptComboQuote(
 ): Promise<AcceptComboQuoteResult> {
   const input = parseUserInput(params, AcceptComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
+  const acceptanceContext = resolveComboQuoteAcceptance(client, input);
 
   const domain = createExchangeV3OrderDomain({
     chainId: client.environment.chainId,
     exchange: client.environment.contracts.exchangeV3,
   });
-  const order = createComboAcceptanceOrder(client, input);
+  const order = createComboAcceptanceOrder(client, acceptanceContext);
   const signedOrder = await signComboAcceptanceOrder(client, domain, order);
   const request: BuilderRfqAcceptRequest = {
-    quote_id: input.quote.quoteId,
+    quote_id: input.quoteId,
     signed_order: signedOrder,
   };
 
@@ -1011,20 +1041,20 @@ function toComboAcceptFailureReason(
 
 function createComboAcceptanceOrder(
   client: BaseSecureClient,
-  input: ParsedAcceptComboQuoteParams,
+  input: ComboQuoteAcceptanceContext,
 ): Omit<RfqSignedOrder, 'signature'> {
   const identity = resolveOrderIdentity(client.account);
 
   return {
     builder: input.builderCode,
     maker: identity.maker,
-    makerAmount: toBaseUnits(input.quote.makerAmount),
+    makerAmount: input.makerAmount,
     metadata: BYTES32_ZERO,
     salt: generateExchangeOrderSalt().toString(),
     side: encodeExchangeOrderSide(input.direction),
     signatureType: identity.signatureType,
     signer: identity.signer,
-    takerAmount: toBaseUnits(input.quote.takerAmount),
+    takerAmount: input.takerAmount,
     timestamp: Math.floor(Date.now() / 1000).toString(),
     tokenId: input.positionId,
   };

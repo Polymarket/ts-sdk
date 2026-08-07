@@ -105,6 +105,20 @@ describe('BuilderRfqStatusResponseSchema', () => {
     });
   });
 
+  it('preserves error codes introduced after this SDK version', () => {
+    expect(
+      BuilderRfqStatusResponseSchema.parse({
+        rfq_id: 'rfq-1',
+        status: 'FAILED',
+        error: { code: 'SOMETHING_NEW', message: 'something new' },
+      }),
+    ).toMatchObject({
+      error: { code: 'SOMETHING_NEW', message: 'something new' },
+      rfqId: 'rfq-1',
+      status: RfqStatus.Failed,
+    });
+  });
+
   it('rejects unknown status values', () => {
     expect(
       BuilderRfqStatusResponseSchema.safeParse({
