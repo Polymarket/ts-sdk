@@ -84,9 +84,17 @@ export type MarketState = {
   closedTime?: IsoDateTimeString | null;
 };
 
+/**
+ * A normalized binary market outcome.
+ *
+ * `tokenId` and `positionId` are independently nullable: either, neither, or
+ * both may be present.
+ */
 export type MarketOutcome = {
   label: string;
+  /** CTF token ID for this outcome, or `null` when one is not available. */
   tokenId: TokenId | null;
+  /** Polymarket V2 position ID for this outcome, or `null` when one is not available. */
   positionId: PositionId | null;
   price: DecimalString | null;
 };
