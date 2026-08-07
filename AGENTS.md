@@ -115,12 +115,14 @@
 
 - Default client tests to integration-style coverage.
 - Do not mock API responses unless explicitly requested or unless mocking is necessary to isolate a boundary under test.
-- Never build local fake-client helpers by casting partial objects to `BaseClient` or `BaseSecureClient` and stubbing transport responses. Those fixtures can silently diverge from upstream behavior.
+- Never create client fixtures solely to satisfy an action signature. This includes casting partial objects to `BaseClient` or `BaseSecureClient`, and instantiating real clients with dummy environments, credentials, signers, or unrelated dependencies. A real client class backed by fabricated configuration is still a fake-client fixture when the behavior under test does not require the client.
 - Prove cross-boundary behavior such as request counts, caching, retries, and pagination in `packages/client/tests/integration` with real clients and live APIs. Observing the real network with a `fetch` spy is fine; replacing responses is not.
 - When stateful policy requires controlled time or failures, extract it behind a consumer-defined, domain-typed dependency seam and unit test that logic without clients, transports, responses, or wire-format fixtures.
 - For tests involving async iterators, especially integration tests, prefer idiomatic consumer usage such as `for await (...)` so the test reads like final SDK DX. Manual iterator calls like `iterator.next()` are acceptable in unit tests or narrow cases where they make the behavior materially easier to isolate or understand.
 - Add tests when they protect user-facing behavior, public API contracts, integration boundaries, or regressions that are likely to recur.
 - Do not add tests reflexively for every small implementation change. For narrow schema or mechanical changes, prefer existing broader coverage plus `typecheck` or build verification when that gives enough confidence.
+- Do not add production exports, dependency seams, or constructor-heavy setup solely to test a private schema or simple predicate.
+- Validation tests should protect a non-obvious public contract, cross-field rule, transformation, or demonstrated regression. Tests that merely repeat a literal Zod refinement or verify that a newly added error-union member is recognized are usually low signal.
 - Prefer extending an existing high-signal test suite over creating a new narrow unit-test file.
 - A good test should catch a plausible future regression, not just prove that the current diff works.
 
