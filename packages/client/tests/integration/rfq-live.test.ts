@@ -15,7 +15,8 @@ describe('RFQ live quoting integration', () => {
     { timeout: 180_000 },
     async ({ secureClientWithDepositWallet, annotate }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
-      const inFlightQuotes = new Set<Promise<unknown>>();
+      const inFlightQuotes = new Set<Promise<void>>();
+      let acceptedQuoteCount = 0;
       let confirmedExecution = false;
 
       try {
@@ -31,8 +32,15 @@ describe('RFQ live quoting integration', () => {
               continue;
             }
 
-            const quote: Promise<unknown> = event
+            const quote: Promise<void> = event
               .quote({ price: 0.1, size: 0.01 })
+              .then(() => {
+                acceptedQuoteCount += 1;
+
+                if (acceptedQuoteCount === 1 && !confirmedExecution) {
+                  annotate('Accepted an RFQ quote');
+                }
+              })
               .catch((error) => {
                 if (confirmedExecution) {
                   return;
@@ -74,7 +82,9 @@ describe('RFQ live quoting integration', () => {
         }
 
         await Promise.all(inFlightQuotes);
-        throw new Error('RFQ session ended without a confirmed execution.');
+        throw new Error(
+          `RFQ session ended without a confirmed execution after accepting ${acceptedQuoteCount} quotes.`,
+        );
       } finally {
         await secureClientWithDepositWallet.closeSubscriptions();
       }
