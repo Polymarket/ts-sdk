@@ -2,4 +2,5 @@
 "@polymarket/client": patch
 ---
 
-Keep unrestricted RFQ salt generation local to the RFQ order flow.
+Keep unrestricted RFQ salt generation local and reject CLOB order salts that
+cannot be serialized exactly as JavaScript numbers.
