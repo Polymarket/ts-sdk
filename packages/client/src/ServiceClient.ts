@@ -1,11 +1,6 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
-import {
-  RateLimitError,
-  RequestRejectedError,
-  TradingRestriction,
-  TransportError,
-} from './errors';
+import { RateLimitError, RequestRejectedError, TransportError } from './errors';
 
 export type ServiceRequest = {
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
@@ -32,29 +27,42 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-export type ServiceClientGetOptions = {
+export type ServiceRejectedResponse = {
+  body: Record<string, unknown>;
+  message: string;
+  retryAfter?: number;
+  status: number;
+};
+
+export type ServiceRejectedResponseMapper = (
+  response: ServiceRejectedResponse,
+) => RequestRejectedError | undefined;
+
+type ServiceClientRequestOptions = {
+  /** Maps service-specific rejection responses at the owning action boundary. */
+  mapRejectedResponse?: ServiceRejectedResponseMapper;
+  timeout?: ServiceClientTimeout;
+};
+
+export type ServiceClientGetOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPostOptions = {
+export type ServiceClientPostOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPatchOptions = {
+export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientDeleteOptions = {
+export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -127,7 +135,10 @@ export class ServiceClient {
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
-    return this.#toResult(this.#send(method, path, options));
+    return this.#toResult(
+      this.#send(method, path, options),
+      options.mapRejectedResponse,
+    );
   }
 
   async #send(
@@ -205,12 +216,10 @@ export class ServiceClient {
 
   #toResult(
     promise: Promise<Response>,
+    mapRejectedResponse?: ServiceRejectedResponseMapper,
   ): ResultAsync<
     Response,
-    | RateLimitError
-    | RequestRejectedError
-    | RequestRejectedError
-    | TransportError
+    RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
@@ -234,8 +243,19 @@ export class ServiceClient {
           response,
           errorBody,
         );
+
+        const mappedError = mapRejectedResponse?.({
+          body: errorBody,
+          message,
+          retryAfter,
+          status: response.status,
+        });
+
+        if (mappedError !== undefined) {
+          throw mappedError;
+        }
+
         throw new RequestRejectedError(message, {
-          restriction: this.#detectTradingRestriction(response, errorBody),
           retryAfter,
           status: response.status,
         });
@@ -273,33 +293,6 @@ export class ServiceClient {
     }
 
     return value;
-  }
-
-  #detectTradingRestriction(
-    response: Response,
-    errorBody: Record<string, unknown>,
-  ): TradingRestriction | undefined {
-    if (response.status === 425) {
-      return TradingRestriction.RESTARTING;
-    }
-
-    if (response.status !== 503) {
-      return undefined;
-    }
-
-    if (errorBody.code === 'post_only_mode') {
-      return TradingRestriction.POST_ONLY;
-    }
-
-    // Cancel-only responses carry no structured code, only the message text.
-    if (
-      typeof errorBody.error === 'string' &&
-      errorBody.error.includes('cancel-only')
-    ) {
-      return TradingRestriction.CANCEL_ONLY;
-    }
-
-    return undefined;
   }
 
   async #readJsonErrorBody(

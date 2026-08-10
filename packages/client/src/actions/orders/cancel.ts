@@ -16,6 +16,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import { mapTradingRestrictionResponse } from './restrictions';
 
 const CancelOrderRequestSchema = z.object({
   orderId: z.string(),
@@ -224,6 +225,7 @@ async function cancel(
     client.secureClob
       .del(path, {
         json: payload,
+        mapRejectedResponse: mapTradingRestrictionResponse,
       })
       .andThen(validateWith(CancelOrdersResponseSchema)),
   );

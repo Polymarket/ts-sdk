@@ -2,7 +2,7 @@ import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { TradingRestriction } from './errors';
+import { RequestRejectedError } from './errors';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -242,7 +242,7 @@ describe('ServiceClient', () => {
     });
   });
 
-  it('flags matching-engine restarts on HTTP 425 responses without a body', async () => {
+  it('does not apply service-specific policy to rejected responses', async () => {
     server.use(
       http.post(
         `${root}/restarting`,
@@ -253,12 +253,12 @@ describe('ServiceClient', () => {
 
     await expect(unwrap(client.post('/restarting'))).rejects.toMatchObject({
       name: 'RequestRejectedError',
-      restriction: TradingRestriction.RESTARTING,
+      restriction: undefined,
       status: 425,
     });
   });
 
-  it('flags post-only mode and exposes the body retry delay', async () => {
+  it('provides response metadata to request-owned rejection mappers', async () => {
     server.use(
       http.post(`${root}/post-only`, () =>
         HttpResponse.json(
@@ -274,9 +274,22 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+    await expect(
+      unwrap(
+        client.post('/post-only', {
+          mapRejectedResponse: (response) =>
+            new RequestRejectedError(
+              `${String(response.body.code)}: ${response.message}`,
+              {
+                retryAfter: response.retryAfter,
+                status: response.status,
+              },
+            ),
+        }),
+      ),
+    ).rejects.toMatchObject({
+      message: `post_only_mode: post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
       name: 'RequestRejectedError',
-      restriction: TradingRestriction.POST_ONLY,
       retryAfter: 79,
       status: 503,
     });
@@ -302,30 +315,7 @@ describe('ServiceClient', () => {
       unwrap(client.post('/post-only-header')),
     ).rejects.toMatchObject({
       name: 'RequestRejectedError',
-      restriction: TradingRestriction.POST_ONLY,
       retryAfter: 80,
-      status: 503,
-    });
-  });
-
-  it('flags cancel-only mode on HTTP 503 responses', async () => {
-    server.use(
-      http.post(`${root}/cancel-only`, () =>
-        HttpResponse.json(
-          {
-            error:
-              'Trading is currently cancel-only. New orders are not accepted, but cancels are allowed.',
-          },
-          { status: 503 },
-        ),
-      ),
-    );
-    const client = new ServiceClient({ root });
-
-    await expect(unwrap(client.post('/cancel-only'))).rejects.toMatchObject({
-      name: 'RequestRejectedError',
-      restriction: TradingRestriction.CANCEL_ONLY,
-      retryAfter: undefined,
       status: 503,
     });
   });
