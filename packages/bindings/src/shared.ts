@@ -306,7 +306,14 @@ export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
 export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
-export const ConditionIdSchema = z.string().transform(toConditionId);
+export const ConditionIdSchema = z
+  .string()
+  .refine(
+    (value) =>
+      isHexString(value) && (value.length === 64 || value.length === 66),
+    'Expected a 31-byte or 32-byte hex string',
+  )
+  .transform((value) => value as ConditionId);
 // Upstream responses are required to contain usable hex, but their byte layout
 // does not determine the protocol. SDK-owned inputs retain stricter validation.
 export const ConditionIdResponseSchema = z.custom<ConditionId>(

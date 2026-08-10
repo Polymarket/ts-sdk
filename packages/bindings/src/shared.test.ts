@@ -33,6 +33,12 @@ describe('shared ID parsers', () => {
       expect(ConditionIdSchema.parse(ctfConditionId)).toBe(ctfConditionId);
     });
 
+    it('reports unsupported byte lengths as validation failures', () => {
+      const result = ConditionIdSchema.safeParse('0x1');
+
+      expect(result.success).toBe(false);
+    });
+
     it('keeps CtfConditionId as an exact compatibility alias', () => {
       expectTypeOf<ConditionId>().toEqualTypeOf<CtfConditionId>();
     });
