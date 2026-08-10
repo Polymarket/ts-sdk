@@ -1,11 +1,11 @@
 import { createPublicClient, UserInputError } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
-import { describe, expect, it } from './fixtures';
+import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const {
   items: [event],
-} = await createPublicClient()
+} = await createPublicClient({ environment })
   .listEvents({
     closed: false,
     pageSize: 1,
