@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import {
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
   type DecimalString,
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
@@ -18,8 +18,8 @@ export type BuilderTrade = {
   tradeType: string;
   takerOrderHash: string;
   builder: string;
-  /** CTF condition id for the market associated with this trade. */
-  conditionId: CtfConditionId;
+  /** Condition ID for the market associated with this trade. */
+  conditionId: ConditionId;
   tokenId: TokenId;
   side: OrderSide;
   size: DecimalString;
@@ -46,7 +46,7 @@ export const BuilderTradeSchema = z
     tradeType: z.string(),
     takerOrderHash: z.string(),
     builder: z.string(),
-    market: CtfConditionIdSchema,
+    market: ConditionIdSchema,
     assetId: TokenIdSchema,
     side: OrderSideSchema,
     size: DecimalStringSchema,

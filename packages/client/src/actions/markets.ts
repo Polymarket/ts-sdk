@@ -1,5 +1,5 @@
 import {
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
   PositionIdSchema,
@@ -53,7 +53,7 @@ const ListMarketsRequestSchema = z.object({
   clobTokenIds: z.array(z.string()).optional(),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
-  conditionIds: z.array(CtfConditionIdSchema).optional(),
+  conditionIds: z.array(ConditionIdSchema).optional(),
   cyom: z.boolean().optional(),
   decimalized: z.boolean().optional(),
   endDateMax: IsoDateTimeStringSchema.optional(),
@@ -243,7 +243,7 @@ export function listMarkets(
 const ListComboMarketsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.max(100).optional(),
-  exclude: z.array(CtfConditionIdSchema).optional(),
+  exclude: z.array(ConditionIdSchema).optional(),
 });
 
 export type ListComboMarketsRequest = z.input<

@@ -10,7 +10,7 @@ import {
 } from '../clob/signature-type';
 import type {
   BaseUnits,
-  CtfConditionId,
+  ConditionId,
   DecimalString,
   EvmAddress,
   MarketId,
@@ -18,7 +18,7 @@ import type {
 } from '../shared';
 import {
   ComboConditionIdSchema,
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   DecimalStringSchema,
   E6BigIntStringToDecimalStringSchema,
   EpochMillisecondsSchema,
@@ -148,7 +148,7 @@ const RfqErrorCodeSchema = z.string().transform((value): RfqErrorCode => value);
 
 export type ComboMarket = {
   id: MarketId;
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   slug: string;
   title: string;
   outcomes: ComboMarketOutcomes;
@@ -171,7 +171,7 @@ export type ComboMarketOutcomes = {
 const ComboMarketSchema = z
   .object({
     id: MarketIdSchema,
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
     position_ids: z.array(PositionIdSchema),
     slug: z.string(),
     title: z.string(),
