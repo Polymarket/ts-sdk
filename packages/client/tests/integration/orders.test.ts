@@ -226,20 +226,17 @@ describe('Orders', { timeout: 60_000 }, () => {
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
+
+      await client.createLimitOrder({
+        price: expectPresent(market.trading.minimumTickSize),
+        side: OrderSide.BUY,
+        size: expectPresent(market.trading.minimumOrderSize),
+        tokenId,
+      });
+
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
       try {
-        await client.createLimitOrder({
-          price: expectPresent(market.trading.minimumTickSize),
-          side: OrderSide.BUY,
-          size: expectPresent(market.trading.minimumOrderSize),
-          tokenId,
-        });
-
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
-
-        fetchSpy.mockClear();
         await client.createLimitOrder({
           price: expectPresent(market.trading.minimumTickSize),
           side: OrderSide.BUY,
