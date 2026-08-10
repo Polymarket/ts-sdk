@@ -1,6 +1,7 @@
 import {
   createSecureClient,
   SigningError,
+  UserInputError,
   WalletType,
 } from '@polymarket/client';
 import { ZERO_ADDRESS } from '@polymarket/types';
@@ -42,6 +43,28 @@ describe('Approvals', () => {
         ).toBe(true);
         expect(rpcMethods.length).toBeGreaterThan(0);
         expect(rpcMethods.every((method) => method === 'eth_call')).toBe(true);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('SecureClient.getTradingApprovalsState', () => {
+    it('rejects invalid input before reading approval state', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        for (const request of [null, { wallet: null }]) {
+          await expect(
+            secureClientWithDepositWallet.getTradingApprovalsState(
+              request as never,
+            ),
+          ).rejects.toBeInstanceOf(UserInputError);
+        }
+
+        expect(fetchSpy).not.toHaveBeenCalled();
       } finally {
         fetchSpy.mockRestore();
       }
