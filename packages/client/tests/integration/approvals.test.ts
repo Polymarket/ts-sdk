@@ -9,7 +9,7 @@ import { vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 describe('Approvals', () => {
-  describe('PublicClient.getTradingApprovalsState', () => {
+  describe('PublicClient.fetchTradingApprovalsState', () => {
     it('reads missing approvals without a signer or write operation', async ({
       publicClient,
     }) => {
@@ -31,7 +31,7 @@ describe('Approvals', () => {
         });
 
       try {
-        const state = await publicClient.getTradingApprovalsState({
+        const state = await publicClient.fetchTradingApprovalsState({
           wallet: ZERO_ADDRESS,
         });
 
@@ -49,7 +49,7 @@ describe('Approvals', () => {
     });
   });
 
-  describe('SecureClient.getTradingApprovalsState', () => {
+  describe('SecureClient.fetchTradingApprovalsState', () => {
     it('rejects invalid input before reading approval state', async ({
       secureClientWithDepositWallet,
     }) => {
@@ -58,7 +58,7 @@ describe('Approvals', () => {
       try {
         for (const request of [null, { wallet: null }]) {
           await expect(
-            secureClientWithDepositWallet.getTradingApprovalsState(
+            secureClientWithDepositWallet.fetchTradingApprovalsState(
               request as never,
             ),
           ).rejects.toBeInstanceOf(UserInputError);

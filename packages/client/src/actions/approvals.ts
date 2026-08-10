@@ -314,12 +314,12 @@ export type TradingApprovalRequirements = {
   erc1155: Erc1155TradingApproval[];
 };
 
-const GetTradingApprovalsStateRequestSchema = z.object({
+const FetchTradingApprovalsStateRequestSchema = z.object({
   wallet: EvmAddressSchema,
 });
 
-export type GetTradingApprovalsStateRequest = z.input<
-  typeof GetTradingApprovalsStateRequestSchema
+export type FetchTradingApprovalsStateRequest = z.input<
+  typeof FetchTradingApprovalsStateRequestSchema
 >;
 
 /** The current trading approval state for a wallet. */
@@ -328,12 +328,12 @@ export type TradingApprovalsState = {
   missing: TradingApprovalRequirements;
 };
 
-export type GetTradingApprovalsStateError =
+export type FetchTradingApprovalsStateError =
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const GetTradingApprovalsStateError = makeErrorGuard(
+export const FetchTradingApprovalsStateError = makeErrorGuard(
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -348,7 +348,7 @@ export const GetTradingApprovalsStateError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const state = await getTradingApprovalsState(client, {
+ * const state = await fetchTradingApprovalsState(client, {
  *   wallet: '0x1234…',
  * });
  *
@@ -357,16 +357,16 @@ export const GetTradingApprovalsStateError = makeErrorGuard(
  * }
  * ```
  *
- * @throws {@link GetTradingApprovalsStateError}
+ * @throws {@link FetchTradingApprovalsStateError}
  * Thrown on failure.
  */
-export async function getTradingApprovalsState(
+export async function fetchTradingApprovalsState(
   client: BaseClient,
-  request: GetTradingApprovalsStateRequest,
+  request: FetchTradingApprovalsStateRequest,
 ): Promise<TradingApprovalsState> {
   const { wallet } = parseUserInput(
     request,
-    GetTradingApprovalsStateRequestSchema,
+    FetchTradingApprovalsStateRequestSchema,
   );
   const missing = await resolveMissingTradingApprovals(client, wallet);
 
