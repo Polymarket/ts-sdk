@@ -1,11 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { ComboConditionIdSchema, toComboConditionId } from './shared';
+import {
+  ComboConditionIdSchema,
+  EvmAddressSchema,
+  toComboConditionId,
+} from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
   '0x032def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000';
 const COMBO_CONDITION_ID_PATTERN = /^0x03[0-9a-f]{60}$/;
 
 describe('shared ID parsers', () => {
+  describe('EvmAddressSchema', () => {
+    it('reports malformed addresses as validation failures', () => {
+      const result = EvmAddressSchema.safeParse('not-an-address');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues).toEqual([
+          expect.objectContaining({ message: 'Expected an EVM address' }),
+        ]);
+      }
+    });
+  });
+
   describe('toComboConditionId', () => {
     it('returns canonical bytes31 combo condition IDs', () => {
       for (const value of [

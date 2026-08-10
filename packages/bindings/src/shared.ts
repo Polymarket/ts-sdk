@@ -1,6 +1,5 @@
 import {
   type EvmAddress,
-  expectEvmAddress,
   expectTxHash,
   type HexString,
   isHexString,
@@ -505,7 +504,7 @@ export const OptionalDecimalStringSchema = z.preprocess(
 );
 
 function toEvmAddress(value: string): EvmAddress {
-  return expectEvmAddress(value);
+  return toTaggedString<EvmAddress>(value);
 }
 
 function toTxHash(value: string): TxHash {
