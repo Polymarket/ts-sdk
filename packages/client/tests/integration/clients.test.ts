@@ -8,8 +8,10 @@ describe('clients', () => {
     it('authenticates a secure client from an authentication workflow', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -20,8 +22,10 @@ describe('clients', () => {
     it('authenticates with a non-zero nonce', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 1,
@@ -33,8 +37,10 @@ describe('clients', () => {
     it('authenticates twice with the same nonce', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const firstClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 2,
@@ -43,6 +49,7 @@ describe('clients', () => {
       await expect(fetchApiKeys(firstClient)).resolves.toBeDefined();
 
       const secondClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 2,
@@ -54,9 +61,11 @@ describe('clients', () => {
     it('classifies a deterministic proxy wallet as POLY_PROXY', async ({
       proxyWalletAddress,
       proxyWalletSigner,
+      environment,
     }) => {
       const signerAddress = await proxyWalletSigner.getAddress();
       const secureClient = await createSecureClient({
+        environment,
         signer: proxyWalletSigner,
         wallet: proxyWalletAddress,
       });
@@ -71,9 +80,11 @@ describe('clients', () => {
     it('defaults omitted wallet to the current Deposit Wallet', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const signerAddress = await depositWalletSigner.getAddress();
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
       });
 
@@ -85,10 +96,11 @@ describe('clients', () => {
 
     it.runIf(runMeteredTests)(
       'deploys the default Deposit Wallet when omitted wallet is not deployed',
-      async ({ builderAuthentication, randomEoaSigner }) => {
+      async ({ builderAuthentication, environment, randomEoaSigner }) => {
         const signerAddress = await randomEoaSigner.getAddress();
         const secureClient = await createSecureClient({
           apiKey: builderAuthentication,
+          environment,
           signer: randomEoaSigner,
         });
 
@@ -102,9 +114,11 @@ describe('clients', () => {
 
     it('rejects with InvariantError when wallet does not match signer or any supported derived wallet', async ({
       depositWalletSigner,
+      environment,
     }) => {
       await expect(
         createSecureClient({
+          environment,
           wallet: ZERO_ADDRESS,
           signer: depositWalletSigner,
         }),
@@ -114,13 +128,16 @@ describe('clients', () => {
     it('reuses stored credentials during authentication when they remain valid', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const initialClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
 
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         credentials: initialClient.credentials,
@@ -132,13 +149,16 @@ describe('clients', () => {
     it('falls back to fresh authentication when stored credentials have been revoked', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const controlClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 1997,
       });
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 1998,
@@ -151,6 +171,7 @@ describe('clients', () => {
       await secureClient.endAuthentication();
 
       const resumedClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         credentials,
@@ -168,13 +189,16 @@ describe('clients', () => {
     it('returns a public client and invalidates the secure client', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const controlClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 997,
       });
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 998,
@@ -200,8 +224,10 @@ describe('clients', () => {
     it('closes active subscription iterators before ending authentication', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
     }) => {
       const secureClient = await createSecureClient({
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
         nonce: 999,

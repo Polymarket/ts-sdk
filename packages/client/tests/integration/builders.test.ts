@@ -17,6 +17,7 @@ describe('Builders', () => {
         builderCode,
         depositWalletAddress,
         depositWalletSigner,
+        environment,
         publicClient,
       }) => {
         const existingTrades = await publicClient
@@ -36,6 +37,7 @@ describe('Builders', () => {
 
         const secureClient = await createSecureClient({
           apiKey: builderAuthentication,
+          environment,
           signer: depositWalletSigner,
           wallet: depositWalletAddress,
         });
