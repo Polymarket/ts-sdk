@@ -297,20 +297,27 @@ export const PrepareTradingApprovalsError = makeErrorGuard(
 
 /** An ERC-20 allowance required for supported trading workflows. */
 export type Erc20TradingApproval = {
+  /** Required allowance target, not the difference from the current allowance. */
   amount: bigint;
+  /** Address that must be allowed to spend the token. */
   spenderAddress: EvmAddress;
+  /** ERC-20 token whose allowance is required. */
   tokenAddress: EvmAddress;
 };
 
 /** An ERC-1155 operator approval required for supported trading workflows. */
 export type Erc1155TradingApproval = {
+  /** Address that must be approved to operate the token. */
   operatorAddress: EvmAddress;
+  /** ERC-1155 token whose operator approval is required. */
   tokenAddress: EvmAddress;
 };
 
 /** Trading approval requirements grouped by token standard. */
 export type TradingApprovalRequirements = {
+  /** Required ERC-20 allowances. */
   erc20: Erc20TradingApproval[];
+  /** Required ERC-1155 operator approvals. */
   erc1155: Erc1155TradingApproval[];
 };
 
@@ -324,7 +331,9 @@ export type FetchTradingApprovalsStateRequest = z.input<
 
 /** The current trading approval state for a wallet. */
 export type TradingApprovalsState = {
+  /** Whether the wallet satisfies every required trading approval. */
   isFullyApproved: boolean;
+  /** Approvals the wallet must grant to become fully approved. */
   missing: TradingApprovalRequirements;
 };
 
