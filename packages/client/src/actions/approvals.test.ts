@@ -11,7 +11,9 @@ import {
   MAX_UINT256,
 } from '../abis';
 import type { BaseSecureClient } from '../clients';
+import { walletActions } from '../decorators/wallet';
 import { production } from '../environments';
+import { UserInputError } from '../errors';
 import type { EthCallRequest } from '../rpc';
 import type { TransactionHandle } from '../types';
 import { prepareTradingApprovals } from './approvals';
@@ -119,6 +121,21 @@ describe('prepareTradingApprovals', () => {
   });
 });
 
+describe('SecureWalletActions.getTradingApprovalsState', () => {
+  it.each([
+    null,
+    { wallet: null },
+  ])('rejects invalid request input before reading approval state', async (request) => {
+    const { client, ethCallBatch } = createClient([]);
+    const actions = walletActions(client);
+
+    await expect(
+      actions.getTradingApprovalsState(request as never),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(ethCallBatch).not.toHaveBeenCalled();
+  });
+});
+
 function createClient(results: HexString[]) {
   const ethCallBatch = vi.fn(
     async (_calls: readonly EthCallRequest[]): Promise<HexString[]> => results,
@@ -126,6 +143,7 @@ function createClient(results: HexString[]) {
   const client = {
     account: { wallet, walletType: WalletType.EOA },
     environment: production,
+    isPublicClient: () => false,
     rpc: { ethCallBatch },
   } as unknown as BaseSecureClient;
 

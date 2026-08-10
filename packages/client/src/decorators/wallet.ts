@@ -1,3 +1,5 @@
+import { EvmAddressSchema } from '@polymarket/bindings';
+import { z } from 'zod';
 import {
   approveErc20,
   approveErc1155ForAll,
@@ -25,6 +27,7 @@ import type {
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+import { parseUserInput } from '../input';
 import type { TransactionHandle } from '../types';
 
 export type PublicWalletActions = {
@@ -49,14 +52,18 @@ export type PublicWalletActions = {
   ): Promise<TradingApprovalsState>;
 };
 
-export type SecureGetTradingApprovalsStateRequest = {
+const SecureGetTradingApprovalsStateRequestSchema = z.object({
   /**
    * Wallet address to inspect.
    *
    * @defaultValue `client.account.wallet`
    */
-  wallet?: string;
-};
+  wallet: EvmAddressSchema.optional(),
+});
+
+export type SecureGetTradingApprovalsStateRequest = z.input<
+  typeof SecureGetTradingApprovalsStateRequestSchema
+>;
 
 export type SecureWalletActions = {
   /**
@@ -340,12 +347,18 @@ export function walletActions(
 
   return {
     ...actions,
-    getTradingApprovalsState: (
+    getTradingApprovalsState: async (
       request: SecureGetTradingApprovalsStateRequest = {},
-    ) =>
-      getTradingApprovalsState(client, {
-        wallet: request.wallet ?? client.account.wallet,
-      }),
+    ) => {
+      const { wallet } = parseUserInput(
+        request,
+        SecureGetTradingApprovalsStateRequestSchema,
+      );
+
+      return getTradingApprovalsState(client, {
+        wallet: wallet ?? client.account.wallet,
+      });
+    },
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
