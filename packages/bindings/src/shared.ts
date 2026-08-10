@@ -151,6 +151,9 @@ export function toConditionId(value: string): ConditionId {
   return value as ConditionId;
 }
 
+/** @deprecated Use {@link toConditionId}. */
+export const toCtfConditionId = toConditionId;
+
 export function toComboConditionId(value: string): ComboConditionId {
   if (!isHexString(value)) {
     throw new TypeError(
@@ -314,6 +317,14 @@ export const ConditionIdSchema = z
     'Expected a 31-byte or 32-byte hex string',
   )
   .transform((value) => value as ConditionId);
+/** @deprecated Use {@link ConditionIdSchema}. */
+export const CtfConditionIdSchema = ConditionIdSchema;
+export const OptionalConditionIdSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  ConditionIdSchema.optional(),
+);
+/** @deprecated Use {@link OptionalConditionIdSchema}. */
+export const OptionalCtfConditionIdSchema = OptionalConditionIdSchema;
 // Unlike ConditionIdSchema, this validates hex syntax without constraining the
 // condition ID byte length.
 export const ConditionIdResponseSchema = z.custom<ConditionId>(
