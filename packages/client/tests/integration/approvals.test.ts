@@ -50,6 +50,32 @@ describe('Approvals', () => {
   });
 
   describe('SecureClient.fetchTradingApprovalsState', () => {
+    it('defaults to the authenticated account wallet', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const ethCallBatchSpy = vi.spyOn(
+        secureClientWithDepositWallet.rpc,
+        'ethCallBatch',
+      );
+      const encodedWallet = secureClientWithDepositWallet.account.wallet
+        .slice(2)
+        .toLowerCase();
+
+      try {
+        await secureClientWithDepositWallet.fetchTradingApprovalsState();
+
+        expect(ethCallBatchSpy).toHaveBeenCalledOnce();
+        const [requests] = ethCallBatchSpy.mock.calls[0] ?? [];
+        expect(
+          requests?.every(({ data }) =>
+            data.toLowerCase().includes(encodedWallet),
+          ),
+        ).toBe(true);
+      } finally {
+        ethCallBatchSpy.mockRestore();
+      }
+    });
+
     it('rejects invalid input before reading approval state', async ({
       secureClientWithDepositWallet,
     }) => {
