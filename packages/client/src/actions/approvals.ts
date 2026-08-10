@@ -11,7 +11,7 @@ import {
   erc1155IsApprovedForAllCall,
   MAX_UINT256,
 } from '../abis';
-import type { BaseSecureClient } from '../clients';
+import type { BaseClient, BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
   makeErrorGuard,
@@ -295,21 +295,86 @@ export const PrepareTradingApprovalsError = makeErrorGuard(
   UserInputError,
 );
 
-type Erc20TradingApproval = {
+/** An ERC-20 allowance required for supported trading workflows. */
+export type Erc20TradingApproval = {
   amount: bigint;
   spenderAddress: EvmAddress;
   tokenAddress: EvmAddress;
 };
 
-type Erc1155TradingApproval = {
+/** An ERC-1155 operator approval required for supported trading workflows. */
+export type Erc1155TradingApproval = {
   operatorAddress: EvmAddress;
   tokenAddress: EvmAddress;
 };
 
-type TradingApprovalRequirements = {
+/** Trading approval requirements grouped by token standard. */
+export type TradingApprovalRequirements = {
   erc20: Erc20TradingApproval[];
   erc1155: Erc1155TradingApproval[];
 };
+
+const GetTradingApprovalsStateRequestSchema = z.object({
+  wallet: EvmAddressSchema,
+});
+
+export type GetTradingApprovalsStateRequest = z.input<
+  typeof GetTradingApprovalsStateRequestSchema
+>;
+
+/** The current trading approval state for a wallet. */
+export type TradingApprovalsState = {
+  isFullyApproved: boolean;
+  missing: TradingApprovalRequirements;
+};
+
+export type GetTradingApprovalsStateError =
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const GetTradingApprovalsStateError = makeErrorGuard(
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Reads the approvals a wallet is missing for supported trading workflows.
+ *
+ * This action only reads on-chain state. It does not require a signer or submit
+ * transactions.
+ *
+ * @example
+ * ```ts
+ * const state = await getTradingApprovalsState(client, {
+ *   wallet: '0x1234…',
+ * });
+ *
+ * if (!state.isFullyApproved) {
+ *   console.log(state.missing);
+ * }
+ * ```
+ *
+ * @throws {@link GetTradingApprovalsStateError}
+ * Thrown on failure.
+ */
+export async function getTradingApprovalsState(
+  client: BaseClient,
+  request: GetTradingApprovalsStateRequest,
+): Promise<TradingApprovalsState> {
+  const { wallet } = parseUserInput(
+    request,
+    GetTradingApprovalsStateRequestSchema,
+  );
+  const missing = await resolveMissingTradingApprovals(client, wallet);
+
+  return {
+    isFullyApproved: missing.erc20.length === 0 && missing.erc1155.length === 0,
+    missing,
+  };
+}
 
 /**
  * Starts a trading-setup approval workflow.
@@ -328,7 +393,10 @@ type TradingApprovalRequirements = {
 export async function prepareTradingApprovals(
   client: BaseSecureClient,
 ): Promise<TradingApprovalsWorkflow> {
-  const missingApprovals = await resolveMissingTradingApprovals(client);
+  const missingApprovals = await resolveMissingTradingApprovals(
+    client,
+    client.account.wallet,
+  );
   const erc20ApprovalCalls = missingApprovals.erc20.map((approval) =>
     erc20ApprovalCall(
       approval.tokenAddress,
@@ -415,21 +483,22 @@ export function setupTradingApprovals(client: BaseSecureClient): Promise<void> {
 }
 
 async function resolveMissingTradingApprovals(
-  client: BaseSecureClient,
+  client: BaseClient,
+  wallet: EvmAddress,
 ): Promise<TradingApprovalRequirements> {
   const requiredApprovals = getRequiredTradingApprovals(client);
   const checkCalls = [
     ...requiredApprovals.erc20.map((approval) =>
       erc20AllowanceCall(
         approval.tokenAddress,
-        client.account.wallet,
+        wallet,
         approval.spenderAddress,
       ),
     ),
     ...requiredApprovals.erc1155.map((approval) =>
       erc1155IsApprovedForAllCall(
         approval.tokenAddress,
-        client.account.wallet,
+        wallet,
         approval.operatorAddress,
       ),
     ),
@@ -438,26 +507,33 @@ async function resolveMissingTradingApprovals(
   const erc20Results = results.slice(0, requiredApprovals.erc20.length);
   const erc1155Results = results.slice(requiredApprovals.erc20.length);
 
-  return {
-    erc20: requiredApprovals.erc20.filter((approval, index) => {
-      const allowance = decodeErc20AllowanceResult(
-        erc20Results[index] as HexString,
-      );
+  try {
+    return {
+      erc20: requiredApprovals.erc20.filter((approval, index) => {
+        const allowance = decodeErc20AllowanceResult(
+          erc20Results[index] as HexString,
+        );
 
-      return allowance < approval.amount;
-    }),
-    erc1155: requiredApprovals.erc1155.filter((_, index) => {
-      const approved = decodeErc1155IsApprovedForAllResult(
-        erc1155Results[index] as HexString,
-      );
+        return allowance < approval.amount;
+      }),
+      erc1155: requiredApprovals.erc1155.filter((_, index) => {
+        const approved = decodeErc1155IsApprovedForAllResult(
+          erc1155Results[index] as HexString,
+        );
 
-      return !approved;
-    }),
-  };
+        return !approved;
+      }),
+    };
+  } catch (error) {
+    throw new UnexpectedResponseError(
+      'Expected JSON-RPC approval checks to return ABI-encoded values',
+      { cause: error },
+    );
+  }
 }
 
 function getRequiredTradingApprovals(
-  client: BaseSecureClient,
+  client: BaseClient,
 ): TradingApprovalRequirements {
   const { contracts } = client.environment;
 

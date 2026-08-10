@@ -4,6 +4,8 @@ import {
   type CollateralReturnPlanResponse,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
+  type GetTradingApprovalsStateRequest,
+  getTradingApprovalsState,
   mergePositions,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
@@ -15,12 +17,65 @@ import {
   redeemPositions,
   setupTradingApprovals,
   splitPosition,
+  type TradingApprovalsState,
   transferErc20,
 } from '../actions';
-import type { BaseSecureClient } from '../clients';
+import type {
+  BaseClient,
+  BasePublicClient,
+  BaseSecureClient,
+} from '../clients';
 import type { TransactionHandle } from '../types';
 
+export type PublicWalletActions = {
+  /**
+   * Reads the approvals a wallet is missing for supported trading workflows.
+   *
+   * This method only reads on-chain state. It does not require a signer or
+   * submit transactions.
+   *
+   * @throws {@link GetTradingApprovalsStateError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const state = await client.getTradingApprovalsState({
+   *   wallet: '0x1234…',
+   * });
+   * ```
+   */
+  getTradingApprovalsState(
+    request: GetTradingApprovalsStateRequest,
+  ): Promise<TradingApprovalsState>;
+};
+
+export type SecureGetTradingApprovalsStateRequest = {
+  /**
+   * Wallet address to inspect.
+   *
+   * @defaultValue `client.account.wallet`
+   */
+  wallet?: string;
+};
+
 export type SecureWalletActions = {
+  /**
+   * Reads the approvals a wallet is missing for supported trading workflows.
+   *
+   * Defaults to the authenticated account's wallet when `wallet` is omitted.
+   * This method only reads on-chain state and does not submit transactions.
+   *
+   * @throws {@link GetTradingApprovalsStateError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const state = await client.getTradingApprovalsState();
+   * ```
+   */
+  getTradingApprovalsState(
+    request?: SecureGetTradingApprovalsStateRequest,
+  ): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -266,8 +321,31 @@ export type SecureWalletActions = {
   ): Promise<TransactionHandle>;
 };
 
-export function walletActions(client: BaseSecureClient): SecureWalletActions {
+function publicWalletActions(client: BaseClient): PublicWalletActions {
   return {
+    getTradingApprovalsState: getTradingApprovalsState.bind(null, client),
+  };
+}
+
+export function walletActions(client: BasePublicClient): PublicWalletActions;
+export function walletActions(client: BaseSecureClient): SecureWalletActions;
+export function walletActions(
+  client: BaseClient,
+): PublicWalletActions | SecureWalletActions {
+  const actions = publicWalletActions(client);
+
+  if (client.isPublicClient()) {
+    return actions;
+  }
+
+  return {
+    ...actions,
+    getTradingApprovalsState: (
+      request: SecureGetTradingApprovalsStateRequest = {},
+    ) =>
+      getTradingApprovalsState(client, {
+        wallet: request.wallet ?? client.account.wallet,
+      }),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
@@ -288,7 +366,12 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
+  Erc20TradingApproval,
+  Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
+  GetTradingApprovalsStateRequest,
+  TradingApprovalRequirements,
+  TradingApprovalsState,
 } from '../actions';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
@@ -298,6 +381,7 @@ export {
   ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
   ExecuteCollateralReturnPlanError,
+  GetTradingApprovalsStateError,
   MergePositionsError,
   PlanCollateralReturnError,
   RedeemPositionsError,
