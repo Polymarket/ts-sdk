@@ -50,6 +50,7 @@ export enum OrderResponseErrorCode {
   INVALID_NONCE = 'invalid_nonce',
   INVALID_EXPIRATION = 'invalid_expiration',
   POST_ONLY_WOULD_CROSS = 'post_only_would_cross',
+  POST_ONLY_MODE = 'post_only_mode',
   FOK_NOT_FILLED = 'fok_not_filled',
   FAK_NOT_FILLED = 'fak_not_filled',
   UNKNOWN = 'unknown',
@@ -191,6 +192,8 @@ function inferOrderResponseErrorCode(
       return OrderResponseErrorCode.INVALID_EXPIRATION;
     case 'invalid post-only order: order crosses book':
       return OrderResponseErrorCode.POST_ONLY_WOULD_CROSS;
+    case 'post-only mode: only post-only orders and cancels are allowed':
+      return OrderResponseErrorCode.POST_ONLY_MODE;
     case "order couldn't be fully filled. FOK orders are fully filled or killed.":
       return OrderResponseErrorCode.FOK_NOT_FILLED;
     case 'no orders found to match with FAK order. FAK orders are partially filled or killed if no match is found.':

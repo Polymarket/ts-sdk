@@ -2,6 +2,7 @@ import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { TradingRestriction } from './errors';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -209,6 +210,22 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('falls back to the body retry delay on rate limited requests', async () => {
+    server.use(
+      http.get(`${root}/rate-limit-body-delay`, () =>
+        HttpResponse.json({ retry_after_seconds: 5 }, { status: 429 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/rate-limit-body-delay')),
+    ).rejects.toMatchObject({
+      name: 'RateLimitError',
+      retryAfter: 5,
+    });
+  });
+
   it('leaves retryAfter undefined when the Retry-After header is missing', async () => {
     server.use(
       http.get(`${root}/no-retry-after`, () =>
@@ -219,6 +236,95 @@ describe('ServiceClient', () => {
 
     await expect(unwrap(client.get('/no-retry-after'))).rejects.toMatchObject({
       name: 'RequestRejectedError',
+      restriction: undefined,
+      retryAfter: undefined,
+      status: 503,
+    });
+  });
+
+  it('flags matching-engine restarts on HTTP 425 responses without a body', async () => {
+    server.use(
+      http.post(
+        `${root}/restarting`,
+        () => new HttpResponse(null, { status: 425 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/restarting'))).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      restriction: TradingRestriction.RESTARTING,
+      status: 425,
+    });
+  });
+
+  it('flags post-only mode and exposes the body retry delay', async () => {
+    server.use(
+      http.post(`${root}/post-only`, () =>
+        HttpResponse.json(
+          {
+            code: 'post_only_mode',
+            error:
+              'post-only mode: only post-only orders and cancels are allowed',
+            retry_after_seconds: 79,
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      restriction: TradingRestriction.POST_ONLY,
+      retryAfter: 79,
+      status: 503,
+    });
+  });
+
+  it('prefers the Retry-After header over the body retry delay', async () => {
+    server.use(
+      http.post(`${root}/post-only-header`, () =>
+        HttpResponse.json(
+          {
+            code: 'post_only_mode',
+            error:
+              'post-only mode: only post-only orders and cancels are allowed',
+            retry_after_seconds: 79,
+          },
+          { headers: { 'retry-after': '80' }, status: 503 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.post('/post-only-header')),
+    ).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      restriction: TradingRestriction.POST_ONLY,
+      retryAfter: 80,
+      status: 503,
+    });
+  });
+
+  it('flags cancel-only mode on HTTP 503 responses', async () => {
+    server.use(
+      http.post(`${root}/cancel-only`, () =>
+        HttpResponse.json(
+          {
+            error:
+              'Trading is currently cancel-only. New orders are not accepted, but cancels are allowed.',
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/cancel-only'))).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      restriction: TradingRestriction.CANCEL_ONLY,
       retryAfter: undefined,
       status: 503,
     });

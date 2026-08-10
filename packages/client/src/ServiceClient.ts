@@ -1,6 +1,11 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
-import { RateLimitError, RequestRejectedError, TransportError } from './errors';
+import {
+  RateLimitError,
+  RequestRejectedError,
+  TradingRestriction,
+  TransportError,
+} from './errors';
 
 export type ServiceRequest = {
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
@@ -213,7 +218,10 @@ export class ServiceClient {
           return response;
         }
 
-        const retryAfter = this.#parseRetryAfterHeader(response);
+        const errorBody = await this.#readJsonErrorBody(response);
+        const retryAfter =
+          this.#parseRetryAfterHeader(response) ??
+          this.#parseRetryAfterSeconds(errorBody);
 
         if (response.status === 429) {
           throw new RateLimitError(
@@ -222,8 +230,12 @@ export class ServiceClient {
           );
         }
 
-        const message = await this.#extractResponseErrorMessage(response);
+        const message = await this.#extractResponseErrorMessage(
+          response,
+          errorBody,
+        );
         throw new RequestRejectedError(message, {
+          restriction: this.#detectTradingRestriction(response, errorBody),
           retryAfter,
           status: response.status,
         });
@@ -251,15 +263,74 @@ export class ServiceClient {
     return Number(value);
   }
 
-  async #extractResponseErrorMessage(response: Response) {
+  #parseRetryAfterSeconds(
+    errorBody: Record<string, unknown>,
+  ): number | undefined {
+    const value = errorBody.retry_after_seconds;
+
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+      return undefined;
+    }
+
+    return value;
+  }
+
+  #detectTradingRestriction(
+    response: Response,
+    errorBody: Record<string, unknown>,
+  ): TradingRestriction | undefined {
+    if (response.status === 425) {
+      return TradingRestriction.RESTARTING;
+    }
+
+    if (response.status !== 503) {
+      return undefined;
+    }
+
+    if (errorBody.code === 'post_only_mode') {
+      return TradingRestriction.POST_ONLY;
+    }
+
+    // Cancel-only responses carry no structured code, only the message text.
+    if (
+      typeof errorBody.error === 'string' &&
+      errorBody.error.includes('cancel-only')
+    ) {
+      return TradingRestriction.CANCEL_ONLY;
+    }
+
+    return undefined;
+  }
+
+  async #readJsonErrorBody(
+    response: Response,
+  ): Promise<Record<string, unknown>> {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
-    if (contentType?.includes('application/json')) {
-      const { error } = await response
-        .clone()
-        .json()
-        .catch(() => ({}));
-      if (error) return `${String(error)} (${response.url})`;
+    if (!contentType?.includes('application/json')) {
+      return {};
+    }
+
+    const body: unknown = await response
+      .clone()
+      .json()
+      .catch(() => null);
+
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      return {};
+    }
+
+    return body as Record<string, unknown>;
+  }
+
+  async #extractResponseErrorMessage(
+    response: Response,
+    errorBody: Record<string, unknown>,
+  ) {
+    const contentType = response.headers.get('content-type')?.toLowerCase();
+
+    if (errorBody.error) {
+      return `${String(errorBody.error)} (${response.url})`;
     }
 
     if (contentType?.includes('text/plain')) {
