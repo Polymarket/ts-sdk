@@ -17,6 +17,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { BaseSecureClient } from '../../clients';
 import { forkEnvironmentConfig } from '../../environments';
 import { TradingRestriction } from '../../errors';
+import { OrderResponseErrorCode } from '../../index';
 import type { Signer } from '../../types';
 import { postOrder, postOrders } from './post';
 import type { SignedOrder } from './types';
@@ -85,7 +86,7 @@ const restrictions = [
   },
   {
     body: {
-      code: 'post_only_mode',
+      code: OrderResponseErrorCode.POST_ONLY_MODE,
       error: 'post-only mode: only post-only orders and cancels are allowed',
       retry_after_seconds: 79,
     },
