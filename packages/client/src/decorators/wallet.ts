@@ -348,11 +348,24 @@ export function walletActions(
     ...actions,
     fetchTradingApprovalsState: (
       request: SecureFetchTradingApprovalsStateRequest = {},
-    ) =>
-      fetchTradingApprovalsState(client, {
+    ) => {
+      if (
+        request === null ||
+        typeof request !== 'object' ||
+        Array.isArray(request)
+      ) {
+        return fetchTradingApprovalsState(
+          client,
+          request as FetchTradingApprovalsStateRequest,
+        );
+      }
+
+      return fetchTradingApprovalsState(client, {
         ...request,
-        wallet: request.wallet ?? client.account.wallet,
-      }),
+        wallet:
+          request.wallet === undefined ? client.account.wallet : request.wallet,
+      });
+    },
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
