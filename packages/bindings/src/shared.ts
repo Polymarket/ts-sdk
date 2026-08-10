@@ -314,8 +314,8 @@ export const ConditionIdSchema = z
     'Expected a 31-byte or 32-byte hex string',
   )
   .transform((value) => value as ConditionId);
-// Upstream responses are required to contain usable hex, but their byte layout
-// does not determine the protocol. SDK-owned inputs retain stricter validation.
+// Unlike ConditionIdSchema, this validates hex syntax without constraining the
+// condition ID byte length.
 export const ConditionIdResponseSchema = z.custom<ConditionId>(
   isHexString,
   'Expected a hex-encoded market condition ID',
