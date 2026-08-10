@@ -309,7 +309,13 @@ export const OptionalCtfConditionIdSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   CtfConditionIdSchema.optional(),
 );
-export const EvmAddressSchema = z.string().transform(toEvmAddress);
+export const EvmAddressSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 42,
+    'Expected an EVM address',
+  )
+  .transform(toEvmAddress);
 export const EpochMillisecondsSchema = z
   .number()
   .int()

@@ -56,7 +56,11 @@ describe('Approvals', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
       try {
-        for (const request of [null, { wallet: null }]) {
+        for (const request of [
+          null,
+          { wallet: null },
+          { wallet: 'not-an-address' },
+        ]) {
           await expect(
             secureClientWithDepositWallet.fetchTradingApprovalsState(
               request as never,
