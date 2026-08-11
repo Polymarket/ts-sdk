@@ -11,10 +11,12 @@ describe('Approvals', () => {
     it('submits a collateral approval for the standard exchange', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -31,10 +33,12 @@ describe('Approvals', () => {
     });
 
     it('supports EOA approvals as traditional transactions', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const signerAddress = await randomEoaSigner.getAddress();
       const secureClient = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: signerAddress,
       });
@@ -57,10 +61,12 @@ describe('Approvals', () => {
     it('submits a Conditional Tokens approval for the standard exchange', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -80,10 +86,12 @@ describe('Approvals', () => {
     it('submits a combined trading-setup approval workflow', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -97,9 +105,10 @@ describe('Approvals', () => {
 
     it.runIf(runMeteredTests)(
       'submits a combined trading-setup approval workflow for a new Deposit Wallet',
-      async ({ builderAuthentication, randomEoaSigner }) => {
+      async ({ builderAuthentication, environment, randomEoaSigner }) => {
         const secureClient = await createSecureClient({
           apiKey: builderAuthentication,
+          environment,
           signer: randomEoaSigner,
         });
 

@@ -28,7 +28,15 @@ export type PerpsClientOrderId = Tagged<string, 'PerpsClientOrderId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export type PerpsNotificationId = Tagged<string, 'PerpsNotificationId'>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsFundingPaymentId = Tagged<number, 'PerpsFundingPaymentId'>;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -79,11 +87,27 @@ export const PerpsClientOrderIdSchema = z
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export const PerpsNotificationIdSchema = z
+  .uuid()
+  .transform((value) => value as PerpsNotificationId);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsTradeIdSchema = z
   .number()
   .int()
   .nonnegative()
   .transform(taggedInteger<PerpsTradeId>);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsFundingPaymentIdSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .transform(taggedInteger<PerpsFundingPaymentId>);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -249,6 +273,14 @@ export enum PerpsPnlInterval {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export enum PerpsSortDirection {
+  Descending = 'desc',
+  Ascending = 'asc',
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -294,6 +326,10 @@ export const PerpsKlineIntervalSchema = z.enum(PerpsKlineInterval);
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsPnlIntervalSchema = z.enum(PerpsPnlInterval);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsSortDirectionSchema = z.enum(PerpsSortDirection);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

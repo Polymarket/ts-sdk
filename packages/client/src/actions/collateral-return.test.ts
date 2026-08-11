@@ -270,6 +270,28 @@ describe('executeCollateralReturnPlan', () => {
     expect(signTypedData).toHaveBeenCalledTimes(2);
     expect(countSubmitCalls(collateralReturnPost)).toBe(2);
   });
+
+  it('re-signs with the nonce from a submit nonce rejection and resubmits once', async () => {
+    const { client, collateralReturnPost } = createClient({
+      submitResults: [
+        errAsync(
+          new RequestRejectedError(
+            'batch nonce 7 does not match on-chain nonce 9 (https://combos-rfq-collateral-return.polymarket.com/v1/collateral-return/submit)',
+            { status: 400 },
+          ),
+        ),
+        okAsync(jsonResponse(submitResponseWire)),
+      ],
+    });
+    const plan = await planCollateralReturn(client);
+
+    const handle = await executeCollateralReturnPlan(client, { plan });
+
+    expect(handle.transactionId).toBe('tx-1');
+    const payloads = submitPayloads(collateralReturnPost);
+    expect(payloads).toHaveLength(2);
+    expect(payloads[1]).toMatchObject({ envelope: { nonce: '9' } });
+  });
 });
 
 type CreateClientOptions = {
@@ -342,6 +364,14 @@ function countSubmitCalls(
   return collateralReturnPost.mock.calls.filter(
     ([path]) => path === '/v1/collateral-return/submit',
   ).length;
+}
+
+function submitPayloads(
+  collateralReturnPost: ReturnType<typeof vi.fn>,
+): unknown[] {
+  return collateralReturnPost.mock.calls
+    .filter(([path]) => path === '/v1/collateral-return/submit')
+    .map(([, options]) => (options as { json?: unknown } | undefined)?.json);
 }
 
 function jsonResponse(payload: unknown): Response {

@@ -43,11 +43,13 @@ import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
 export type {
+  ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   CreatePerpsSessionRequest,
   DepositToPerpsRequest,
+  DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
   FetchPerpsBookRequest,
   FetchPerpsInstrumentsRequest,
@@ -61,10 +63,13 @@ export type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
+  MarkPerpsNotificationsReadRequest,
   OpenPerpsSessionRequest,
+  PerpsAutoCancelStatus,
   PerpsBookDepth,
   PerpsCancelOrderResult,
   PerpsOrderRequest,
@@ -92,9 +97,11 @@ export type {
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
 export {
+  ArmPerpsAutoCancelError,
   DepositToPerpsError,
   FetchPerpsBookError,
   FetchPerpsFeesError,
@@ -107,6 +114,7 @@ export {
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
   UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
 

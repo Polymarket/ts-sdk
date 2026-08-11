@@ -9,6 +9,7 @@ import type {
 } from '@polymarket/bindings/subscriptions';
 import type {
   CommentsSubscription,
+  CryptoPricesChainlinkTwapSubscription,
   CryptoPricesSubscription,
   EquityPricesSubscription,
   MarketSubscription,
@@ -72,7 +73,10 @@ export type PublicWebSocketManagers = {
     SportsEvent
   >;
   readonly rtds: WebSocketSubscriptionManager<
-    CommentsSubscription | CryptoPricesSubscription | EquityPricesSubscription,
+    | CommentsSubscription
+    | CryptoPricesSubscription
+    | CryptoPricesChainlinkTwapSubscription
+    | EquityPricesSubscription,
     CommentsEvent | CryptoPricesEvent | EquityPricesEvent
   >;
   /**

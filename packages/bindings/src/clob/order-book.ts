@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import {
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
   type DecimalString,
   DecimalStringSchema,
   type EpochMilliseconds,
   EpochMillisecondsStringSchema,
+  type TickSizeValue,
+  TickSizeValueSchema,
   type TokenId,
   TokenIdSchema,
 } from '../shared';
@@ -19,8 +21,8 @@ export type OrderBookLevel = {
 export type OrderBookHash = string & { readonly __tag: 'OrderBookHash' };
 
 export type OrderBook = {
-  /** CTF condition id for the market this book belongs to. */
-  conditionId: CtfConditionId;
+  /** Condition ID for the market this book belongs to. */
+  conditionId: ConditionId;
   tokenId: TokenId;
   timestamp?: EpochMilliseconds | null;
 
@@ -31,7 +33,7 @@ export type OrderBook = {
   asks: OrderBookLevel[];
 
   minOrderSize: DecimalString;
-  tickSize: DecimalString;
+  tickSize: TickSizeValue;
   negRisk: boolean;
   lastTradePrice?: DecimalString | null;
   hash: OrderBookHash;
@@ -47,15 +49,18 @@ export const OrderBookHashSchema = z
   .regex(/^[a-f0-9]{40}$/)
   .transform((value) => value as OrderBookHash);
 
+const OrderBookTickSizeSchema =
+  DecimalStringSchema.transform(Number).pipe(TickSizeValueSchema);
+
 export const OrderBookSchema = z
   .object({
-    market: CtfConditionIdSchema,
+    market: ConditionIdSchema,
     asset_id: TokenIdSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
     bids: z.array(OrderBookLevelSchema),
     asks: z.array(OrderBookLevelSchema),
     min_order_size: DecimalStringSchema,
-    tick_size: DecimalStringSchema,
+    tick_size: OrderBookTickSizeSchema,
     neg_risk: z.boolean(),
     last_trade_price: DecimalStringSchema.nullish(),
     hash: OrderBookHashSchema,

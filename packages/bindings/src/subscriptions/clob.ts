@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import {
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   DecimalStringSchema,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
@@ -252,7 +252,7 @@ export const NewMarketEventSchema = z
     event_message: MarketEventMessageSchema.nullish(),
     timestamp: EpochMillisecondsStringSchema.nullish(),
     tags: z.array(z.string()).nullish(),
-    condition_id: CtfConditionIdSchema.nullish(),
+    condition_id: ConditionIdSchema.nullish(),
     active: z.boolean().nullish(),
     clob_token_ids: z.array(z.string()).nullish(),
     sports_market_type: z.string().nullish(),

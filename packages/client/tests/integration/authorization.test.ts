@@ -34,6 +34,7 @@ describe('authorization', () => {
     it('authorizes live builder-authenticated requests with remotely signed headers', async ({
       builderCredentials,
       depositWalletAddress,
+      environment,
     }) => {
       server.use(
         http.post(signerUrl, async ({ request }) => {
@@ -75,6 +76,7 @@ describe('authorization', () => {
           }),
           url: signerUrl,
         }),
+        environment,
       });
 
       await expect(

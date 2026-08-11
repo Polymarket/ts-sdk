@@ -7,20 +7,25 @@ import {
 import {
   FetchPerpsAccountConfigResponseSchema,
   FetchPerpsAccountStatsResponseSchema,
+  FetchPerpsAutoCancelStatusResponseSchema,
   FetchPerpsBalancesResponseSchema,
   FetchPerpsOpenOrdersResponseSchema,
   FetchPerpsOrdersResponseSchema,
   FetchPerpsPortfolioResponseSchema,
+  FetchPerpsUnreadNotificationsCountResponseSchema,
   ListPerpsDepositsResponseSchema,
   ListPerpsEquityHistoryResponseSchema,
   ListPerpsFillsResponseSchema,
   ListPerpsFundingPaymentsResponseSchema,
+  ListPerpsNotificationsResponseSchema,
   ListPerpsPnlHistoryResponseSchema,
   ListPerpsWithdrawalsResponseSchema,
+  MarkPerpsNotificationsReadResponseSchema,
   type PerpsAccountConfig,
   type PerpsAccountFill,
   type PerpsAccountFundingPayment,
   type PerpsAccountStats,
+  type PerpsAutoCancelStatus,
   type PerpsBalance,
   PerpsClientOrderIdSchema,
   type PerpsDeposit,
@@ -29,12 +34,15 @@ import {
   type PerpsEquityPoint,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
+  type PerpsNotificationEntry,
   type PerpsOrder,
   PerpsOrderIdSchema,
   type PerpsPnlInterval,
   PerpsPnlIntervalSchema,
   type PerpsPnlPoint,
   type PerpsPortfolio,
+  type PerpsSortDirection,
+  PerpsSortDirectionSchema,
   type PerpsWithdrawal,
   type PerpsWithdrawalStatus,
   PerpsWithdrawalStatusSchema,
@@ -42,7 +50,7 @@ import {
 import { invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { snakeCase, toSearchParams } from '../../../actions/params';
-import { UserInputError } from '../../../errors';
+import { RequestRejectedError, UserInputError } from '../../../errors';
 import { parseUserInput } from '../../../input';
 import { type Page, type Paginated, paginate } from '../../../pagination';
 import { validateWith } from '../../../response';
@@ -78,7 +86,6 @@ const PerpsIntervalHistoryRequestBaseSchema = z.object({
 });
 
 const PerpsDescendingAccountHistoryKindSchema = z.enum([
-  'perpsFills',
   'perpsFundingPayments',
   'perpsDeposits',
   'perpsWithdrawals',
@@ -150,6 +157,19 @@ export async function fetchPerpsStats(
     api
       .get('/v1/account/stats')
       .andThen(validateWith(FetchPerpsAccountStatsResponseSchema)),
+  );
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function fetchPerpsAutoCancelStatus(
+  api: ServiceClient,
+): Promise<PerpsAutoCancelStatus> {
+  return await unwrap(
+    api
+      .get('/v1/account/auto-cancel')
+      .andThen(validateWith(FetchPerpsAutoCancelStatusResponseSchema)),
   );
 }
 
@@ -267,47 +287,26 @@ export async function fetchPerpsOrders(
   );
 }
 
-const ListPerpsFillsInitialRequestSchema = PerpsHistoryRequestBaseSchema.extend(
-  {
-    cursor: PaginationCursorSchema.optional(),
-  },
-) satisfies z.ZodType<
-  Exclude<ListPerpsFillsRequest, { cursor: PaginationCursor }>
->;
-
-const ListPerpsFillsCursorRequestSchema = z.object({
-  cursor: PaginationCursorSchema,
-}) satisfies z.ZodType<
-  Extract<ListPerpsFillsRequest, { cursor: PaginationCursor }>
->;
-
-const ListPerpsFillsRequestSchema = z.union([
-  ListPerpsFillsInitialRequestSchema.transform(({ cursor, ...request }) => ({
-    cursor,
-    params: toPerpsHistoryParams(request, ONE_DAY_MS),
-  })),
-  ListPerpsFillsCursorRequestSchema.transform(({ cursor }) => ({
-    cursor,
-    params: undefined,
-  })),
-]);
+const ListPerpsFillsRequestSchema = z.object({
+  start: TimestampInputSchema.optional(),
+  end: TimestampInputSchema.optional(),
+  sort: PerpsSortDirectionSchema.optional(),
+  cursor: PaginationCursorSchema.optional(),
+}) satisfies z.ZodType<ListPerpsFillsRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type ListPerpsFillsRequest =
-  | {
-      /** Inclusive start timestamp in milliseconds. */
-      start?: number;
-      /** Inclusive end timestamp in milliseconds. */
-      end?: number;
-      /** Opaque cursor returned by a previous page. */
-      cursor?: PaginationCursor;
-    }
-  | {
-      /** Opaque cursor returned by a previous page. */
-      cursor: PaginationCursor;
-    };
+export type ListPerpsFillsRequest = {
+  /** Inclusive start timestamp in milliseconds. */
+  start?: number;
+  /** Inclusive end timestamp in milliseconds. */
+  end?: number;
+  /** Time sort direction. Defaults to newest fills first. */
+  sort?: PerpsSortDirection;
+  /** Opaque cursor returned by a previous page. */
+  cursor?: PaginationCursor;
+};
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -316,43 +315,32 @@ export function listPerpsFills(
   api: ServiceClient,
   request: ListPerpsFillsRequest = {},
 ): Paginated<PerpsAccountFill[]> {
-  const { cursor, params } = parseUserInput(
-    request,
-    ListPerpsFillsRequestSchema,
+  const params = parseUserInput(request, ListPerpsFillsRequestSchema);
+  return paginate(
+    (cursor) =>
+      api
+        .get('/v1/account/fills', {
+          params: toPerpsSearchParams({
+            startTimestamp: params.start,
+            endTimestamp: params.end,
+            sort: params.sort,
+            cursor: cursor ?? params.cursor,
+          }),
+        })
+        .andThen(validateWith(ListPerpsFillsResponseSchema))
+        .map((response): Page<PerpsAccountFill[]> => {
+          const last = response.data.at(-1);
+          if (!response.more || last === undefined) {
+            return { items: response.data, hasMore: false };
+          }
+          return {
+            items: response.data,
+            hasMore: true,
+            nextCursor: toPaginationCursor(String(last.tradeId)),
+          };
+        }),
+    params.cursor,
   );
-  return paginate((pageCursor) => {
-    let state: PerpsDescendingAccountCursorState;
-    if (pageCursor === undefined) {
-      invariant(params !== undefined, 'Expected initial Perps fills params.');
-      state = { kind: 'perpsFills', seenKeys: [], ...params };
-    } else {
-      state = decodePerpsAccountCursor(
-        pageCursor,
-        PerpsDescendingAccountCursorStateSchema,
-      );
-    }
-    const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
-    const seenKeys = new Set(state.seenKeys);
-
-    return api
-      .get('/v1/account/fills', {
-        params: toPerpsSearchParams(searchParams),
-      })
-      .andThen(validateWith(ListPerpsFillsResponseSchema))
-      .map((response): Page<PerpsAccountFill[]> => {
-        const items = response.data.filter(
-          (fill) => !seenKeys.has(String(fill.tradeId)),
-        );
-        return toPerpsDescendingAccountPage({
-          getKey: (fill) => String(fill.tradeId),
-          getTimestamp: (fill) => fill.timestamp,
-          items,
-          responseData: response.data,
-          responseMore: response.more,
-          state,
-        });
-      });
-  }, cursor);
 }
 
 const ListPerpsFundingPaymentsInitialRequestSchema =
@@ -845,6 +833,215 @@ export function listPerpsPnlHistory(
   }, cursor);
 }
 
+const PerpsNotificationsCursorStateSchema = z.object({
+  kind: z.literal('perpsNotifications'),
+  cursor: z.string().min(1),
+  sinceSeq: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().optional(),
+});
+
+type PerpsNotificationsCursorState = z.infer<
+  typeof PerpsNotificationsCursorStateSchema
+>;
+
+const ListPerpsNotificationsInitialRequestSchema = z.object({
+  sinceSeq: z.number().int().nonnegative().optional(),
+  limit: z.number().int().positive().optional(),
+  cursor: PaginationCursorSchema.optional(),
+}) satisfies z.ZodType<
+  Exclude<ListPerpsNotificationsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsNotificationsCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsNotificationsRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsNotificationsRequestSchema = z.union([
+  ListPerpsNotificationsInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: request,
+    }),
+  ),
+  ListPerpsNotificationsCursorRequestSchema.transform(({ cursor }) => ({
+    cursor,
+    params: undefined,
+  })),
+]);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ListPerpsNotificationsRequest =
+  | {
+      /**
+       * Inclusive sequence lower bound used to backfill notifications missed
+       * while disconnected. Use the `sequence` of the last notification event
+       * processed before the gap. Follow-up pages keep the same bound
+       * automatically. Merged results should be deduplicated by notification
+       * id.
+       */
+      sinceSeq?: number;
+      /** Maximum number of notifications per page. */
+      limit?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export function listPerpsNotifications(
+  api: ServiceClient,
+  request: ListPerpsNotificationsRequest = {},
+): Paginated<PerpsNotificationEntry[]> {
+  const { cursor, params } = parseUserInput(
+    request,
+    ListPerpsNotificationsRequestSchema,
+  );
+  return paginate((pageCursor) => {
+    let state: PerpsNotificationsCursorState | undefined;
+    if (pageCursor === undefined) {
+      invariant(
+        params !== undefined,
+        'Expected initial Perps notifications params.',
+      );
+    } else {
+      state = decodePerpsAccountCursor(
+        pageCursor,
+        PerpsNotificationsCursorStateSchema,
+      );
+    }
+    const sinceSeq = state === undefined ? params?.sinceSeq : state.sinceSeq;
+    const limit = state === undefined ? params?.limit : state.limit;
+
+    return api
+      .get('/v1/account/notifications', {
+        params: toPerpsSearchParams({
+          cursor: state?.cursor,
+          limit,
+          sinceSeq,
+        }),
+      })
+      .andThen(validateWith(ListPerpsNotificationsResponseSchema))
+      .map((response): Page<PerpsNotificationEntry[]> => {
+        const hasMore = response.has_more && response.next_cursor !== null;
+        return {
+          items: response.items,
+          hasMore,
+          nextCursor:
+            hasMore && response.next_cursor !== null
+              ? encodePerpsAccountCursor({
+                  kind: 'perpsNotifications',
+                  cursor: response.next_cursor,
+                  limit,
+                  sinceSeq,
+                })
+              : undefined,
+        };
+      });
+  }, cursor);
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function fetchPerpsUnreadNotificationsCount(
+  api: ServiceClient,
+): Promise<number> {
+  const response = await unwrap(
+    api
+      .get('/v1/account/notifications', {
+        params: toPerpsSearchParams({ limit: 1 }),
+      })
+      .andThen(validateWith(FetchPerpsUnreadNotificationsCountResponseSchema)),
+  );
+  return response.unread;
+}
+
+const MarkPerpsNotificationsReadByIdsRequestSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1),
+}) satisfies z.ZodType<
+  Extract<MarkPerpsNotificationsReadRequest, { ids: string[] }>
+>;
+
+const MarkPerpsNotificationsReadUpToRequestSchema = z.object({
+  upTo: z.object({
+    id: z.string().min(1),
+    timestamp: z.number().int().nonnegative(),
+  }),
+}) satisfies z.ZodType<
+  Exclude<MarkPerpsNotificationsReadRequest, { ids: string[] }>
+>;
+
+const MarkPerpsNotificationsReadRequestSchema = z.union([
+  MarkPerpsNotificationsReadByIdsRequestSchema.transform(({ ids }) => ({
+    ids,
+  })),
+  MarkPerpsNotificationsReadUpToRequestSchema.transform(({ upTo }) => ({
+    before: encodePerpsNotificationsReadCursor(upTo),
+  })),
+]);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type MarkPerpsNotificationsReadRequest =
+  | {
+      /** Notification ids to mark read. */
+      ids: string[];
+    }
+  | {
+      /**
+       * Mark every notification at or before this notification read,
+       * inclusive.
+       */
+      upTo: {
+        /** Notification id. */
+        id: string;
+        /** Notification timestamp in milliseconds. */
+        timestamp: number;
+      };
+    };
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function markPerpsNotificationsRead(
+  api: ServiceClient,
+  request: MarkPerpsNotificationsReadRequest,
+): Promise<void> {
+  const body = parseUserInput(request, MarkPerpsNotificationsReadRequestSchema);
+  const response = await unwrap(
+    api
+      .post('/v1/account/notifications/read', { json: body })
+      .andThen(validateWith(MarkPerpsNotificationsReadResponseSchema)),
+  );
+  if (response.status === 'err') {
+    throw new RequestRejectedError(
+      response.error ?? 'Perps notifications read request was rejected.',
+      { status: 200 },
+    );
+  }
+}
+
+// The upstream read cursor is base64url-encoded JSON keyed as {ts, id}.
+function encodePerpsNotificationsReadCursor(upTo: {
+  id: string;
+  timestamp: number;
+}): string {
+  return btoa(JSON.stringify({ ts: upTo.timestamp, id: upTo.id }))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
 function toPerpsHistoryParams<T extends Record<string, unknown>>(
   request: T & { end?: number; start?: number },
   defaultWindowMs: number,
@@ -882,7 +1079,10 @@ function decodePerpsAccountCursor<T>(
 }
 
 function encodePerpsAccountCursor(
-  state: PerpsAscendingAccountCursorState | PerpsDescendingAccountCursorState,
+  state:
+    | PerpsAscendingAccountCursorState
+    | PerpsDescendingAccountCursorState
+    | PerpsNotificationsCursorState,
 ): PaginationCursor {
   return toPaginationCursor(btoa(JSON.stringify(state)));
 }

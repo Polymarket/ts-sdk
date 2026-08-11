@@ -31,10 +31,12 @@ describe('Collateral return', () => {
   });
 
   it('plans a collateral return for a Safe Wallet account', async ({
+    environment,
     safeWalletAddress,
     safeWalletSigner,
   }) => {
     const secureClient = await createSecureClient({
+      environment,
       signer: safeWalletSigner,
       wallet: safeWalletAddress,
     });
@@ -47,10 +49,12 @@ describe('Collateral return', () => {
   });
 
   it('plans a collateral return for a Proxy Wallet account', async ({
+    environment,
     proxyWalletAddress,
     proxyWalletSigner,
   }) => {
     const secureClient = await createSecureClient({
+      environment,
       signer: proxyWalletSigner,
       wallet: proxyWalletAddress,
     });
@@ -63,10 +67,12 @@ describe('Collateral return', () => {
   });
 
   it('rejects planning for an EOA-bound account', async ({
+    environment,
     randomEoaSigner,
   }) => {
     const signerAddress = await randomEoaSigner.getAddress();
     const secureClient = await createSecureClient({
+      environment,
       signer: randomEoaSigner,
       wallet: signerAddress,
     });
@@ -141,12 +147,14 @@ describe('Collateral return', () => {
     'seeds and executes a collateral return for a Safe Wallet account',
     async ({
       builderAuthentication,
+      environment,
       safeWalletAddress,
       safeWalletSigner,
       skip,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: builderAuthentication,
+        environment,
         signer: safeWalletSigner,
         wallet: safeWalletAddress,
       });
@@ -162,12 +170,14 @@ describe('Collateral return', () => {
     'seeds and executes a collateral return for a Proxy Wallet account',
     async ({
       builderAuthentication,
+      environment,
       proxyWalletAddress,
       proxyWalletSigner,
       skip,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: builderAuthentication,
+        environment,
         signer: proxyWalletSigner,
         wallet: proxyWalletAddress,
       });

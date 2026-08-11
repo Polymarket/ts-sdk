@@ -3,6 +3,11 @@ import type {
   CommentsEvent,
   CryptoPricesBinanceEvent,
   CryptoPricesChainlinkEvent,
+  CryptoPricesChainlinkTwapEvent,
+  CryptoPricesChainlinkTwapSixtyEvent,
+  CryptoPricesChainlinkTwapThirtyEvent,
+  CryptoPricesChainlinkTwapTopic,
+  CryptoPricesChainlinkTwapWindowSeconds,
   CryptoPricesEvent,
   CryptoPricesTopic,
   CustomMarketEvent,
@@ -22,18 +27,24 @@ import type {
 } from '@polymarket/bindings/subscriptions';
 import { invariant, type Prettify } from '@polymarket/types';
 import merge from 'it-merge';
+import { z } from 'zod';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
-import type { TransportError } from '../errors';
+import { makeErrorGuard, TransportError, UserInputError } from '../errors';
+import { parseUserInput } from '../input';
 
 // Event types — re-exported from bindings for consumer convenience.
 export type {
   CommentsEvent,
   CryptoPricesBinanceEvent,
   CryptoPricesChainlinkEvent,
+  CryptoPricesChainlinkTwapEvent,
+  CryptoPricesChainlinkTwapSixtyEvent,
+  CryptoPricesChainlinkTwapThirtyEvent,
+  CryptoPricesChainlinkTwapWindowSeconds,
   CryptoPricesEvent,
   CustomMarketEvent,
   EquityPricesEvent,
@@ -103,6 +114,14 @@ export type CommentsSubscription = {
 
 export type CryptoPricesSubscription = {
   topic: CryptoPricesTopic;
+  symbols?: readonly string[];
+};
+
+export type CryptoPricesChainlinkTwapSubscription = {
+  topic: CryptoPricesChainlinkTwapTopic;
+  /** Averaging window used to calculate each TWAP price. */
+  windowSeconds: CryptoPricesChainlinkTwapWindowSeconds;
+  /** Lowercase slash-delimited symbols, such as `btc/usd`. */
   symbols?: readonly string[];
 };
 
@@ -177,6 +196,7 @@ export type PublicSubscriptionSpec =
   | SportsSubscription
   | CommentsSubscription
   | CryptoPricesSubscription
+  | CryptoPricesChainlinkTwapSubscription
   | EquityPricesSubscription
   | PerpsMarketDataSubscription;
 
@@ -211,6 +231,7 @@ type EventByTopic = {
   comments: CommentsEvent;
   'prices.crypto.binance': CryptoPricesBinanceEvent;
   'prices.crypto.chainlink': CryptoPricesChainlinkEvent;
+  'prices.crypto.chainlink.twap': CryptoPricesChainlinkTwapEvent;
   'prices.equity.pyth': EquityPricesEvent;
   'perps.trades': PerpsTradeEvent;
   'perps.bbo': PerpsBboEvent;
@@ -227,12 +248,22 @@ type EventForMarketSubscription<TSpec extends MarketSubscription> =
       : StandardMarketEvent
     : StandardMarketEvent;
 
+type EventForCryptoPricesChainlinkTwapSubscription<
+  TSpec extends CryptoPricesChainlinkTwapSubscription,
+> = TSpec extends { windowSeconds: 30 }
+  ? CryptoPricesChainlinkTwapThirtyEvent
+  : TSpec extends { windowSeconds: 60 }
+    ? CryptoPricesChainlinkTwapSixtyEvent
+    : CryptoPricesChainlinkTwapEvent;
+
 export type EventForSubscriptionSpec<TSpec extends SecureSubscriptionSpec> =
   TSpec extends MarketSubscription
     ? EventForMarketSubscription<TSpec>
-    : TSpec extends { topic: infer TTopic extends keyof EventByTopic }
-      ? EventByTopic[TTopic]
-      : never;
+    : TSpec extends CryptoPricesChainlinkTwapSubscription
+      ? EventForCryptoPricesChainlinkTwapSubscription<TSpec>
+      : TSpec extends { topic: infer TTopic extends keyof EventByTopic }
+        ? EventByTopic[TTopic]
+        : never;
 
 export type EventForSubscriptionSpecs<
   TSubscriptions extends readonly SecureSubscriptionSpec[],
@@ -247,7 +278,14 @@ export type SubscriptionHandle<TEvent> = {
   close(): Promise<void>;
 } & AsyncIterable<TEvent>;
 
-export type SubscribeError = TransportError;
+export type SubscribeError = TransportError | UserInputError;
+export const SubscribeError = makeErrorGuard(TransportError, UserInputError);
+
+const CryptoPricesChainlinkTwapSubscriptionSchema = z.object({
+  topic: z.literal('prices.crypto.chainlink.twap'),
+  windowSeconds: z.union([z.literal(30), z.literal(60)]),
+  symbols: z.array(z.string()).optional(),
+});
 
 /**
  * Starts one or more realtime subscriptions on this client.
@@ -256,7 +294,7 @@ export type SubscribeError = TransportError;
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
  * @throws {@link SubscribeError}
- * Thrown when the realtime subscription cannot be established or fails.
+ * Thrown when subscription input is invalid or a realtime subscription fails.
  *
  * @example
  * ```ts
@@ -285,6 +323,12 @@ export async function subscribe(
   client: BaseClient,
   subscriptions: readonly SecureSubscriptionSpec[],
 ): Promise<SubscriptionHandle<unknown>> {
+  for (const subscription of subscriptions) {
+    if (subscription.topic === 'prices.crypto.chainlink.twap') {
+      parseUserInput(subscription, CryptoPricesChainlinkTwapSubscriptionSchema);
+    }
+  }
+
   const handles = await Promise.all(
     subscriptions.map((spec) => subscribeOne(client, spec)),
   );
@@ -303,6 +347,7 @@ function subscribeOne(
     case 'comments':
     case 'prices.crypto.binance':
     case 'prices.crypto.chainlink':
+    case 'prices.crypto.chainlink.twap':
     case 'prices.equity.pyth':
       return client.webSockets.rtds.subscribe(spec);
     case 'perps.trades':

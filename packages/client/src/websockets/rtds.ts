@@ -1,5 +1,6 @@
 import {
   type CommentsEvent,
+  type CryptoPricesChainlinkTwapWindowSeconds,
   type CryptoPricesEvent,
   type EquityPricesEvent,
   RealtimeEventSchema,
@@ -7,6 +8,7 @@ import {
 import { invariant } from '@polymarket/types';
 import type {
   CommentsSubscription,
+  CryptoPricesChainlinkTwapSubscription,
   CryptoPricesSubscription,
   EquityPricesSubscription,
   SubscriptionHandle,
@@ -28,6 +30,7 @@ import type { WebSocketSubscriptionManager } from './types';
 type RtdsSpec =
   | CommentsSubscription
   | CryptoPricesSubscription
+  | CryptoPricesChainlinkTwapSubscription
   | EquityPricesSubscription;
 
 type RtdsEvent = CommentsEvent | CryptoPricesEvent | EquityPricesEvent;
@@ -268,6 +271,16 @@ function serverSubscriptionsFor(
       // with a different filter replaces the first. Subscribe broadly and
       // filter client-side — see docs/api-boundary-notes.md.
       return [serverSubscription('crypto_prices_chainlink', 'update')];
+    case 'prices.crypto.chainlink.twap':
+      // Each TWAP window is a distinct RTDS topic. Subscribe broadly within
+      // the requested window and narrow symbols client-side so subscribers for
+      // the same window can safely share a socket.
+      return [
+        serverSubscription(
+          twapServerTopic(subscription.windowSeconds),
+          'update',
+        ),
+      ];
     case 'prices.equity.pyth':
       // Same per-topic replace-on-resubscribe constraint as crypto_prices. A
       // single unfiltered subscribe covers every active equity symbol; the
@@ -276,6 +289,21 @@ function serverSubscriptionsFor(
     default: {
       const neverSpec: never = subscription;
       invariant(false, `Unknown RTDS topic: ${String(neverSpec)}`);
+    }
+  }
+}
+
+function twapServerTopic(
+  windowSeconds: CryptoPricesChainlinkTwapWindowSeconds,
+): string {
+  switch (windowSeconds) {
+    case 30:
+      return 'crypto_prices_twap_thirty';
+    case 60:
+      return 'crypto_prices_twap_sixty';
+    default: {
+      const neverWindow: never = windowSeconds;
+      invariant(false, `Unknown TWAP window: ${String(neverWindow)}`);
     }
   }
 }
@@ -342,6 +370,13 @@ function matcherFor(subscription: RtdsSpec): (event: RtdsEvent) => boolean {
     case 'prices.crypto.chainlink':
       return (event) =>
         event.topic === 'prices.crypto.chainlink' &&
+        (subscription.symbols === undefined ||
+          subscription.symbols.length === 0 ||
+          subscription.symbols.includes(event.payload.symbol));
+    case 'prices.crypto.chainlink.twap':
+      return (event) =>
+        event.topic === 'prices.crypto.chainlink.twap' &&
+        event.payload.windowSeconds === subscription.windowSeconds &&
         (subscription.symbols === undefined ||
           subscription.symbols.length === 0 ||
           subscription.symbols.includes(event.payload.symbol));

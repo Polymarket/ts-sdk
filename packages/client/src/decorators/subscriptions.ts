@@ -11,12 +11,21 @@ import type {
   BaseSecureClient,
 } from '../clients';
 
+export type {
+  CryptoPricesChainlinkTwapEvent,
+  CryptoPricesChainlinkTwapSixtyEvent,
+  CryptoPricesChainlinkTwapSubscription,
+  CryptoPricesChainlinkTwapThirtyEvent,
+  CryptoPricesChainlinkTwapWindowSeconds,
+} from '../actions';
+export { SubscribeError } from '../actions';
+
 export type PublicSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
    *
    * @throws {@link SubscribeError}
-   * Thrown when the realtime subscription cannot be established or fails.
+   * Thrown when subscription input is invalid or a realtime subscription fails.
    *
    * @example
    * ```ts
@@ -39,7 +48,7 @@ export type SecureSubscriptionsActions = {
    * Starts one or more realtime subscriptions on this client.
    *
    * @throws {@link SubscribeError}
-   * Thrown when the realtime subscription cannot be established or fails.
+   * Thrown when subscription input is invalid or a realtime subscription fails.
    *
    * @example
    * ```ts

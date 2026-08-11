@@ -84,9 +84,11 @@ import {
 } from './gasless';
 
 export type {
+  ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
@@ -94,8 +96,11 @@ export type {
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
+  MarkPerpsNotificationsReadRequest,
+  PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
@@ -120,8 +125,13 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
-export { UpdatePerpsLeverageError } from '../websockets/perps/session';
+export {
+  ArmPerpsAutoCancelError,
+  UpdatePerpsLeverageError,
+  UpdatePerpsMarginError,
+} from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
 

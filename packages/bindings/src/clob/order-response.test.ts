@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import type { OrderId } from '../shared';
 import { OrderPostStatus, OrderResponseSchema } from './order-response';
 
 describe('OrderResponseSchema', () => {
@@ -14,6 +15,7 @@ describe('OrderResponseSchema', () => {
 
     expect(response.ok).toBe(true);
     if (response.ok) {
+      expectTypeOf(response.orderId).toEqualTypeOf<OrderId>();
       expect(response.status).toBe(OrderPostStatus.LIVE);
       expect(response.makingAmount).toBe('0');
       expect(response.takingAmount).toBe('0');

@@ -1,5 +1,61 @@
 # @polymarket/bindings
 
+## 0.5.0
+
+### Minor Changes
+
+- fb81779: Add perps auto-cancel (dead man's switch) support. `PerpsSession.armAutoCancel` schedules a signed one-shot cancel-all at a future time (at least 5 seconds ahead), `disarmAutoCancel` clears the schedule without firing, and `fetchAutoCancelStatus` reads the account's auto-cancel status, including the deadline (`null` when unarmed) and daily trigger usage. Arming past the daily trigger limit is rejected with the new `AutoCancelDailyLimitError`.
+
+### Patch Changes
+
+- 4c56d7b: Add a required `id` on Perps account funding payment records, matching the unique funding-record id the platform now returns on funding history and the realtime funding stream. The id is exposed as the branded `PerpsFundingPaymentId` type.
+
+## 0.4.0
+
+### Minor Changes
+
+- 5a6b56c: Cache market configuration, platform fees, and builder fee rates used to prepare repeated orders. If cached tick metadata rejects a limit or protected price, the SDK fetches current metadata and validates once more before returning the input error. Unprotected market orders now derive price, tick size, and exchange selection from one live order-book response. Order-book tick sizes are normalized to supported numeric values. `maxSpend` is now documented as an estimated all-in spend target based on recently resolved fees rather than a strict cap.
+
+### Patch Changes
+
+- 2ba6be3: Type accepted order response IDs as `OrderId`.
+
+## 0.3.0
+
+### Minor Changes
+
+- 0bb6a4b: Add typed 30-second and 60-second Chainlink TWAP realtime subscriptions.
+- 40dc38d: Add Perps account notifications support: `session.listNotifications()` with SDK-owned keyset pagination (including a `sinceSeq` backfill bound pinned across pages), `session.fetchUnreadNotificationsCount()`, `session.markNotificationsRead()` by ids or `upTo` a notification, and the `notifications` session WebSocket channel emitting typed `notification` events.
+
+### Patch Changes
+
+- 28813f6: Add the DEPOSIT, WITHDRAWAL, and TAKER_REBATE activity types to the ActivityType enum, model them as typed account-level activities, and parse them in ActivitySchema so activity responses containing these rows no longer fail validation.
+- 7463938: Open order `createdAt` and `expiresAt` now parse epoch-seconds wire timestamps correctly instead of treating them as milliseconds.
+- c092352: Migrate Perps fills pagination to the API-native cursor and add a fills time sort direction option.
+- 4ddf659: Expose the granular Combos RFQ quote-validation error codes.
+
+## 0.3.0-beta.1
+
+### Minor Changes
+
+- 40dc38d: Add Perps account notifications support: `session.listNotifications()` with SDK-owned keyset pagination (including a `sinceSeq` backfill bound pinned across pages), `session.fetchUnreadNotificationsCount()`, `session.markNotificationsRead()` by ids or `upTo` a notification, and the `notifications` session WebSocket channel emitting typed `notification` events.
+
+### Patch Changes
+
+- c092352: Migrate Perps fills pagination to the API-native cursor and add a fills time sort direction option.
+
+## 0.3.0-beta.0
+
+### Minor Changes
+
+- 0bb6a4b: Add typed 30-second and 60-second Chainlink TWAP realtime subscriptions.
+
+### Patch Changes
+
+- 28813f6: Add the DEPOSIT, WITHDRAWAL, and TAKER_REBATE activity types to the ActivityType enum, model them as typed account-level activities, and parse them in ActivitySchema so activity responses containing these rows no longer fail validation.
+- 7463938: Open order `createdAt` and `expiresAt` now parse epoch-seconds wire timestamps correctly instead of treating them as milliseconds.
+- 4ddf659: Expose the granular Combos RFQ quote-validation error codes.
+
 ## 0.2.0
 
 ### Minor Changes

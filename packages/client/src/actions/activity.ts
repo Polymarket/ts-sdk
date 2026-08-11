@@ -198,6 +198,8 @@ export const ListActivityError = makeErrorGuard(
 /**
  * Lists wallet activity.
  *
+ * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
@@ -249,6 +251,11 @@ export function listActivity(
       .get('/activity', {
         params: toDataSearchParams({
           ...params,
+          // The endpoint defaults excludeDepositsWithdrawals=true and drops
+          // DEPOSIT and WITHDRAWAL from the type filter even when requested
+          // explicitly, so opt out unconditionally and let the type filter
+          // decide which rows come back.
+          excludeDepositsWithdrawals: false,
           limit: decoded.pageSize,
           offset: decoded.offset,
         }),
