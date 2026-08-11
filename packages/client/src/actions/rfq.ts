@@ -7,7 +7,6 @@ import type {
 } from '@polymarket/bindings';
 import {
   OrderSide,
-  OrderSideSchema,
   toBaseUnits,
   toBuilderCode,
   toPositionId,
@@ -22,6 +21,7 @@ import type {
   BuilderRfqCreateRequest,
   BuilderRfqError,
   BuilderRfqFinalStateResponse,
+  BuilderRfqQuoteReadyResponse,
   BuilderRfqStatusResponse,
   RfqConfirmationRequest,
   RfqErrorCode,
@@ -448,7 +448,7 @@ export type RfqRequestRejectedErrorOptions = {
  * (`LEG_METADATA_UNAVAILABLE`) that may be retried.
  *
  * Wire codes not recognized by this SDK version map to
- * {@link RfqRejectionCode.InvalidRfq}; the original error is preserved on
+ * {@link RfqRejectionCode.RequestFailed}; the original error is preserved on
  * `cause`.
  */
 export class RfqRequestRejectedError extends PolymarketError {
@@ -501,7 +501,7 @@ function toRfqRejectionCode(code: string | undefined): RfqRejectionCode {
     return code as RfqRejectionCode;
   }
 
-  return RfqRejectionCode.InvalidRfq;
+  return RfqRejectionCode.RequestFailed;
 }
 
 function assertBuilderAuthorization(client: BaseSecureClient): void {
@@ -524,6 +524,16 @@ const ComboLegPositionIdsSchema = z
   .refine(
     (legs) => new Set(legs).size === legs.length,
     'Leg position IDs must not contain duplicates.',
+  )
+  .transform((legs) =>
+    [...legs].sort((left, right) => {
+      const leftPositionId = BigInt(left);
+      const rightPositionId = BigInt(right);
+
+      if (leftPositionId < rightPositionId) return -1;
+      if (leftPositionId > rightPositionId) return 1;
+      return 0;
+    }),
   );
 
 const ComboAmountToBaseUnitsSchema = z
@@ -584,22 +594,22 @@ export type ComboQuote = {
   /** Builder code attached to the signed acceptance order. */
   builderCode: BuilderCode;
 
-  /** Trade direction of the original request. */
-  direction: OrderSide;
+  /** Trade direction. Only BUY combo quotes are currently supported. */
+  direction: OrderSide.BUY;
 
   /** Combo YES position traded by the acceptance order. */
   positionId: PositionId;
 
-  /** Maker amount of the requester's acceptance order. */
+  /** Collateral amount of the requester's acceptance order. */
   makerAmount: DecimalString;
 
-  /** Taker amount of the requester's acceptance order. */
+  /** Outcome-token amount of the requester's acceptance order. */
   takerAmount: DecimalString;
 
   /** Blended price across legs, in collateral per outcome token. */
   blendedPrice: DecimalString;
 
-  /** Total balance required to accept the quote. */
+  /** Total collateral balance, including fees, required to accept. */
   totalRequired: DecimalString;
 
   /** Acceptance deadline (Unix ms). */
@@ -616,30 +626,18 @@ export type RequestComboQuoteParams = {
    * @defaultValue {@link RfqSide.Yes}
    */
   side?: RfqSide.Yes;
-} & (
-  | {
-      direction: OrderSide.BUY;
 
-      /**
-       * Collateral to spend, in USDC, including fees.
-       *
-       * This is the human-readable amount: `1` means one dollar, not one
-       * 6-decimal base unit.
-       */
-      amount: number | string;
-    }
-  | {
-      direction: OrderSide.SELL;
+  /** Trade direction. Only BUY combo requests are currently supported. */
+  direction: OrderSide.BUY;
 
-      /**
-       * Size to sell, in outcome tokens.
-       *
-       * This is the human-readable token amount: `1` means one full share,
-       * not one 6-decimal base unit.
-       */
-      size: number | string;
-    }
-);
+  /**
+   * Collateral to spend, in USDC, including fees.
+   *
+   * This is the human-readable amount: `1` means one dollar, not one
+   * 6-decimal base unit.
+   */
+  amount: number | string;
+};
 
 export type RequestComboQuoteResult =
   | {
@@ -657,20 +655,12 @@ export type RequestComboQuoteResult =
       reason: ComboQuoteUnavailableReason;
     };
 
-const RequestComboQuoteParamsSchema = z.discriminatedUnion('direction', [
-  z.object({
-    amount: ComboAmountToBaseUnitsSchema,
-    direction: z.literal(OrderSide.BUY),
-    legPositionIds: ComboLegPositionIdsSchema,
-    side: z.literal(RfqSide.Yes).optional(),
-  }),
-  z.object({
-    direction: z.literal(OrderSide.SELL),
-    legPositionIds: ComboLegPositionIdsSchema,
-    side: z.literal(RfqSide.Yes).optional(),
-    size: ComboAmountToBaseUnitsSchema,
-  }),
-]);
+const RequestComboQuoteParamsSchema = z.object({
+  amount: ComboAmountToBaseUnitsSchema,
+  direction: z.literal(OrderSide.BUY),
+  legPositionIds: ComboLegPositionIdsSchema,
+  side: z.literal(RfqSide.Yes).optional(),
+});
 
 export type RequestComboQuoteError =
   | RateLimitError
@@ -695,6 +685,8 @@ export const RequestComboQuoteError = makeErrorGuard(
  * Resolves when the quote competition window closes. A request that attracts
  * no usable quotes is a normal outcome, returned as `quote: null` with a
  * reason rather than thrown.
+ *
+ * Only BUY requests are currently supported.
  *
  * A winning quote is self-contained JSON data and may be persisted or routed
  * to another process before acceptance.
@@ -725,14 +717,13 @@ export async function requestComboQuote(
 
   const identity = resolveOrderIdentity(client.account);
   const request: BuilderRfqCreateRequest = {
-    direction:
-      input.direction === OrderSide.BUY ? RfqDirection.Buy : RfqDirection.Sell,
+    direction: RfqDirection.Buy,
     leg_position_ids: input.legPositionIds,
     maker_address: identity.maker,
-    requested_size:
-      input.direction === OrderSide.BUY
-        ? { unit: RfqRequestedSizeUnit.Notional, value_e6: input.amount }
-        : { unit: RfqRequestedSizeUnit.Shares, value_e6: input.size },
+    requested_size: {
+      unit: RfqRequestedSizeUnit.Notional,
+      value_e6: input.amount,
+    },
     side: RfqSide.Yes,
     signature_type: identity.signatureType,
     signer_address: identity.signer,
@@ -749,20 +740,60 @@ export async function requestComboQuote(
   );
 
   if ('quote' in response) {
+    assertBuilderRfqResponseMatchesRequest(response, request);
+
     return {
       quote: {
-        ...response.quote,
+        blendedPrice: response.quote.blendedPrice,
         builderCode: response.builderCode,
-        direction: input.direction,
+        direction: OrderSide.BUY,
         expiresAt: response.expiresAt,
-        positionId: response.yesPositionId,
+        makerAmount: response.quote.makerAmount,
+        positionId: response.request.yesPositionId,
+        quoteId: response.quote.quoteId,
         rfqId: response.rfqId,
+        takerAmount: response.quote.takerAmount,
+        totalRequired: response.quote.totalRequired,
       },
       rfqId: response.rfqId,
     };
   }
 
   return toQuoteUnavailableResult(response);
+}
+
+function assertBuilderRfqResponseMatchesRequest(
+  response: BuilderRfqQuoteReadyResponse,
+  request: BuilderRfqCreateRequest,
+): void {
+  const echoed = response.request;
+  const mismatchedFields: string[] = [];
+
+  if (echoed.rfqId !== response.rfqId) mismatchedFields.push('rfq_id');
+  if (echoed.direction !== request.direction) {
+    mismatchedFields.push('direction');
+  }
+  if (echoed.side !== request.side) mismatchedFields.push('side');
+  if (
+    echoed.legPositionIds.length !== request.leg_position_ids.length ||
+    echoed.legPositionIds.some(
+      (positionId, index) => positionId !== request.leg_position_ids[index],
+    )
+  ) {
+    mismatchedFields.push('leg_position_ids');
+  }
+  if (
+    echoed.requestedSize.unit !== request.requested_size.unit ||
+    echoed.requestedSize.valueE6 !== request.requested_size.value_e6
+  ) {
+    mismatchedFields.push('requested_size');
+  }
+
+  if (mismatchedFields.length > 0) {
+    throw new UnexpectedResponseError(
+      `Builder RFQ response did not echo the submitted ${mismatchedFields.join(', ')}.`,
+    );
+  }
 }
 
 function toQuoteUnavailableResult(
@@ -793,8 +824,10 @@ function toQuoteUnavailableResult(
   }
 }
 
-const AcceptComboQuoteDirectionSchema: z.ZodType<OrderSide, `${OrderSide}`> =
-  OrderSideSchema;
+const AcceptComboQuoteDirectionSchema: z.ZodType<
+  OrderSide.BUY,
+  `${OrderSide.BUY}`
+> = z.literal('BUY').transform(() => OrderSide.BUY);
 
 const AcceptComboQuoteParamsSchema = z.object({
   blendedPrice: z.string(),
@@ -827,22 +860,22 @@ type AcceptComboQuoteParamsFields = {
   /** Builder code attached to the signed acceptance order. */
   builderCode: string;
 
-  /** Trade direction of the original request. */
-  direction: `${OrderSide}`;
+  /** Trade direction. Only BUY combo quotes are currently supported. */
+  direction: `${OrderSide.BUY}`;
 
   /** Combo YES position traded by the acceptance order. */
   positionId: string;
 
-  /** Maker amount of the requester's acceptance order. */
+  /** Collateral amount of the requester's acceptance order. */
   makerAmount: number | string;
 
-  /** Taker amount of the requester's acceptance order. */
+  /** Outcome-token amount of the requester's acceptance order. */
   takerAmount: number | string;
 
   /** Blended price across legs, in collateral per outcome token. */
   blendedPrice: string;
 
-  /** Total balance required to accept the quote. */
+  /** Total collateral balance, including fees, required to accept. */
   totalRequired: string;
 
   /** Acceptance deadline (Unix ms). */
@@ -928,10 +961,13 @@ export const AcceptComboQuoteError = makeErrorGuard(
  * `status: 'failed'`. `status: 'executing'` means the trade was handed off
  * for onchain execution; follow it with {@link waitForComboFill}.
  *
- * A connection dropped during the acceptance is retried once automatically;
- * this is safe because an already-accepted RFQ reports its current status
- * instead of executing twice. After such a retry `takerOrderHash` is absent
- * because the retried order was not the one recorded.
+ * Only BUY quotes are currently supported.
+ *
+ * A transport failure or unrecognized acceptance response is retried once
+ * automatically; this is safe because an already-accepted RFQ reports its
+ * current status instead of executing twice. After such a retry
+ * `takerOrderHash` is absent because the retried order was not the one
+ * recorded.
  *
  * The quote is JSON-serializable and may cross process boundaries before
  * acceptance. The accepting client must represent the same account and
@@ -984,9 +1020,13 @@ export async function acceptComboQuote(
 
   let accepted = await postAcceptance();
 
-  // Acceptance is idempotent server-side, so a single retry safely covers a
-  // connection dropped while the request is held through maker last look.
-  if (accepted.isErr() && accepted.error instanceof TransportError) {
+  // Acceptance is idempotent server-side, so a single retry safely covers
+  // both an interrupted request and a response that could not be validated.
+  if (
+    accepted.isErr() &&
+    (accepted.error instanceof TransportError ||
+      accepted.error instanceof UnexpectedResponseError)
+  ) {
     accepted = await postAcceptance();
   }
 

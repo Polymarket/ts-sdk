@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { SignatureType } from '../clob/signature-type';
 import type {
+  BaseUnits,
   BuilderCode,
   ComboConditionId,
   DecimalString,
@@ -20,13 +21,14 @@ import {
   RfqIdSchema,
   RfqQuoteIdSchema,
   TxHashSchema,
+  toBaseUnits,
 } from '../shared';
 import {
-  type RfqDirection,
+  RfqDirection,
   type RfqErrorCode,
   RfqExecutionStatus,
-  type RfqRequestedSizeUnit,
-  type RfqSide,
+  RfqRequestedSizeUnit,
+  RfqSide,
   type RfqSignedOrder,
 } from './rfq';
 
@@ -46,7 +48,7 @@ export enum RfqStatus {
  *
  * @remarks
  * Codes not enumerated in this SDK release are classified as
- * {@link RfqRejectionCode.InvalidRfq} with the original error preserved on
+ * {@link RfqRejectionCode.RequestFailed} with the original error preserved on
  * `cause`.
  */
 export enum RfqRejectionCode {
@@ -159,9 +161,9 @@ export type BuilderRfqQuote = {
   quoteId: RfqQuoteId;
   /** Blended price across legs, in collateral per outcome token. */
   blendedPrice: DecimalString;
-  /** Maker amount of the requester's acceptance order. */
+  /** Signed-order collateral for BUY, or position shares for SELL. */
   makerAmount: DecimalString;
-  /** Taker amount of the requester's acceptance order. */
+  /** Signed-order shares for BUY, or gross collateral limit for SELL. */
   takerAmount: DecimalString;
   /** Total collateral (BUY) or position-share (SELL) balance required to accept. */
   totalRequired: DecimalString;
@@ -185,15 +187,69 @@ const BuilderRfqQuoteSchema = z
     }),
   );
 
+export type BuilderRfqResponseRequestedSize = {
+  unit: RfqRequestedSizeUnit;
+  valueE6: BaseUnits;
+};
+
+const BuilderRfqResponseRequestedSizeSchema = z
+  .object({
+    unit: z.enum(RfqRequestedSizeUnit),
+    value_e6: z
+      .string()
+      .regex(/^\d+$/)
+      .transform((value) => toBaseUnits(BigInt(value).toString())),
+  })
+  .transform(
+    (size): BuilderRfqResponseRequestedSize => ({
+      unit: size.unit,
+      valueE6: size.value_e6,
+    }),
+  );
+
+/** Original request echoed by a quote-ready builder RFQ response. */
+export type BuilderRfqResponseRequest = {
+  rfqId: RfqId;
+  legPositionIds: PositionId[];
+  conditionId: ComboConditionId;
+  yesPositionId: PositionId;
+  noPositionId: PositionId;
+  direction: RfqDirection;
+  side: RfqSide;
+  requestedSize: BuilderRfqResponseRequestedSize;
+};
+
+const BuilderRfqResponseRequestSchema = z
+  .object({
+    rfq_id: RfqIdSchema,
+    leg_position_ids: z.array(PositionIdSchema),
+    condition_id: ComboConditionIdSchema,
+    yes_position_id: PositionIdSchema,
+    no_position_id: PositionIdSchema,
+    direction: z.enum(RfqDirection),
+    side: z.enum(RfqSide),
+    requested_size: BuilderRfqResponseRequestedSizeSchema,
+  })
+  .transform(
+    (request): BuilderRfqResponseRequest => ({
+      conditionId: request.condition_id,
+      direction: request.direction,
+      legPositionIds: request.leg_position_ids,
+      noPositionId: request.no_position_id,
+      requestedSize: request.requested_size,
+      rfqId: request.rfq_id,
+      side: request.side,
+      yesPositionId: request.yes_position_id,
+    }),
+  );
+
 export type BuilderRfqQuoteReadyResponse = {
   rfqId: RfqId;
   status: RfqStatus.AwaitingRequesterAcceptance;
   /** Acceptance deadline (Unix ms). */
   expiresAt: EpochMilliseconds;
   builderCode: BuilderCode;
-  conditionId: ComboConditionId;
-  yesPositionId: PositionId;
-  noPositionId: PositionId;
+  request: BuilderRfqResponseRequest;
   quote: BuilderRfqQuote;
 };
 
@@ -203,23 +259,17 @@ const BuilderRfqQuoteReadyResponseSchema = z
     status: z.literal(RfqStatus.AwaitingRequesterAcceptance),
     expires_at: EpochMillisecondsSchema,
     builder_code: BuilderCodeSchema,
-    request: z.object({
-      condition_id: ComboConditionIdSchema,
-      yes_position_id: PositionIdSchema,
-      no_position_id: PositionIdSchema,
-    }),
+    request: BuilderRfqResponseRequestSchema,
     quote: BuilderRfqQuoteSchema,
   })
   .transform(
     (response): BuilderRfqQuoteReadyResponse => ({
       builderCode: response.builder_code,
-      conditionId: response.request.condition_id,
       expiresAt: response.expires_at,
-      noPositionId: response.request.no_position_id,
       quote: response.quote,
+      request: response.request,
       rfqId: response.rfq_id,
       status: response.status,
-      yesPositionId: response.request.yes_position_id,
     }),
   );
 

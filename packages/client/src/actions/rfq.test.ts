@@ -19,6 +19,7 @@ import {
   RequestRejectedError,
   TimeoutError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../errors';
 import type { Signer } from '../types';
@@ -56,6 +57,7 @@ const quoteReadyWire = {
     no_position_id: '790',
     direction: 'BUY',
     side: 'YES',
+    requested_size: { unit: 'notional', value_e6: '100000000' },
     created_at: 1_773_890_758_000,
   },
   quote: {
@@ -103,27 +105,89 @@ describe('requestComboQuote', () => {
     expect(result).toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
   });
 
-  it('maps SELL size to outcome-token base units', async () => {
+  it('canonicalizes leg order before comparing the response echo', async () => {
     const { client, gatewayPost } = createClient({
       postResults: [okAsync(jsonResponse(quoteReadyWire))],
     });
 
-    const result = await requestComboQuote(client, {
-      direction: OrderSide.SELL,
-      legPositionIds: LEGS,
-      size: '2.5',
-    });
-
+    await expect(
+      requestComboQuote(client, {
+        ...buyRequest,
+        legPositionIds: [...LEGS].reverse(),
+      }),
+    ).resolves.toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
     expect(gatewayPost).toHaveBeenCalledWith(
       '/v1/builder/rfq/requests',
       expect.objectContaining({
-        json: expect.objectContaining({
-          direction: 'SELL',
-          requested_size: { unit: 'shares', value_e6: '2500000' },
-        }),
+        json: expect.objectContaining({ leg_position_ids: LEGS }),
       }),
     );
-    expect(result.quote).toMatchObject({ direction: OrderSide.SELL });
+  });
+
+  it('rejects SELL requests before transport', async () => {
+    const { client, gatewayPost } = createClient();
+    const sellRequest = {
+      direction: OrderSide.SELL,
+      legPositionIds: LEGS,
+      size: '2.5',
+    } as unknown as RequestComboQuoteParams;
+
+    await expect(requestComboQuote(client, sellRequest)).rejects.toBeInstanceOf(
+      UserInputError,
+    );
+    expect(gatewayPost).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      field: 'rfq_id',
+      response: {
+        ...quoteReadyWire,
+        request: { ...quoteReadyWire.request, rfq_id: 'rfq-other' },
+      },
+    },
+    {
+      field: 'direction',
+      response: {
+        ...quoteReadyWire,
+        request: { ...quoteReadyWire.request, direction: 'SELL' },
+      },
+    },
+    {
+      field: 'side',
+      response: {
+        ...quoteReadyWire,
+        request: { ...quoteReadyWire.request, side: 'NO' },
+      },
+    },
+    {
+      field: 'leg_position_ids',
+      response: {
+        ...quoteReadyWire,
+        request: {
+          ...quoteReadyWire.request,
+          leg_position_ids: [...LEGS].reverse(),
+        },
+      },
+    },
+    {
+      field: 'requested_size',
+      response: {
+        ...quoteReadyWire,
+        request: {
+          ...quoteReadyWire.request,
+          requested_size: { unit: 'notional', value_e6: '99999999' },
+        },
+      },
+    },
+  ])('rejects a response with mismatched $field', async ({ response }) => {
+    const { client } = createClient({
+      postResults: [okAsync(jsonResponse(response))],
+    });
+
+    await expect(requestComboQuote(client, buyRequest)).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
   });
 
   it('returns no quote as a business outcome', async () => {
@@ -211,7 +275,7 @@ describe('requestComboQuote', () => {
       requestComboQuote(finalStateClient, buyRequest),
     ).rejects.toMatchObject({
       cause: finalStateError,
-      code: RfqRejectionCode.InvalidRfq,
+      code: RfqRejectionCode.RequestFailed,
       name: 'RfqRequestRejectedError',
       status: 200,
     });
@@ -228,13 +292,39 @@ describe('requestComboQuote', () => {
       requestComboQuote(rejectedClient, buyRequest),
     ).rejects.toMatchObject({
       cause: rejection,
-      code: RfqRejectionCode.InvalidRfq,
+      code: RfqRejectionCode.RequestFailed,
       name: 'RfqRequestRejectedError',
+    });
+  });
+
+  it('classifies an uncoded rejection as a generic request failure', async () => {
+    const rejection = new RequestRejectedError('bad gateway', { status: 502 });
+    const { client } = createClient({ postResults: [errAsync(rejection)] });
+
+    await expect(requestComboQuote(client, buyRequest)).rejects.toMatchObject({
+      cause: rejection,
+      code: RfqRejectionCode.RequestFailed,
+      name: 'RfqRequestRejectedError',
+      status: 502,
     });
   });
 });
 
 describe('acceptComboQuote', () => {
+  it('rejects SELL quotes before signing or transport', async () => {
+    const { client, gatewayPost, signTypedData } = createClient();
+    const sellQuote = {
+      ...comboQuote,
+      direction: OrderSide.SELL,
+    } as unknown as AcceptComboQuoteParams;
+
+    await expect(acceptComboQuote(client, sellQuote)).rejects.toBeInstanceOf(
+      UserInputError,
+    );
+    expect(signTypedData).not.toHaveBeenCalled();
+    expect(gatewayPost).not.toHaveBeenCalled();
+  });
+
   it('accepts a serialized quote with a recreated client', async () => {
     const requester = createClient({
       postResults: [okAsync(jsonResponse(quoteReadyWire))],
@@ -292,6 +382,22 @@ describe('acceptComboQuote', () => {
     const { client, gatewayPost, signTypedData } = createClient({
       postResults: [
         errAsync(new TransportError('socket hang up')),
+        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
+      ],
+    });
+
+    await expect(acceptComboQuote(client, comboQuote)).resolves.toEqual({
+      rfqId: 'rfq-1',
+      status: 'executing',
+    });
+    expect(signTypedData).toHaveBeenCalledTimes(1);
+    expect(gatewayPost).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries when the acceptance response cannot be validated', async () => {
+    const { client, gatewayPost, signTypedData } = createClient({
+      postResults: [
+        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' })),
         okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
       ],
     });

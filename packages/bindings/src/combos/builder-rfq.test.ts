@@ -19,6 +19,7 @@ const QUOTE_READY_WIRE = {
     no_position_id: '790',
     direction: 'BUY',
     side: 'YES',
+    requested_size: { unit: 'notional', value_e6: '1000000' },
     created_at: 1_773_890_758_000,
   },
   quote: {
@@ -39,8 +40,16 @@ describe('BuilderRfqCreateResponseSchema', () => {
       status: RfqStatus.AwaitingRequesterAcceptance,
       expiresAt: 1_773_890_765_500,
       builderCode: `0x${'ab'.repeat(32)}`,
-      yesPositionId: '789',
-      noPositionId: '790',
+      request: {
+        conditionId: `0x03${'0'.repeat(60)}`,
+        direction: 'BUY',
+        legPositionIds: ['123', '456'],
+        noPositionId: '790',
+        requestedSize: { unit: 'notional', valueE6: '1000000' },
+        rfqId: 'rfq-1',
+        side: 'YES',
+        yesPositionId: '789',
+      },
       quote: {
         quoteId: 'quote-1',
         blendedPrice: '0.45',

@@ -222,6 +222,8 @@ export type SecureRfqActions = {
    * A winning quote is self-contained JSON data and may be persisted or
    * routed to another process before acceptance.
    *
+   * Only BUY requests are currently supported.
+   *
    * Requires a Builder API Key in the client configuration, via
    * `builderApiKey(...)` or `remoteBuilderSigning(...)`.
    *
@@ -257,10 +259,13 @@ export type SecureRfqActions = {
    * `status: 'failed'`. `status: 'executing'` means the trade was handed off
    * for onchain execution; follow it with `waitForComboFill`.
    *
-   * A connection dropped during the acceptance is retried once automatically;
-   * this is safe because an already-accepted RFQ reports its current status
-   * instead of executing twice. After such a retry `takerOrderHash` is absent
-   * because the retried order was not the one recorded.
+   * Only BUY quotes are currently supported.
+   *
+   * A transport failure or unrecognized acceptance response is retried once
+   * automatically; this is safe because an already-accepted RFQ reports its
+   * current status instead of executing twice. After such a retry
+   * `takerOrderHash` is absent because the retried order was not the one
+   * recorded.
    *
    * The quote is JSON-serializable and may cross process boundaries before
    * acceptance. The accepting client must represent the same account and

@@ -60,9 +60,11 @@ describe('Builder gateway combo RFQ integration', () => {
     builderAuthentication,
     depositWalletAddress,
     depositWalletSigner,
+    environment,
   }) => {
     const client = await createSecureClient({
       apiKey: builderAuthentication,
+      environment,
       signer: depositWalletSigner,
       wallet: depositWalletAddress,
     });
@@ -84,6 +86,7 @@ describe('Builder gateway combo RFQ integration', () => {
       builderAuthentication,
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       publicClient,
       skip,
     }) => {
@@ -100,6 +103,7 @@ describe('Builder gateway combo RFQ integration', () => {
 
       const client = await createSecureClient({
         apiKey: builderAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
