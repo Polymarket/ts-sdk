@@ -4,7 +4,12 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type CtfConditionId,
+  CtfConditionIdSchema,
+  OptionalConditionIdSchema,
+  OptionalCtfConditionIdSchema,
   toComboConditionId,
+  toConditionId,
+  toCtfConditionId,
 } from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
@@ -33,8 +38,20 @@ describe('shared ID parsers', () => {
       expect(ConditionIdSchema.parse(ctfConditionId)).toBe(ctfConditionId);
     });
 
+    it('reports unsupported byte lengths as validation failures', () => {
+      const result = ConditionIdSchema.safeParse('0x1');
+
+      expect(result.success).toBe(false);
+    });
+
     it('keeps CtfConditionId as an exact compatibility alias', () => {
       expectTypeOf<ConditionId>().toEqualTypeOf<CtfConditionId>();
+    });
+
+    it('keeps deprecated CTF runtime exports as compatibility aliases', () => {
+      expect(CtfConditionIdSchema).toBe(ConditionIdSchema);
+      expect(OptionalCtfConditionIdSchema).toBe(OptionalConditionIdSchema);
+      expect(toCtfConditionId).toBe(toConditionId);
     });
   });
 

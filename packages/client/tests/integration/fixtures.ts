@@ -3,7 +3,11 @@ import {
   type ApiKeyAuthorization,
   createPublicClient,
   createSecureClient,
+  type EnvironmentConfig,
+  type EnvironmentConfigFork,
+  forkEnvironmentConfig,
   type PublicClient,
+  production,
   relayerApiKey,
   type SecureClient,
   type Signer,
@@ -28,6 +32,15 @@ if (process.env.CI !== 'true') {
   }
 }
 
+const environmentFork = JSON.parse(
+  process.env.POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG?.trim() || '{}',
+) as Partial<EnvironmentConfigFork>;
+
+export const environment = forkEnvironmentConfig({
+  name: production.name,
+  ...environmentFork,
+});
+
 type IntegrationFixtures = {
   builderAuthentication: ApiKeyAuthorization;
   builderCode: BuilderCode;
@@ -35,6 +48,7 @@ type IntegrationFixtures = {
   depositWalletAddress: EvmAddress;
   depositWalletPrivateKey: PrivateKey;
   depositWalletSigner: Signer;
+  environment: EnvironmentConfig;
   newDepositWalletClient: SecureClient;
   publicClient: PublicClient;
   proxyWalletAddress: EvmAddress;
@@ -46,10 +60,14 @@ type IntegrationFixtures = {
   secureClientWithDepositWallet: SecureClient;
 };
 
-export const publicClient = createPublicClient();
+export const publicClient = createPublicClient({ environment });
 
 export const it: TestAPI<IntegrationFixtures> =
   base.extend<IntegrationFixtures>({
+    environment: async ({ skip: _skip }, use) => {
+      await use(environment);
+    },
+
     publicClient: async ({ skip: _skip }, use) => {
       await use(publicClient);
     },
@@ -67,11 +85,17 @@ export const it: TestAPI<IntegrationFixtures> =
     },
 
     secureClientWithDepositWallet: async (
-      { depositWalletAddress, depositWalletSigner, relayerAuthentication },
+      {
+        depositWalletAddress,
+        depositWalletSigner,
+        environment,
+        relayerAuthentication,
+      },
       use,
     ) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -79,13 +103,17 @@ export const it: TestAPI<IntegrationFixtures> =
       await use(secureClient);
     },
 
-    newDepositWalletClient: async ({ relayerAuthentication }, use) => {
+    newDepositWalletClient: async (
+      { environment, relayerAuthentication },
+      use,
+    ) => {
       // Intended for vnet-backed tests that give a fresh Deposit Wallet a
       // synthetic collateral balance. Do not use against live funds without an
       // explicit cleanup strategy.
       const signer = createTestSigner(generatePrivateKey());
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer,
       });
 
@@ -175,7 +203,7 @@ function createTestSigner(privateKey: PrivateKey | `0x${string}`): Signer {
     createWalletClient({
       account: privateKeyToAccount(privateKey),
       chain: polygon,
-      transport: http(),
+      transport: http(environment.rpc),
     }),
   );
 }

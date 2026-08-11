@@ -22,10 +22,12 @@ describe('Positions', () => {
     it('splits a position by condition ID', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
@@ -54,11 +56,13 @@ describe('Positions', () => {
     it('merges complementary positions by condition ID', async ({
       depositWalletAddress,
       depositWalletSigner,
+      environment,
       relayerAuthentication,
       skip,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: relayerAuthentication,
+        environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });

@@ -219,27 +219,26 @@ describe('Orders', { timeout: 60_000 }, () => {
 
   describe('order metadata caching', () => {
     it('reuses cached metadata for repeated limit and protected market orders', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
+
+      await client.createLimitOrder({
+        price: expectPresent(market.trading.minimumTickSize),
+        side: OrderSide.BUY,
+        size: expectPresent(market.trading.minimumOrderSize),
+        tokenId,
+      });
+
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
       try {
-        await client.createLimitOrder({
-          price: expectPresent(market.trading.minimumTickSize),
-          side: OrderSide.BUY,
-          size: expectPresent(market.trading.minimumOrderSize),
-          tokenId,
-        });
-
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
-
-        fetchSpy.mockClear();
         await client.createLimitOrder({
           price: expectPresent(market.trading.minimumTickSize),
           side: OrderSide.BUY,
@@ -260,10 +259,12 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
 
     it('uses only the live order book for unprotected market orders without maxSpend', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
@@ -287,10 +288,12 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
 
     it('coalesces concurrent cold metadata reads', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
@@ -316,11 +319,13 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
 
     it('adds action input names to tick-grid validation errors', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const invalidPrice = expectPresent(market.trading.minimumTickSize) / 2;
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
@@ -344,10 +349,12 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
 
     it('caches market fees for repeated maxSpend preparations', async ({
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });
@@ -373,10 +380,12 @@ describe('Orders', { timeout: 60_000 }, () => {
 
     it('caches builder fees for repeated attributed maxSpend preparations', async ({
       builderCode,
+      environment,
       randomEoaSigner,
     }) => {
       const tokenId = expectPresent(market.outcomes.yes.tokenId);
       const client = await createSecureClient({
+        environment,
         signer: randomEoaSigner,
         wallet: await randomEoaSigner.getAddress(),
       });

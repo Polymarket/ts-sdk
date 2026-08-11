@@ -47,11 +47,19 @@ export type Spread = z.infer<typeof SpreadSchema>;
 export const SpreadsSchema = z.record(TokenIdSchema, DecimalStringSchema);
 export type Spreads = z.infer<typeof SpreadsSchema>;
 
-export const LastTradePriceSchema = z.object({
+const LastTradePriceValueSchema = z.object({
   price: DecimalStringSchema,
   side: OrderSideSchema,
 });
-export type LastTradePrice = z.infer<typeof LastTradePriceSchema>;
+export type LastTradePrice = z.infer<typeof LastTradePriceValueSchema>;
+
+export const LastTradePriceSchema = LastTradePriceValueSchema.extend({
+  side: z.union([OrderSideSchema, z.literal('')]),
+}).transform((lastTrade): LastTradePrice | null =>
+  lastTrade.side === ''
+    ? null
+    : { price: lastTrade.price, side: lastTrade.side },
+);
 
 const LastTradePriceForTokenResponseSchema = z
   .object({

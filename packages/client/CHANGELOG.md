@@ -1,5 +1,19 @@
 # @polymarket/client
 
+## 0.5.0
+
+### Minor Changes
+
+- fb81779: Add perps auto-cancel (dead man's switch) support. `PerpsSession.armAutoCancel` schedules a signed one-shot cancel-all at a future time (at least 5 seconds ahead), `disarmAutoCancel` clears the schedule without firing, and `fetchAutoCancelStatus` reads the account's auto-cancel status, including the deadline (`null` when unarmed) and daily trigger usage. Arming past the daily trigger limit is rejected with the new `AutoCancelDailyLimitError`.
+
+### Patch Changes
+
+- 93df9d5: Internal refactor: Exchange v3 order construction helpers now live in the exchange module. No behavior change.
+- f6d1542: Prevent Perps `placeOrder` from missing private order updates that arrive before the command acknowledgement. High-level placement now generates a client order ID when callers omit it.
+- Updated dependencies [fb81779]
+- Updated dependencies [4c56d7b]
+  - @polymarket/bindings@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

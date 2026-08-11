@@ -151,6 +151,9 @@ export function toConditionId(value: string): ConditionId {
   return value as ConditionId;
 }
 
+/** @deprecated Use {@link toConditionId}. */
+export const toCtfConditionId = toConditionId;
+
 export function toComboConditionId(value: string): ComboConditionId {
   if (!isHexString(value)) {
     throw new TypeError(
@@ -306,9 +309,24 @@ export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
 export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
-export const ConditionIdSchema = z.string().transform(toConditionId);
-// Upstream responses are required to contain usable hex, but their byte layout
-// does not determine the protocol. SDK-owned inputs retain stricter validation.
+export const ConditionIdSchema = z
+  .string()
+  .refine(
+    (value) =>
+      isHexString(value) && (value.length === 64 || value.length === 66),
+    'Expected a 31-byte or 32-byte hex string',
+  )
+  .transform((value) => value as ConditionId);
+/** @deprecated Use {@link ConditionIdSchema}. */
+export const CtfConditionIdSchema = ConditionIdSchema;
+export const OptionalConditionIdSchema = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  ConditionIdSchema.optional(),
+);
+/** @deprecated Use {@link OptionalConditionIdSchema}. */
+export const OptionalCtfConditionIdSchema = OptionalConditionIdSchema;
+// Unlike ConditionIdSchema, this validates hex syntax without constraining the
+// condition ID byte length.
 export const ConditionIdResponseSchema = z.custom<ConditionId>(
   isHexString,
   'Expected a hex-encoded market condition ID',
