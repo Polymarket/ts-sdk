@@ -167,6 +167,8 @@ export type BuilderRfqQuote = {
   takerAmount: DecimalString;
   /** Total collateral (BUY) or position-share (SELL) balance required to accept. */
   totalRequired: DecimalString;
+  /** Exact collateral proceeds after fees. Present only for SELL quotes. */
+  netReceive?: DecimalString;
 };
 
 const BuilderRfqQuoteSchema = z
@@ -176,6 +178,7 @@ const BuilderRfqQuoteSchema = z
     maker_amount_e6: E6BigIntStringToDecimalStringSchema,
     taker_amount_e6: E6BigIntStringToDecimalStringSchema,
     total_required_e6: E6BigIntStringToDecimalStringSchema,
+    net_receive_e6: E6BigIntStringToDecimalStringSchema.optional(),
   })
   .transform(
     (quote): BuilderRfqQuote => ({
@@ -184,6 +187,9 @@ const BuilderRfqQuoteSchema = z
       quoteId: quote.quote_id,
       takerAmount: quote.taker_amount_e6,
       totalRequired: quote.total_required_e6,
+      ...(quote.net_receive_e6 === undefined
+        ? {}
+        : { netReceive: quote.net_receive_e6 }),
     }),
   );
 

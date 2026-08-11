@@ -69,6 +69,22 @@ const quoteReadyWire = {
   },
 };
 
+const sellQuoteReadyWire = {
+  ...quoteReadyWire,
+  request: {
+    ...quoteReadyWire.request,
+    direction: 'SELL',
+    requested_size: { unit: 'shares', value_e6: '2500000' },
+  },
+  quote: {
+    ...quoteReadyWire.quote,
+    maker_amount_e6: '2500000',
+    taker_amount_e6: '1125000',
+    total_required_e6: '2500000',
+    net_receive_e6: '1090000',
+  },
+};
+
 const comboQuote = {
   blendedPrice: '0.45',
   builderCode: BUILDER_CODE,
@@ -80,6 +96,20 @@ const comboQuote = {
   rfqId: 'rfq-1',
   takerAmount: '1.932381',
   totalRequired: '1',
+} satisfies AcceptComboQuoteParams;
+
+const sellComboQuote = {
+  blendedPrice: '0.45',
+  builderCode: BUILDER_CODE,
+  direction: 'SELL',
+  expiresAt: 1_773_890_765_500,
+  makerAmount: '2.5',
+  netReceive: '1.09',
+  positionId: '789',
+  quoteId: 'quote-1',
+  rfqId: 'rfq-1',
+  takerAmount: '1.125',
+  totalRequired: '2.5',
 } satisfies AcceptComboQuoteParams;
 
 describe('requestComboQuote', () => {
@@ -124,18 +154,60 @@ describe('requestComboQuote', () => {
     );
   });
 
-  it('rejects SELL requests before transport', async () => {
-    const { client, gatewayPost } = createClient();
-    const sellRequest = {
+  it('builds a SELL request and returns exact net proceeds', async () => {
+    const { client, gatewayPost } = createClient({
+      postResults: [okAsync(jsonResponse(sellQuoteReadyWire))],
+    });
+
+    const result = await requestComboQuote(client, {
       direction: OrderSide.SELL,
       legPositionIds: LEGS,
       size: '2.5',
-    } as unknown as RequestComboQuoteParams;
+    });
 
-    await expect(requestComboQuote(client, sellRequest)).rejects.toBeInstanceOf(
-      UserInputError,
+    expect(gatewayPost).toHaveBeenCalledWith(
+      '/v1/builder/rfq/requests',
+      expect.objectContaining({
+        json: expect.objectContaining({
+          direction: 'SELL',
+          requested_size: { unit: 'shares', value_e6: '2500000' },
+        }),
+      }),
     );
-    expect(gatewayPost).not.toHaveBeenCalled();
+    expect(result.quote).toMatchObject({
+      direction: OrderSide.SELL,
+      makerAmount: '2.5',
+      netReceive: '1.09',
+      takerAmount: '1.125',
+      totalRequired: '2.5',
+    });
+  });
+
+  it('rejects a SELL quote that omits net proceeds', async () => {
+    const { client } = createClient({
+      postResults: [
+        okAsync(
+          jsonResponse({
+            ...sellQuoteReadyWire,
+            quote: {
+              ...sellQuoteReadyWire.quote,
+              net_receive_e6: undefined,
+            },
+          }),
+        ),
+      ],
+    });
+
+    await expect(
+      requestComboQuote(client, {
+        direction: OrderSide.SELL,
+        legPositionIds: LEGS,
+        size: '2.5',
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('omitted net sell proceeds'),
+      name: 'UnexpectedResponseError',
+    });
   });
 
   it.each([
@@ -311,18 +383,31 @@ describe('requestComboQuote', () => {
 });
 
 describe('acceptComboQuote', () => {
-  it('rejects SELL quotes before signing or transport', async () => {
-    const { client, gatewayPost, signTypedData } = createClient();
-    const sellQuote = {
-      ...comboQuote,
-      direction: OrderSide.SELL,
-    } as unknown as AcceptComboQuoteParams;
+  it('accepts a serialized SELL quote', async () => {
+    const { client, gatewayPost, signTypedData } = createClient({
+      postResults: [
+        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
+      ],
+    });
 
-    await expect(acceptComboQuote(client, sellQuote)).rejects.toBeInstanceOf(
-      UserInputError,
+    await expect(acceptComboQuote(client, sellComboQuote)).resolves.toEqual({
+      rfqId: 'rfq-1',
+      status: 'executing',
+    });
+    expect(signTypedData).toHaveBeenCalledTimes(1);
+    expect(gatewayPost).toHaveBeenCalledWith(
+      '/v1/builder/rfq/requests/rfq-1/accept',
+      expect.objectContaining({
+        json: {
+          quote_id: 'quote-1',
+          signed_order: expect.objectContaining({
+            makerAmount: '2500000',
+            side: 1,
+            takerAmount: '1125000',
+          }),
+        },
+      }),
     );
-    expect(signTypedData).not.toHaveBeenCalled();
-    expect(gatewayPost).not.toHaveBeenCalled();
   });
 
   it('accepts a serialized quote with a recreated client', async () => {

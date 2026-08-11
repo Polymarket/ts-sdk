@@ -222,8 +222,6 @@ export type SecureRfqActions = {
    * A winning quote is self-contained JSON data and may be persisted or
    * routed to another process before acceptance.
    *
-   * Only BUY requests are currently supported.
-   *
    * Requires a Builder API Key in the client configuration, via
    * `builderApiKey(...)` or `remoteBuilderSigning(...)`.
    *
@@ -241,6 +239,7 @@ export type SecureRfqActions = {
    * if (result.quote !== null) {
    *   // result.quote.blendedPrice: DecimalString
    *   // result.quote.totalRequired: DecimalString
+   *   // SELL quotes also carry result.quote.netReceive after fees.
    *   // result.quote.expiresAt: EpochMilliseconds
    * }
    * ```
@@ -258,8 +257,6 @@ export type SecureRfqActions = {
    * acceptance window expiring is a normal outcome, returned as
    * `status: 'failed'`. `status: 'executing'` means the trade was handed off
    * for onchain execution; follow it with `waitForComboFill`.
-   *
-   * Only BUY quotes are currently supported.
    *
    * A transport failure or unrecognized acceptance response is retried once
    * automatically; this is safe because an already-accepted RFQ reports its

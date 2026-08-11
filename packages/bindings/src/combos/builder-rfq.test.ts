@@ -60,6 +60,37 @@ describe('BuilderRfqCreateResponseSchema', () => {
     });
   });
 
+  it('parses exact net proceeds for a SELL quote', () => {
+    const response = BuilderRfqCreateResponseSchema.parse({
+      ...QUOTE_READY_WIRE,
+      request: {
+        ...QUOTE_READY_WIRE.request,
+        direction: 'SELL',
+        requested_size: { unit: 'shares', value_e6: '2500000' },
+      },
+      quote: {
+        ...QUOTE_READY_WIRE.quote,
+        maker_amount_e6: '2500000',
+        taker_amount_e6: '1125000',
+        total_required_e6: '2500000',
+        net_receive_e6: '1090000',
+      },
+    });
+
+    expect(response).toMatchObject({
+      request: {
+        direction: 'SELL',
+        requestedSize: { unit: 'shares', valueE6: '2500000' },
+      },
+      quote: {
+        makerAmount: '2.5',
+        netReceive: '1.09',
+        takerAmount: '1.125',
+        totalRequired: '2.5',
+      },
+    });
+  });
+
   it('parses a terminal no-quotes response', () => {
     const response = BuilderRfqCreateResponseSchema.parse({
       rfq_id: 'rfq-2',

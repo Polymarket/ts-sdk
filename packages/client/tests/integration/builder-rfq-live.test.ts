@@ -77,6 +77,54 @@ describe('Builder gateway combo RFQ integration', () => {
     expect(error).toMatchObject({ name: 'RfqRequestRejectedError' });
   });
 
+  it('returns exact net proceeds for a SELL quote', {
+    timeout: 60_000,
+  }, async ({
+    annotate,
+    builderAuthentication,
+    depositWalletAddress,
+    depositWalletSigner,
+    environment,
+    publicClient,
+    skip,
+  }) => {
+    const legPositionIds =
+      loadComboLegPositionIds() ??
+      (await discoverComboLegPositionIds(publicClient));
+
+    if (legPositionIds === undefined) {
+      skip(
+        'No combo legs discoverable; set POLYMARKET_COMBO_LEG_POSITION_IDS to override.',
+      );
+      return;
+    }
+
+    const client = await createSecureClient({
+      apiKey: builderAuthentication,
+      environment,
+      signer: depositWalletSigner,
+      wallet: depositWalletAddress,
+    });
+    const result = await client.requestComboQuote({
+      direction: OrderSide.SELL,
+      legPositionIds,
+      size: 1,
+    });
+
+    if (result.quote === null) {
+      skip(`No SELL quote available: ${result.reason}`);
+      return;
+    }
+    if (result.quote.direction !== OrderSide.SELL) {
+      expect.fail(`SELL request returned a ${result.quote.direction} quote`);
+    }
+
+    expect(Number(result.quote.netReceive)).toBeGreaterThan(0);
+    annotate(
+      `SELL RFQ ${result.rfqId} returns ${result.quote.netReceive} exact net proceeds; its signed-order limit is ${result.quote.takerAmount}`,
+    );
+  });
+
   // Metered: an accepted combo quote executes a live trade with real funds.
   it.runIf(runMeteredTests)(
     'requests, accepts, and waits for a combo fill',
