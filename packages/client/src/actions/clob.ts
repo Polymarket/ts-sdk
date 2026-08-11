@@ -1,7 +1,7 @@
 import {
   BuilderCodeSchema,
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
   type DecimalString,
   OrderSideSchema,
   PaginationCursorSchema,
@@ -319,7 +319,7 @@ export const ResolveConditionByTokenError = makeErrorGuard(
 export async function resolveConditionByToken(
   client: BaseClient,
   request: ResolveConditionByTokenRequest,
-): Promise<CtfConditionId> {
+): Promise<ConditionId> {
   const params = parseUserInput(request, ResolveConditionByTokenRequestSchema);
 
   return unwrap(
@@ -330,7 +330,7 @@ export async function resolveConditionByToken(
 }
 
 const FetchMarketInfoRequestSchema = z.object({
-  conditionId: CtfConditionIdSchema,
+  conditionId: ConditionIdSchema,
 });
 
 export type FetchMarketInfoRequest = z.input<
@@ -1065,7 +1065,7 @@ export function listCurrentRewards(
 }
 
 const ListMarketRewardsRequestSchema = z.object({
-  conditionId: CtfConditionIdSchema,
+  conditionId: ConditionIdSchema,
   cursor: PaginationCursorSchema.optional(),
   sponsored: z.boolean().optional(),
 });

@@ -1,6 +1,5 @@
 import {
   ConnectionLostError,
-  production,
   RfqExecutionStatus,
   RfqKnownErrorCode,
   SignatureType,
@@ -10,7 +9,7 @@ import {
 import { ws } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { describe, expect, it } from './fixtures';
+import { describe, environment, expect, it } from './fixtures';
 import {
   authAckMessage,
   BUY_QUOTE_SIZE_E6,
@@ -34,7 +33,7 @@ import {
   unknownRfqMessage,
 } from './rfq-frames';
 
-const rfq = ws.link(production.combos.ws);
+const rfq = ws.link(environment.combos.ws);
 const server = setupServer();
 let outboundFrames: OutboundFrame[] = [];
 let connectionCount = 0;

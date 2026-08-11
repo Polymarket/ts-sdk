@@ -22,6 +22,8 @@ import { production } from '../../environments';
 import {
   AutoCancelDailyLimitError,
   RequestRejectedError,
+  TimeoutError,
+  TransportError,
   UserInputError,
 } from '../../errors';
 import {
@@ -387,6 +389,100 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('uses a matching private order update received before the acknowledgement', async () => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            postOnly: false,
+            price: '100.00',
+            quantity: '1.5',
+            side: OrderSide.BUY,
+            timeInForce: PerpsTimeInForce.GTC,
+          }),
+        ).resolves.toMatchObject({
+          order: {
+            clientOrderId: expect.stringMatching(/^[0-9a-f]{32}$/),
+            id: 123,
+            restingQuantity: '1.5',
+            status: 'open',
+          },
+        });
+        expect(frames[2]).toMatchObject({
+          op: {
+            args: [{ c: expect.stringMatching(/^[0-9a-f]{32}$/) }],
+          },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('times out waiting for an order update after the acknowledgement', async () => {
+      const session = createSession();
+      await session.connect();
+      vi.useFakeTimers();
+
+      try {
+        const placement = session.placeOrder({
+          instrumentId: 1,
+          postOnly: false,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
+        });
+        const rejection =
+          expect(placement).rejects.toBeInstanceOf(TimeoutError);
+
+        await vi.advanceTimersByTimeAsync(2000);
+
+        await rejection;
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('uses the command timeout while waiting for the acknowledgement', async () => {
+      server.resetHandlers();
+      mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders'
+          ? NO_RESPONSE
+          : responseForFrame(frame),
+      );
+      const session = createSession();
+      await session.connect();
+      vi.useFakeTimers();
+
+      try {
+        const placement = session.placeOrder({
+          instrumentId: 1,
+          postOnly: false,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTC,
+        });
+        const rejection = expect(placement).rejects.toMatchObject({
+          message: 'Perps command response timed out.',
+          name: TransportError.name,
+        });
+
+        await vi.advanceTimersByTimeAsync(30_000);
+
+        await rejection;
+      } finally {
+        await session.close();
+      }
+    });
+
     it('returns terminal placement updates after the ack', async () => {
       mockOrderPlacementSession({
         status: 'post_only_rejected',
@@ -582,7 +678,10 @@ describe('PerpsSession', () => {
     });
 
     it('places an order with take-profit and stop-loss triggers', async () => {
-      const frames = mockOrderPlacementSession({ status: 'open' });
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
       const session = createSession();
       await session.connect();
 
@@ -619,6 +718,7 @@ describe('PerpsSession', () => {
           args: [
             {
               buy: true,
+              c: expect.stringMatching(/^[0-9a-f]{32}$/),
               iid: 1,
               p: '100.00',
               po: false,
@@ -1707,6 +1807,8 @@ function createSession(): PerpsSession {
   });
 }
 
+const NO_RESPONSE = Symbol('NO_RESPONSE');
+
 function mockCommandSession(
   responder: (frame: {
     op?: { args?: unknown; type?: string };
@@ -1720,10 +1822,12 @@ function mockCommandSession(
       client.addEventListener('message', (event) => {
         const frame = JSON.parse(String(event.data));
         frames.push(frame);
+        const response = responder(frame);
+        if (response === NO_RESPONSE) return;
         client.send(
           JSON.stringify({
             id: frame.id,
-            data: responder(frame),
+            data: response,
           }),
         );
       });
@@ -1733,7 +1837,10 @@ function mockCommandSession(
   return frames;
 }
 
-function mockOrderPlacementSession(request: { status: string }): unknown[] {
+function mockOrderPlacementSession(request: {
+  status: string;
+  updateBeforeAck?: boolean;
+}): unknown[] {
   const frames: unknown[] = [];
 
   server.use(
@@ -1743,14 +1850,22 @@ function mockOrderPlacementSession(request: { status: string }): unknown[] {
         frames.push(frame);
 
         if (frame.op?.type === 'createOrders') {
-          const update = orderUpdate(request.status);
+          const update = orderUpdate(
+            request.status,
+            clientOrderIdFromFrame(frame),
+          );
+          if (request.updateBeforeAck) {
+            client.send(JSON.stringify(update));
+          }
           client.send(
             JSON.stringify({
               id: frame.id,
               data: responseForFrame(frame),
             }),
           );
-          setTimeout(() => client.send(JSON.stringify(update)), 0);
+          if (!request.updateBeforeAck) {
+            setTimeout(() => client.send(JSON.stringify(update)), 0);
+          }
           return;
         }
 
@@ -1765,6 +1880,22 @@ function mockOrderPlacementSession(request: { status: string }): unknown[] {
   );
 
   return frames;
+}
+
+function clientOrderIdFromFrame(frame: {
+  op?: { args?: unknown; type?: string };
+}): string {
+  const [order] = Array.isArray(frame.op?.args) ? frame.op.args : [];
+  if (
+    typeof order !== 'object' ||
+    order === null ||
+    !('c' in order) ||
+    typeof order.c !== 'string'
+  ) {
+    throw new Error('Expected Perps command client order ID.');
+  }
+
+  return order.c;
 }
 
 function responseForFrame(frame: {
@@ -1915,12 +2046,12 @@ function fundingUpdate(request: { id: number }) {
   };
 }
 
-function orderUpdate(status: string) {
+function orderUpdate(status: string, clientOrderId: string) {
   return {
     ch: 'orders',
     data: {
       buy: true,
-      coid: '0123456789abcdef0123456789abcdef',
+      coid: clientOrderId,
       cts: 1_700_000_000_000,
       fill: status === 'filled' ? '1.5' : '0',
       iid: 1,

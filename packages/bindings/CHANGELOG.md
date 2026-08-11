@@ -1,5 +1,15 @@
 # @polymarket/bindings
 
+## 0.5.0
+
+### Minor Changes
+
+- fb81779: Add perps auto-cancel (dead man's switch) support. `PerpsSession.armAutoCancel` schedules a signed one-shot cancel-all at a future time (at least 5 seconds ahead), `disarmAutoCancel` clears the schedule without firing, and `fetchAutoCancelStatus` reads the account's auto-cancel status, including the deadline (`null` when unarmed) and daily trigger usage. Arming past the daily trigger limit is rejected with the new `AutoCancelDailyLimitError`.
+
+### Patch Changes
+
+- 4c56d7b: Add a required `id` on Perps account funding payment records, matching the unique funding-record id the platform now returns on funding history and the realtime funding stream. The id is exposed as the branded `PerpsFundingPaymentId` type.
+
 ## 0.4.0
 
 ### Minor Changes
