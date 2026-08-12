@@ -7,6 +7,7 @@ export * from './clob';
 export * from './collateral-return';
 export * from './comments';
 export * from './events';
+export * from './funding';
 export * from './gasless';
 export * from './leaderboards';
 export * from './market-clarifications';

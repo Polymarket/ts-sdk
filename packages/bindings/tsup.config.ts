@@ -5,6 +5,7 @@ import { defineConfig } from 'tsup';
 export default defineConfig(() => ({
   entry: [
     'src/index.ts',
+    'src/bridge/index.ts',
     'src/clob/index.ts',
     'src/combos/index.ts',
     'src/data/index.ts',
