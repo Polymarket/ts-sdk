@@ -10,11 +10,13 @@ describe('Gasless', () => {
   describe('legacy wallet execution', () => {
     it('executes a gasless transaction for a Proxy wallet', async ({
       builderAuthentication,
+      environment,
       proxyWalletAddress,
       proxyWalletSigner,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: builderAuthentication,
+        environment,
         signer: proxyWalletSigner,
         wallet: proxyWalletAddress,
       });
@@ -31,11 +33,13 @@ describe('Gasless', () => {
 
     it('executes a gasless transaction for a Safe wallet', async ({
       builderAuthentication,
+      environment,
       safeWalletAddress,
       safeWalletSigner,
     }) => {
       const secureClient = await createSecureClient({
         apiKey: builderAuthentication,
+        environment,
         signer: safeWalletSigner,
         wallet: safeWalletAddress,
       });

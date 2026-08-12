@@ -63,7 +63,9 @@ export type ClobRewardId = Tagged<string, 'ClobRewardId'>;
 export type CommentId = Tagged<string, 'CommentId'>;
 export type ComboActivityId = Tagged<string, 'ComboActivityId'>;
 export type ComboConditionId = Tagged<HexString, 'ComboConditionId'>;
-export type CtfConditionId = Tagged<HexString, 'CtfConditionId'>;
+export type ConditionId = Tagged<HexString, 'ConditionId'>;
+/** @deprecated Use {@link ConditionId}. */
+export type CtfConditionId = ConditionId;
 export type CollectionId = Tagged<string, 'CollectionId'>;
 export type EventCreatorId = Tagged<string, 'EventCreatorId'>;
 export type EventExternalPartnerMappingId = Tagged<
@@ -138,15 +140,18 @@ export function toComboActivityId(value: string): ComboActivityId {
   return toTaggedString<ComboActivityId>(value);
 }
 
-export function toCtfConditionId(value: string): CtfConditionId {
+export function toConditionId(value: string): ConditionId {
   if (!isHexString(value) || (value.length !== 64 && value.length !== 66)) {
     throw new TypeError(
       `Expected a 31-byte or 32-byte hex string, received: ${value}`,
     );
   }
 
-  return value as CtfConditionId;
+  return value as ConditionId;
 }
+
+/** @deprecated Use {@link toConditionId}. */
+export const toCtfConditionId = toConditionId;
 
 export function toComboConditionId(value: string): ComboConditionId {
   if (!isHexString(value)) {
@@ -303,10 +308,27 @@ export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
 export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
-export const CtfConditionIdSchema = z.string().transform(toCtfConditionId);
-export const OptionalCtfConditionIdSchema = z.preprocess(
+export const ConditionIdSchema = z
+  .string()
+  .refine(
+    (value) =>
+      isHexString(value) && (value.length === 64 || value.length === 66),
+    'Expected a 31-byte or 32-byte hex string',
+  )
+  .transform((value) => value as ConditionId);
+/** @deprecated Use {@link ConditionIdSchema}. */
+export const CtfConditionIdSchema = ConditionIdSchema;
+export const OptionalConditionIdSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
-  CtfConditionIdSchema.optional(),
+  ConditionIdSchema.optional(),
+);
+/** @deprecated Use {@link OptionalConditionIdSchema}. */
+export const OptionalCtfConditionIdSchema = OptionalConditionIdSchema;
+// Unlike ConditionIdSchema, this validates hex syntax without constraining the
+// condition ID byte length.
+export const ConditionIdResponseSchema = z.custom<ConditionId>(
+  isHexString,
+  'Expected a hex-encoded market condition ID',
 );
 export const EvmAddressSchema = z
   .string()
