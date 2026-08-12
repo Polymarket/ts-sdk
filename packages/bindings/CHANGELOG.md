@@ -1,5 +1,16 @@
 # @polymarket/bindings
 
+## 0.6.0
+
+### Minor Changes
+
+- 050331b: Add requester-side combo RFQ support: `client.requestComboQuote(...)`, `client.acceptComboQuote(...)`, and `client.waitForComboFill(...)`, plus the `fetchRfqStatus` action in `@polymarket/client/actions`. Requests authenticate with the client's Builder API Key (`builderApiKey(...)` or `remoteBuilderSigning(...)`), and winning quotes are self-contained JSON values that may be persisted or routed between processes before acceptance. SELL quotes expose exact post-fee collateral proceeds as `netReceive`. Business outcomes such as no quotes, a maker declining, or an expired acceptance window are returned as result values; gateway rejections throw the new `RfqRequestRejectedError` with a classified `RfqRejectionCode`.
+- dd427eb: Expose PolyV2 position IDs alongside CTF token IDs on normalized market outcomes, preserve the deprecated market-level position ID array for compatibility, and introduce protocol-neutral condition ID APIs while retaining `CtfConditionId`, `CtfConditionIdSchema`, `OptionalCtfConditionIdSchema`, and `toCtfConditionId` as deprecated compatibility aliases.
+
+### Patch Changes
+
+- f2f1817: Return `null` when a token has no last trade.
+
 ## 0.5.0
 
 ### Minor Changes
