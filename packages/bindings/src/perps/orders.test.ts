@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PerpsAccountFillSchema,
+  PerpsCancelOrderErrorCode,
   PerpsCancelOrderResultSchema,
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
@@ -170,6 +171,26 @@ describe('PerpsCancelOrderResultSchema', () => {
 
     expect(result.status).toBe('ok');
     expect(result.orderId).toBeUndefined();
+  });
+
+  it.each(
+    Object.values(PerpsCancelOrderErrorCode),
+  )('types the %s rejection identifier', (error) => {
+    const result = PerpsCancelOrderResultSchema.parse({ error, status: 'err' });
+
+    expect(result).toEqual({
+      clientOrderId: undefined,
+      error,
+      orderId: undefined,
+      status: 'err',
+    });
+  });
+
+  it.each([
+    { status: 'err' },
+    { error: 'new_cancel_rejection', status: 'err' },
+  ])('rejects an untyped cancellation rejection: %j', (value) => {
+    expect(() => PerpsCancelOrderResultSchema.parse(value)).toThrow();
   });
 
   it('normalizes TP/SL metadata', () => {

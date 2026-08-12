@@ -1,9 +1,18 @@
 import { OrderSide } from '@polymarket/bindings';
-import { PerpsTimeInForce } from '@polymarket/bindings/perps';
-import { describe, expect, it } from 'vitest';
+import {
+  PerpsCancelOrderErrorCode,
+  PerpsTimeInForce,
+} from '@polymarket/bindings/perps';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  OperationAbortedError,
+  UnexpectedResponseError,
+} from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
+  cancelPerpsOrders,
   type PerpsCommandExecutor,
+  type PerpsCommandRequest,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -13,6 +22,11 @@ const CREATE_ORDER_DATA_HASH =
   '0x817207b7b8b31044a8f27e43c16e24d9fd5e11d3f106feb962f104f3ef28d52a';
 const UPDATE_MARGIN_DATA_HASH =
   '0xf61d7d83b4367ce136bf66cfee6a5d41303a8b2d8724f5458f9812c46f5e55b3';
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('Perps trading actions', () => {
   describe('createPerpsOpTypedDataPayload', () => {
@@ -138,4 +152,206 @@ describe('Perps trading actions', () => {
       ).resolves.toBeUndefined();
     });
   });
+
+  describe('cancelPerpsOrders', () => {
+    it('retries only in-flight orders and preserves result order', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { client, requests } = cancelExecutor([
+        [
+          { error: 'order_in_flight', oid: 1, status: 'err' },
+          { error: 'order_not_found', oid: 2, status: 'err' },
+          { oid: 3, status: 'ok' },
+        ],
+        [{ oid: 1, status: 'ok' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, {
+          orderIds: [1, 2, 3],
+          retry: { maxAttempts: 2, maxElapsedMs: 1_000 },
+        }),
+      ).resolves.toEqual([
+        { clientOrderId: undefined, orderId: 1, status: 'ok' },
+        {
+          clientOrderId: undefined,
+          error: PerpsCancelOrderErrorCode.OrderNotFound,
+          orderId: 2,
+          status: 'err',
+        },
+        { clientOrderId: undefined, orderId: 3, status: 'ok' },
+      ]);
+      expect(requests.map((request) => request.op)).toEqual([
+        ['cancelOrders', [1, 2, 3]],
+        ['cancelOrders', [1]],
+      ]);
+    });
+
+    it.each([
+      PerpsCancelOrderErrorCode.OrderUnknown,
+      PerpsCancelOrderErrorCode.OrderNotInOrderbook,
+      PerpsCancelOrderErrorCode.OrderNotPendingEngine,
+      PerpsCancelOrderErrorCode.OrderNotFound,
+    ])('does not retry the terminal %s result', async (error) => {
+      const { client, requests } = cancelExecutor([
+        [{ error, oid: 1, status: 'err' }],
+      ]);
+
+      const result = await cancelPerpsOrders(client, {
+        orderIds: [1],
+        retry: { maxAttempts: 4, maxElapsedMs: 2_000 },
+      });
+
+      expect(result[0]).toMatchObject({ error, status: 'err' });
+      expect(requests).toHaveLength(1);
+    });
+
+    it('supports disabling automatic retries', async () => {
+      const { client, requests } = cancelExecutor([
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, { orderIds: [1], retry: false }),
+      ).resolves.toMatchObject([
+        {
+          error: PerpsCancelOrderErrorCode.OrderInFlight,
+          status: 'err',
+        },
+      ]);
+      expect(requests).toHaveLength(1);
+    });
+
+    it('returns the last in-flight rejection after max attempts', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { client, requests } = cancelExecutor([
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+      ]);
+
+      const result = await cancelPerpsOrders(client, {
+        orderIds: [1],
+        retry: { maxAttempts: 3, maxElapsedMs: 2_000 },
+      });
+
+      expect(result).toMatchObject([
+        {
+          error: PerpsCancelOrderErrorCode.OrderInFlight,
+          orderId: 1,
+          status: 'err',
+        },
+      ]);
+      expect(requests).toHaveLength(3);
+    });
+
+    it('uses bounded exponential backoff with full jitter', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const rejection = {
+        error: 'order_in_flight',
+        oid: 1,
+        status: 'err',
+      };
+      const { client, requests } = cancelExecutor([
+        [rejection],
+        [rejection],
+        [rejection],
+        [rejection],
+      ]);
+
+      const result = cancelPerpsOrders(client, {
+        orderIds: [1],
+        retry: { maxAttempts: 4, maxElapsedMs: 10_000 },
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(requests).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(49);
+      expect(requests).toHaveLength(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requests).toHaveLength(2);
+
+      await vi.advanceTimersByTimeAsync(99);
+      expect(requests).toHaveLength(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(requests).toHaveLength(3);
+
+      await vi.advanceTimersByTimeAsync(200);
+      await expect(result).resolves.toMatchObject([
+        { error: PerpsCancelOrderErrorCode.OrderInFlight, status: 'err' },
+      ]);
+      expect(requests).toHaveLength(4);
+    });
+
+    it('does not start a retry outside the elapsed-time budget', async () => {
+      vi.useFakeTimers({ now: 1_000 });
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const { client, requests } = cancelExecutor([
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, {
+          orderIds: [1],
+          retry: { maxAttempts: 4, maxElapsedMs: 50 },
+        }),
+      ).resolves.toMatchObject([
+        { error: PerpsCancelOrderErrorCode.OrderInFlight, status: 'err' },
+      ]);
+      expect(requests).toHaveLength(1);
+    });
+
+    it('aborts retry backoff without sending another command', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const controller = new AbortController();
+      const reason = new Error('stop retrying');
+      const { client, requests } = cancelExecutor([
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+      ]);
+
+      const result = cancelPerpsOrders(client, {
+        orderIds: [1],
+        retry: { maxAttempts: 4, maxElapsedMs: 2_000 },
+        signal: controller.signal,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      controller.abort(reason);
+
+      await expect(result).rejects.toMatchObject({
+        cause: reason,
+        name: OperationAbortedError.name,
+      });
+      expect(requests).toHaveLength(1);
+    });
+
+    it('rejects responses with missing batch results', async () => {
+      const { client } = cancelExecutor([[{ oid: 1, status: 'ok' }]]);
+
+      await expect(
+        cancelPerpsOrders(client, { orderIds: [1, 2], retry: false }),
+      ).rejects.toBeInstanceOf(UnexpectedResponseError);
+    });
+  });
 });
+
+function cancelExecutor(responses: unknown[][]): {
+  client: PerpsCommandExecutor;
+  requests: PerpsCommandRequest[];
+} {
+  const requests: PerpsCommandRequest[] = [];
+  let responseIndex = 0;
+  return {
+    client: {
+      async executeCommand(request, responseSchema) {
+        requests.push(request);
+        const response = responses[responseIndex++];
+        if (response === undefined) {
+          throw new Error('Unexpected Perps cancel attempt.');
+        }
+        return responseSchema.parse(response);
+      },
+    },
+    requests,
+  };
+}

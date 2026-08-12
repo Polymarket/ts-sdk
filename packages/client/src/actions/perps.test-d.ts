@@ -21,6 +21,9 @@ import type {
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsCancelOptions,
+  PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -34,7 +37,11 @@ import type {
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
+import {
+  FetchPerpsTickerError,
+  PerpsCancelOrderErrorCode,
+  UpdatePerpsMarginError,
+} from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
@@ -89,6 +96,8 @@ describe('public Perps exports', () => {
       CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
+      PerpsCancelOptions,
+      PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
     ];
@@ -106,5 +115,16 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exports the cancel rejection enum and narrows rejected results', () => {
+    const result = undefined as unknown as PerpsCancelOrderResult;
+
+    if (result.status === 'err') {
+      expectTypeOf(result.error).toEqualTypeOf<PerpsCancelOrderErrorCode>();
+    } else {
+      expectTypeOf(result.error).toEqualTypeOf<undefined>();
+    }
+    void PerpsCancelOrderErrorCode.OrderInFlight;
   });
 });
