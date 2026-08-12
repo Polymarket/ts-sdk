@@ -4,11 +4,11 @@ import {
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
-import { describe, expect, it } from './fixtures';
+import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
-const publicClient = createPublicClient();
+const publicClient = createPublicClient({ environment });
 
 const {
   items: [market],

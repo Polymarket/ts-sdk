@@ -1,6 +1,6 @@
 import {
   BuilderCodeSchema,
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { MarketInfo } from '@polymarket/bindings/clob';
@@ -11,7 +11,7 @@ import { OrderMetadataCache } from './cache';
 const TOKEN_YES = TokenIdSchema.parse('111');
 const TOKEN_NO = TokenIdSchema.parse('222');
 const STRAY_TOKEN = TokenIdSchema.parse('999');
-const CONDITION_ID = CtfConditionIdSchema.parse(`0x${'ab'.repeat(32)}`);
+const CONDITION_ID = ConditionIdSchema.parse(`0x${'ab'.repeat(32)}`);
 const BUILDER_CODE = BuilderCodeSchema.parse(`0x${'cd'.repeat(32)}`);
 const METADATA_TTL_MS = 10 * 60 * 1000;
 

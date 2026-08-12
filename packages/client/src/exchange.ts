@@ -164,6 +164,70 @@ export function createExchangeOrderSignature(
 }
 
 /** @internal */
+export type CreateExchangeV3OrderDomainParams = {
+  chainId: number;
+  exchange: EvmAddress;
+};
+
+/** @internal */
+export function createExchangeV3OrderDomain(
+  params: CreateExchangeV3OrderDomainParams,
+): ExchangeOrderDomain {
+  return {
+    chainId: params.chainId,
+    exchange: params.exchange,
+    protocolVersion: ExchangeOrderProtocolVersion.V3,
+  };
+}
+
+/**
+ * Amount the order owner gives, in e6 base units: `price * size` collateral
+ * rounded up for a BUY, the outcome-token `size` for a SELL. `price` and
+ * `size` are both e6-scaled.
+ *
+ * @internal
+ */
+export function calculateExchangeOrderMakerAmount(
+  side: OrderSide,
+  price: bigint,
+  size: bigint,
+): string {
+  if (side === OrderSide.SELL) return size.toString();
+
+  return ((price * size + 999_999n) / 1_000_000n).toString();
+}
+
+/**
+ * Amount the order owner receives, in e6 base units: the outcome-token
+ * `size` for a BUY, `price * size` collateral rounded down for a SELL.
+ * Rounding always favors the counterparty. `price` and `size` are both
+ * e6-scaled.
+ *
+ * @internal
+ */
+export function calculateExchangeOrderTakerAmount(
+  side: OrderSide,
+  price: bigint,
+  size: bigint,
+): string {
+  if (side === OrderSide.SELL) {
+    return ((price * size) / 1_000_000n).toString();
+  }
+
+  return size.toString();
+}
+
+/** @internal */
+export function generateExchangeOrderSalt(): bigint {
+  const bytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(bytes);
+
+  return BigInt(
+    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
+}
+
+/** @internal */
 export function createExchangeOrderMessage(
   order: ExchangeOrderInput,
 ): ExchangeOrderMessage {
@@ -280,7 +344,8 @@ function protocolVersionHash(
   );
 }
 
-function encodeExchangeOrderSide(side: OrderSide | 0 | 1): 0 | 1 {
+/** @internal */
+export function encodeExchangeOrderSide(side: OrderSide | 0 | 1): 0 | 1 {
   if (side === 0 || side === 1) return side;
 
   return side === OrderSide.BUY ? 0 : 1;

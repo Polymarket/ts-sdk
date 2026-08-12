@@ -1,11 +1,60 @@
-import { describe, expect, it } from 'vitest';
-import { ComboConditionIdSchema, toComboConditionId } from './shared';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import {
+  ComboConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
+  type CtfConditionId,
+  CtfConditionIdSchema,
+  OptionalConditionIdSchema,
+  OptionalCtfConditionIdSchema,
+  toComboConditionId,
+  toConditionId,
+  toCtfConditionId,
+} from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
   '0x032def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000';
 const COMBO_CONDITION_ID_PATTERN = /^0x03[0-9a-f]{60}$/;
 
 describe('shared ID parsers', () => {
+  describe('condition IDs', () => {
+    const binaryConditionId =
+      '0x012def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000';
+    const paddedBinaryConditionId = `${binaryConditionId}00`;
+    const negativeRiskConditionId =
+      '0x022def24bfb0c5c57fb236fac08b94236a0004000000000000000000000003';
+    const ctfConditionId = `0x${'ab'.repeat(32)}`;
+
+    it('parses ordinary condition IDs without inferring their protocol', () => {
+      expect(ConditionIdSchema.parse(binaryConditionId)).toBe(
+        binaryConditionId,
+      );
+      expect(ConditionIdSchema.parse(paddedBinaryConditionId)).toBe(
+        paddedBinaryConditionId,
+      );
+      expect(ConditionIdSchema.parse(negativeRiskConditionId)).toBe(
+        negativeRiskConditionId,
+      );
+      expect(ConditionIdSchema.parse(ctfConditionId)).toBe(ctfConditionId);
+    });
+
+    it('reports unsupported byte lengths as validation failures', () => {
+      const result = ConditionIdSchema.safeParse('0x1');
+
+      expect(result.success).toBe(false);
+    });
+
+    it('keeps CtfConditionId as an exact compatibility alias', () => {
+      expectTypeOf<ConditionId>().toEqualTypeOf<CtfConditionId>();
+    });
+
+    it('keeps deprecated CTF runtime exports as compatibility aliases', () => {
+      expect(CtfConditionIdSchema).toBe(ConditionIdSchema);
+      expect(OptionalCtfConditionIdSchema).toBe(OptionalConditionIdSchema);
+      expect(toCtfConditionId).toBe(toConditionId);
+    });
+  });
+
   describe('toComboConditionId', () => {
     it('returns canonical bytes31 combo condition IDs', () => {
       for (const value of [
