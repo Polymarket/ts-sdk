@@ -35,6 +35,25 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('exposes JSON error codes on rejected requests', async () => {
+    server.use(
+      http.get(`${root}/json-error-code`, () =>
+        HttpResponse.json(
+          { error: 'invalid acceptance', code: 'INVALID_ACCEPTANCE' },
+          { status: 400 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.get('/json-error-code'))).rejects.toMatchObject({
+      code: 'INVALID_ACCEPTANCE',
+      message: `invalid acceptance (${root}/json-error-code)`,
+      name: 'RequestRejectedError',
+      status: 400,
+    });
+  });
+
   it('prefers JSON error fields over Cloudflare response detection', async () => {
     server.use(
       http.get(`${root}/cloudflare-json-error`, () =>
