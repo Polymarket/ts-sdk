@@ -806,6 +806,8 @@ export const FetchLastTradePriceError = makeErrorGuard(
 /**
  * Fetches the last traded price for a token.
  *
+ * Returns `null` when the token has not traded.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
@@ -819,14 +821,14 @@ export const FetchLastTradePriceError = makeErrorGuard(
  *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  * });
  *
- * // trade === { price: '0.53', side: OrderSide.BUY }
+ * // trade === LastTradePrice | null
  * ```
  *
  */
 export async function fetchLastTradePrice(
   client: BaseClient,
   request: FetchLastTradePriceRequest,
-): Promise<LastTradePrice> {
+): Promise<LastTradePrice | null> {
   const params = parseUserInput(request, FetchLastTradePriceRequestSchema);
 
   return unwrap(
@@ -867,6 +869,9 @@ export const FetchLastTradePricesError = makeErrorGuard(
 /**
  * Fetches last traded prices for multiple tokens.
  *
+ * Tokens without trades are omitted from the response. Match returned rows by
+ * `tokenId`; the array is not positionally aligned with the request.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
@@ -875,14 +880,11 @@ export const FetchLastTradePricesError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const trades = await fetchLastTradePrices(client, [
- *   {
- *     tokenId:
- *       '8501497159083948713316135768103773293754490207922884688769443031624417212426',
- *   },
- * ]);
+ * const tokenId =
+ *   '8501497159083948713316135768103773293754490207922884688769443031624417212426';
+ * const trades = await fetchLastTradePrices(client, [{ tokenId }]);
  *
- * // trades[0] === { tokenId, price: '0.53', side: OrderSide.BUY }
+ * const trade = trades.find((candidate) => candidate.tokenId === tokenId);
  * ```
  *
  */

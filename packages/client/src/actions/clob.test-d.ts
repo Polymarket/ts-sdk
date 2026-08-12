@@ -1,8 +1,14 @@
 import type { DecimalString, OrderSide, TokenId } from '@polymarket/bindings';
-import type { Midpoints, Prices, Spreads } from '@polymarket/bindings/clob';
+import type {
+  LastTradePrice,
+  Midpoints,
+  Prices,
+  Spreads,
+} from '@polymarket/bindings/clob';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
 import type {
+  fetchLastTradePrice,
   fetchMidpoint,
   fetchMidpoints,
   fetchPrice,
@@ -67,5 +73,21 @@ describe('public CLOB price read types', () => {
     expectTypeOf<ReturnType<typeof actions.fetchPrices>>().toEqualTypeOf<
       Promise<Prices>
     >();
+  });
+
+  it('models last trade absence in action and decorator return types', () => {
+    const actions = {} as DataActions;
+
+    expectTypeOf<LastTradePrice>().toMatchTypeOf<{
+      price: DecimalString;
+      side: OrderSide;
+    }>();
+    expectTypeOf<Extract<LastTradePrice, null>>().toEqualTypeOf<never>();
+    expectTypeOf<ReturnType<typeof fetchLastTradePrice>>().toEqualTypeOf<
+      Promise<LastTradePrice | null>
+    >();
+    expectTypeOf<
+      ReturnType<typeof actions.fetchLastTradePrice>
+    >().toEqualTypeOf<Promise<LastTradePrice | null>>();
   });
 });
