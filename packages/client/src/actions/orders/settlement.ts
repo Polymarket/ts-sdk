@@ -104,8 +104,7 @@ function isFailedTrade(trade: ClobTrade): boolean {
  * ```
  *
  * @throws {@link WaitForOrderFillSettlementError}
- * Thrown on failure: a timeout while fills are still settling, or every fill
- * failing execution. The order placement itself is unaffected.
+ * Thrown on failure.
  */
 export async function waitForOrderFillSettlement(
   client: BaseSecureClient,

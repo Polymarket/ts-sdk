@@ -20,6 +20,20 @@
 - Example: if `packages/bindings` changes and you are validating `packages/client`, run `pnpm --filter @polymarket/bindings build` before `pnpm test:client`.
 - If multiple packages changed or the dependency chain is unclear, prefer root-level verification such as `pnpm build` and `pnpm test`.
 
+## Review Method
+
+- Review from the developer workflow inward. Start by understanding what the consumer is trying to accomplish and inspect realistic usage examples.
+- Build a complete mental model before judging the implementation. Clarify terminology, lifecycle, ownership, and failure behavior.
+- Review the public contract first: naming, symmetry, defaults, state representation, validation, errors, and call-site ergonomics.
+- Separate SDK behavior, integrator behavior, documentation examples, and backend behavior. Attach findings to the layer that owns them.
+- Compare questionable code with established repository patterns before requesting a change.
+- Evaluate findings by practical impact. Downgrade or discard concerns when the risk is bounded and the proposed complexity is not justified.
+- Prefer tests that prove meaningful boundaries. Favor one live integration workflow over multiple mocks when a safe test environment exists.
+- Use mocks for conditions that cannot reasonably be produced through integration testing.
+- Distinguish demonstrated bugs, contract problems, missing regression coverage, and optional hardening.
+- Revisit initial findings as understanding improves rather than defending the first interpretation.
+- Keep review comments short, human, line-specific, and actionable.
+
 ## Product and API guardrails
 
 - This repo is the home for Polymarket's TypeScript SDKs. The first shipping target is `@polymarket/client`.
@@ -43,6 +57,11 @@
 - Do not leak `ky` details outside of `ServiceClient`. Keep `ky` instances, types, and option shapes internal, and expose Polymarket-specific abstractions instead.
 - Wallet-library integrations must stay isolated to their entry points and optional peer dependencies. If `viem` is an optional peer tied to the `viem` entry point, non-`viem` code paths must not import `viem`. Apply the same rule to future entry points for other wallet libraries such as Ethers, Privy, Safe SDK, or Turnkey.
 
+## Platform Invariants
+
+- A market's minimum tick size may become finer, such as `0.01` to `0.001`, but it cannot become coarser, such as `0.001` to `0.01`. SDK caching and recovery logic may rely on this monotonic behavior and should not add defensive handling for tick-size coarsening.
+- When a Perps order is submitted with a client order ID, every corresponding private order update echoes that same client order ID. SDK order-placement workflows may rely on this invariant for pre-acknowledgement correlation.
+
 ## TypeScript config
 
 - Root `tsconfig.json` and package-level `tsconfig.json` files are for editor tooling and source navigation only.
@@ -64,6 +83,8 @@
 - Prefer `type` over `interface` unless an interface is clearly needed, such as when a class implements it or declaration extensibility is a deliberate requirement.
 - Prefer function declarations over arrow functions unless there is a clear reason to use an arrow function.
 - When a definition is specific to a single function, such as a one-off params object, argument union, request schema, exported request type, error union, or error guard, colocate it directly above the function declaration. Put internal helper-only aliases immediately above the helper that uses them. Promote definitions upward only when they are reused, part of the public model, form a domain abstraction, or improve the public API surface.
+- Consumer input validation belongs at the narrowest public action boundary that owns the input contract. Use Zod with the shared `parseUserInput` path instead of hand-written validation and error messages. Lower-level transport, manager, and service layers should trust validated typed input unless they expose an independent public input contract. For batched actions, validate the complete batch before starting side effects.
+- When adding validation for one variant of a generic input union, explicitly decide whether the whole union should be validated. Avoid generic-looking validation infrastructure that only handles one special case.
 - Treat property-access-derived types like `SecureClient['signatureType']` as a code smell in most cases. Prefer a named domain type when the value is part of the public or shared model.
 - Do not use indexed-access-derived types like `SomeType['field']` in implementation code, public APIs, examples, TSDoc, or docs. This is non-negotiable; define and use a named type instead.
 - Prefer simple, local code. Accept small duplication when it keeps logic easier to read.
@@ -78,13 +99,30 @@
 - For any public SDK function export, including actions and client methods, document the public thrown-error surface explicitly. Export a flattened `...Error` union of the concrete public error types the function can throw through its public contract, dedupe the union, and do not include internal assertion-style errors such as `InvariantError` in that union.
 - Public SDK functions with a documented `...Error` union should include an `@throws` line in TSDoc that references that union. The accompanying sentence can be brief and generic; it does not need to enumerate every specific failure path.
 
+## Data Flow and Responsibility
+
+- Preserve one-way workflow data flow: resolve data, validate it, derive values, then build the result. Do not route operational data through a shared abstraction merely because multiple call sites need it.
+- Keep policy in the layer that owns it. Bindings normalize wire data, caches fetch and store reusable data, actions own workflow decisions and recovery, and public action boundaries attach user-facing parameter names and errors.
+- A helper should return the data or result named by its responsibility. Empty arrays, sentinel `undefined` values, refresh callbacks, or helpers returning unrelated values are signs that an abstraction is carrying multiple concerns.
+- Prefer explicit branches and small local duplication when workflows use different sources, freshness requirements, or error semantics. Do not force distinct workflows through a generic abstraction only to remove duplication.
+- Use one coherent source of truth for related values. Do not combine live and cached fields when one response provides the values required for a single operation.
+- Treat freshness as part of correctness. Cache a value only when bounded staleness cannot violate the public contract; keep inputs to hard guarantees current unless immutability or safe invalidation is proven.
+- Keep lower-level validation field-neutral. The action that owns a public parameter should attach its name and user-facing error context.
+- Implement recovery at the workflow that observes the failure. Fetch fresh data and run the normal local path again instead of teaching storage or transport layers about caller-specific validation and retry behavior.
+- Judge an abstraction primarily by whether it makes its callers easier to read top-to-bottom. If callers need to prepare descriptors, callbacks, or placeholder values for the abstraction, prefer a simpler local composition.
+
 ## Testing
 
 - Default client tests to integration-style coverage.
 - Do not mock API responses unless explicitly requested or unless mocking is necessary to isolate a boundary under test.
+- Never create client fixtures solely to satisfy an action signature. This includes casting partial objects to `BaseClient` or `BaseSecureClient`, and instantiating real clients with dummy environments, credentials, signers, or unrelated dependencies. A real client class backed by fabricated configuration is still a fake-client fixture when the behavior under test does not require the client.
+- Prove cross-boundary behavior such as request counts, caching, retries, and pagination in `packages/client/tests/integration` with real clients and live APIs. Observing the real network with a `fetch` spy is fine; replacing responses is not.
+- When stateful policy requires controlled time or failures, extract it behind a consumer-defined, domain-typed dependency seam and unit test that logic without clients, transports, responses, or wire-format fixtures.
 - For tests involving async iterators, especially integration tests, prefer idiomatic consumer usage such as `for await (...)` so the test reads like final SDK DX. Manual iterator calls like `iterator.next()` are acceptable in unit tests or narrow cases where they make the behavior materially easier to isolate or understand.
 - Add tests when they protect user-facing behavior, public API contracts, integration boundaries, or regressions that are likely to recur.
 - Do not add tests reflexively for every small implementation change. For narrow schema or mechanical changes, prefer existing broader coverage plus `typecheck` or build verification when that gives enough confidence.
+- Do not add production exports, dependency seams, or constructor-heavy setup solely to test a private schema or simple predicate.
+- Validation tests should protect a non-obvious public contract, cross-field rule, transformation, or demonstrated regression. Tests that merely repeat a literal Zod refinement or verify that a newly added error-union member is recognized are usually low signal.
 - Prefer extending an existing high-signal test suite over creating a new narrow unit-test file.
 - A good test should catch a plausible future regression, not just prove that the current diff works.
 

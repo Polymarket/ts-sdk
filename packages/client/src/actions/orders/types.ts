@@ -39,19 +39,18 @@ export type PrepareMarketBuyOrderRequest = BasePrepareMarketOrderRequest & {
    * Desired USD notional to buy, before market and builder taker fees.
    *
    * By default, the SDK prepares the order for this full buy amount and applicable
-   * fees are paid on top. Set `maxSpend` when the total USD spent, including
-   * fees, must not exceed a cap.
+   * fees are paid on top. Set `maxSpend` to let the SDK resize the amount against
+   * an estimated all-in spend target.
    */
   amount: number | string;
 
   /**
-   * Optional all-in USD spend cap for BUY market orders, including market and
-   * builder taker fees.
+   * Optional estimated all-in USD spend target for BUY market orders, including
+   * market and builder taker fees.
    *
    * When provided, the SDK keeps `amount` unchanged if `maxSpend` covers the
-   * requested buy amount plus fees. If fees would make total spend exceed this
-   * cap, the SDK reduces the signed buy amount so total spend fits within
-   * `maxSpend`.
+   * requested buy amount plus estimated fees. Otherwise, the SDK reduces the
+   * signed buy amount using the order price and recently resolved fee rates.
    *
    * Set `maxSpend` equal to `amount` when the requested amount should include
    * fees. Leave it unset to pay fees on top of `amount`.

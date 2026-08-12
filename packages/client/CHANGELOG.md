@@ -1,5 +1,56 @@
 # @polymarket/client
 
+## 0.5.0
+
+### Minor Changes
+
+- fb81779: Add perps auto-cancel (dead man's switch) support. `PerpsSession.armAutoCancel` schedules a signed one-shot cancel-all at a future time (at least 5 seconds ahead), `disarmAutoCancel` clears the schedule without firing, and `fetchAutoCancelStatus` reads the account's auto-cancel status, including the deadline (`null` when unarmed) and daily trigger usage. Arming past the daily trigger limit is rejected with the new `AutoCancelDailyLimitError`.
+
+### Patch Changes
+
+- 93df9d5: Internal refactor: Exchange v3 order construction helpers now live in the exchange module. No behavior change.
+- f6d1542: Prevent Perps `placeOrder` from missing private order updates that arrive before the command acknowledgement. High-level placement now generates a client order ID when callers omit it.
+- Updated dependencies [fb81779]
+- Updated dependencies [4c56d7b]
+  - @polymarket/bindings@0.5.0
+
+## 0.4.0
+
+### Minor Changes
+
+- 5a6b56c: Cache market configuration, platform fees, and builder fee rates used to prepare repeated orders. If cached tick metadata rejects a limit or protected price, the SDK fetches current metadata and validates once more before returning the input error. Unprotected market orders now derive price, tick size, and exchange selection from one live order-book response. Order-book tick sizes are normalized to supported numeric values. `maxSpend` is now documented as an estimated all-in spend target based on recently resolved fees rather than a strict cap.
+
+### Patch Changes
+
+- 4911f43: Add Perps session support for adjusting isolated position margin.
+- Updated dependencies [2ba6be3]
+- Updated dependencies [5a6b56c]
+  - @polymarket/bindings@0.4.0
+
+## 0.3.0
+
+### Minor Changes
+
+- 0bb6a4b: Add typed 30-second and 60-second Chainlink TWAP realtime subscriptions.
+- 40dc38d: Add Perps account notifications support: `session.listNotifications()` with SDK-owned keyset pagination (including a `sinceSeq` backfill bound pinned across pages), `session.fetchUnreadNotificationsCount()`, `session.markNotificationsRead()` by ids or `upTo` a notification, and the `notifications` session WebSocket channel emitting typed `notification` events.
+
+### Patch Changes
+
+- ca595ec: listActivity now returns all activity types by default, including deposits and withdrawals. The endpoint excludes DEPOSIT and WITHDRAWAL rows unless excludeDepositsWithdrawals=false and strips both values from the type filter, so the SDK now always opts out and the type filter alone decides which rows come back. Previously those rows never appeared, even when requested explicitly.
+- 11afc3d: Validate Chainlink TWAP subscription input at the public subscribe boundary.
+- dbd6f53: Stop populating `Page.totalCount` from the per-response `count` on cursor-paginated endpoints (open orders, account trades, earnings, builder lists). That value was the current page's item count, not a total across all pages.
+- 5c56abd: RequestRejectedError and RateLimitError now expose retryAfter, populated from the Retry-After response header, so callers can honor server-provided backoff.
+- 2f02252: Deposit-wallet gasless and collateral-return submits now self-heal nonce mismatches: when the relayer rejects a batch with the on-chain nonce in the error, the batch is re-signed with that nonce and resubmitted once.
+- c092352: Migrate Perps fills pagination to the API-native cursor and add a fills time sort direction option.
+- 4ddf659: Expose the granular Combos RFQ quote-validation error codes.
+- Updated dependencies [0bb6a4b]
+- Updated dependencies [28813f6]
+- Updated dependencies [7463938]
+- Updated dependencies [40dc38d]
+- Updated dependencies [c092352]
+- Updated dependencies [4ddf659]
+  - @polymarket/bindings@0.3.0
+
 ## 0.3.0-beta.1
 
 ### Minor Changes

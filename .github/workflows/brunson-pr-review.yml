@@ -1,0 +1,130 @@
+name: Brunson PR Review
+
+# NOTE: this copy diverges from the canonical polymarket/brunson workflow —
+# ts-sdk is a PUBLIC repo, so it adds two gates the canonical (private-repo)
+# copy doesn't need:
+#   - fork PRs skip the review job (GitHub withholds secrets from fork
+#     pull_request runs; without the gate every fork PR gets a red check)
+#   - comment jobs only fire for OWNER/MEMBER/COLLABORATOR authors, so
+#     arbitrary public commenters can't trigger review sessions
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+permissions: {}
+
+jobs:
+  review:
+    if: >-
+      github.event_name == 'pull_request' &&
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for Brunson to be reachable
+        # Polybius redeploys on every merge to its own main. The /data volume is
+        # exclusive, so Railway cannot overlap containers: the old one is gone
+        # while the new one boots (notes bootstrap + repo hydration + skills
+        # index), and the webhook is unreachable for that whole stretch. Any PR
+        # whose review fires in that window used to get a red check for reasons
+        # that have nothing to do with the PR. Observed 2026-07-24: unreachable
+        # 18:36:41Z-18:44:02Z (7m21s), three manual retries all failed inside it.
+        #
+        # Probing GET /health is deliberately separate from the POST below: the
+        # POST is not safely retryable (it blocks on the review with wait:true,
+        # so a retry after a slow-review timeout would queue a SECOND review of
+        # the same PR). Probing a cheap idempotent endpoint first means the POST
+        # is attempted once, when we already know someone is listening.
+        #
+        # Budget 15 min at 15s intervals — comfortably over the 7m21s observed,
+        # and deliberately matched to healthcheckTimeout in polybius' own
+        # railway.toml. Those two numbers must not disagree: a shorter CI budget
+        # would fail the review job on a deploy that Railway is still happily
+        # waiting to become ready (e.g. a slow cold-volume boot at 13 min),
+        # which is the exact false-red this change exists to remove. Still
+        # bounded, so a genuine outage fails in finite time.
+        run: |
+          deadline=$(( SECONDS + 900 ))
+          until curl -sf --max-time 10 -o /dev/null \
+              "${{ secrets.POLYBIUS_WEBHOOK_URL }}/health"; do
+            if [ "$SECONDS" -ge "$deadline" ]; then
+              echo "Polybius /health unreachable for 15 min - treating as down." >&2
+              exit 1
+            fi
+            echo "Polybius not ready yet (likely mid-deploy); retrying in 15s..."
+            sleep 15
+          done
+          echo "Polybius is reachable."
+
+      - name: Trigger Brunson PR review
+        run: |
+          jq -n \
+            --arg type "pr_review" \
+            --arg channel "${{ secrets.POLYBIUS_CHANNEL_ID }}" \
+            --arg repo "${{ github.repository }}" \
+            --argjson pr_number ${{ github.event.pull_request.number }} \
+            --arg event "${{ github.event.action }}" \
+            --argjson wait true \
+            '{type:$type,channel:$channel,repo:$repo,pr_number:$pr_number,event:$event,wait:$wait}' \
+          | curl -sSf --max-time 660 -X POST "${{ secrets.POLYBIUS_WEBHOOK_URL }}/webhook" \
+              -H "Authorization: Bearer ${{ secrets.POLYBIUS_WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+  comment:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Brunson PR comment handler
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          jq -n \
+            --arg type "pr_comment" \
+            --arg channel "${{ secrets.POLYBIUS_CHANNEL_ID }}" \
+            --arg repo "${{ github.repository }}" \
+            --argjson pr_number ${{ github.event.issue.number }} \
+            --arg comment_author "$COMMENT_AUTHOR" \
+            --arg comment_body "$COMMENT_BODY" \
+            --arg comment_url "$COMMENT_URL" \
+            '{type:$type,channel:$channel,repo:$repo,pr_number:$pr_number,comment_author:$comment_author,comment_body:$comment_body,comment_url:$comment_url}' \
+          | curl -sSf --max-time 10 -X POST "${{ secrets.POLYBIUS_WEBHOOK_URL }}/webhook" \
+              -H "Authorization: Bearer ${{ secrets.POLYBIUS_WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-
+
+  review_comment:
+    if: >-
+      github.event_name == 'pull_request_review_comment' &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Brunson PR review comment handler
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENT_AUTHOR: ${{ github.event.comment.user.login }}
+          COMMENT_URL: ${{ github.event.comment.html_url }}
+        run: |
+          jq -n \
+            --arg type "pr_comment" \
+            --arg channel "${{ secrets.POLYBIUS_CHANNEL_ID }}" \
+            --arg repo "${{ github.repository }}" \
+            --argjson pr_number ${{ github.event.pull_request.number }} \
+            --arg comment_author "$COMMENT_AUTHOR" \
+            --arg comment_body "$COMMENT_BODY" \
+            --arg comment_url "$COMMENT_URL" \
+            '{type:$type,channel:$channel,repo:$repo,pr_number:$pr_number,comment_author:$comment_author,comment_body:$comment_body,comment_url:$comment_url}' \
+          | curl -sSf --max-time 10 -X POST "${{ secrets.POLYBIUS_WEBHOOK_URL }}/webhook" \
+              -H "Authorization: Bearer ${{ secrets.POLYBIUS_WEBHOOK_SECRET }}" \
+              -H "Content-Type: application/json" \
+              -d @-

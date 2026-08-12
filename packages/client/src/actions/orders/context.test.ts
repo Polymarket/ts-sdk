@@ -54,9 +54,7 @@ describe('validatePriceOnTickGrid', () => {
       const { scale, step } = grid(tick);
 
       for (let k = step; k <= scale - step; k += step) {
-        expect(validatePriceOnTickGrid(k / scale, tick, 'Price')).toBe(
-          k / scale,
-        );
+        expect(validatePriceOnTickGrid(k / scale, tick)).toBe(k / scale);
       }
     }
   });
@@ -68,7 +66,7 @@ describe('validatePriceOnTickGrid', () => {
       for (let k = step; k <= scale - step; k += 1) {
         if (k % step !== 0) {
           expect(
-            () => validatePriceOnTickGrid(k / scale, tick, 'Price'),
+            () => validatePriceOnTickGrid(k / scale, tick),
             `price ${k / scale} on tick ${tick}`,
           ).toThrow('must be a multiple of tick size');
         }
@@ -93,7 +91,7 @@ describe('validatePriceOnTickGrid', () => {
     number,
     TickSizeValue,
   ][])('rejects %s for exceeding the %s tick precision', (price, tick) => {
-    expect(() => validatePriceOnTickGrid(price, tick, 'Price')).toThrow(
+    expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
       'decimal places',
     );
   });
@@ -101,10 +99,10 @@ describe('validatePriceOnTickGrid', () => {
   it('rejects prices outside [tick, 1 - tick]', () => {
     for (const tick of ALL_TICKS) {
       for (const price of [0, 1, 1.5, -tick, tick / 2]) {
-        expect(() => validatePriceOnTickGrid(price, tick, 'Price')).toThrow(
+        expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
           UserInputError,
         );
-        expect(() => validatePriceOnTickGrid(price, tick, 'Price')).toThrow(
+        expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
           'must be between',
         );
       }

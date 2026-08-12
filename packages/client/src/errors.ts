@@ -248,6 +248,22 @@ export class InsufficientLiquidityError extends PolymarketError {
 }
 
 /**
+ * Error thrown when arming auto-cancel is rejected because the account has
+ * reached its daily auto-cancel trigger limit. Arming is rejected until the
+ * daily counter resets at the next UTC midnight; clearing an existing
+ * schedule is always allowed.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export class AutoCancelDailyLimitError extends PolymarketError {
+  override name = 'AutoCancelDailyLimitError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+}
+
+/**
  * Error thrown when the SDK cannot produce a required signature or
  * authentication payload.
  */

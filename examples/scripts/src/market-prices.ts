@@ -30,6 +30,6 @@ console.table({
   buyPrice,
   midpoint,
   spread,
-  lastTradePrice: lastTrade.price,
-  lastTradeSide: lastTrade.side,
+  lastTradePrice: lastTrade?.price ?? 'N/A',
+  lastTradeSide: lastTrade?.side ?? 'N/A',
 });
