@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { CommentProfileSchema } from '../gamma/comment';
 import {
   ApiKeySchema,
   ComboConditionIdSchema,
   CommentIdSchema,
   CommentParentEntityTypeSchema,
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   DateLikeToIsoDateTimeStringSchema,
   DecimalishSchema,
   DecimalStringSchema,
@@ -65,7 +66,7 @@ export const OrderNotificationPayloadSchema = z
     eventSlug: z.string().optional(),
     icon: z.string().optional(),
     image: z.string().optional(),
-    market: CtfConditionIdSchema,
+    market: ConditionIdSchema,
     market_slug: z.string().optional(),
     matched_size: DecimalStringSchema,
     order_id: OrderIdSchema,
@@ -181,7 +182,7 @@ export const MarketNotificationPayloadSchema = z
     active: z.boolean(),
     archived: z.boolean().optional(),
     closed: z.boolean(),
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
     description: z.string(),
     enable_order_book: z.boolean().optional(),
     end_date_iso: DateLikeToIsoDateTimeStringSchema.nullish(),
@@ -191,7 +192,7 @@ export const MarketNotificationPayloadSchema = z
     icon: z.string(),
     image: z.string(),
     is_50_50_outcome: z.boolean().optional(),
-    maker_base_fee: z.number(),
+    maker_base_fee: z.number().nullable(),
     market_slug: z.string(),
     minimum_order_size: DecimalishSchema,
     minimum_tick_size: DecimalishSchema,
@@ -204,7 +205,7 @@ export const MarketNotificationPayloadSchema = z
     rewards: MarketNotificationRewardsSchema.optional(),
     seconds_delay: z.number().int(),
     tags: z.array(z.string()).nullish(),
-    taker_base_fee: z.number(),
+    taker_base_fee: z.number().nullable(),
     tokens: z.array(MarketNotificationTokenSchema),
   })
   .transform(
@@ -287,26 +288,6 @@ export type YieldPayoutNotificationPayload = z.infer<
   typeof YieldPayoutNotificationPayloadSchema
 >;
 
-/** Profile of the comment author on a child-comment notification. */
-export const ChildCommentNotificationProfileSchema = z
-  .object({
-    baseAddress: z.string().nullish(),
-    displayUsernamePublic: z.boolean().nullish(),
-    isCreator: z.boolean().nullish(),
-    isMod: z.boolean().nullish(),
-    name: z.string().nullish(),
-    proxyWallet: z.string().nullish(),
-    pseudonym: z.string().nullish(),
-  })
-  .transform(({ proxyWallet, ...rest }) => ({
-    ...rest,
-    wallet: proxyWallet,
-  }));
-
-export type ChildCommentNotificationProfile = z.infer<
-  typeof ChildCommentNotificationProfileSchema
->;
-
 /**
  * Payload of a child-comment notification: the reply comment, its author's
  * profile, and the event or series the thread belongs to.
@@ -321,7 +302,7 @@ export const ChildCommentNotificationPayloadSchema = z.object({
   parentCommentID: CommentIdSchema.nullish(),
   parentEntityID: z.number().int().nullish(),
   parentEntityType: CommentParentEntityTypeSchema.nullish(),
-  profile: ChildCommentNotificationProfileSchema.nullish(),
+  profile: CommentProfileSchema.nullish(),
   seriesSlug: z.string().nullish(),
   seriesTitle: z.string().nullish(),
   userAddress: z.string().nullish(),
@@ -338,7 +319,7 @@ export type ChildCommentNotificationPayload = z.infer<
 export const AutoRedeemedNotificationPayloadSchema = z
   .object({
     amount: z.number(),
-    conditionId: CtfConditionIdSchema,
+    conditionId: ConditionIdSchema,
     image: z.string(),
     marketUrl: z.string().optional(),
     negRisk: z.boolean(),
@@ -511,6 +492,42 @@ export const NotificationSchema = z.discriminatedUnion('type', [
 
 export type Notification = z.infer<typeof NotificationSchema>;
 
-export const NotificationsResponseSchema = z.array(NotificationSchema);
+const NotificationTypeProbeSchema = z.object({
+  type: z.number().int(),
+});
+
+/**
+ * Notifications with types unknown to this SDK version are omitted so newly
+ * introduced kinds cannot fail the feed; recognized types validate strictly.
+ */
+export const NotificationsResponseSchema = z
+  .array(z.unknown())
+  .transform((items, ctx) => {
+    const notifications: Notification[] = [];
+    items.forEach((item, index) => {
+      const probe = NotificationTypeProbeSchema.safeParse(item);
+      if (!probe.success) {
+        for (const issue of probe.error.issues) {
+          ctx.addIssue({ ...issue, path: [index, ...issue.path] });
+        }
+        return;
+      }
+
+      if (!NotificationTypeSchema.safeParse(probe.data.type).success) {
+        return;
+      }
+
+      const notification = NotificationSchema.safeParse(item);
+      if (notification.success) {
+        notifications.push(notification.data);
+        return;
+      }
+
+      for (const issue of notification.error.issues) {
+        ctx.addIssue({ ...issue, path: [index, ...issue.path] });
+      }
+    });
+    return notifications;
+  });
 
 export type NotificationsResponse = z.infer<typeof NotificationsResponseSchema>;

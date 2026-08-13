@@ -92,5 +92,13 @@ describe('shared ID parsers', () => {
       expect(conditionId).toHaveLength(64);
       expect(conditionId).toMatch(COMBO_CONDITION_ID_PATTERN);
     });
+
+    it('reports invalid values as validation failures', () => {
+      const result = ComboConditionIdSchema.safeParse(
+        `${CANONICAL_COMBO_CONDITION_ID}02`,
+      );
+
+      expect(result.success).toBe(false);
+    });
   });
 });

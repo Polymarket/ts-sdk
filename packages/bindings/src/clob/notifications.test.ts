@@ -78,6 +78,17 @@ const marketPayload = {
   ],
 };
 
+const comboAutoRedeemedPayload = {
+  amount: 10,
+  conditionId: `0x03${'aa'.repeat(30)}`,
+  legs: 2,
+  outcomeIndex: 0,
+  portfolioUrl: 'https://polymarket.com/portfolio',
+  positionId: '123456789',
+  proxyWallet,
+  txnHash: transactionHash,
+};
+
 function createNotification(type: number, payload: unknown) {
   return {
     id: type,
@@ -141,6 +152,24 @@ describe('NotificationSchema', () => {
     expect(notification.payload.rewards?.rates?.[0]?.dailyRate).toBe(5);
     expect(notification.payload.minimumTickSize).toBe('0.01');
   });
+
+  it('parses nullable market base fees', () => {
+    const notification = NotificationSchema.parse(
+      createNotification(NotificationType.MARKET_REGISTERED, {
+        ...marketPayload,
+        maker_base_fee: null,
+        taker_base_fee: null,
+      }),
+    );
+
+    expect(notification.type).toBe(NotificationType.MARKET_REGISTERED);
+    if (notification.type !== NotificationType.MARKET_REGISTERED) {
+      return;
+    }
+
+    expect(notification.payload.makerBaseFee).toBeNull();
+    expect(notification.payload.takerBaseFee).toBeNull();
+  });
 });
 
 describe('NotificationsResponseSchema', () => {
@@ -164,9 +193,11 @@ describe('NotificationsResponseSchema', () => {
         parentEntityType: 'Event',
         profile: {
           baseAddress: proxyWallet,
+          bio: 'Market enthusiast',
           isCreator: false,
           isMod: false,
           name: 'trader',
+          positions: [{ positionSize: '25', tokenId: '1' }],
           proxyWallet,
         },
         userAddress: proxyWallet,
@@ -190,16 +221,10 @@ describe('NotificationsResponseSchema', () => {
         slug: 'market-slug',
         txnHash: transactionHash,
       }),
-      createNotification(NotificationType.COMBO_AUTO_REDEEMED, {
-        amount: 10,
-        conditionId: `0x03${'aa'.repeat(30)}`,
-        legs: 2,
-        outcomeIndex: 0,
-        portfolioUrl: 'https://polymarket.com/portfolio',
-        positionId: '123456789',
-        proxyWallet,
-        txnHash: transactionHash,
-      }),
+      createNotification(
+        NotificationType.COMBO_AUTO_REDEEMED,
+        comboAutoRedeemedPayload,
+      ),
     ]);
 
     expect(notifications.map(({ type }) => type)).toEqual([
@@ -217,6 +242,58 @@ describe('NotificationsResponseSchema', () => {
     }
     if (childComment?.type === NotificationType.CHILD_COMMENT_CREATED) {
       expect(childComment.payload.profile?.wallet).toBe(proxyWallet);
+      expect(childComment.payload.profile?.bio).toBe('Market enthusiast');
+      expect(childComment.payload.profile?.positions?.[0]?.tokenId).toBe('1');
+    }
+  });
+
+  it('omits unknown notification kinds without discarding known kinds', () => {
+    const notifications = NotificationsResponseSchema.parse([
+      createNotification(NotificationType.ORDER_FILL, orderPayload),
+      createNotification(11, { future: 'payload' }),
+      createNotification(NotificationType.YIELD_PAYOUT, {
+        amount: 3.21,
+        proxyWallet,
+        txnHash: transactionHash,
+      }),
+    ]);
+
+    expect(notifications.map(({ type }) => type)).toEqual([
+      NotificationType.ORDER_FILL,
+      NotificationType.YIELD_PAYOUT,
+    ]);
+  });
+
+  it('fails the list when a recognized notification kind is malformed', () => {
+    const result = NotificationsResponseSchema.safeParse([
+      createNotification(NotificationType.YIELD_PAYOUT, {
+        amount: 3.21,
+        proxyWallet,
+        txnHash: transactionHash,
+      }),
+      createNotification(NotificationType.ORDER_FILL, {
+        ...orderPayload,
+        price: 0.6,
+      }),
+    ]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(({ path }) => path[0] === 1)).toBe(true);
+    }
+  });
+
+  it('rejects malformed notification discriminants', () => {
+    const result = NotificationsResponseSchema.safeParse([
+      {
+        ...createNotification(11, { future: 'payload' }),
+        type: '11',
+      },
+    ]);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(({ path }) => path[0] === 0)).toBe(true);
     }
   });
 });

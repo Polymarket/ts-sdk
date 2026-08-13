@@ -154,17 +154,15 @@ export function toConditionId(value: string): ConditionId {
 /** @deprecated Use {@link toConditionId}. */
 export const toCtfConditionId = toConditionId;
 
-export function toComboConditionId(value: string): ComboConditionId {
+function normalizeComboConditionId(value: string): string | undefined {
   if (!isHexString(value)) {
-    throw new TypeError(
-      `Expected a protocol v2 combo condition ID, received: ${value}`,
-    );
+    return undefined;
   }
 
   const normalized = value.toLowerCase();
 
   if (normalized.length === 64 && normalized.startsWith('0x03')) {
-    return normalized as ComboConditionId;
+    return normalized;
   }
 
   if (
@@ -172,7 +170,17 @@ export function toComboConditionId(value: string): ComboConditionId {
     normalized.startsWith('0x03') &&
     (normalized.endsWith('00') || normalized.endsWith('01'))
   ) {
-    return normalized.slice(0, -2) as ComboConditionId;
+    return normalized.slice(0, -2);
+  }
+
+  return undefined;
+}
+
+export function toComboConditionId(value: string): ComboConditionId {
+  const normalized = normalizeComboConditionId(value);
+
+  if (normalized !== undefined) {
+    return normalized as ComboConditionId;
   }
 
   throw new TypeError(
@@ -308,7 +316,13 @@ export const BuilderCodeSchema = z.string().transform(toBuilderCode);
 export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
-export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
+export const ComboConditionIdSchema = z
+  .string()
+  .refine(
+    (value) => normalizeComboConditionId(value) !== undefined,
+    'Expected a protocol v2 combo condition ID',
+  )
+  .transform((value) => normalizeComboConditionId(value) as ComboConditionId);
 export const ConditionIdSchema = z
   .string()
   .refine(
