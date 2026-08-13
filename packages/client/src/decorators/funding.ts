@@ -11,17 +11,18 @@ import {
   createDepositAddresses,
   createWithdrawalAddresses,
   type FetchFundingQuoteRequest,
-  type FetchFundingTransactionsRequest,
   type FundingDestination,
   fetchFundingQuote,
-  fetchFundingTransactions,
   fetchSupportedFundingAssets,
+  type ListFundingTransactionsRequest,
+  listFundingTransactions,
 } from '../actions';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+import type { Paginated } from '../pagination';
 
 type CommonFundingActions = {
   /**
@@ -60,21 +61,29 @@ type CommonFundingActions = {
    */
   fetchFundingQuote(request: FetchFundingQuoteRequest): Promise<FundingQuote>;
   /**
-   * Fetches deposit and withdrawal transactions for a funding address.
+   * Lists deposit and withdrawal transactions for a funding address across all pages.
    *
-   * @throws {@link FetchFundingTransactionsError}
+   * Results are ordered newest first. Cursors are opaque and bound to the
+   * funding address; pass them back without inspecting or modifying them.
+   * Page size must be between 1 and 100 and defaults to 50.
+   *
+   * @throws {@link ListFundingTransactionsError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const transactions = await client.fetchFundingTransactions({
+   * const result = client.listFundingTransactions({
    *   address: '0x23566f8b2e82adfcf01846e54899d110e97ac053',
    * });
+   *
+   * for await (const page of result) {
+   *   // page.items: FundingTransaction[]
+   * }
    * ```
    */
-  fetchFundingTransactions(
-    request: FetchFundingTransactionsRequest,
-  ): Promise<FundingTransaction[]>;
+  listFundingTransactions(
+    request: ListFundingTransactionsRequest,
+  ): Paginated<FundingTransaction[]>;
 };
 
 export type PublicFundingActions = Prettify<
@@ -184,8 +193,8 @@ export type SecureFundingActions = Prettify<
 function commonFundingActions(client: BaseClient): CommonFundingActions {
   return {
     fetchFundingQuote: fetchFundingQuote.bind(null, client),
-    fetchFundingTransactions: fetchFundingTransactions.bind(null, client),
     fetchSupportedFundingAssets: fetchSupportedFundingAssets.bind(null, client),
+    listFundingTransactions: listFundingTransactions.bind(null, client),
   };
 }
 
@@ -227,6 +236,6 @@ export {
   CreateDepositAddressesError,
   CreateWithdrawalAddressesError,
   FetchFundingQuoteError,
-  FetchFundingTransactionsError,
   FetchSupportedFundingAssetsError,
+  ListFundingTransactionsError,
 } from '../actions';

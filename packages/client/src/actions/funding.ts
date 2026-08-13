@@ -1,4 +1,9 @@
-import { BuilderCodeSchema, EvmAddressSchema } from '@polymarket/bindings';
+import {
+  BuilderCodeSchema,
+  EvmAddressSchema,
+  PaginationCursorSchema,
+  toPaginationCursor,
+} from '@polymarket/bindings';
 import {
   type FundingAddressSet,
   FundingAddressSetResponseSchema,
@@ -6,7 +11,7 @@ import {
   type FundingQuote,
   FundingQuoteSchema,
   type FundingTransaction,
-  FundingTransactionsResponseSchema,
+  FundingTransactionsPageSchema,
   SupportedFundingAssetsResponseSchema,
 } from '@polymarket/bindings/bridge';
 import { unwrap } from '@polymarket/types';
@@ -21,7 +26,9 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { validateWith } from '../response';
+import { snakeCase, toSearchParams } from './params';
 
 const BuilderCodeInputSchema = z
   .string()
@@ -230,21 +237,23 @@ export async function fetchFundingQuote(
   );
 }
 
-const FetchFundingTransactionsRequestSchema = z.strictObject({
+const ListFundingTransactionsRequestSchema = z.strictObject({
   address: z.string().trim().min(1),
+  cursor: PaginationCursorSchema.optional(),
+  pageSize: PageSizeSchema.max(100).default(50),
 });
 
-export type FetchFundingTransactionsRequest = z.input<
-  typeof FetchFundingTransactionsRequestSchema
+export type ListFundingTransactionsRequest = z.input<
+  typeof ListFundingTransactionsRequestSchema
 >;
 
-export type FetchFundingTransactionsError =
+export type ListFundingTransactionsError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const FetchFundingTransactionsError = makeErrorGuard(
+export const ListFundingTransactionsError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -253,34 +262,59 @@ export const FetchFundingTransactionsError = makeErrorGuard(
 );
 
 /**
- * Fetches deposit and withdrawal transactions for a funding address.
+ * Lists deposit and withdrawal transactions for a funding address across all pages.
  *
  * @remarks
  * Pass an EVM, SVM, BTC, or Tron address returned when creating deposit or
  * withdrawal addresses.
  *
- * @throws {@link FetchFundingTransactionsError}
+ * Results are ordered newest first. Cursors are opaque and bound to the
+ * funding address; pass them back without inspecting or modifying them.
+ * Page size must be between 1 and 100 and defaults to 50.
+ *
+ * @throws {@link ListFundingTransactionsError}
  * Thrown on failure.
  *
  * @example
  * ```ts
- * const transactions = await fetchFundingTransactions(client, {
+ * const result = listFundingTransactions(client, {
  *   address: '0x23566f8b2e82adfcf01846e54899d110e97ac053',
  * });
+ *
+ * for await (const page of result) {
+ *   // page.items: FundingTransaction[]
+ * }
  * ```
  */
-export async function fetchFundingTransactions(
+export function listFundingTransactions(
   client: BaseClient,
-  request: FetchFundingTransactionsRequest,
-): Promise<FundingTransaction[]> {
-  const params = parseUserInput(request, FetchFundingTransactionsRequestSchema);
-  const response = await unwrap(
-    client.bridge
-      .get(`/status/${encodeURIComponent(params.address)}`)
-      .andThen(validateWith(FundingTransactionsResponseSchema)),
+  request: ListFundingTransactionsRequest,
+): Paginated<FundingTransaction[]> {
+  const { address, cursor, pageSize } = parseUserInput(
+    request,
+    ListFundingTransactionsRequestSchema,
   );
 
-  return response.transactions;
+  return paginate(
+    (nextCursor) =>
+      client.bridge
+        .get(`/status/${encodeURIComponent(address)}`, {
+          params: toSearchParams(
+            { cursor: nextCursor, limit: pageSize },
+            snakeCase(),
+          ),
+        })
+        .andThen(validateWith(FundingTransactionsPageSchema))
+        .map((response) => ({
+          items: response.transactions,
+          hasMore: response.nextCursor !== null,
+          nextCursor:
+            response.nextCursor === null
+              ? undefined
+              : toPaginationCursor(response.nextCursor),
+        })),
+    cursor,
+  );
 }
 
 const CreateWithdrawalAddressesRequestSchema = z.strictObject({

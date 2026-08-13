@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   FundingAddressSetResponseSchema,
-  FundingTransactionsResponseSchema,
+  FundingTransactionsPageSchema,
   KnownFundingTransactionStatus,
 } from './funding';
 
@@ -55,9 +55,9 @@ describe('FundingAddressSetResponseSchema', () => {
   });
 });
 
-describe('FundingTransactionsResponseSchema', () => {
+describe('FundingTransactionsPageSchema', () => {
   it('accepts detected transactions before optional metadata is available', () => {
-    const result = FundingTransactionsResponseSchema.parse({
+    const result = FundingTransactionsPageSchema.parse({
       transactions: [
         {
           fromChainId: '1',
@@ -68,6 +68,7 @@ describe('FundingTransactionsResponseSchema', () => {
           status: 'DEPOSIT_DETECTED',
         },
       ],
+      nextCursor: 'eyJsYXN0SWQiOiI0MiJ9',
     });
 
     expect(result.transactions[0]?.status).toBe(
@@ -75,10 +76,11 @@ describe('FundingTransactionsResponseSchema', () => {
     );
     expect(result.transactions[0]?.createdTimeMs).toBeUndefined();
     expect(result.transactions[0]?.txHash).toBeUndefined();
+    expect(result.nextCursor).toBe('eyJsYXN0SWQiOiI0MiJ9');
   });
 
   it('preserves newly introduced statuses', () => {
-    const result = FundingTransactionsResponseSchema.parse({
+    const result = FundingTransactionsPageSchema.parse({
       transactions: [
         {
           fromChainId: '1',
@@ -89,8 +91,15 @@ describe('FundingTransactionsResponseSchema', () => {
           status: 'REFUNDING',
         },
       ],
+      nextCursor: null,
     });
 
     expect(result.transactions[0]?.status).toBe('REFUNDING');
+  });
+
+  it('treats a pre-pagination response as a terminal page', () => {
+    const result = FundingTransactionsPageSchema.parse({ transactions: [] });
+
+    expect(result.nextCursor).toBeNull();
   });
 });

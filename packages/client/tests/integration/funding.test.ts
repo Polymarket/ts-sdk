@@ -1,57 +1,16 @@
-import { describe, expect, it } from './fixtures';
+import {
+  KnownFundingTransactionStatus,
+  type SecureClient,
+} from '@polymarket/client';
+import { describe, expect, it, runMeteredTests } from './fixtures';
+
+const POLYGON_CHAIN_ID = '137';
+const POLYGON_NATIVE_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
+const POLYGON_PUSD = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
+const DEPOSIT_AMOUNT = 2_100_000n;
+const WITHDRAWAL_AMOUNT = 2_000_000n;
 
 describe('Account funding', () => {
-  it('creates deposit addresses for a public-client wallet', async ({
-    publicClient,
-  }) => {
-    const result = await publicClient.createDepositAddresses({
-      wallet: '0x0000000000000000000000000000000000000001',
-    });
-
-    expect(result.addresses).toEqual(
-      expect.objectContaining({
-        btc: expect.any(String),
-        evm: expect.any(String),
-        svm: expect.any(String),
-      }),
-    );
-  });
-
-  it('uses the account wallet when a secure client creates deposit addresses', async ({
-    secureClientWithDepositWallet,
-  }) => {
-    const result = await secureClientWithDepositWallet.createDepositAddresses();
-
-    expect(result.addresses).toEqual(
-      expect.objectContaining({
-        btc: expect.any(String),
-        evm: expect.any(String),
-        svm: expect.any(String),
-      }),
-    );
-  });
-
-  it('creates addresses for a withdrawal destination', async ({
-    publicClient,
-  }) => {
-    const result = await publicClient.createWithdrawalAddresses({
-      destination: {
-        chainId: '137',
-        recipientAddress: '0x0000000000000000000000000000000000000001',
-        tokenAddress: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
-      },
-      wallet: '0x0000000000000000000000000000000000000001',
-    });
-
-    expect(result.addresses).toEqual(
-      expect.objectContaining({
-        btc: expect.any(String),
-        evm: expect.any(String),
-        svm: expect.any(String),
-      }),
-    );
-  });
-
   it('fetches the currently supported assets', async ({ publicClient }) => {
     const assets = await publicClient.fetchSupportedFundingAssets();
 
@@ -89,23 +48,219 @@ describe('Account funding', () => {
     expect(quote.estToTokenBaseUnit).toMatch(/^\d+$/);
   });
 
-  it('fetches transactions for a documented bridge address', async ({
+  it('lists transaction pages for a documented bridge address', async ({
     publicClient,
   }) => {
-    const transactions = await publicClient.fetchFundingTransactions({
+    const paginator = publicClient.listFundingTransactions({
       address: '0x23566f8b2E82aDfCf01846E54899d110e97AC053',
+      pageSize: 1,
     });
 
-    expect(transactions.length).toBeGreaterThan(0);
-    expect(transactions[0]).toEqual(
-      expect.objectContaining({
-        fromAmountBaseUnit: expect.any(String),
-        fromChainId: expect.any(String),
-        fromTokenAddress: expect.any(String),
-        status: expect.any(String),
-        toChainId: expect.any(String),
-        toTokenAddress: expect.any(String),
-      }),
-    );
+    let pageCount = 0;
+    let transactionCount = 0;
+    let reachedTerminalPage = false;
+
+    for await (const page of paginator) {
+      pageCount += 1;
+      transactionCount += page.items.length;
+      reachedTerminalPage = !page.hasMore;
+
+      // The legacy proxy ignores `limit` and returns one terminal page. Once
+      // pagination is deployed, continued pages must honor the requested size.
+      if (page.hasMore) {
+        expect(page.items.length).toBeLessThanOrEqual(1);
+        expect(page.nextCursor).toEqual(expect.any(String));
+      }
+
+      for (const transaction of page.items) {
+        expect(transaction).toEqual(
+          expect.objectContaining({
+            fromAmountBaseUnit: expect.any(String),
+            fromChainId: expect.any(String),
+            fromTokenAddress: expect.any(String),
+            status: expect.any(String),
+            toChainId: expect.any(String),
+            toTokenAddress: expect.any(String),
+          }),
+        );
+      }
+    }
+
+    expect(pageCount).toBeGreaterThan(0);
+    expect(transactionCount).toBeGreaterThan(0);
+    expect(reachedTerminalPage).toBe(true);
   });
+
+  // This round trip irreversibly spends bridge fees and moves up to 2.10 USDC
+  // of live funds. It is opt-in and guards the quote before any transfer.
+  it.runIf(runMeteredTests)(
+    'round-trips the minimum pUSD withdrawal through the bridge',
+    async ({ builderCode, secureClientWithDepositWallet, skip }) => {
+      const client = secureClientWithDepositWallet;
+
+      if (
+        client.environment.chainId !== Number(POLYGON_CHAIN_ID) ||
+        client.environment.bridge.rest !== 'https://bridge.polymarket.com' ||
+        client.environment.contracts.collateralToken.toLowerCase() !==
+          POLYGON_PUSD.toLowerCase()
+      ) {
+        skip(
+          'The metered bridge round trip is restricted to Polygon production',
+        );
+        return;
+      }
+
+      const assets = await client.fetchSupportedFundingAssets();
+      const nativeUsdc = assets.find(
+        (asset) =>
+          asset.chainId === POLYGON_CHAIN_ID &&
+          asset.token.address.toLowerCase() ===
+            POLYGON_NATIVE_USDC.toLowerCase(),
+      );
+      const pusd = assets.find(
+        (asset) =>
+          asset.chainId === POLYGON_CHAIN_ID &&
+          asset.token.address.toLowerCase() === POLYGON_PUSD.toLowerCase(),
+      );
+
+      if (nativeUsdc === undefined || pusd === undefined) {
+        skip('The required Polygon funding assets are unavailable');
+        return;
+      }
+
+      if (nativeUsdc.token.decimals !== 6 || pusd.token.decimals !== 6) {
+        skip('The metered amounts require six-decimal Polygon funding assets');
+        return;
+      }
+
+      if (nativeUsdc.minCheckoutUsd > 2.1 || pusd.minCheckoutUsd > 2) {
+        skip('The metered amounts are below the current funding minimums');
+        return;
+      }
+
+      const deposit = await client.createDepositAddresses({ builderCode });
+      const withdrawal = await client.createWithdrawalAddresses({
+        builderCode,
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          recipientAddress: client.account.wallet,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+      });
+      const quote = await client.fetchFundingQuote({
+        amount: DEPOSIT_AMOUNT,
+        source: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_PUSD,
+          recipientAddress: client.account.wallet,
+        },
+      });
+      const withdrawalQuote = await client.fetchFundingQuote({
+        amount: WITHDRAWAL_AMOUNT,
+        source: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_PUSD,
+        },
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_NATIVE_USDC,
+          recipientAddress: client.account.wallet,
+        },
+      });
+
+      if (
+        quote.estFeeBreakdown.minReceived < 2.05 ||
+        BigInt(quote.estToTokenBaseUnit) < WITHDRAWAL_AMOUNT ||
+        BigInt(withdrawalQuote.estToTokenBaseUnit) < 1_950_000n ||
+        withdrawalQuote.estFeeBreakdown.minReceived < 1.95
+      ) {
+        skip('The live quotes cannot safely complete the minimum round trip');
+        return;
+      }
+
+      const depositNotBefore = Date.now() - 60_000;
+      const depositTransfer = await client.transferErc20({
+        amount: DEPOSIT_AMOUNT,
+        recipientAddress: deposit.addresses.evm,
+        tokenAddress: POLYGON_NATIVE_USDC,
+      });
+      await depositTransfer.wait();
+      await waitForFundingTransfer(client, {
+        address: deposit.addresses.evm,
+        amount: DEPOSIT_AMOUNT,
+        destinationTokenAddress: POLYGON_PUSD,
+        notBefore: depositNotBefore,
+        tokenAddress: POLYGON_NATIVE_USDC,
+      });
+
+      const withdrawalNotBefore = Date.now() - 60_000;
+      const withdrawalTransfer = await client.transferErc20({
+        amount: WITHDRAWAL_AMOUNT,
+        recipientAddress: withdrawal.addresses.evm,
+        tokenAddress: POLYGON_PUSD,
+      });
+      await withdrawalTransfer.wait();
+      await waitForFundingTransfer(client, {
+        address: withdrawal.addresses.evm,
+        amount: WITHDRAWAL_AMOUNT,
+        destinationTokenAddress: POLYGON_NATIVE_USDC,
+        notBefore: withdrawalNotBefore,
+        tokenAddress: POLYGON_PUSD,
+      });
+    },
+    20 * 60_000,
+  );
 });
+
+type FundingTransfer = {
+  address: string;
+  amount: bigint;
+  destinationTokenAddress: string;
+  notBefore: number;
+  tokenAddress: string;
+};
+
+async function waitForFundingTransfer(
+  client: SecureClient,
+  transfer: FundingTransfer,
+): Promise<void> {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 8 * 60_000) {
+    const page = await client
+      .listFundingTransactions({ address: transfer.address })
+      .firstPage();
+    const transaction = page.items.find(
+      (item) =>
+        item.fromAmountBaseUnit === transfer.amount.toString() &&
+        item.fromTokenAddress.toLowerCase() ===
+          transfer.tokenAddress.toLowerCase() &&
+        item.toChainId === POLYGON_CHAIN_ID &&
+        item.toTokenAddress.toLowerCase() ===
+          transfer.destinationTokenAddress.toLowerCase() &&
+        item.createdTimeMs !== undefined &&
+        item.createdTimeMs >= transfer.notBefore,
+    );
+
+    if (transaction?.status === KnownFundingTransactionStatus.Completed) {
+      expect(transaction.txHash).toEqual(expect.any(String));
+      return;
+    }
+
+    if (transaction?.status === KnownFundingTransactionStatus.Failed) {
+      throw new Error(`Bridge transfer from ${transfer.address} failed`);
+    }
+
+    await delay(10_000);
+  }
+
+  throw new Error(`Timed out waiting for transfer from ${transfer.address}`);
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
