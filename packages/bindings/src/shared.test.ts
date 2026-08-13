@@ -5,8 +5,10 @@ import {
   ConditionIdSchema,
   type CtfConditionId,
   CtfConditionIdSchema,
+  EvmAddressSchema,
   OptionalConditionIdSchema,
   OptionalCtfConditionIdSchema,
+  TxHashSchema,
   toComboConditionId,
   toConditionId,
   toCtfConditionId,
@@ -99,6 +101,13 @@ describe('shared ID parsers', () => {
       );
 
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe('branded hex schemas', () => {
+    it('reports invalid addresses and transaction hashes as validation failures', () => {
+      expect(EvmAddressSchema.safeParse('0x1').success).toBe(false);
+      expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
   });
 });

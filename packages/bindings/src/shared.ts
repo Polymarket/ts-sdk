@@ -1,7 +1,5 @@
 import {
   type EvmAddress,
-  expectEvmAddress,
-  expectTxHash,
   type HexString,
   isHexString,
   type TxHash,
@@ -345,7 +343,13 @@ export const ConditionIdResponseSchema = z.custom<ConditionId>(
   isHexString,
   'Expected a hex-encoded market condition ID',
 );
-export const EvmAddressSchema = z.string().transform(toEvmAddress);
+export const EvmAddressSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 42,
+    'Expected an EVM address',
+  )
+  .transform((value) => value as EvmAddress);
 export const EpochMillisecondsSchema = z
   .number()
   .int()
@@ -485,7 +489,13 @@ export const RfqRequestorPublicIdSchema = z
 export const TagIdSchema = z.string().transform(toTagId);
 export const TokenIdSchema = z.string().transform(toTokenId);
 export const TransactionIdSchema = z.string().min(1).transform(toTransactionId);
-export const TxHashSchema = z.string().transform(toTxHash);
+export const TxHashSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 66,
+    'Expected a transaction hash',
+  )
+  .transform((value) => value as TxHash);
 export const DecimalStringSchema = z.string().transform(toDecimalString);
 export const E6BigIntStringToDecimalStringSchema = z
   .string()
@@ -533,14 +543,6 @@ export const OptionalDecimalStringSchema = z.preprocess(
   emptyStringToNull,
   DecimalStringSchema.nullish(),
 );
-
-function toEvmAddress(value: string): EvmAddress {
-  return expectEvmAddress(value);
-}
-
-function toTxHash(value: string): TxHash {
-  return expectTxHash(value);
-}
 
 function to32ByteHexString(value: string): HexString {
   if (!isHexString(value) || value.length !== 66) {

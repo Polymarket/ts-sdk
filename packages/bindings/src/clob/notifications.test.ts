@@ -283,8 +283,9 @@ describe('NotificationsResponseSchema', () => {
     }
   });
 
-  it('rejects malformed notification discriminants', () => {
+  it('rejects non-object entries and malformed discriminants', () => {
     const result = NotificationsResponseSchema.safeParse([
+      null,
       {
         ...createNotification(11, { future: 'payload' }),
         type: '11',
@@ -294,6 +295,7 @@ describe('NotificationsResponseSchema', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues.some(({ path }) => path[0] === 0)).toBe(true);
+      expect(result.error.issues.some(({ path }) => path[0] === 1)).toBe(true);
     }
   });
 });
