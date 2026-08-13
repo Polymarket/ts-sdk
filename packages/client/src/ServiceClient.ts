@@ -27,42 +27,29 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-export type ServiceRejectedResponse = {
-  body: Record<string, unknown>;
-  message: string;
-  retryAfter?: number;
-  status: number;
-};
-
-export type ServiceRejectedResponseMapper = (
-  response: ServiceRejectedResponse,
-) => RequestRejectedError | undefined;
-
-type ServiceClientRequestOptions = {
-  /** Maps service-specific rejection responses at the owning action boundary. */
-  mapRejectedResponse?: ServiceRejectedResponseMapper;
+export type ServiceClientGetOptions = {
+  headers?: HeadersInit;
+  params?: URLSearchParams;
   timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientGetOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  params?: URLSearchParams;
-};
-
-export type ServiceClientPostOptions = ServiceClientRequestOptions & {
+export type ServiceClientPostOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
+export type ServiceClientPatchOptions = {
   headers?: HeadersInit;
   json?: unknown;
+  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
+export type ServiceClientDeleteOptions = {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
+  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -135,10 +122,7 @@ export class ServiceClient {
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
-    return this.#toResult(
-      this.#send(method, path, options),
-      options.mapRejectedResponse,
-    );
+    return this.#toResult(this.#send(method, path, options));
   }
 
   async #send(
@@ -216,7 +200,6 @@ export class ServiceClient {
 
   #toResult(
     promise: Promise<Response>,
-    mapRejectedResponse?: ServiceRejectedResponseMapper,
   ): ResultAsync<
     Response,
     RateLimitError | RequestRejectedError | TransportError
@@ -227,10 +210,7 @@ export class ServiceClient {
           return response;
         }
 
-        const errorBody = await this.#readJsonErrorBody(response);
-        const retryAfter =
-          this.#parseRetryAfterHeader(response) ??
-          this.#parseRetryAfterSeconds(errorBody);
+        const retryAfter = this.#parseRetryAfterHeader(response);
 
         if (response.status === 429) {
           throw new RateLimitError(
@@ -239,24 +219,14 @@ export class ServiceClient {
           );
         }
 
-        const message = await this.#extractResponseErrorMessage(
-          response,
-          errorBody,
-        );
-
-        const mappedError = mapRejectedResponse?.({
-          body: errorBody,
+        const {
+          code,
           message,
-          retryAfter,
-          status: response.status,
-        });
-
-        if (mappedError !== undefined) {
-          throw mappedError;
-        }
-
+          retryAfter: retryAfterSeconds,
+        } = await this.#extractResponseError(response);
         throw new RequestRejectedError(message, {
-          retryAfter,
+          code,
+          retryAfter: retryAfter ?? retryAfterSeconds,
           status: response.status,
         });
       }),
@@ -283,47 +253,31 @@ export class ServiceClient {
     return Number(value);
   }
 
-  #parseRetryAfterSeconds(
-    errorBody: Record<string, unknown>,
-  ): number | undefined {
-    const value = errorBody.retry_after_seconds;
-
-    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-      return undefined;
-    }
-
-    return value;
-  }
-
-  async #readJsonErrorBody(
+  async #extractResponseError(
     response: Response,
-  ): Promise<Record<string, unknown>> {
+  ): Promise<{ message: string; code?: string; retryAfter?: number }> {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
-    if (!contentType?.includes('application/json')) {
-      return {};
-    }
-
-    const body: unknown = await response
-      .clone()
-      .json()
-      .catch(() => null);
-
-    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
-      return {};
-    }
-
-    return body as Record<string, unknown>;
-  }
-
-  async #extractResponseErrorMessage(
-    response: Response,
-    errorBody: Record<string, unknown>,
-  ) {
-    const contentType = response.headers.get('content-type')?.toLowerCase();
-
-    if (errorBody.error) {
-      return `${String(errorBody.error)} (${response.url})`;
+    if (contentType?.includes('application/json')) {
+      const {
+        error,
+        code,
+        retry_after_seconds: retryAfterSeconds,
+      } = await response
+        .clone()
+        .json()
+        .catch(() => ({}));
+      if (error) {
+        return {
+          message: `${String(error)} (${response.url})`,
+          ...(typeof code === 'string' && code !== '' ? { code } : {}),
+          ...(typeof retryAfterSeconds === 'number' &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds >= 0
+            ? { retryAfter: retryAfterSeconds }
+            : {}),
+        };
+      }
     }
 
     if (contentType?.includes('text/plain')) {
@@ -336,22 +290,28 @@ export class ServiceClient {
         );
 
       if (text) {
-        return `${text} (${response.url})`;
+        return { message: `${text} (${response.url})` };
       }
     }
 
     const server = response.headers.get('server')?.toLowerCase();
     if (server?.includes('cloudflare')) {
-      return `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`;
+      return {
+        message: `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`,
+      };
     }
 
     if (
       contentType?.includes('text/html') ||
       contentType?.includes('application/xhtml+xml')
     ) {
-      return `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`;
+      return {
+        message: `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`,
+      };
     }
 
-    return `Request to ${response.url} failed with status ${response.status} and unreadable response body`;
+    return {
+      message: `Request to ${response.url} failed with status ${response.status} and unreadable response body`,
+    };
   }
 }

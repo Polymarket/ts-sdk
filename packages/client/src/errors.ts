@@ -129,14 +129,17 @@ export class ConnectionLostError extends PolymarketError {
 export enum TradingRestriction {
   /** The matching engine is restarting and rejects order requests until it is back. */
   RESTARTING = 'restarting',
-  /** Cancels are accepted, but new orders are rejected. */
-  CANCEL_ONLY = 'cancel_only',
   /** Cancels and post-only orders are accepted; other orders are rejected. */
   POST_ONLY = 'post_only',
 }
 
 export type RequestRejectedErrorOptions = {
   status: number;
+  /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  code?: string;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -158,6 +161,11 @@ export class RequestRejectedError extends PolymarketError {
 
   readonly status: number;
   /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  readonly code?: string;
+  /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
    */
@@ -174,6 +182,7 @@ export class RequestRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.status = options.status;
+    this.code = options.code;
     this.retryAfter = options.retryAfter;
     this.restriction = options.restriction;
   }

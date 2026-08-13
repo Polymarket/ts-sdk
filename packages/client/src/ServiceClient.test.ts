@@ -2,7 +2,6 @@ import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { RequestRejectedError } from './errors';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -31,6 +30,25 @@ describe('ServiceClient', () => {
 
     await expect(unwrap(client.get('/json-error'))).rejects.toMatchObject({
       message: `structured failure (${root}/json-error)`,
+      name: 'RequestRejectedError',
+      status: 400,
+    });
+  });
+
+  it('exposes JSON error codes on rejected requests', async () => {
+    server.use(
+      http.get(`${root}/json-error-code`, () =>
+        HttpResponse.json(
+          { error: 'invalid acceptance', code: 'INVALID_ACCEPTANCE' },
+          { status: 400 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.get('/json-error-code'))).rejects.toMatchObject({
+      code: 'INVALID_ACCEPTANCE',
+      message: `invalid acceptance (${root}/json-error-code)`,
       name: 'RequestRejectedError',
       status: 400,
     });
@@ -210,22 +228,6 @@ describe('ServiceClient', () => {
     });
   });
 
-  it('falls back to the body retry delay on rate limited requests', async () => {
-    server.use(
-      http.get(`${root}/rate-limit-body-delay`, () =>
-        HttpResponse.json({ retry_after_seconds: 5 }, { status: 429 }),
-      ),
-    );
-    const client = new ServiceClient({ root });
-
-    await expect(
-      unwrap(client.get('/rate-limit-body-delay')),
-    ).rejects.toMatchObject({
-      name: 'RateLimitError',
-      retryAfter: 5,
-    });
-  });
-
   it('leaves retryAfter undefined when the Retry-After header is missing', async () => {
     server.use(
       http.get(`${root}/no-retry-after`, () =>
@@ -258,7 +260,7 @@ describe('ServiceClient', () => {
     });
   });
 
-  it('provides response metadata to request-owned rejection mappers', async () => {
+  it('falls back to the body retry delay on rejected requests', async () => {
     server.use(
       http.post(`${root}/post-only`, () =>
         HttpResponse.json(
@@ -274,21 +276,9 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(
-        client.post('/post-only', {
-          mapRejectedResponse: (response) =>
-            new RequestRejectedError(
-              `${String(response.body.code)}: ${response.message}`,
-              {
-                retryAfter: response.retryAfter,
-                status: response.status,
-              },
-            ),
-        }),
-      ),
-    ).rejects.toMatchObject({
-      message: `post_only_mode: post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
+    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+      code: 'post_only_mode',
+      message: `post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
       name: 'RequestRejectedError',
       retryAfter: 79,
       status: 503,
@@ -314,6 +304,7 @@ describe('ServiceClient', () => {
     await expect(
       unwrap(client.post('/post-only-header')),
     ).rejects.toMatchObject({
+      code: 'post_only_mode',
       name: 'RequestRejectedError',
       retryAfter: 80,
       status: 503,

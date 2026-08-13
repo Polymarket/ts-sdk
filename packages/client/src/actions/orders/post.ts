@@ -19,7 +19,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
-import { mapTradingRestrictionResponse } from './restrictions';
+import { mapTradingRestrictionError } from './restrictions';
 import type { SignedOrder } from './types';
 
 const PostOrdersRequestSchema = z.array(z.custom<SignedOrder>()).min(1).max(15);
@@ -85,8 +85,8 @@ export function postOrder(
       client.secureClob
         .post('/order', {
           json: payload,
-          mapRejectedResponse: mapTradingRestrictionResponse,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponseSchema)),
     );
   };
@@ -124,8 +124,8 @@ export function postOrders(
       client.secureClob
         .post('/orders', {
           json: payload,
-          mapRejectedResponse: mapTradingRestrictionResponse,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponsesSchema)),
     );
   };

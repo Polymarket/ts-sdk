@@ -10,4 +10,3 @@ export * from './pagination';
 export * from './rewards';
 export * from './signature-type';
 export * from './tick-size';
-export * from './trading-restriction';

@@ -16,7 +16,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
-import { mapTradingRestrictionResponse } from './restrictions';
+import { mapTradingRestrictionError } from './restrictions';
 
 const CancelOrderRequestSchema = z.object({
   orderId: z.string(),
@@ -225,8 +225,8 @@ async function cancel(
     client.secureClob
       .del(path, {
         json: payload,
-        mapRejectedResponse: mapTradingRestrictionResponse,
       })
+      .mapErr(mapTradingRestrictionError)
       .andThen(validateWith(CancelOrdersResponseSchema)),
   );
 }

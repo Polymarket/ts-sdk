@@ -1,6 +1,6 @@
 import type {
   BuilderCode,
-  CtfConditionId,
+  ConditionId,
   TickSizeValue,
   TokenId,
 } from '@polymarket/bindings';
@@ -26,8 +26,8 @@ export type OrderMarketMetadata = {
 /** @internal */
 export type OrderMetadataCacheDeps = {
   fetchBuilderTakerFeeRate(builderCode: BuilderCode): Promise<number>;
-  fetchMarket(conditionId: CtfConditionId): Promise<MarketInfo>;
-  resolveCondition(tokenId: TokenId): Promise<CtfConditionId>;
+  fetchMarket(conditionId: ConditionId): Promise<MarketInfo>;
+  resolveCondition(tokenId: TokenId): Promise<ConditionId>;
 };
 
 type MarketRecord = OrderMarketMetadata & {
@@ -43,8 +43,8 @@ type CacheEntry<TValue> = {
 export class OrderMetadataCache {
   readonly #deps: OrderMetadataCacheDeps;
   readonly #builderTakerFeeRates = new Map<BuilderCode, CacheEntry<number>>();
-  readonly #conditions = new Map<TokenId, CacheEntry<CtfConditionId>>();
-  readonly #markets = new Map<CtfConditionId, CacheEntry<MarketRecord>>();
+  readonly #conditions = new Map<TokenId, CacheEntry<ConditionId>>();
+  readonly #markets = new Map<ConditionId, CacheEntry<MarketRecord>>();
 
   constructor(deps: OrderMetadataCacheDeps) {
     this.#deps = deps;
@@ -115,7 +115,7 @@ export class OrderMetadataCache {
 
   #assertMarketContainsToken(
     tokenId: TokenId,
-    conditionId: CtfConditionId,
+    conditionId: ConditionId,
     market: MarketRecord,
   ): void {
     if (market.tokenIds.has(tokenId)) {
@@ -129,7 +129,7 @@ export class OrderMetadataCache {
     );
   }
 
-  async #fetchMarket(conditionId: CtfConditionId): Promise<MarketRecord> {
+  async #fetchMarket(conditionId: ConditionId): Promise<MarketRecord> {
     const market = await this.#deps.fetchMarket(conditionId);
     const tokenIds = new Set(market.tokens.map(({ tokenId }) => tokenId));
 

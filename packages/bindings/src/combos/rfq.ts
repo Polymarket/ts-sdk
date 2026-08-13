@@ -10,7 +10,7 @@ import {
 } from '../clob/signature-type';
 import type {
   BaseUnits,
-  CtfConditionId,
+  ConditionId,
   DecimalString,
   EvmAddress,
   MarketId,
@@ -18,7 +18,7 @@ import type {
 } from '../shared';
 import {
   ComboConditionIdSchema,
-  CtfConditionIdSchema,
+  ConditionIdSchema,
   DecimalStringSchema,
   E6BigIntStringToDecimalStringSchema,
   EpochMillisecondsSchema,
@@ -91,6 +91,7 @@ export enum RfqKnownErrorCode {
   InternalError = 'INTERNAL_ERROR',
   LegMetadataUnavailable = 'LEG_METADATA_UNAVAILABLE',
   MakerAlreadyResponded = 'MAKER_ALREADY_RESPONDED',
+  MakerDeclined = 'MAKER_DECLINED',
   MakerNotRequired = 'MAKER_NOT_REQUIRED',
   MakerQuoteLimited = 'MAKER_QUOTE_LIMITED',
   MissingMakerAddressInQuote = 'MISSING_MAKER_ADDRESS_IN_QUOTE',
@@ -105,6 +106,7 @@ export enum RfqKnownErrorCode {
   MissingTakerAmountInSignedOrder = 'MISSING_TAKER_AMOUNT_IN_SIGNED_ORDER',
   MissingTimestampInSignedOrder = 'MISSING_TIMESTAMP_IN_SIGNED_ORDER',
   MissingTokenIdInSignedOrder = 'MISSING_TOKEN_ID_IN_SIGNED_ORDER',
+  NoQuotes = 'NO_QUOTES',
   OrderSideOrTokenDoesNotMatchRequest = 'ORDER_SIDE_OR_TOKEN_DOES_NOT_MATCH_REQUEST',
   PreExecutionBalanceReservationFailed = 'PRE_EXECUTION_BALANCE_RESERVATION_FAILED',
   PriceE6NotPositive = 'PRICE_E6_NOT_POSITIVE',
@@ -123,6 +125,7 @@ export enum RfqKnownErrorCode {
   SignedOrderSizeDoesNotCoverQuote = 'SIGNED_ORDER_SIZE_DOES_NOT_COVER_QUOTE',
   SignedOrderTakerAmountNotPositive = 'SIGNED_ORDER_TAKER_AMOUNT_NOT_POSITIVE',
   SizeE6NotPositive = 'SIZE_E6_NOT_POSITIVE',
+  SizeTooLarge = 'SIZE_TOO_LARGE',
   SubmissionWindowClosed = 'SUBMISSION_WINDOW_CLOSED',
   TradeSubmissionFailed = 'TRADE_SUBMISSION_FAILED',
   Unauthenticated = 'UNAUTHENTICATED',
@@ -148,7 +151,7 @@ const RfqErrorCodeSchema = z.string().transform((value): RfqErrorCode => value);
 
 export type ComboMarket = {
   id: MarketId;
-  conditionId: CtfConditionId;
+  conditionId: ConditionId;
   slug: string;
   title: string;
   outcomes: ComboMarketOutcomes;
@@ -171,7 +174,7 @@ export type ComboMarketOutcomes = {
 const ComboMarketSchema = z
   .object({
     id: MarketIdSchema,
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
     position_ids: z.array(PositionIdSchema),
     slug: z.string(),
     title: z.string(),

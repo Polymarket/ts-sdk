@@ -1,50 +1,42 @@
 import {
-  TradingRestrictionErrorResponseSchema,
-  TradingRestrictionResponseType,
-} from '@polymarket/bindings/clob';
-import { RequestRejectedError, TradingRestriction } from '../../errors';
-import type {
-  ServiceRejectedResponse,
-  ServiceRejectedResponseMapper,
-} from '../../ServiceClient';
+  type RateLimitError,
+  RequestRejectedError,
+  TradingRestriction,
+  type TransportError,
+} from '../../errors';
 
-export const mapTradingRestrictionResponse: ServiceRejectedResponseMapper = (
-  response,
-) => {
-  const restriction = parseTradingRestriction(response);
-
-  if (restriction === undefined) {
-    return undefined;
+export function mapTradingRestrictionError(
+  error: RateLimitError | RequestRejectedError | TransportError,
+): RateLimitError | RequestRejectedError | TransportError {
+  if (!(error instanceof RequestRejectedError)) {
+    return error;
   }
 
-  return new RequestRejectedError(response.message, {
+  const restriction = parseTradingRestriction(error);
+
+  if (restriction === undefined) {
+    return error;
+  }
+
+  return new RequestRejectedError(error.message, {
+    cause: error,
+    ...(error.code !== undefined ? { code: error.code } : {}),
     restriction,
-    retryAfter: response.retryAfter,
-    status: response.status,
+    ...(error.retryAfter !== undefined ? { retryAfter: error.retryAfter } : {}),
+    status: error.status,
   });
-};
+}
 
 function parseTradingRestriction(
-  response: ServiceRejectedResponse,
+  error: RequestRejectedError,
 ): TradingRestriction | undefined {
-  if (response.status === 425) {
+  if (error.status === 425) {
     return TradingRestriction.RESTARTING;
   }
 
-  if (response.status !== 503) {
-    return undefined;
+  if (error.status === 503 && error.code === 'post_only_mode') {
+    return TradingRestriction.POST_ONLY;
   }
 
-  const parsed = TradingRestrictionErrorResponseSchema.safeParse(response.body);
-
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  switch (parsed.data.type) {
-    case TradingRestrictionResponseType.CANCEL_ONLY:
-      return TradingRestriction.CANCEL_ONLY;
-    case TradingRestrictionResponseType.POST_ONLY:
-      return TradingRestriction.POST_ONLY;
-  }
+  return undefined;
 }

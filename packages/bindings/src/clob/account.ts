@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import {
   BaseUnitsSchema,
-  type CtfConditionId,
-  CtfConditionIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
   DecimalishSchema,
   type DecimalString,
   DecimalStringSchema,
@@ -45,8 +45,8 @@ export type ClosedOnlyMode = z.infer<typeof ClosedOnlyModeSchema>;
 
 export type OpenOrder = {
   id: string;
-  /** CTF condition id for the market associated with this order. */
-  conditionId: CtfConditionId;
+  /** Condition ID for the market associated with this order. */
+  conditionId: ConditionId;
   tokenId: TokenId;
   owner: string;
   makerAddress: string;
@@ -70,7 +70,7 @@ export const OpenOrderSchema = z
     expiration: OptionalEpochLikeToIsoDateTimeStringSchema,
     id: z.string(),
     maker_address: z.string(),
-    market: CtfConditionIdSchema,
+    market: ConditionIdSchema,
     order_type: z.string(),
     original_size: DecimalStringSchema,
     outcome: z.string(),
@@ -155,8 +155,8 @@ type MakerOrder = z.output<typeof MakerOrderSchema>;
 
 export type ClobTrade = {
   id: string;
-  /** CTF condition id for the market associated with this trade. */
-  conditionId: CtfConditionId;
+  /** Condition ID for the market associated with this trade. */
+  conditionId: ConditionId;
   tokenId: TokenId;
   owner: string;
   makerAddress: string;
@@ -184,7 +184,7 @@ export const ClobTradeSchema = z
     last_update: EpochLikeToIsoDateTimeStringSchema,
     maker_address: z.string(),
     maker_orders: z.array(MakerOrderSchema),
-    market: CtfConditionIdSchema,
+    market: ConditionIdSchema,
     match_time: EpochLikeToIsoDateTimeStringSchema,
     outcome: z.string(),
     owner: z.string(),
@@ -282,7 +282,7 @@ export const UserEarningSchema = z
   .object({
     asset_address: z.string(),
     asset_rate: DecimalishSchema,
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
     date: EpochMillisecondsToIsoDateTimeStringSchema,
     earnings: DecimalishSchema,
     maker_address: z.string(),
@@ -326,10 +326,7 @@ export type TotalUserEarningsResponse = z.infer<
   typeof TotalUserEarningsResponseSchema
 >;
 
-export const RewardsPercentagesSchema = z.record(
-  CtfConditionIdSchema,
-  z.number(),
-);
+export const RewardsPercentagesSchema = z.record(ConditionIdSchema, z.number());
 
 export type RewardsPercentages = z.infer<typeof RewardsPercentagesSchema>;
 
@@ -376,7 +373,7 @@ export const EarningSchema = z
 
 export const UserRewardsEarningSchema = z
   .object({
-    condition_id: CtfConditionIdSchema,
+    condition_id: ConditionIdSchema,
     earning_percentage: z.number(),
     earnings: z.array(EarningSchema),
     event_slug: z.string(),
