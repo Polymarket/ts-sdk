@@ -84,6 +84,7 @@ describe('Approvals', () => {
       try {
         for (const request of [
           null,
+          [],
           { wallet: null },
           { wallet: 'not-an-address' },
         ]) {

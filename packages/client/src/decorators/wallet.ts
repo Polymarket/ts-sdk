@@ -61,6 +61,25 @@ type DefaultWallet<TRequest extends { wallet: string }> = Prettify<
   }
 >;
 
+function withDefaultWallet<TRequest extends { wallet?: string }>(
+  client: BaseSecureClient,
+  request: TRequest = {} as TRequest,
+): Omit<TRequest, 'wallet'> & { wallet: string } {
+  if (
+    request === null ||
+    typeof request !== 'object' ||
+    Array.isArray(request)
+  ) {
+    return request as Omit<TRequest, 'wallet'> & { wallet: string };
+  }
+
+  return {
+    ...request,
+    wallet:
+      request.wallet === undefined ? client.account.wallet : request.wallet,
+  };
+}
+
 export type SecureFetchTradingApprovalsStateRequest =
   DefaultWallet<FetchTradingApprovalsStateRequest>;
 
@@ -347,25 +366,8 @@ export function walletActions(
   return {
     ...actions,
     fetchTradingApprovalsState: (
-      request: SecureFetchTradingApprovalsStateRequest = {},
-    ) => {
-      if (
-        request === null ||
-        typeof request !== 'object' ||
-        Array.isArray(request)
-      ) {
-        return fetchTradingApprovalsState(
-          client,
-          request as FetchTradingApprovalsStateRequest,
-        );
-      }
-
-      return fetchTradingApprovalsState(client, {
-        ...request,
-        wallet:
-          request.wallet === undefined ? client.account.wallet : request.wallet,
-      });
-    },
+      request?: SecureFetchTradingApprovalsStateRequest,
+    ) => fetchTradingApprovalsState(client, withDefaultWallet(client, request)),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
