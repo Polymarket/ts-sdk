@@ -349,7 +349,7 @@ export const EvmAddressSchema = z
     (value) => isHexString(value) && value.length === 42,
     'Expected an EVM address',
   )
-  .transform((value) => value as EvmAddress);
+  .transform(toEvmAddress);
 export const EpochMillisecondsSchema = z
   .number()
   .int()
@@ -477,7 +477,13 @@ export const PaginationCursorSchema = z.custom<PaginationCursor>(
   'Expected a non-empty pagination cursor',
 );
 export const PositionIdSchema = z.string().transform(toPositionId);
-export const QuestionIdSchema = z.string().transform(toQuestionId);
+export const QuestionIdSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 66,
+    'Expected a 32-byte hex string',
+  )
+  .transform((value) => value as QuestionId);
 export const ResolutionRequestIdSchema = z
   .string()
   .transform(toResolutionRequestId);
@@ -543,6 +549,10 @@ export const OptionalDecimalStringSchema = z.preprocess(
   emptyStringToNull,
   DecimalStringSchema.nullish(),
 );
+
+function toEvmAddress(value: string): EvmAddress {
+  return toTaggedString<EvmAddress>(value);
+}
 
 function to32ByteHexString(value: string): HexString {
   if (!isHexString(value) || value.length !== 66) {

@@ -8,6 +8,7 @@ import {
   EvmAddressSchema,
   OptionalConditionIdSchema,
   OptionalCtfConditionIdSchema,
+  QuestionIdSchema,
   TxHashSchema,
   toComboConditionId,
   toConditionId,
@@ -105,8 +106,9 @@ describe('shared ID parsers', () => {
   });
 
   describe('branded hex schemas', () => {
-    it('reports invalid addresses and transaction hashes as validation failures', () => {
+    it('reports invalid values as validation failures', () => {
       expect(EvmAddressSchema.safeParse('0x1').success).toBe(false);
+      expect(QuestionIdSchema.safeParse('0x1').success).toBe(false);
       expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
   });
