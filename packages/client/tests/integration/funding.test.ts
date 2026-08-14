@@ -92,7 +92,8 @@ describe('Account funding', () => {
   });
 
   // This round trip irreversibly spends bridge fees and moves up to 2.10 USDC
-  // of live funds. It is opt-in and guards the quote before any transfer.
+  // of live funds. It is opt-in, guards both routes before the first transfer,
+  // and refreshes the withdrawal quote immediately before that transfer.
   it.runIf(runMeteredTests)(
     'round-trips the minimum pUSD withdrawal through the bridge',
     async ({ builderCode, secureClientWithDepositWallet, skip }) => {
@@ -138,16 +139,7 @@ describe('Account funding', () => {
         return;
       }
 
-      const deposit = await client.createDepositAddresses({ builderCode });
-      const withdrawal = await client.createWithdrawalAddresses({
-        builderCode,
-        destination: {
-          chainId: POLYGON_CHAIN_ID,
-          recipientAddress: client.account.wallet,
-          tokenAddress: POLYGON_NATIVE_USDC,
-        },
-      });
-      const quote = await client.fetchFundingQuote({
+      const depositQuote = await client.fetchFundingQuote({
         amount: DEPOSIT_AMOUNT,
         source: {
           chainId: POLYGON_CHAIN_ID,
@@ -159,7 +151,7 @@ describe('Account funding', () => {
           recipientAddress: client.account.wallet,
         },
       });
-      const withdrawalQuote = await client.fetchFundingQuote({
+      const withdrawalPreflightQuote = await client.fetchFundingQuote({
         amount: WITHDRAWAL_AMOUNT,
         source: {
           chainId: POLYGON_CHAIN_ID,
@@ -173,15 +165,16 @@ describe('Account funding', () => {
       });
 
       if (
-        quote.estFeeBreakdown.minReceived < 2.05 ||
-        BigInt(quote.estToTokenBaseUnit) < WITHDRAWAL_AMOUNT ||
-        BigInt(withdrawalQuote.estToTokenBaseUnit) < 1_950_000n ||
-        withdrawalQuote.estFeeBreakdown.minReceived < 1.95
+        depositQuote.estFeeBreakdown.minReceived < 2.05 ||
+        BigInt(depositQuote.estToTokenBaseUnit) < WITHDRAWAL_AMOUNT ||
+        BigInt(withdrawalPreflightQuote.estToTokenBaseUnit) < 1_950_000n ||
+        withdrawalPreflightQuote.estFeeBreakdown.minReceived < 1.95
       ) {
         skip('The live quotes cannot safely complete the minimum round trip');
         return;
       }
 
+      const deposit = await client.createDepositAddresses({ builderCode });
       const depositNotBefore = Date.now() - 60_000;
       const depositTransfer = await client.transferErc20({
         amount: DEPOSIT_AMOUNT,
@@ -197,6 +190,38 @@ describe('Account funding', () => {
         tokenAddress: POLYGON_NATIVE_USDC,
       });
 
+      const withdrawalQuote = await client.fetchFundingQuote({
+        amount: WITHDRAWAL_AMOUNT,
+        source: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_PUSD,
+        },
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_NATIVE_USDC,
+          recipientAddress: client.account.wallet,
+        },
+      });
+
+      if (
+        BigInt(withdrawalQuote.estToTokenBaseUnit) < 1_950_000n ||
+        withdrawalQuote.estFeeBreakdown.minReceived < 1.95
+      ) {
+        throw new Error(
+          'The refreshed withdrawal quote is unsafe; deposited pUSD was not withdrawn',
+        );
+      }
+
+      // Withdrawal addresses are destination-specific and should only be
+      // generated when the transfer is ready to execute.
+      const withdrawal = await client.createWithdrawalAddresses({
+        builderCode,
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          recipientAddress: client.account.wallet,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+      });
       const withdrawalNotBefore = Date.now() - 60_000;
       const withdrawalTransfer = await client.transferErc20({
         amount: WITHDRAWAL_AMOUNT,

@@ -55,7 +55,7 @@ export type FundingDestination = FundingAssetLocation & {
 };
 
 const FundingAssetLocationSchema = z.strictObject({
-  chainId: z.string().trim().min(1),
+  chainId: z.string().trim().regex(/^\d+$/, 'Expected a decimal chain ID'),
   tokenAddress: z.string().trim().min(1),
 }) satisfies z.ZodType<FundingAssetLocation>;
 
