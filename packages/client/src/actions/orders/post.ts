@@ -19,6 +19,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import { mapTradingRestrictionError } from './restrictions';
 import type { SignedOrder } from './types';
 
 const MAX_CLOB_ORDER_SALT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -96,6 +97,7 @@ export function postOrder(
         .post('/order', {
           json: payload,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponseSchema)),
     );
   };
@@ -134,6 +136,7 @@ export function postOrders(
         .post('/orders', {
           json: payload,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponsesSchema)),
     );
   };

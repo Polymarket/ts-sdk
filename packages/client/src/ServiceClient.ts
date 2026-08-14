@@ -202,10 +202,7 @@ export class ServiceClient {
     promise: Promise<Response>,
   ): ResultAsync<
     Response,
-    | RateLimitError
-    | RequestRejectedError
-    | RequestRejectedError
-    | TransportError
+    RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
@@ -222,9 +219,14 @@ export class ServiceClient {
           );
         }
 
-        const message = await this.#extractResponseErrorMessage(response);
+        const {
+          code,
+          message,
+          retryAfter: retryAfterSeconds,
+        } = await this.#extractResponseError(response);
         throw new RequestRejectedError(message, {
-          retryAfter,
+          code,
+          retryAfter: retryAfter ?? retryAfterSeconds,
           status: response.status,
         });
       }),
@@ -251,15 +253,31 @@ export class ServiceClient {
     return Number(value);
   }
 
-  async #extractResponseErrorMessage(response: Response) {
+  async #extractResponseError(
+    response: Response,
+  ): Promise<{ message: string; code?: string; retryAfter?: number }> {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
-      const { error } = await response
+      const {
+        error,
+        code,
+        retry_after_seconds: retryAfterSeconds,
+      } = await response
         .clone()
         .json()
         .catch(() => ({}));
-      if (error) return `${String(error)} (${response.url})`;
+      if (error) {
+        return {
+          message: `${String(error)} (${response.url})`,
+          ...(typeof code === 'string' && code !== '' ? { code } : {}),
+          ...(typeof retryAfterSeconds === 'number' &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds >= 0
+            ? { retryAfter: retryAfterSeconds }
+            : {}),
+        };
+      }
     }
 
     if (contentType?.includes('text/plain')) {
@@ -272,22 +290,28 @@ export class ServiceClient {
         );
 
       if (text) {
-        return `${text} (${response.url})`;
+        return { message: `${text} (${response.url})` };
       }
     }
 
     const server = response.headers.get('server')?.toLowerCase();
     if (server?.includes('cloudflare')) {
-      return `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`;
+      return {
+        message: `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`,
+      };
     }
 
     if (
       contentType?.includes('text/html') ||
       contentType?.includes('application/xhtml+xml')
     ) {
-      return `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`;
+      return {
+        message: `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`,
+      };
     }
 
-    return `Request to ${response.url} failed with status ${response.status} and unreadable response body`;
+    return {
+      message: `Request to ${response.url} failed with status ${response.status} and unreadable response body`,
+    };
   }
 }
