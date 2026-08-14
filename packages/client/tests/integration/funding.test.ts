@@ -1,14 +1,16 @@
+import { AssetType } from '@polymarket/bindings/clob';
 import {
   KnownFundingTransactionStatus,
   type SecureClient,
 } from '@polymarket/client';
+import { fetchBalanceAllowance } from '@polymarket/client/actions';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const POLYGON_CHAIN_ID = '137';
 const POLYGON_NATIVE_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
 const POLYGON_PUSD = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
-const DEPOSIT_AMOUNT = 2_100_000n;
-const WITHDRAWAL_AMOUNT = 2_000_000n;
+const WITHDRAWAL_AMOUNT = 2_100_000n;
+const DEPOSIT_AMOUNT = 2_000_000n;
 
 describe('Account funding', () => {
   it('fetches the currently supported assets', async ({ publicClient }) => {
@@ -93,7 +95,7 @@ describe('Account funding', () => {
 
   // This round trip irreversibly spends bridge fees and moves up to 2.10 USDC
   // of live funds. It is opt-in, guards both routes before the first transfer,
-  // and refreshes the withdrawal quote immediately before that transfer.
+  // and refreshes the deposit quote immediately before that transfer.
   it.runIf(runMeteredTests)(
     'round-trips the minimum pUSD withdrawal through the bridge',
     async ({ builderCode, secureClientWithDepositWallet, skip }) => {
@@ -134,61 +136,18 @@ describe('Account funding', () => {
         return;
       }
 
-      if (nativeUsdc.minCheckoutUsd > 2.1 || pusd.minCheckoutUsd > 2) {
+      if (nativeUsdc.minCheckoutUsd > 2 || pusd.minCheckoutUsd > 2.1) {
         skip('The metered amounts are below the current funding minimums');
         return;
       }
 
-      const depositQuote = await client.fetchFundingQuote({
-        amount: DEPOSIT_AMOUNT,
-        source: {
-          chainId: POLYGON_CHAIN_ID,
-          tokenAddress: POLYGON_NATIVE_USDC,
-        },
-        destination: {
-          chainId: POLYGON_CHAIN_ID,
-          tokenAddress: POLYGON_PUSD,
-          recipientAddress: client.account.wallet,
-        },
+      const balanceAllowance = await fetchBalanceAllowance(client, {
+        assetType: AssetType.COLLATERAL,
       });
-      const withdrawalPreflightQuote = await client.fetchFundingQuote({
-        amount: WITHDRAWAL_AMOUNT,
-        source: {
-          chainId: POLYGON_CHAIN_ID,
-          tokenAddress: POLYGON_PUSD,
-        },
-        destination: {
-          chainId: POLYGON_CHAIN_ID,
-          tokenAddress: POLYGON_NATIVE_USDC,
-          recipientAddress: client.account.wallet,
-        },
-      });
-
-      if (
-        depositQuote.estFeeBreakdown.minReceived < 2.05 ||
-        BigInt(depositQuote.estToTokenBaseUnit) < WITHDRAWAL_AMOUNT ||
-        BigInt(withdrawalPreflightQuote.estToTokenBaseUnit) < 1_950_000n ||
-        withdrawalPreflightQuote.estFeeBreakdown.minReceived < 1.95
-      ) {
-        skip('The live quotes cannot safely complete the minimum round trip');
+      if (BigInt(balanceAllowance.balance) < WITHDRAWAL_AMOUNT) {
+        skip('The integration wallet has insufficient pUSD for the round trip');
         return;
       }
-
-      const deposit = await client.createDepositAddresses({ builderCode });
-      const depositNotBefore = Date.now() - 60_000;
-      const depositTransfer = await client.transferErc20({
-        amount: DEPOSIT_AMOUNT,
-        recipientAddress: deposit.addresses.evm,
-        tokenAddress: POLYGON_NATIVE_USDC,
-      });
-      await depositTransfer.wait();
-      await waitForFundingTransfer(client, {
-        address: deposit.addresses.evm,
-        amount: DEPOSIT_AMOUNT,
-        destinationTokenAddress: POLYGON_PUSD,
-        notBefore: depositNotBefore,
-        tokenAddress: POLYGON_NATIVE_USDC,
-      });
 
       const withdrawalQuote = await client.fetchFundingQuote({
         amount: WITHDRAWAL_AMOUNT,
@@ -202,14 +161,27 @@ describe('Account funding', () => {
           recipientAddress: client.account.wallet,
         },
       });
+      const depositPreflightQuote = await client.fetchFundingQuote({
+        amount: DEPOSIT_AMOUNT,
+        source: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_PUSD,
+          recipientAddress: client.account.wallet,
+        },
+      });
 
       if (
-        BigInt(withdrawalQuote.estToTokenBaseUnit) < 1_950_000n ||
-        withdrawalQuote.estFeeBreakdown.minReceived < 1.95
+        withdrawalQuote.estFeeBreakdown.minReceived < 2 ||
+        BigInt(withdrawalQuote.estToTokenBaseUnit) < DEPOSIT_AMOUNT ||
+        BigInt(depositPreflightQuote.estToTokenBaseUnit) < 1_950_000n ||
+        depositPreflightQuote.estFeeBreakdown.minReceived < 1.95
       ) {
-        throw new Error(
-          'The refreshed withdrawal quote is unsafe; deposited pUSD was not withdrawn',
-        );
+        skip('The live quotes cannot safely complete the minimum round trip');
+        return;
       }
 
       // Withdrawal addresses are destination-specific and should only be
@@ -235,6 +207,44 @@ describe('Account funding', () => {
         destinationTokenAddress: POLYGON_NATIVE_USDC,
         notBefore: withdrawalNotBefore,
         tokenAddress: POLYGON_PUSD,
+      });
+
+      const depositQuote = await client.fetchFundingQuote({
+        amount: DEPOSIT_AMOUNT,
+        source: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          tokenAddress: POLYGON_PUSD,
+          recipientAddress: client.account.wallet,
+        },
+      });
+
+      if (
+        BigInt(depositQuote.estToTokenBaseUnit) < 1_950_000n ||
+        depositQuote.estFeeBreakdown.minReceived < 1.95
+      ) {
+        throw new Error(
+          'The refreshed deposit quote is unsafe; withdrawn USDC was not deposited',
+        );
+      }
+
+      const deposit = await client.createDepositAddresses({ builderCode });
+      const depositNotBefore = Date.now() - 60_000;
+      const depositTransfer = await client.transferErc20({
+        amount: DEPOSIT_AMOUNT,
+        recipientAddress: deposit.addresses.evm,
+        tokenAddress: POLYGON_NATIVE_USDC,
+      });
+      await depositTransfer.wait();
+      await waitForFundingTransfer(client, {
+        address: deposit.addresses.evm,
+        amount: DEPOSIT_AMOUNT,
+        destinationTokenAddress: POLYGON_PUSD,
+        notBefore: depositNotBefore,
+        tokenAddress: POLYGON_NATIVE_USDC,
       });
     },
     20 * 60_000,
