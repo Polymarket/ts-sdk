@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { BaseClient } from '../clients';
 import { ServiceClient } from '../ServiceClient';
 import {
+  getServerTime,
   listPerpsCandles,
   listPerpsFundingHistory,
   listPerpsTrades,
@@ -25,6 +26,30 @@ describe('Perps actions', () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  it('gets the server time from the public info endpoint', async () => {
+    const time = 1_766_000_000_000;
+    server.use(
+      http.get(`${root}/v1/info/time`, ({ request }) => {
+        expect(request.url).toBe(`${root}/v1/info/time`);
+        return HttpResponse.json({ time });
+      }),
+    );
+
+    await expect(getServerTime(createClient())).resolves.toBe(time);
+  });
+
+  it('rejects malformed server time responses', async () => {
+    server.use(
+      http.get(`${root}/v1/info/time`, () =>
+        HttpResponse.json({ time: 'not-a-timestamp' }),
+      ),
+    );
+
+    await expect(getServerTime(createClient())).rejects.toMatchObject({
+      name: 'UnexpectedResponseError',
+    });
   });
 
   it('continues candle pages from the next interval boundary', async () => {
