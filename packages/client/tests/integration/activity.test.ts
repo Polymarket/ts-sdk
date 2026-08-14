@@ -12,6 +12,8 @@ describe('Activity', () => {
         .listTrades({
           user: TEST_USER,
           pageSize: 1,
+          start: 1_700_000_000,
+          end: 2_000_000_000,
         })
         .firstPage();
 
@@ -43,6 +45,8 @@ describe('Activity', () => {
           user: TEST_USER,
           pageSize: 100,
           type: [ActivityType.TRADE],
+          start: 1_700_000_000,
+          end: 2_000_000_000,
         })
         .firstPage()
         .then(expectNonEmptyPage);

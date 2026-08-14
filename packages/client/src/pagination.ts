@@ -105,6 +105,7 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
 export function decodeOffsetCursor(
   cursor: PaginationCursor | undefined,
   pageSize: number,
+  maxOffset?: number,
 ): OffsetCursorState {
   if (cursor === undefined) {
     return {
@@ -113,9 +114,35 @@ export function decodeOffsetCursor(
     };
   }
 
+  let state: OffsetCursorState;
   try {
-    return OffsetCursorStateSchema.parse(JSON.parse(atob(cursor)));
+    state = OffsetCursorStateSchema.parse(JSON.parse(atob(cursor)));
   } catch (error) {
     throw new UserInputError('Invalid pagination cursor', { cause: error });
   }
+
+  if (maxOffset !== undefined && state.offset > maxOffset) {
+    throw new UserInputError(
+      `Pagination cursor offset exceeds the endpoint maximum of ${maxOffset}`,
+    );
+  }
+
+  return state;
+}
+
+/** @internal */
+export function cappedOffsetContinuation(
+  state: OffsetCursorState,
+  pageHasMore: boolean,
+  maxOffset: number,
+): { hasMore: boolean; nextCursor?: PaginationCursor } {
+  const nextOffset = state.offset + state.pageSize;
+  const hasMore = pageHasMore && nextOffset <= maxOffset;
+
+  return {
+    hasMore,
+    nextCursor: hasMore
+      ? encodeOffsetCursor({ offset: nextOffset, pageSize: state.pageSize })
+      : undefined,
+  };
 }

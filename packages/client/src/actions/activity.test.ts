@@ -3,8 +3,10 @@ import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { BaseClient } from '../clients';
+import { UserInputError } from '../errors';
+import { encodeOffsetCursor } from '../pagination';
 import { ServiceClient } from '../ServiceClient';
-import { listActivity } from './activity';
+import { listActivity, listTrades } from './activity';
 
 const root = 'http://localhost:4018';
 const server = setupServer();
@@ -55,6 +57,26 @@ describe('Activity actions', () => {
         offset: '0',
       },
     ]);
+  });
+
+  it.each([
+    [
+      'trade',
+      () =>
+        listTrades(createClient(), {
+          cursor: encodeOffsetCursor({ offset: 10_001, pageSize: 20 }),
+        }),
+    ],
+    [
+      'activity',
+      () =>
+        listActivity(createClient(), {
+          cursor: encodeOffsetCursor({ offset: 5_001, pageSize: 20 }),
+          user,
+        }),
+    ],
+  ])('rejects an over-ceiling %s cursor before transport', (_, action) => {
+    expect(() => action().firstPage()).toThrow(UserInputError);
   });
 });
 

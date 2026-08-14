@@ -24,8 +24,8 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import {
+  cappedOffsetContinuation,
   decodeOffsetCursor,
-  encodeOffsetCursor,
   PageSizeSchema,
   type Paginated,
   paginate,
@@ -34,6 +34,9 @@ import { validateWith } from '../response';
 import { snakeCase, toDataSearchParams, toSearchParams } from './params';
 
 export { ComboActivityType } from '@polymarket/bindings/data';
+
+const MAX_TRADES_OFFSET = 10_000;
+const MAX_ACTIVITY_OFFSET = 5_000;
 
 const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 
@@ -86,6 +89,10 @@ export const ListTradesError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Pagination stops at the Data API's 10,000 offset ceiling. Use `start` and
+ * `end` to query bounded time windows when deeper history is required; this
+ * paginator does not claim complete unbounded history.
+ *
  * @throws {@link ListTradesError}
  * Thrown on failure.
  *
@@ -128,7 +135,7 @@ export function listTrades(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, MAX_TRADES_OFFSET);
 
     return client.data
       .get('/trades', {
@@ -140,17 +147,15 @@ export function listTrades(
       })
       .andThen(validateWith(ListTradesResponseSchema))
       .map((trades) => {
-        const hasMore = trades.length >= decoded.pageSize;
+        const continuation = cappedOffsetContinuation(
+          decoded,
+          trades.length >= decoded.pageSize,
+          MAX_TRADES_OFFSET,
+        );
 
         return {
           items: trades,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
+          ...continuation,
         };
       });
   }, cursor);
@@ -203,6 +208,10 @@ export const ListActivityError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Pagination stops at the Data API's 5,000 offset ceiling. Use `start` and
+ * `end` to query bounded time windows when deeper history is required; this
+ * paginator does not claim complete unbounded history.
+ *
  * @throws {@link ListActivityError}
  * Thrown on failure.
  *
@@ -245,7 +254,7 @@ export function listActivity(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, MAX_ACTIVITY_OFFSET);
 
     return client.data
       .get('/activity', {
@@ -262,17 +271,15 @@ export function listActivity(
       })
       .andThen(validateWith(ListActivityResponseSchema))
       .map((activity) => {
-        const hasMore = activity.length >= decoded.pageSize;
+        const continuation = cappedOffsetContinuation(
+          decoded,
+          activity.length >= decoded.pageSize,
+          MAX_ACTIVITY_OFFSET,
+        );
 
         return {
           items: activity,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
+          ...continuation,
         };
       });
   }, cursor);

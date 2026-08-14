@@ -268,6 +268,9 @@ export type DataActions = {
   /**
    * Lists trades for a wallet, market, or event.
    *
+   * Pagination stops at offset 10,000. Use `start` and `end` to split deeper
+   * history into bounded windows.
+   *
    * @throws {@link ListTradesError}
    * Thrown on failure.
    *
