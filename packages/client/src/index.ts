@@ -47,6 +47,7 @@ export * from './errors';
 export * from './hmac';
 export type * from './pagination';
 export type {
+  RateLimitBucket,
   RateLimitUpdate,
   RateLimitUpdateListener,
 } from './rate-limit';

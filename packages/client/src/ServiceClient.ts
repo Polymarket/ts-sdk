@@ -3,6 +3,7 @@ import ky, { type KyInstance } from 'ky';
 import { RateLimitError, RequestRejectedError, TransportError } from './errors';
 import {
   parseRateLimitHeaders,
+  type RateLimitBucket,
   type RateLimitUpdate,
   type RateLimitUpdateListener,
 } from './rate-limit';
@@ -123,6 +124,32 @@ export class ServiceClient {
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
+  #rateLimitBucket(
+    method: ServiceRequest['method'],
+    path: string,
+  ): RateLimitBucket | undefined {
+    const normalizedPath = this.#normalizePath(path);
+
+    if (
+      method === 'POST' &&
+      (normalizedPath === 'order' || normalizedPath === 'orders')
+    ) {
+      return 'order';
+    }
+
+    if (
+      method === 'DELETE' &&
+      (normalizedPath === 'order' ||
+        normalizedPath === 'orders' ||
+        normalizedPath === 'cancel-all' ||
+        normalizedPath === 'cancel-market-orders')
+    ) {
+      return 'cancel';
+    }
+
+    return undefined;
+  }
+
   #request(
     method: ServiceRequest['method'],
     path: string,
@@ -135,7 +162,10 @@ export class ServiceClient {
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
-    return this.#toResult(this.#send(method, path, options));
+    return this.#toResult(
+      this.#send(method, path, options),
+      this.#rateLimitBucket(method, path),
+    );
   }
 
   async #send(
@@ -213,13 +243,17 @@ export class ServiceClient {
 
   #toResult(
     promise: Promise<Response>,
+    rateLimitBucket?: RateLimitBucket,
   ): ResultAsync<
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
-        const rateLimit = parseRateLimitHeaders(response.headers);
+        const rateLimit = parseRateLimitHeaders(
+          response.headers,
+          rateLimitBucket,
+        );
         if (rateLimit !== undefined) {
           this.#notifyRateLimitUpdate(rateLimit);
         }
@@ -263,7 +297,9 @@ export class ServiceClient {
 
   #notifyRateLimitUpdate(update: RateLimitUpdate): void {
     try {
-      this.#onRateLimitUpdate?.(update);
+      void Promise.resolve(this.#onRateLimitUpdate?.(update)).catch(
+        () => undefined,
+      );
     } catch {
       // A consumer-provided listener must never affect request handling.
     }

@@ -899,7 +899,8 @@ export type PublicClientOptions = {
    * @remarks
    * Use this to monitor remaining rate-limit capacity and warning-mode
    * signals, and adjust request patterns before requests are rejected.
-   * Errors thrown by the listener are ignored.
+   * Errors thrown by the listener and rejections from promises it returns are
+   * ignored.
    */
   onRateLimitUpdate?: RateLimitUpdateListener;
 };

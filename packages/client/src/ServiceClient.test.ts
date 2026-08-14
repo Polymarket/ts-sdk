@@ -247,7 +247,7 @@ describe('ServiceClient', () => {
   it('exposes Poly-RateLimit header state on rate limited requests', async () => {
     server.use(
       http.post(
-        `${root}/rate-limited-order`,
+        `${root}/order`,
         () =>
           new HttpResponse(null, {
             headers: {
@@ -266,11 +266,10 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(
-      unwrap(client.post('/rate-limited-order')),
-    ).rejects.toMatchObject({
+    await expect(unwrap(client.post('/order'))).rejects.toMatchObject({
       name: 'RateLimitError',
       rateLimit: {
+        bucket: 'order',
         remaining: -2,
         reset: 1784913054,
         tier: 'standard',
@@ -280,6 +279,7 @@ describe('ServiceClient', () => {
     });
     expect(updates).toEqual([
       {
+        bucket: 'order',
         remaining: -2,
         reset: 1784913054,
         tier: 'standard',
@@ -315,10 +315,109 @@ describe('ServiceClient', () => {
     );
     expect(updates).toEqual([
       {
+        bucket: 'order',
         remaining: 59,
         reset: 1784913054,
         tier: 'standard',
         warning: true,
+      },
+    ]);
+  });
+
+  it('distinguishes the cancellation bucket on a shared order path', async () => {
+    server.use(
+      http.delete(`${root}/order`, () =>
+        HttpResponse.json(
+          { ok: true },
+          {
+            headers: {
+              'Poly-RateLimit-Remaining': '2999',
+              'Poly-RateLimit-Reset': '1784913054',
+              'Poly-RateLimit-Tier': 'standard',
+            },
+          },
+        ),
+      ),
+    );
+    const updates: unknown[] = [];
+    const client = new ServiceClient({
+      onRateLimitUpdate: (update) => updates.push(update),
+      root,
+    });
+
+    await expect(unwrap(client.del('/order'))).resolves.toBeInstanceOf(
+      Response,
+    );
+    expect(updates).toEqual([
+      {
+        bucket: 'cancel',
+        remaining: 2999,
+        reset: 1784913054,
+        tier: 'standard',
+        warning: false,
+      },
+    ]);
+  });
+
+  it('does not assign a rate-limit bucket to unrelated paths', async () => {
+    server.use(
+      http.post(`${root}/orders-scoring`, () =>
+        HttpResponse.json(
+          { ok: true },
+          { headers: { 'Poly-RateLimit-Remaining': '10' } },
+        ),
+      ),
+    );
+    const updates: unknown[] = [];
+    const client = new ServiceClient({
+      onRateLimitUpdate: (update) => updates.push(update),
+      root,
+    });
+
+    await expect(
+      unwrap(client.post('/orders-scoring')),
+    ).resolves.toBeInstanceOf(Response);
+    expect(updates).toEqual([
+      {
+        remaining: 10,
+        reset: undefined,
+        tier: undefined,
+        warning: false,
+      },
+    ]);
+  });
+
+  it('ignores non-integer rate-limit header values', async () => {
+    server.use(
+      http.post(`${root}/order`, () =>
+        HttpResponse.json(
+          { ok: true },
+          {
+            headers: {
+              'Poly-RateLimit-Remaining': '1e3',
+              'Poly-RateLimit-Reset': '1.5',
+              'Poly-RateLimit-Tier': 'standard',
+            },
+          },
+        ),
+      ),
+    );
+    const updates: unknown[] = [];
+    const client = new ServiceClient({
+      onRateLimitUpdate: (update) => updates.push(update),
+      root,
+    });
+
+    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
+      Response,
+    );
+    expect(updates).toEqual([
+      {
+        bucket: 'order',
+        remaining: undefined,
+        reset: undefined,
+        tier: 'standard',
+        warning: false,
       },
     ]);
   });
@@ -337,7 +436,7 @@ describe('ServiceClient', () => {
     expect(updates).toEqual([]);
   });
 
-  it('ignores rate-limit listener errors', async () => {
+  it('ignores synchronous rate-limit listener errors', async () => {
     server.use(
       http.post(`${root}/order`, () =>
         HttpResponse.json(
@@ -356,6 +455,29 @@ describe('ServiceClient', () => {
     await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
       Response,
     );
+  });
+
+  it('ignores asynchronous rate-limit listener errors', async () => {
+    server.use(
+      http.post(`${root}/order`, () =>
+        HttpResponse.json(
+          { ok: true },
+          { headers: { 'Poly-RateLimit-Remaining': '10' } },
+        ),
+      ),
+    );
+    const client = new ServiceClient({
+      onRateLimitUpdate: async () => {
+        await Promise.resolve();
+        throw new Error('async listener failure');
+      },
+      root,
+    });
+
+    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
+      Response,
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 
   it('does not apply service-specific policy to rejected responses', async () => {

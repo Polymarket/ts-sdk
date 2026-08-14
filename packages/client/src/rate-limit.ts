@@ -1,17 +1,25 @@
+/** Independent rate-limit bucket affected by an order or cancellation. */
+export type RateLimitBucket = 'order' | 'cancel';
+
 /**
  * Per-signer rate-limit state reported by order and cancellation responses.
  *
  * @remarks
- * Fields mirror the `Poly-RateLimit-*` response headers. Each optional field
- * is populated independently, so any subset can be present depending on how
- * the request was evaluated; `warning` is `false` whenever the response does
- * not report warning mode.
+ * Fields mirror the `Poly-RateLimit-*` response headers. `remaining` and
+ * `reset` are normally reported together, while `tier` can be absent. These
+ * fields remain optional because malformed header values are ignored;
+ * `warning` is `false` whenever the response does not report warning mode.
  */
 export type RateLimitUpdate = {
+  /** Rate-limit bucket affected by the request, when recognized by the SDK. */
+  bucket?: RateLimitBucket;
+
   /**
    * Token balance remaining in the applicable rate-limit bucket after the
    * request was accounted for. Can be negative for tiers that allow a
-   * negative cancellation balance.
+   * negative cancellation balance. A value of `0` alone does not prove the
+   * bucket is exhausted because it can also be reported when no active limit
+   * applies; do not back off solely because this value is zero.
    */
   remaining?: number;
 
@@ -42,9 +50,16 @@ export type RateLimitUpdateListener = (update: RateLimitUpdate) => void;
  */
 export function parseRateLimitHeaders(
   headers: Headers,
+  bucket?: RateLimitBucket,
 ): RateLimitUpdate | undefined {
-  const remaining = parseNumericHeader(headers.get('Poly-RateLimit-Remaining'));
-  const reset = parseNumericHeader(headers.get('Poly-RateLimit-Reset'));
+  const remaining = parseIntegerHeader(
+    headers.get('Poly-RateLimit-Remaining'),
+    /^-?\d+$/,
+  );
+  const reset = parseIntegerHeader(
+    headers.get('Poly-RateLimit-Reset'),
+    /^\d+$/,
+  );
   const tier = parseTextHeader(headers.get('Poly-RateLimit-Tier'));
   const warning =
     headers.get('Poly-RateLimit-Warning')?.trim().toLowerCase() === 'true';
@@ -58,16 +73,26 @@ export function parseRateLimitHeaders(
     return undefined;
   }
 
-  return { remaining, reset, tier, warning };
+  return {
+    ...(bucket === undefined ? {} : { bucket }),
+    remaining,
+    reset,
+    tier,
+    warning,
+  };
 }
 
-function parseNumericHeader(value: string | null): number | undefined {
-  if (value === null || value.trim() === '') {
+function parseIntegerHeader(
+  value: string | null,
+  format: RegExp,
+): number | undefined {
+  const normalized = value?.trim();
+  if (normalized === undefined || !format.test(normalized)) {
     return undefined;
   }
 
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+  const parsed = Number(normalized);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function parseTextHeader(value: string | null): string | undefined {
