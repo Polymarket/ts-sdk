@@ -893,6 +893,141 @@ describe('PerpsSession', () => {
       }
     });
 
+    it('updates leverage for an ordered batch over the session socket', async () => {
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.updateLeverages({
+          updates: [
+            { crossMargin: false, instrumentId: 1, leverage: 5 },
+            { crossMargin: true, instrumentId: 2, leverage: 10 },
+          ],
+        }),
+      ).resolves.toEqual([
+        {
+          crossMargin: false,
+          instrumentId: 1,
+          leverage: 5,
+          status: 'ok',
+        },
+        {
+          crossMargin: true,
+          instrumentId: 2,
+          leverage: 10,
+          status: 'ok',
+        },
+      ]);
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            { cross: false, iid: 1, lev: 5 },
+            { cross: true, iid: 2, lev: 10 },
+          ],
+          type: 'updateLeverages',
+        },
+        req: 'post',
+        salt: expect.any(Number),
+        sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
+        ts: expect.any(Number),
+      });
+
+      await session.close();
+    });
+
+    it('returns mixed leverage results and internal errors as ordered data', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'updateLeverages') {
+          return [
+            {
+              status: 'ok',
+              instrument_id: 1,
+              leverage: 5,
+              cross: false,
+            },
+            {
+              status: 'err',
+              instrument_id: 2,
+              error: 'internal_error',
+            },
+            {
+              status: 'ok',
+              instrument_id: 3,
+              leverage: 10,
+              cross: true,
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({
+            updates: [
+              { crossMargin: false, instrumentId: 1, leverage: 5 },
+              { crossMargin: false, instrumentId: 2, leverage: 5 },
+              { crossMargin: true, instrumentId: 3, leverage: 10 },
+            ],
+          }),
+        ).resolves.toEqual([
+          {
+            status: 'ok',
+            instrumentId: 1,
+            leverage: 5,
+            crossMargin: false,
+          },
+          { status: 'err', instrumentId: 2, error: 'internal_error' },
+          {
+            status: 'ok',
+            instrumentId: 3,
+            leverage: 10,
+            crossMargin: true,
+          },
+        ]);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('throws when the complete leverage batch is rejected', async () => {
+      mockCommandSession((frame) =>
+        frame.op?.type === 'updateLeverages'
+          ? [{ status: 'err', error: 'action_rate_limited' }]
+          : responseForFrame(frame),
+      );
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({
+            updates: [{ crossMargin: false, instrumentId: 1, leverage: 5 }],
+          }),
+        ).rejects.toBeInstanceOf(RequestRejectedError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('validates the complete leverage batch before sending', async () => {
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({ updates: [] }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
     it('updates isolated margin over the session socket', async () => {
       const session = createSession();
       await session.connect();
@@ -1922,6 +2057,21 @@ function responseForFrame(frame: {
     }
     case 'updateLeverage':
       return { status: 'ok', instrument_id: 1, leverage: 5, cross: false };
+    case 'updateLeverages':
+      return [
+        {
+          status: 'ok',
+          instrument_id: 1,
+          leverage: 5,
+          cross: false,
+        },
+        {
+          status: 'ok',
+          instrument_id: 2,
+          leverage: 10,
+          cross: true,
+        },
+      ];
     case 'updateMargin':
       return { status: 'ok' };
     case 'cancelOrdersCOID':

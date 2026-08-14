@@ -1,4 +1,5 @@
 import { OrderSide } from '@polymarket/bindings';
+import type { PerpsUpdateLeveragesResult } from '@polymarket/bindings/perps';
 import { PerpsTimeInForce } from '@polymarket/bindings/perps';
 import { describe, it } from 'vitest';
 import type { PerpsSession } from '../session';
@@ -10,6 +11,7 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  UpdatePerpsLeveragesRequest,
 } from './trading';
 
 const baseOrder = {
@@ -185,6 +187,56 @@ describe('PlacePerpsPositionTpSlRequest', () => {
       // @ts-expect-error Position side is inferred from the current position.
       positionSide: 'long',
       stopLoss: { triggerPrice: '90' },
+    };
+    void request;
+  });
+});
+
+describe('PerpsSession.updateLeverages', () => {
+  const session = undefined as unknown as PerpsSession;
+
+  it('accepts a typed batch request and returns ordered discriminated results', () => {
+    const request: UpdatePerpsLeveragesRequest = {
+      updates: [
+        { crossMargin: false, instrumentId: 1, leverage: 5 },
+        { crossMargin: true, instrumentId: 2, leverage: 10 },
+      ],
+    };
+    const update: (
+      request: UpdatePerpsLeveragesRequest,
+    ) => Promise<PerpsUpdateLeveragesResult> =
+      session.updateLeverages.bind(session);
+    void request;
+    void update;
+  });
+
+  it('exposes result fields through the status discriminant', () => {
+    const results = undefined as unknown as PerpsUpdateLeveragesResult;
+    for (const result of results) {
+      result.instrumentId;
+      if (result.status === 'ok') {
+        result.crossMargin;
+        result.leverage;
+        // @ts-expect-error Successful updates do not carry an error.
+        result.error;
+      } else {
+        result.error;
+        // @ts-expect-error Rejected updates do not claim a leverage was applied.
+        result.leverage;
+      }
+    }
+  });
+
+  it('rejects invalid update field types', () => {
+    const request: UpdatePerpsLeveragesRequest = {
+      updates: [
+        {
+          // @ts-expect-error crossMargin must be boolean.
+          crossMargin: 'true',
+          instrumentId: 1,
+          leverage: 5,
+        },
+      ],
     };
     void request;
   });

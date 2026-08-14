@@ -17,6 +17,7 @@ import {
   type PerpsPortfolio,
   type PerpsPostOrderAck,
   type PerpsUpdateLeverageResult,
+  type PerpsUpdateLeveragesResult,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
@@ -96,8 +97,10 @@ import {
   postPerpsOrders,
   toPerpsCommandBodyOp,
   type UpdatePerpsLeverageRequest,
+  type UpdatePerpsLeveragesRequest,
   type UpdatePerpsMarginRequest,
   updatePerpsLeverage,
+  updatePerpsLeverages,
   updatePerpsMargin,
 } from './actions/trading';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
@@ -155,11 +158,15 @@ type EventWaiter = {
   timeout?: ReturnType<typeof setNonBlockingTimeout>;
 };
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type {
   PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
   PerpsPostOrderAck,
   PerpsUpdateLeverageResult,
+  PerpsUpdateLeveragesResult,
 } from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
 export type {
@@ -175,6 +182,9 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
 } from './actions/account';
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -197,11 +207,16 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from './actions/trading';
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
 } from './actions/trading';
 
@@ -818,6 +833,37 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: UpdatePerpsLeverageRequest,
   ): Promise<PerpsUpdateLeverageResult> {
     return await updatePerpsLeverage(this, request);
+  }
+
+  /**
+   * Updates Perps leverage and margin mode for one or more instruments.
+   *
+   * @remarks
+   * The batch must contain one to 100 unique instruments. Updates are
+   * processed sequentially and are not atomic. Results preserve request
+   * order. Per-instrument rejections, including `internal_error`, are returned
+   * as data; `internal_error` may represent an unknown application outcome for
+   * that instrument.
+   *
+   * @example
+   * ```ts
+   * const results = await session.updateLeverages({
+   *   updates: [
+   *     { crossMargin: false, instrumentId: 1, leverage: 5 },
+   *     { crossMargin: true, instrumentId: 2, leverage: 10 },
+   *   ],
+   * });
+   * ```
+   *
+   * @throws {@link UpdatePerpsLeveragesError}
+   * Thrown when the complete request is rejected or cannot be sent.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async updateLeverages(
+    request: UpdatePerpsLeveragesRequest,
+  ): Promise<PerpsUpdateLeveragesResult> {
+    return await updatePerpsLeverages(this, request);
   }
 
   /**

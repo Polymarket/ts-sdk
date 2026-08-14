@@ -83,6 +83,9 @@ import {
   prepareGaslessTransaction,
 } from './gasless';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -117,6 +120,7 @@ export type {
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
   PerpsUpdateLeverageResult,
+  PerpsUpdateLeveragesResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
   PlacePerpsOrderWithTpSlRequest,
@@ -125,11 +129,16 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 

@@ -218,6 +218,39 @@ export type PerpsUpdateLeverageResult = z.infer<
   typeof PerpsUpdateLeverageResultSchema
 >;
 
+const PerpsUpdateLeverageRejectionSchema = z
+  .object({
+    status: z.literal('err'),
+    instrument_id: PerpsInstrumentIdSchema,
+    error: z.string().min(1),
+  })
+  .transform((result) => ({
+    status: result.status,
+    instrumentId: result.instrument_id,
+    error: result.error,
+  }));
+
+/**
+ * Ordered results for a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeveragesResultSchema = z.array(
+  z.union([
+    PerpsUpdateLeverageResultSchema,
+    PerpsUpdateLeverageRejectionSchema,
+  ]),
+);
+
+/**
+ * Ordered results for a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeveragesResult = z.infer<
+  typeof PerpsUpdateLeveragesResultSchema
+>;
+
 function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }

@@ -42,6 +42,9 @@ import type {
 import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -87,6 +90,7 @@ export type {
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
   PerpsUpdateLeverageResult,
+  PerpsUpdateLeveragesResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
   PlacePerpsOrderWithTpSlRequest,
@@ -97,9 +101,13 @@ export type {
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export {
   ArmPerpsAutoCancelError,
   DepositToPerpsError,
@@ -114,6 +122,7 @@ export {
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';

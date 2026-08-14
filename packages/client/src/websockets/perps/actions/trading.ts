@@ -26,6 +26,8 @@ import {
   PerpsTpSlScope,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
+  type PerpsUpdateLeveragesResult,
+  PerpsUpdateLeveragesResultSchema,
 } from '@polymarket/bindings/perps';
 import type {
   PerpsOrderUpdateEvent,
@@ -1149,6 +1151,99 @@ export async function updatePerpsLeverage(
   );
 }
 
+const MAX_UINT32 = 4_294_967_295;
+const BatchPerpsLeverageUpdateSchema = z.object({
+  instrumentId: PerpsInstrumentIdSchema.refine(
+    (instrumentId) => instrumentId <= MAX_UINT32,
+    'Expected instrumentId to be at most 4294967295',
+  ),
+  leverage: z.number().int().positive().max(MAX_UINT32),
+  crossMargin: z.boolean(),
+}) satisfies z.ZodType<UpdatePerpsLeverageRequest>;
+
+const UpdatePerpsLeveragesRequestSchema = z.object({
+  updates: z
+    .array(BatchPerpsLeverageUpdateSchema)
+    .min(1)
+    .max(100)
+    .superRefine((updates, context) => {
+      const instrumentIds = new Set<number>();
+      for (const [index, update] of updates.entries()) {
+        if (instrumentIds.has(update.instrumentId)) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Expected each instrumentId to be unique',
+            path: [index, 'instrumentId'],
+          });
+        }
+        instrumentIds.add(update.instrumentId);
+      }
+    }),
+}) satisfies z.ZodType<UpdatePerpsLeveragesRequest>;
+
+/**
+ * Request parameters for updating leverage and margin mode for one or more
+ * Perps instruments.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesRequest = {
+  /** One to 100 updates with unique instrument identifiers. */
+  updates: UpdatePerpsLeverageRequest[];
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsLeveragesError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UserInputError,
+);
+
+/**
+ * Updates Perps leverage and margin mode for one or more instruments.
+ *
+ * @remarks
+ * Updates are processed sequentially and are not atomic. Results preserve
+ * request order. Per-instrument rejections, including `internal_error`, are
+ * returned as data; `internal_error` may represent an unknown application
+ * outcome for that instrument.
+ *
+ * @throws {@link UpdatePerpsLeveragesError}
+ * Thrown when the complete request is rejected or cannot be sent.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function updatePerpsLeverages(
+  client: PerpsCommandExecutor,
+  request: UpdatePerpsLeveragesRequest,
+): Promise<PerpsUpdateLeveragesResult> {
+  const params = parseUserInput(request, UpdatePerpsLeveragesRequestSchema);
+  return await client.executeCommand(
+    {
+      op: [
+        'updateLeverages',
+        params.updates.map((update) => [
+          update.instrumentId,
+          update.leverage,
+          update.crossMargin,
+        ]),
+      ],
+    },
+    PerpsUpdateLeveragesResultSchema,
+  );
+}
+
 const UpdatePerpsMarginRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   amount: PerpsDecimalInputSchema,
@@ -1355,6 +1450,19 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
           iid: instrumentId,
           lev: leverage,
         },
+      };
+    }
+    case 'updateLeverages': {
+      const updates = args as ReadonlyArray<
+        readonly [PerpsInstrumentId, number, boolean]
+      >;
+      return {
+        type,
+        args: updates.map(([instrumentId, leverage, crossMargin]) => ({
+          cross: crossMargin,
+          iid: instrumentId,
+          lev: leverage,
+        })),
       };
     }
     case 'updateMargin': {
