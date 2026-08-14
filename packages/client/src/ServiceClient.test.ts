@@ -35,6 +35,25 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('exposes JSON error codes on rejected requests', async () => {
+    server.use(
+      http.get(`${root}/json-error-code`, () =>
+        HttpResponse.json(
+          { error: 'invalid acceptance', code: 'INVALID_ACCEPTANCE' },
+          { status: 400 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.get('/json-error-code'))).rejects.toMatchObject({
+      code: 'INVALID_ACCEPTANCE',
+      message: `invalid acceptance (${root}/json-error-code)`,
+      name: 'RequestRejectedError',
+      status: 400,
+    });
+  });
+
   it('prefers JSON error fields over Cloudflare response detection', async () => {
     server.use(
       http.get(`${root}/cloudflare-json-error`, () =>
@@ -219,6 +238,7 @@ describe('ServiceClient', () => {
 
     await expect(unwrap(client.get('/no-retry-after'))).rejects.toMatchObject({
       name: 'RequestRejectedError',
+      restriction: undefined,
       retryAfter: undefined,
       status: 503,
     });
@@ -336,6 +356,73 @@ describe('ServiceClient', () => {
     await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
       Response,
     );
+  });
+
+  it('does not apply service-specific policy to rejected responses', async () => {
+    server.use(
+      http.post(
+        `${root}/restarting`,
+        () => new HttpResponse(null, { status: 425 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/restarting'))).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      restriction: undefined,
+      status: 425,
+    });
+  });
+
+  it('falls back to the body retry delay on rejected requests', async () => {
+    server.use(
+      http.post(`${root}/post-only`, () =>
+        HttpResponse.json(
+          {
+            code: 'post_only_mode',
+            error:
+              'post-only mode: only post-only orders and cancels are allowed',
+            retry_after_seconds: 79,
+          },
+          { status: 503 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+      code: 'post_only_mode',
+      message: `post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
+      name: 'RequestRejectedError',
+      retryAfter: 79,
+      status: 503,
+    });
+  });
+
+  it('prefers the Retry-After header over the body retry delay', async () => {
+    server.use(
+      http.post(`${root}/post-only-header`, () =>
+        HttpResponse.json(
+          {
+            code: 'post_only_mode',
+            error:
+              'post-only mode: only post-only orders and cancels are allowed',
+            retry_after_seconds: 79,
+          },
+          { headers: { 'retry-after': '80' }, status: 503 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.post('/post-only-header')),
+    ).rejects.toMatchObject({
+      code: 'post_only_mode',
+      name: 'RequestRejectedError',
+      retryAfter: 80,
+      status: 503,
+    });
   });
 
   it('falls back to an unreadable-body message for unknown content types', async () => {

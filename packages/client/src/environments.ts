@@ -28,6 +28,7 @@ export type ClobEndpoints = RestEndpoint & {
 
 export type CombosEndpoints = RestEndpoint &
   WebSocketEndpoint & {
+    builderGateway: RestEndpoint;
     collateralReturn: RestEndpoint;
   };
 
@@ -101,6 +102,7 @@ export type EnvironmentConfigFork = {
   gamma?: Partial<RestEndpoint>;
   data?: Partial<RestEndpoint>;
   combos?: EnvironmentConfigForkEndpoint & {
+    builderGateway?: Partial<RestEndpoint>;
     collateralReturn?: Partial<RestEndpoint>;
   };
   perps?: EnvironmentConfigForkEndpoint;
@@ -191,6 +193,9 @@ export const production: EnvironmentConfig = {
   combos: {
     rest: 'https://combos-rfq-api.polymarket.com',
     ws: 'wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq',
+    builderGateway: {
+      rest: 'https://combos-rfq-gateway-builder.polymarket.com',
+    },
     collateralReturn: {
       rest: 'https://combos-rfq-collateral-return.polymarket.com',
     },
@@ -236,6 +241,10 @@ export function forkEnvironmentConfig(
     data: forkRestEndpoint(base.data, fork.data),
     combos: {
       ...forkRestWebSocketEndpoint(base.combos, fork.combos),
+      builderGateway: forkRestEndpoint(
+        base.combos.builderGateway,
+        fork.combos?.builderGateway,
+      ),
       collateralReturn: forkRestEndpoint(
         base.combos.collateralReturn,
         fork.combos?.collateralReturn,

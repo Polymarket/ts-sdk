@@ -19,6 +19,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import { mapTradingRestrictionError } from './restrictions';
 import type { SignedOrder } from './types';
 
 const PostOrdersRequestSchema = z.array(z.custom<SignedOrder>()).min(1).max(15);
@@ -85,6 +86,7 @@ export function postOrder(
         .post('/order', {
           json: payload,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponseSchema)),
     );
   };
@@ -123,6 +125,7 @@ export function postOrders(
         .post('/orders', {
           json: payload,
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponsesSchema)),
     );
   };

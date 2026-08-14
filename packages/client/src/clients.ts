@@ -186,6 +186,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return this.context.apiKey?.supportGasless ?? false;
   }
 
+  /** @internal */
+  get hasBuilderApiKey(): boolean {
+    return this.context.apiKey?.isBuilderKey ?? false;
+  }
+
   constructor(context: TContext) {
     this.#context = context;
     this.#decorators = [];
@@ -581,6 +586,14 @@ class BaseSecureClient<
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.combos.collateralReturn.rest,
       }),
+      builderGateway: new ServiceClient({
+        headers: config.environment.combos.builderGateway.headers,
+        resolveHeaders: async (request) => ({
+          ...(await this.#resolveBuilderGatewayHeaders(request)),
+          ...(await this.#createL2Headers(request)),
+        }),
+        root: config.environment.combos.builderGateway.rest,
+      }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
@@ -654,6 +667,11 @@ class BaseSecureClient<
   /** @internal */
   get combos(): ServiceClient {
     return this.context.combos;
+  }
+
+  /** @internal */
+  get builderGateway(): ServiceClient {
+    return this.context.builderGateway;
   }
 
   /** @internal */
@@ -775,6 +793,17 @@ class BaseSecureClient<
     return client as PublicClient<TPublicActions, TSecureActions>;
   }
 
+  // Builder gateway status reads authenticate with account headers only;
+  // builder headers are required on the mutating requests.
+  async #resolveBuilderGatewayHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
+      return this.context.apiKey.authorize(request);
+    }
+    return {};
+  }
+
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {
     try {
       const timestamp = Math.floor(Date.now() / 1000);
@@ -812,6 +841,8 @@ type SecureContext = PublicContext & {
   secureClob: ServiceClient;
   /** @internal */
   combos: ServiceClient;
+  /** @internal */
+  builderGateway: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };
