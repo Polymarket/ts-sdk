@@ -70,7 +70,6 @@ import {
   createExchangeOrderTypedDataPayload,
   createExchangeV3OrderDomain,
   encodeExchangeOrderSide,
-  generateExchangeOrderSalt,
 } from '../exchange';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
@@ -1186,7 +1185,7 @@ function createComboAcceptanceOrder(
     maker: identity.maker,
     makerAmount: input.makerAmount,
     metadata: BYTES32_ZERO,
-    salt: generateExchangeOrderSalt().toString(),
+    salt: generateComboAcceptanceOrderSalt().toString(),
     side: encodeExchangeOrderSide(input.direction),
     signatureType: identity.signatureType,
     signer: identity.signer,
@@ -1194,6 +1193,15 @@ function createComboAcceptanceOrder(
     timestamp: Math.floor(Date.now() / 1000).toString(),
     tokenId: input.positionId,
   };
+}
+
+function generateComboAcceptanceOrderSalt(): bigint {
+  const bytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(bytes);
+
+  return BigInt(
+    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
 }
 
 async function signComboAcceptanceOrder(
