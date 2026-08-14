@@ -1,9 +1,14 @@
 import { AssetType } from '@polymarket/bindings/clob';
 import {
   KnownFundingTransactionStatus,
+  RequestRejectedError,
   type SecureClient,
+  type TransactionHandle,
 } from '@polymarket/client';
-import { fetchBalanceAllowance } from '@polymarket/client/actions';
+import {
+  fetchBalanceAllowance,
+  type PrepareErc20TransferRequest,
+} from '@polymarket/client/actions';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const POLYGON_CHAIN_ID = '137';
@@ -204,7 +209,6 @@ describe('Account funding', () => {
       await waitForFundingTransfer(client, {
         address: withdrawal.addresses.evm,
         amount: WITHDRAWAL_AMOUNT,
-        destinationTokenAddress: POLYGON_NATIVE_USDC,
         notBefore: withdrawalNotBefore,
         tokenAddress: POLYGON_PUSD,
       });
@@ -233,16 +237,18 @@ describe('Account funding', () => {
 
       const deposit = await client.createDepositAddresses({ builderCode });
       const depositNotBefore = Date.now() - 60_000;
-      const depositTransfer = await client.transferErc20({
-        amount: DEPOSIT_AMOUNT,
-        recipientAddress: deposit.addresses.evm,
-        tokenAddress: POLYGON_NATIVE_USDC,
-      });
+      const depositTransfer = await transferErc20AfterFundingSettlement(
+        client,
+        {
+          amount: DEPOSIT_AMOUNT,
+          recipientAddress: deposit.addresses.evm,
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+      );
       await depositTransfer.wait();
       await waitForFundingTransfer(client, {
         address: deposit.addresses.evm,
         amount: DEPOSIT_AMOUNT,
-        destinationTokenAddress: POLYGON_PUSD,
         notBefore: depositNotBefore,
         tokenAddress: POLYGON_NATIVE_USDC,
       });
@@ -254,7 +260,6 @@ describe('Account funding', () => {
 type FundingTransfer = {
   address: string;
   amount: bigint;
-  destinationTokenAddress: string;
   notBefore: number;
   tokenAddress: string;
 };
@@ -271,12 +276,13 @@ async function waitForFundingTransfer(
       .firstPage();
     const transaction = page.items.find(
       (item) =>
+        // Status can expose an intermediate routing token instead of the
+        // requested destination token, so identify this address-specific
+        // workflow by its source leg and creation time.
         item.fromAmountBaseUnit === transfer.amount.toString() &&
         item.fromTokenAddress.toLowerCase() ===
           transfer.tokenAddress.toLowerCase() &&
         item.toChainId === POLYGON_CHAIN_ID &&
-        item.toTokenAddress.toLowerCase() ===
-          transfer.destinationTokenAddress.toLowerCase() &&
         item.createdTimeMs !== undefined &&
         item.createdTimeMs >= transfer.notBefore,
     );
@@ -294,6 +300,37 @@ async function waitForFundingTransfer(
   }
 
   throw new Error(`Timed out waiting for transfer from ${transfer.address}`);
+}
+
+async function transferErc20AfterFundingSettlement(
+  client: SecureClient,
+  request: PrepareErc20TransferRequest,
+): Promise<TransactionHandle> {
+  const startedAt = Date.now();
+  let lastError: RequestRejectedError | undefined;
+
+  while (Date.now() - startedAt < 2 * 60_000) {
+    try {
+      return await client.transferErc20(request);
+    } catch (error) {
+      // A completed funding status can briefly lead the relayer's simulation
+      // state. Retry only its explicit pre-submission revert response.
+      if (
+        !(error instanceof RequestRejectedError) ||
+        error.status !== 400 ||
+        !/batch would revert/i.test(error.message)
+      ) {
+        throw error;
+      }
+
+      lastError = error;
+      await delay(10_000);
+    }
+  }
+
+  throw new Error('Timed out waiting for withdrawn USDC to become spendable', {
+    cause: lastError,
+  });
 }
 
 function delay(ms: number): Promise<void> {
