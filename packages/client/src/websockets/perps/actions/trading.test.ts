@@ -1,11 +1,12 @@
 import { OrderSide } from '@polymarket/bindings';
 import {
-  PerpsCancelOrderErrorCode,
+  PerpsKnownCancelOrderErrorCode,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   OperationAbortedError,
+  RequestRejectedError,
   UnexpectedResponseError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
@@ -159,7 +160,7 @@ describe('Perps trading actions', () => {
       const { client, requests } = cancelExecutor([
         [
           { error: 'order_in_flight', oid: 1, status: 'err' },
-          { error: 'order_not_found', oid: 2, status: 'err' },
+          { error: 'unknown_error_code_18', oid: 2, status: 'err' },
           { oid: 3, status: 'ok' },
         ],
         [{ oid: 1, status: 'ok' }],
@@ -174,7 +175,7 @@ describe('Perps trading actions', () => {
         { clientOrderId: undefined, orderId: 1, status: 'ok' },
         {
           clientOrderId: undefined,
-          error: PerpsCancelOrderErrorCode.OrderNotFound,
+          error: 'unknown_error_code_18',
           orderId: 2,
           status: 'err',
         },
@@ -187,10 +188,10 @@ describe('Perps trading actions', () => {
     });
 
     it.each([
-      PerpsCancelOrderErrorCode.OrderUnknown,
-      PerpsCancelOrderErrorCode.OrderNotInOrderbook,
-      PerpsCancelOrderErrorCode.OrderNotPendingEngine,
-      PerpsCancelOrderErrorCode.OrderNotFound,
+      PerpsKnownCancelOrderErrorCode.OrderUnknown,
+      PerpsKnownCancelOrderErrorCode.OrderNotInOrderbook,
+      PerpsKnownCancelOrderErrorCode.OrderNotPendingEngine,
+      PerpsKnownCancelOrderErrorCode.OrderNotFound,
     ])('does not retry the terminal %s result', async (error) => {
       const { client, requests } = cancelExecutor([
         [{ error, oid: 1, status: 'err' }],
@@ -214,7 +215,7 @@ describe('Perps trading actions', () => {
         cancelPerpsOrders(client, { orderIds: [1], retry: false }),
       ).resolves.toMatchObject([
         {
-          error: PerpsCancelOrderErrorCode.OrderInFlight,
+          error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
           status: 'err',
         },
       ]);
@@ -236,7 +237,7 @@ describe('Perps trading actions', () => {
 
       expect(result).toMatchObject([
         {
-          error: PerpsCancelOrderErrorCode.OrderInFlight,
+          error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
           orderId: 1,
           status: 'err',
         },
@@ -278,7 +279,10 @@ describe('Perps trading actions', () => {
 
       await vi.advanceTimersByTimeAsync(200);
       await expect(result).resolves.toMatchObject([
-        { error: PerpsCancelOrderErrorCode.OrderInFlight, status: 'err' },
+        {
+          error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
+          status: 'err',
+        },
       ]);
       expect(requests).toHaveLength(4);
     });
@@ -296,33 +300,91 @@ describe('Perps trading actions', () => {
           retry: { maxAttempts: 4, maxElapsedMs: 50 },
         }),
       ).resolves.toMatchObject([
-        { error: PerpsCancelOrderErrorCode.OrderInFlight, status: 'err' },
+        {
+          error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
+          status: 'err',
+        },
       ]);
       expect(requests).toHaveLength(1);
     });
 
-    it('aborts retry backoff without sending another command', async () => {
+    it('returns collected results when retry backoff is aborted', async () => {
       vi.useFakeTimers();
       vi.spyOn(Math, 'random').mockReturnValue(0.5);
       const controller = new AbortController();
-      const reason = new Error('stop retrying');
       const { client, requests } = cancelExecutor([
-        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+        [
+          { oid: 1, status: 'ok' },
+          { error: 'order_in_flight', oid: 2, status: 'err' },
+        ],
       ]);
 
       const result = cancelPerpsOrders(client, {
-        orderIds: [1],
+        orderIds: [1, 2],
         retry: { maxAttempts: 4, maxElapsedMs: 2_000 },
         signal: controller.signal,
       });
       await vi.advanceTimersByTimeAsync(0);
-      controller.abort(reason);
+      controller.abort(new Error('stop retrying'));
 
-      await expect(result).rejects.toMatchObject({
+      await expect(result).resolves.toEqual([
+        { clientOrderId: undefined, orderId: 1, status: 'ok' },
+        {
+          clientOrderId: undefined,
+          error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
+          orderId: 2,
+          status: 'err',
+        },
+      ]);
+      expect(requests).toHaveLength(1);
+    });
+
+    it('does not send a command when the signal is already aborted', async () => {
+      const controller = new AbortController();
+      const reason = new Error('do not cancel');
+      controller.abort(reason);
+      const { client, requests } = cancelExecutor([]);
+
+      await expect(
+        cancelPerpsOrders(client, {
+          orderIds: [1],
+          signal: controller.signal,
+        }),
+      ).rejects.toMatchObject({
         cause: reason,
         name: OperationAbortedError.name,
       });
+      expect(requests).toHaveLength(0);
+    });
+
+    it.each([
+      'invalid_request',
+      'ip_rate_limited',
+      'action_rate_limited',
+      'internal_error',
+    ])('throws the request-level %s rejection for one order', async (error) => {
+      const { client, requests } = cancelExecutor([[{ error, status: 'err' }]]);
+
+      await expect(
+        cancelPerpsOrders(client, { orderIds: [1], retry: false }),
+      ).rejects.toMatchObject({
+        message: error,
+        name: RequestRejectedError.name,
+      });
       expect(requests).toHaveLength(1);
+    });
+
+    it('does not map a request-level rejection to the first batch item', async () => {
+      const { client } = cancelExecutor([
+        [{ error: 'invalid_request', status: 'err' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, { orderIds: [1, 2], retry: false }),
+      ).rejects.toMatchObject({
+        message: 'invalid_request',
+        name: RequestRejectedError.name,
+      });
     });
 
     it('rejects responses with missing batch results', async () => {

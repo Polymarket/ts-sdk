@@ -3,4 +3,4 @@
 '@polymarket/client': minor
 ---
 
-Type Perps cancellation rejections and retry transient `order_in_flight` results with configurable bounded backoff.
+Type known Perps cancellation rejections while preserving unrecognized identifiers, and retry transient `order_in_flight` results with configurable bounded backoff.

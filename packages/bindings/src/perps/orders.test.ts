@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   PerpsAccountFillSchema,
-  PerpsCancelOrderErrorCode,
   PerpsCancelOrderResultSchema,
+  PerpsKnownCancelOrderErrorCode,
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
@@ -174,7 +174,7 @@ describe('PerpsCancelOrderResultSchema', () => {
   });
 
   it.each(
-    Object.values(PerpsCancelOrderErrorCode),
+    Object.values(PerpsKnownCancelOrderErrorCode),
   )('types the %s rejection identifier', (error) => {
     const result = PerpsCancelOrderResultSchema.parse({ error, status: 'err' });
 
@@ -186,10 +186,25 @@ describe('PerpsCancelOrderResultSchema', () => {
     });
   });
 
+  it('preserves cancellation rejection identifiers introduced after release', () => {
+    const result = PerpsCancelOrderResultSchema.parse({
+      error: 'unknown_error_code_18',
+      oid: 123,
+      status: 'err',
+    });
+
+    expect(result).toEqual({
+      clientOrderId: undefined,
+      error: 'unknown_error_code_18',
+      orderId: 123,
+      status: 'err',
+    });
+  });
+
   it.each([
     { status: 'err' },
-    { error: 'new_cancel_rejection', status: 'err' },
-  ])('rejects an untyped cancellation rejection: %j', (value) => {
+    { error: '', status: 'err' },
+  ])('rejects a cancellation rejection without an identifier: %j', (value) => {
     expect(() => PerpsCancelOrderResultSchema.parse(value)).toThrow();
   });
 

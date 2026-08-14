@@ -6,7 +6,6 @@ import {
 import {
   PerpsAutoCancelResponseSchema,
   PerpsCancelAllOrdersResponseSchema,
-  PerpsCancelOrderErrorCode,
   type PerpsCancelOrderResult,
   PerpsCancelOrderResultSchema,
   type PerpsClientOrderId,
@@ -16,6 +15,7 @@ import {
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
+  PerpsKnownCancelOrderErrorCode,
   type PerpsOrder,
   type PerpsOrderId,
   PerpsOrderIdSchema,
@@ -811,6 +811,12 @@ const DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS = 4;
 const DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS = 2_000;
 const PERPS_CANCEL_RETRY_BASE_DELAY_MS = 100;
 const PERPS_CANCEL_RETRY_MAX_DELAY_MS = 1_000;
+const PERPS_CANCEL_REQUEST_REJECTION_CODES = new Set([
+  'invalid_request',
+  'ip_rate_limited',
+  'action_rate_limited',
+  'internal_error',
+]);
 
 const PerpsCancelRetryOptionsSchema = z
   .object({
@@ -852,7 +858,11 @@ const PerpsCancelOptionsSchema = z.object({
 export type PerpsCancelRetryOptions = {
   /** Maximum attempts per order, including the initial request. @defaultValue 4 */
   maxAttempts?: number;
-  /** Maximum elapsed time before starting a retry, in milliseconds. @defaultValue 2_000 */
+  /**
+   * Maximum elapsed time before starting a retry, in milliseconds. Retries
+   * also stop at `expiresAt`, whichever limit is reached first.
+   * @defaultValue 2_000
+   */
   maxElapsedMs?: number;
 };
 
@@ -862,11 +872,17 @@ export type PerpsCancelRetryOptions = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsCancelOptions = {
-  /** Optional command expiration timestamp in milliseconds. */
+  /**
+   * Optional command expiration timestamp in milliseconds. Automatic retries
+   * stop at this timestamp even when `maxElapsedMs` would allow more time.
+   */
   expiresAt?: number;
   /** Automatic retry limits, or `false` to make only one attempt. */
   retry?: PerpsCancelRetryOptions | false;
-  /** Signal that aborts cancellation before an attempt or during retry backoff. */
+  /**
+   * Signal that prevents the first attempt when already aborted. Aborting after
+   * an attempt stops further retries and returns the results collected so far.
+   */
   signal?: AbortSignal;
 };
 
@@ -1016,19 +1032,24 @@ async function retryPerpsOrderCancellations<TIdentifier>(
   }));
   let attempts = 0;
 
+  assertPerpsCancelNotAborted(options.signal);
   while (pending.length > 0) {
     if (attempts > 0) {
       const remainingMs = retryDeadline - Date.now();
       const delayMs = perpsCancelRetryDelayMs(attempts);
       if (remainingMs <= 0 || delayMs >= remainingMs) break;
-      await waitForPerpsCancelRetry(delayMs, options.signal);
-      if (Date.now() >= retryDeadline) break;
+      const retry = await waitForPerpsCancelRetry(delayMs, options.signal);
+      if (!retry || options.signal?.aborted || Date.now() >= retryDeadline)
+        break;
     }
 
-    assertPerpsCancelNotAborted(options.signal);
     const attemptResults = await execute(
       pending.map(({ identifier }) => identifier),
     );
+    const requestRejection = perpsCancelRequestRejectionFrom(attemptResults);
+    if (requestRejection !== undefined) {
+      throw new RequestRejectedError(requestRejection, { status: 200 });
+    }
     if (attemptResults.length !== pending.length) {
       throw new UnexpectedResponseError(
         'Perps cancel response did not include one result per requested order.',
@@ -1046,7 +1067,7 @@ async function retryPerpsOrderCancellations<TIdentifier>(
       if (
         attempts < maxAttempts &&
         result.status === 'err' &&
-        result.error === PerpsCancelOrderErrorCode.OrderInFlight
+        result.error === PerpsKnownCancelOrderErrorCode.OrderInFlight
       ) {
         retryable.push(target);
       }
@@ -1057,6 +1078,20 @@ async function retryPerpsOrderCancellations<TIdentifier>(
   return finalResults.map((result) =>
     expectPresent(result, 'Expected a final Perps cancel result.'),
   );
+}
+
+function perpsCancelRequestRejectionFrom(
+  results: PerpsCancelOrderResult[],
+): string | undefined {
+  const [result] = results;
+  if (
+    results.length !== 1 ||
+    result?.status !== 'err' ||
+    !PERPS_CANCEL_REQUEST_REJECTION_CODES.has(result.error)
+  ) {
+    return undefined;
+  }
+  return result.error;
 }
 
 function perpsCancelRetryDelayMs(retryNumber: number): number {
@@ -1070,25 +1105,26 @@ function perpsCancelRetryDelayMs(retryNumber: number): number {
 function waitForPerpsCancelRetry(
   delayMs: number,
   signal: AbortSignal | undefined,
-): Promise<void> {
+): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
   if (delayMs <= 0) {
-    assertPerpsCancelNotAborted(signal);
-    return Promise.resolve();
+    return Promise.resolve(true);
   }
   if (signal === undefined) {
-    return new Promise((resolve) => setNonBlockingTimeout(resolve, delayMs));
+    return new Promise((resolve) =>
+      setNonBlockingTimeout(() => resolve(true), delayMs),
+    );
   }
 
-  assertPerpsCancelNotAborted(signal);
   const abortSignal = signal;
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const timer = setNonBlockingTimeout(() => {
       abortSignal.removeEventListener('abort', onAbort);
-      resolve();
+      resolve(true);
     }, delayMs);
     function onAbort() {
       clearTimeout(timer);
-      reject(OperationAbortedError.fromReason(abortSignal.reason));
+      resolve(false);
     }
     abortSignal.addEventListener('abort', onAbort, { once: true });
   });

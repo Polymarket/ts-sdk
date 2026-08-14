@@ -40,6 +40,7 @@ import type {
 import {
   FetchPerpsTickerError,
   PerpsCancelOrderErrorCode,
+  PerpsKnownCancelOrderErrorCode,
   UpdatePerpsMarginError,
 } from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
@@ -117,7 +118,7 @@ describe('public Perps exports', () => {
     void UpdatePerpsMarginError;
   });
 
-  it('exports the cancel rejection enum and narrows rejected results', () => {
+  it('exports known cancel rejections and narrows rejected results', () => {
     const result = undefined as unknown as PerpsCancelOrderResult;
 
     if (result.status === 'err') {
@@ -126,5 +127,6 @@ describe('public Perps exports', () => {
       expectTypeOf(result.error).toEqualTypeOf<undefined>();
     }
     void PerpsCancelOrderErrorCode.OrderInFlight;
+    void PerpsKnownCancelOrderErrorCode.OrderInFlight;
   });
 });
