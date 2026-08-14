@@ -41,6 +41,8 @@ export type RateLimitUpdate = {
 
 /**
  * Listener invoked whenever a response reports per-signer rate-limit state.
+ * The listener may return a promise; synchronous errors and promise rejections
+ * are ignored.
  */
 export type RateLimitUpdateListener = (update: RateLimitUpdate) => void;
 

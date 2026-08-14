@@ -34,29 +34,31 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-export type ServiceClientGetOptions = {
+type ServiceClientRequestOptions = {
+  /** Rate-limit bucket supplied by the action that owns the request. */
+  rateLimitBucket?: RateLimitBucket;
+  timeout?: ServiceClientTimeout;
+};
+
+export type ServiceClientGetOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPostOptions = {
+export type ServiceClientPostOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPatchOptions = {
+export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientDeleteOptions = {
+export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -124,32 +126,6 @@ export class ServiceClient {
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
-  #rateLimitBucket(
-    method: ServiceRequest['method'],
-    path: string,
-  ): RateLimitBucket | undefined {
-    const normalizedPath = this.#normalizePath(path);
-
-    if (
-      method === 'POST' &&
-      (normalizedPath === 'order' || normalizedPath === 'orders')
-    ) {
-      return 'order';
-    }
-
-    if (
-      method === 'DELETE' &&
-      (normalizedPath === 'order' ||
-        normalizedPath === 'orders' ||
-        normalizedPath === 'cancel-all' ||
-        normalizedPath === 'cancel-market-orders')
-    ) {
-      return 'cancel';
-    }
-
-    return undefined;
-  }
-
   #request(
     method: ServiceRequest['method'],
     path: string,
@@ -164,7 +140,7 @@ export class ServiceClient {
   > {
     return this.#toResult(
       this.#send(method, path, options),
-      this.#rateLimitBucket(method, path),
+      options.rateLimitBucket,
     );
   }
 

@@ -247,7 +247,7 @@ describe('ServiceClient', () => {
   it('exposes Poly-RateLimit header state on rate limited requests', async () => {
     server.use(
       http.post(
-        `${root}/order`,
+        `${root}/rate-limited-order`,
         () =>
           new HttpResponse(null, {
             headers: {
@@ -266,7 +266,9 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).rejects.toMatchObject({
+    await expect(
+      unwrap(client.post('/rate-limited-order', { rateLimitBucket: 'order' })),
+    ).rejects.toMatchObject({
       name: 'RateLimitError',
       rateLimit: {
         bucket: 'order',
@@ -310,9 +312,9 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(
+      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
+    ).resolves.toBeInstanceOf(Response);
     expect(updates).toEqual([
       {
         bucket: 'order',
@@ -324,7 +326,7 @@ describe('ServiceClient', () => {
     ]);
   });
 
-  it('distinguishes the cancellation bucket on a shared order path', async () => {
+  it('uses request metadata to identify the cancellation bucket', async () => {
     server.use(
       http.delete(`${root}/order`, () =>
         HttpResponse.json(
@@ -345,9 +347,9 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.del('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(
+      unwrap(client.del('/order', { rateLimitBucket: 'cancel' })),
+    ).resolves.toBeInstanceOf(Response);
     expect(updates).toEqual([
       {
         bucket: 'cancel',
@@ -359,9 +361,9 @@ describe('ServiceClient', () => {
     ]);
   });
 
-  it('does not assign a rate-limit bucket to unrelated paths', async () => {
+  it('does not infer a rate-limit bucket from request routes', async () => {
     server.use(
-      http.post(`${root}/orders-scoring`, () =>
+      http.post(`${root}/order`, () =>
         HttpResponse.json(
           { ok: true },
           { headers: { 'Poly-RateLimit-Remaining': '10' } },
@@ -374,9 +376,9 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(
-      unwrap(client.post('/orders-scoring')),
-    ).resolves.toBeInstanceOf(Response);
+    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
+      Response,
+    );
     expect(updates).toEqual([
       {
         remaining: 10,
@@ -408,9 +410,9 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(
+      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
+    ).resolves.toBeInstanceOf(Response);
     expect(updates).toEqual([
       {
         bucket: 'order',
