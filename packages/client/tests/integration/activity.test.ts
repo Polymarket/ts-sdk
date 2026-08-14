@@ -1,11 +1,20 @@
-import { ActivityType, ComboActivityType } from '@polymarket/client';
+import {
+  ActivityType,
+  ComboActivityType,
+  UserInputError,
+} from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
 
 describe('Activity', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listTrades', () => {
     it('lists trades for a wallet', async ({ publicClient }) => {
       const result = await publicClient
@@ -35,6 +44,18 @@ describe('Activity', () => {
         .then(expectNonEmptyPage);
 
       expect(firstPage.items.length).toBeGreaterThan(0);
+    });
+
+    it('rejects a cursor above the documented ceiling before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const cursor = btoa(JSON.stringify({ offset: 10_001, pageSize: 20 }));
+
+      expect(() =>
+        publicClient.listTrades({ cursor: cursor as never }).firstPage(),
+      ).toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -73,6 +94,20 @@ describe('Activity', () => {
       expect(expectPresent(result.items[0]).wallet).toSatisfy((wallet) =>
         isSameEvmAddress(wallet, depositWalletAddress),
       );
+    });
+
+    it('rejects a cursor above the documented ceiling before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const cursor = btoa(JSON.stringify({ offset: 5_001, pageSize: 20 }));
+
+      expect(() =>
+        publicClient
+          .listActivity({ cursor: cursor as never, user: TEST_USER })
+          .firstPage(),
+      ).toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 

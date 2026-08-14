@@ -89,7 +89,7 @@ export const ListTradesError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pagination stops at the Data API's 10,000 offset ceiling. Use `start` and
+ * Pagination stops at the documented 10,000 offset ceiling. Use `start` and
  * `end` to query bounded time windows when deeper history is required; this
  * paginator does not claim complete unbounded history.
  *
@@ -208,7 +208,7 @@ export const ListActivityError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pagination stops at the Data API's 5,000 offset ceiling. Use `start` and
+ * Pagination stops at the documented 5,000 offset ceiling. Use `start` and
  * `end` to query bounded time windows when deeper history is required; this
  * paginator does not claim complete unbounded history.
  *
