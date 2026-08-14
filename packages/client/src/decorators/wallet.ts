@@ -27,6 +27,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { TransactionHandle } from '../types';
+import { withDefaultWallet } from './default-wallet';
 
 export type PublicWalletActions = {
   /**
@@ -60,25 +61,6 @@ type DefaultWallet<TRequest extends { wallet: string }> = Prettify<
     wallet?: string;
   }
 >;
-
-function withDefaultWallet<TRequest extends { wallet?: string }>(
-  client: BaseSecureClient,
-  request: TRequest = {} as TRequest,
-): Omit<TRequest, 'wallet'> & { wallet: string } {
-  if (
-    request === null ||
-    typeof request !== 'object' ||
-    Array.isArray(request)
-  ) {
-    return request as Omit<TRequest, 'wallet'> & { wallet: string };
-  }
-
-  return {
-    ...request,
-    wallet:
-      request.wallet === undefined ? client.account.wallet : request.wallet,
-  };
-}
 
 export type SecureFetchTradingApprovalsStateRequest =
   DefaultWallet<FetchTradingApprovalsStateRequest>;
@@ -367,7 +349,11 @@ export function walletActions(
     ...actions,
     fetchTradingApprovalsState: (
       request?: SecureFetchTradingApprovalsStateRequest,
-    ) => fetchTradingApprovalsState(client, withDefaultWallet(client, request)),
+    ) =>
+      fetchTradingApprovalsState(
+        client,
+        withDefaultWallet(client, 'wallet', request),
+      ),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
