@@ -121,6 +121,18 @@ export class ConnectionLostError extends PolymarketError {
   }
 }
 
+/**
+ * Trading restriction reported by the venue while orders cannot be placed
+ * normally. The SDK does not retry automatically; callers decide how to
+ * react, honoring {@link RequestRejectedError.retryAfter} when provided.
+ */
+export enum TradingRestriction {
+  /** The matching engine is restarting and rejects order requests until it is back. */
+  RESTARTING = 'restarting',
+  /** Cancels and post-only orders are accepted; other orders are rejected. */
+  POST_ONLY = 'post_only',
+}
+
 export type RequestRejectedErrorOptions = {
   status: number;
   /**
@@ -133,6 +145,11 @@ export type RequestRejectedErrorOptions = {
    * provided one.
    */
   retryAfter?: number;
+  /**
+   * Trading restriction that caused the rejection, when the response
+   * identified one.
+   */
+  restriction?: TradingRestriction;
 };
 
 /**
@@ -153,6 +170,11 @@ export class RequestRejectedError extends PolymarketError {
    * provided one.
    */
   readonly retryAfter?: number;
+  /**
+   * Trading restriction that caused the rejection, when the response
+   * identified one.
+   */
+  readonly restriction?: TradingRestriction;
 
   constructor(
     message: string,
@@ -162,6 +184,7 @@ export class RequestRejectedError extends PolymarketError {
     this.status = options.status;
     this.code = options.code;
     this.retryAfter = options.retryAfter;
+    this.restriction = options.restriction;
   }
 }
 

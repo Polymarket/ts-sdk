@@ -202,10 +202,7 @@ export class ServiceClient {
     promise: Promise<Response>,
   ): ResultAsync<
     Response,
-    | RateLimitError
-    | RequestRejectedError
-    | RequestRejectedError
-    | TransportError
+    RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
@@ -222,10 +219,14 @@ export class ServiceClient {
           );
         }
 
-        const { code, message } = await this.#extractResponseError(response);
+        const {
+          code,
+          message,
+          retryAfter: retryAfterSeconds,
+        } = await this.#extractResponseError(response);
         throw new RequestRejectedError(message, {
           code,
-          retryAfter,
+          retryAfter: retryAfter ?? retryAfterSeconds,
           status: response.status,
         });
       }),
@@ -254,11 +255,15 @@ export class ServiceClient {
 
   async #extractResponseError(
     response: Response,
-  ): Promise<{ message: string; code?: string }> {
+  ): Promise<{ message: string; code?: string; retryAfter?: number }> {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
-      const { error, code } = await response
+      const {
+        error,
+        code,
+        retry_after_seconds: retryAfterSeconds,
+      } = await response
         .clone()
         .json()
         .catch(() => ({}));
@@ -266,6 +271,11 @@ export class ServiceClient {
         return {
           message: `${String(error)} (${response.url})`,
           ...(typeof code === 'string' && code !== '' ? { code } : {}),
+          ...(typeof retryAfterSeconds === 'number' &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds >= 0
+            ? { retryAfter: retryAfterSeconds }
+            : {}),
         };
       }
     }
