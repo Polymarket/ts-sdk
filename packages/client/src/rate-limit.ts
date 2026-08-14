@@ -11,7 +11,7 @@ export type RateLimitBucket = 'order' | 'cancel';
  * `warning` is `false` whenever the response does not report warning mode.
  */
 export type RateLimitUpdate = {
-  /** Rate-limit bucket affected by the request, when recognized by the SDK. */
+  /** Rate-limit bucket affected by the request, when that request declares one. */
   bucket?: RateLimitBucket;
 
   /**
