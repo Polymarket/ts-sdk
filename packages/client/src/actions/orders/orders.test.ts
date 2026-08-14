@@ -9,6 +9,7 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
+import type { OrderRouting } from './asset';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -100,8 +101,10 @@ describe('createUnsignedOrder', () => {
     const positionId = toPositionId('2');
     const order = createUnsignedOrder(
       createOrderDraft({
-        assetId: positionId,
-        exchangeVersion: ExchangeOrderProtocolVersion.V3,
+        routing: {
+          assetId: positionId,
+          exchangeVersion: ExchangeOrderProtocolVersion.V3,
+        },
         wallet: DEPOSIT_WALLET,
       }),
       {
@@ -116,18 +119,23 @@ describe('createUnsignedOrder', () => {
   });
 });
 
-type CreateOrderDraftParams = { wallet: EvmAddress } & Partial<OrderDraft>;
+type CreateOrderDraftParams = {
+  routing?: OrderRouting;
+  wallet: EvmAddress;
+};
 
 function createOrderDraft({
-  wallet,
-  ...overrides
-}: CreateOrderDraftParams): OrderDraft {
-  const draft: OrderDraft = {
+  routing = {
     assetId: toTokenId('1'),
+    exchangeVersion: ExchangeOrderProtocolVersion.V2,
+  },
+  wallet,
+}: CreateOrderDraftParams): OrderDraft {
+  return {
+    ...routing,
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,
-    exchangeVersion: ExchangeOrderProtocolVersion.V2,
     funderAddress: wallet,
     offeredAmount: 1000000n,
     orderType: OrderType.GTC,
@@ -135,6 +143,4 @@ function createOrderDraft({
     side: OrderSide.BUY,
     signer: SIGNER,
   };
-
-  return Object.assign(draft, overrides, { funderAddress: wallet });
 }

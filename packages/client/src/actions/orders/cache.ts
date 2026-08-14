@@ -31,7 +31,7 @@ export type OrderMetadataCacheDeps = {
 };
 
 type MarketRecord = OrderMarketMetadata & {
-  assetIds: ReadonlySet<string>;
+  assetIds: ReadonlySet<OrderAssetId>;
 };
 
 type CacheEntry<TValue> = {

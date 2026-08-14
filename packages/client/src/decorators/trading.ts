@@ -132,7 +132,18 @@ export type SecureTradingActions = {
    * @throws {@link CreateLimitOrderError}
    * Thrown on failure.
    *
-   * @example
+   * @example Token-backed limit order
+   * ```ts
+   * const order = await client.createLimitOrder({
+   *   postOnly: true,
+   *   price: 0.52,
+   *   side: OrderSide.BUY,
+   *   size: 10,
+   *   tokenId: '123',
+   * });
+   * ```
+   *
+   * @example Position-backed limit order
    * ```ts
    * const order = await client.createLimitOrder({
    *   postOnly: true,

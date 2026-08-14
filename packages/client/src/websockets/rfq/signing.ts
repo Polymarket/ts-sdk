@@ -85,6 +85,7 @@ function generateRfqOrderSalt(): bigint {
   const bytes = new Uint8Array(8);
   globalThis.crypto.getRandomValues(bytes);
 
+  // RFQ salts stay strings on the wire, so the full 64-bit value is lossless.
   return BigInt(
     `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
   );

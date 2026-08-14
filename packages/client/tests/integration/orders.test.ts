@@ -9,7 +9,9 @@ import {
   createSecureClient,
   InsufficientLiquidityError,
   type Market,
+  type PublicClient,
   type SecureClient,
+  type Signer,
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
@@ -194,6 +196,53 @@ describe('Orders', { timeout: 60_000 }, () => {
       });
 
       expect(order.builder).toBe(builderCode);
+    });
+
+    it('estimates and signs a position-backed order against Exchange V3', async ({
+      annotate,
+      environment,
+      randomEoaSigner,
+      skip,
+    }) => {
+      const target = await findPositionOrderTarget(publicClient);
+
+      if (target === undefined) {
+        skip('No orderable position-backed market is available');
+        return;
+      }
+
+      annotate(`Market ID: ${target.market.id}`);
+      annotate(`Position ID: ${target.positionId}`);
+
+      const estimatedPrice = await publicClient.estimateMarketPrice({
+        amount: target.minOrderSize,
+        orderType: OrderType.FAK,
+        positionId: target.positionId,
+        side: OrderSide.BUY,
+      });
+      const { signer, signTypedData } = observeSignTypedData(randomEoaSigner);
+      const client = await createSecureClient({
+        environment,
+        signer,
+        wallet: await signer.getAddress(),
+      });
+      const order = await client.createMarketOrder({
+        amount: target.minOrderSize,
+        maxPrice: target.tickSize,
+        positionId: target.positionId,
+        side: OrderSide.BUY,
+      });
+
+      expect(estimatedPrice).toEqual(expect.any(Number));
+      expect(order.tokenId).toBe(target.positionId);
+      expect(signTypedData).toHaveBeenCalledWith(
+        expect.objectContaining({
+          domain: expect.objectContaining({
+            verifyingContract: environment.contracts.exchangeV3,
+            version: '3',
+          }),
+        }),
+      );
     });
 
     it('reports unknown builder codes as user input errors when resolving buy amounts against max spend', async ({
@@ -719,6 +768,82 @@ async function cancelMarketOrderWithRetry(
     tokenId: order.tokenId,
     market: conditionId,
   });
+}
+
+type PositionOrderTarget = {
+  market: Market;
+  minOrderSize: string;
+  positionId: string;
+  tickSize: number;
+};
+
+async function findPositionOrderTarget(
+  client: PublicClient,
+): Promise<PositionOrderTarget | undefined> {
+  const page = await client
+    .listMarkets({
+      ascending: false,
+      closed: false,
+      order: 'id',
+      pageSize: 1000,
+    })
+    .firstPage();
+
+  for (const candidate of page.items) {
+    if (
+      candidate.state.enableOrderBook !== true ||
+      candidate.state.acceptingOrders !== true ||
+      (candidate.trading.secondsDelay ?? 0) !== 0
+    ) {
+      continue;
+    }
+
+    for (const outcome of [candidate.outcomes.yes, candidate.outcomes.no]) {
+      if (outcome.tokenId !== null || outcome.positionId === null) {
+        continue;
+      }
+
+      try {
+        const book = await client.fetchOrderBook({
+          tokenId: outcome.positionId,
+        });
+
+        if (book.asks.length === 0) {
+          continue;
+        }
+
+        return {
+          market: candidate,
+          minOrderSize: book.minOrderSize,
+          positionId: outcome.positionId,
+          tickSize: book.tickSize,
+        };
+      } catch {
+        // A listed market may not have an initialized position order book yet.
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function observeSignTypedData(delegate: Signer): {
+  signer: Signer;
+  signTypedData: ReturnType<typeof vi.fn<Signer['signTypedData']>>;
+} {
+  const signTypedData = vi.fn<Signer['signTypedData']>((payload) =>
+    delegate.signTypedData(payload),
+  );
+
+  return {
+    signer: {
+      getAddress: () => delegate.getAddress(),
+      signMessage: (message) => delegate.signMessage(message),
+      signTypedData,
+      sendTransaction: (request) => delegate.sendTransaction(request),
+    },
+    signTypedData,
+  };
 }
 
 function requestedUrls(fetchSpy: MockInstance<typeof fetch>): string[] {
