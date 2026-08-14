@@ -1,6 +1,12 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { RateLimitError, RequestRejectedError, TransportError } from './errors';
+import {
+  parseRateLimitHeaders,
+  type RateLimitBucket,
+  type RateLimitUpdate,
+  type RateLimitUpdateListener,
+} from './rate-limit';
 
 export type ServiceRequest = {
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
@@ -19,6 +25,7 @@ export type ServiceClientConfig = {
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
+  onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
 /**
@@ -27,29 +34,31 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-export type ServiceClientGetOptions = {
+type ServiceClientRequestOptions = {
+  /** Rate-limit bucket supplied by the action that owns the request. */
+  rateLimitBucket?: RateLimitBucket;
+  timeout?: ServiceClientTimeout;
+};
+
+export type ServiceClientGetOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPostOptions = {
+export type ServiceClientPostOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPatchOptions = {
+export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientDeleteOptions = {
+export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -59,11 +68,18 @@ export class ServiceClient {
   readonly #client: KyInstance;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
+  readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
-  constructor({ root, headers, resolveHeaders }: ServiceClientConfig) {
+  constructor({
+    root,
+    headers,
+    resolveHeaders,
+    onRateLimitUpdate,
+  }: ServiceClientConfig) {
     this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
+    this.#onRateLimitUpdate = onRateLimitUpdate;
   }
 
   get(
@@ -122,7 +138,10 @@ export class ServiceClient {
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
-    return this.#toResult(this.#send(method, path, options));
+    return this.#toResult(
+      this.#send(method, path, options),
+      options.rateLimitBucket,
+    );
   }
 
   async #send(
@@ -200,12 +219,21 @@ export class ServiceClient {
 
   #toResult(
     promise: Promise<Response>,
+    rateLimitBucket?: RateLimitBucket,
   ): ResultAsync<
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
+        const rateLimit = parseRateLimitHeaders(
+          response.headers,
+          rateLimitBucket,
+        );
+        if (rateLimit !== undefined) {
+          this.#notifyRateLimitUpdate(rateLimit);
+        }
+
         if (response.ok) {
           return response;
         }
@@ -215,7 +243,7 @@ export class ServiceClient {
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
-            { retryAfter },
+            { rateLimit, retryAfter },
           );
         }
 
@@ -241,6 +269,16 @@ export class ServiceClient {
         return TransportError.fromError(error);
       },
     );
+  }
+
+  #notifyRateLimitUpdate(update: RateLimitUpdate): void {
+    try {
+      void Promise.resolve(this.#onRateLimitUpdate?.(update)).catch(
+        () => undefined,
+      );
+    } catch {
+      // A consumer-provided listener must never affect request handling.
+    }
   }
 
   #parseRetryAfterHeader(response: Response): number | undefined {
