@@ -126,7 +126,7 @@ export type OrderNotificationPayload = z.infer<
 export const MarketNotificationTokenSchema = z
   .object({
     outcome: z.string(),
-    price: z.number().optional(),
+    price: DecimalishSchema.optional(),
     token_id: TokenIdSchema,
     winner: z.boolean(),
   })
@@ -143,13 +143,13 @@ export type MarketNotificationToken = z.infer<
 export const MarketNotificationRewardsSchema = z
   .object({
     max_spread: z.number(),
-    min_size: z.number(),
+    min_size: DecimalishSchema,
     rates: z
       .array(
         z
           .object({
             asset_address: z.string(),
-            rewards_daily_rate: z.number(),
+            rewards_daily_rate: DecimalishSchema,
           })
           .transform(({ asset_address, rewards_daily_rate }) => ({
             assetAddress: asset_address,
@@ -260,7 +260,7 @@ export type MarketNotificationPayload = z.infer<
 export const RewardPayoutNotificationPayloadSchema = z
   .object({
     proxyWallet: EvmAddressSchema,
-    reward: z.number(),
+    reward: DecimalishSchema,
     txnHash: TxHashSchema,
   })
   .transform(({ txnHash, ...rest }) => ({
@@ -275,7 +275,7 @@ export type RewardPayoutNotificationPayload = z.infer<
 /** Payload of a yield payout notification. */
 export const YieldPayoutNotificationPayloadSchema = z
   .object({
-    amount: z.number(),
+    amount: DecimalishSchema,
     proxyWallet: EvmAddressSchema,
     txnHash: TxHashSchema,
   })
@@ -318,7 +318,7 @@ export type ChildCommentNotificationPayload = z.infer<
  */
 export const AutoRedeemedNotificationPayloadSchema = z
   .object({
-    amount: z.number(),
+    amount: DecimalishSchema,
     conditionId: ConditionIdSchema,
     image: z.string(),
     marketUrl: z.string().optional(),
@@ -346,7 +346,7 @@ export type AutoRedeemedNotificationPayload = z.infer<
  */
 export const ComboAutoRedeemedNotificationPayloadSchema = z
   .object({
-    amount: z.number(),
+    amount: DecimalishSchema,
     conditionId: ComboConditionIdSchema,
     legs: z.number().int(),
     outcomeIndex: z.number().int(),

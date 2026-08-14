@@ -148,8 +148,10 @@ describe('NotificationSchema', () => {
 
     expect(notification.payload.conditionId).toBe(conditionId);
     expect(notification.payload.endDate).toBe('2026-08-24T00:00:00.000Z');
+    expect(notification.payload.tokens[0]?.price).toBe('0.6');
     expect(notification.payload.tokens[1]?.winner).toBe(true);
-    expect(notification.payload.rewards?.rates?.[0]?.dailyRate).toBe(5);
+    expect(notification.payload.rewards?.minSize).toBe('50');
+    expect(notification.payload.rewards?.rates?.[0]?.dailyRate).toBe('5');
     expect(notification.payload.minimumTickSize).toBe('0.01');
   });
 
@@ -236,14 +238,31 @@ describe('NotificationsResponseSchema', () => {
       NotificationType.COMBO_AUTO_REDEEMED,
     ]);
 
-    const [rewardPayout, childComment] = notifications;
+    const [
+      rewardPayout,
+      childComment,
+      yieldPayout,
+      ,
+      autoRedeemed,
+      comboAutoRedeemed,
+    ] = notifications;
     if (rewardPayout?.type === NotificationType.REWARD_PAYOUT) {
       expect(rewardPayout.payload.transactionHash).toBe(transactionHash);
+      expect(rewardPayout.payload.reward).toBe('12.5');
     }
     if (childComment?.type === NotificationType.CHILD_COMMENT_CREATED) {
       expect(childComment.payload.profile?.wallet).toBe(proxyWallet);
       expect(childComment.payload.profile?.bio).toBe('Market enthusiast');
       expect(childComment.payload.profile?.positions?.[0]?.tokenId).toBe('1');
+    }
+    if (yieldPayout?.type === NotificationType.YIELD_PAYOUT) {
+      expect(yieldPayout.payload.amount).toBe('3.21');
+    }
+    if (autoRedeemed?.type === NotificationType.AUTO_REDEEMED) {
+      expect(autoRedeemed.payload.amount).toBe('25');
+    }
+    if (comboAutoRedeemed?.type === NotificationType.COMBO_AUTO_REDEEMED) {
+      expect(comboAutoRedeemed.payload.amount).toBe('10');
     }
   });
 
