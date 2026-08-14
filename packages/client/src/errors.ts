@@ -1,5 +1,6 @@
 import { PolymarketError } from '@polymarket/types';
 import type { ZodError } from 'zod';
+import type { RateLimitUpdate } from './rate-limit';
 import {
   formatInputZodError,
   formatResponseZodError,
@@ -194,6 +195,11 @@ export type RateLimitErrorOptions = {
    * provided one.
    */
   retryAfter?: number;
+  /**
+   * Rate-limit state reported with the rejection, when the response provided
+   * it.
+   */
+  rateLimit?: RateLimitUpdate;
 };
 
 /**
@@ -208,6 +214,11 @@ export class RateLimitError extends PolymarketError {
    * provided one.
    */
   readonly retryAfter?: number;
+  /**
+   * Rate-limit state reported with the rejection, when the response provided
+   * it.
+   */
+  readonly rateLimit?: RateLimitUpdate;
 
   constructor(
     message: string,
@@ -215,6 +226,7 @@ export class RateLimitError extends PolymarketError {
   ) {
     super(message, options);
     this.retryAfter = options.retryAfter;
+    this.rateLimit = options.rateLimit;
   }
 }
 

@@ -225,6 +225,7 @@ async function cancel(
     client.secureClob
       .del(path, {
         json: payload,
+        rateLimitBucket: 'cancel',
       })
       .mapErr(mapTradingRestrictionError)
       .andThen(validateWith(CancelOrdersResponseSchema)),

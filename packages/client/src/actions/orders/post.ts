@@ -96,6 +96,7 @@ export function postOrder(
       client.secureClob
         .post('/order', {
           json: payload,
+          rateLimitBucket: 'order',
         })
         .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponseSchema)),
@@ -135,6 +136,7 @@ export function postOrders(
       client.secureClob
         .post('/orders', {
           json: payload,
+          rateLimitBucket: 'order',
         })
         .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponsesSchema)),

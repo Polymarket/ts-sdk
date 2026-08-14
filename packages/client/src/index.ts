@@ -46,5 +46,10 @@ export * from './environments';
 export * from './errors';
 export * from './hmac';
 export type * from './pagination';
+export type {
+  RateLimitBucket,
+  RateLimitUpdate,
+  RateLimitUpdateListener,
+} from './rate-limit';
 export * from './types';
 export type { AccountIdentity } from './wallet';

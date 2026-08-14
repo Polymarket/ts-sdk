@@ -10,6 +10,7 @@ import {
   InsufficientLiquidityError,
   type Market,
   type PublicClient,
+  type RateLimitUpdate,
   type SecureClient,
   type Signer,
   UserInputError,
@@ -655,21 +656,37 @@ describe('Orders', { timeout: 60_000 }, () => {
   });
 
   describe('cancelAll', () => {
-    it('cancels all open orders', async ({
+    it('cancels all open orders and reports rate-limit buckets', async ({
       annotate,
-      secureClientWithDepositWallet,
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      relayerAuthentication,
     }) => {
+      const rateLimitUpdates: RateLimitUpdate[] = [];
+      const secureClient = await createSecureClient({
+        apiKey: relayerAuthentication,
+        environment,
+        onRateLimitUpdate: (update) => {
+          rateLimitUpdates.push(update);
+        },
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
       const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
       annotate(`Market ID: ${market.id}`);
       annotate(`Token ID: ${yesTokenId}`);
 
-      const order = await createRestingLimitOrder(
-        secureClientWithDepositWallet,
-        market,
-      );
-      const result = await secureClientWithDepositWallet.cancelAll();
+      const order = await createRestingLimitOrder(secureClient, market);
+      const result = await secureClient.cancelAll();
 
       expect(result.canceled).toContain(order.orderId);
+      expect(rateLimitUpdates).toContainEqual(
+        expect.objectContaining({ bucket: 'order' }),
+      );
+      expect(rateLimitUpdates).toContainEqual(
+        expect.objectContaining({ bucket: 'cancel' }),
+      );
     });
   });
 
