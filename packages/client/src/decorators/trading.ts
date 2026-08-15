@@ -34,6 +34,8 @@ import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
 
+export type { OrderAsset } from '../actions';
+
 export type SecureTradingActions = {
   /**
    * Creates a signed market order for the authenticated account.
@@ -57,6 +59,15 @@ export type SecureTradingActions = {
    *   maxPrice: '0.55',
    *   side: OrderSide.BUY,
    *   tokenId: '123',
+   * });
+   * ```
+   *
+   * @example Position-backed market buy
+   * ```ts
+   * const order = await client.createMarketOrder({
+   *   amount: 10,
+   *   positionId: '456',
+   *   side: OrderSide.BUY,
    * });
    * ```
    */
@@ -121,7 +132,7 @@ export type SecureTradingActions = {
    * @throws {@link CreateLimitOrderError}
    * Thrown on failure.
    *
-   * @example
+   * @example Token-backed limit order
    * ```ts
    * const order = await client.createLimitOrder({
    *   postOnly: true,
@@ -129,6 +140,17 @@ export type SecureTradingActions = {
    *   side: OrderSide.BUY,
    *   size: 10,
    *   tokenId: '123',
+   * });
+   * ```
+   *
+   * @example Position-backed limit order
+   * ```ts
+   * const order = await client.createLimitOrder({
+   *   postOnly: true,
+   *   positionId: '456',
+   *   price: 0.52,
+   *   side: OrderSide.BUY,
+   *   size: 10,
    * });
    * ```
    */

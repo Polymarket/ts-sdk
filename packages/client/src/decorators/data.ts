@@ -234,6 +234,15 @@ export type DataActions = {
    *   amount: 10,
    * });
    * ```
+   *
+   * @example Position-backed outcome
+   * ```ts
+   * const price = await client.estimateMarketPrice({
+   *   positionId: '456',
+   *   side: OrderSide.SELL,
+   *   shares: 10,
+   * });
+   * ```
    */
   estimateMarketPrice(request: EstimateMarketPriceRequest): Promise<number>;
   /**

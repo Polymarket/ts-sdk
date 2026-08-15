@@ -218,16 +218,6 @@ export function calculateExchangeOrderTakerAmount(
 }
 
 /** @internal */
-export function generateExchangeOrderSalt(): bigint {
-  const bytes = new Uint8Array(8);
-  globalThis.crypto.getRandomValues(bytes);
-
-  return BigInt(
-    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
-  );
-}
-
-/** @internal */
 export function createExchangeOrderMessage(
   order: ExchangeOrderInput,
 ): ExchangeOrderMessage {
