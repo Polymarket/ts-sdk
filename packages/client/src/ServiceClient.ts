@@ -1,6 +1,12 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { RateLimitError, RequestRejectedError, TransportError } from './errors';
+import {
+  parseRateLimitHeaders,
+  type RateLimitBucket,
+  type RateLimitUpdate,
+  type RateLimitUpdateListener,
+} from './rate-limit';
 
 export type ServiceRequest = {
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
@@ -19,6 +25,7 @@ export type ServiceClientConfig = {
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
+  onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
 /**
@@ -27,29 +34,31 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-export type ServiceClientGetOptions = {
+type ServiceClientRequestOptions = {
+  /** Rate-limit bucket supplied by the action that owns the request. */
+  rateLimitBucket?: RateLimitBucket;
+  timeout?: ServiceClientTimeout;
+};
+
+export type ServiceClientGetOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPostOptions = {
+export type ServiceClientPostOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientPatchOptions = {
+export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
-  timeout?: ServiceClientTimeout;
 };
 
-export type ServiceClientDeleteOptions = {
+export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
   headers?: HeadersInit;
   json?: unknown;
   params?: URLSearchParams;
-  timeout?: ServiceClientTimeout;
 };
 
 /**
@@ -59,11 +68,18 @@ export class ServiceClient {
   readonly #client: KyInstance;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
+  readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
-  constructor({ root, headers, resolveHeaders }: ServiceClientConfig) {
+  constructor({
+    root,
+    headers,
+    resolveHeaders,
+    onRateLimitUpdate,
+  }: ServiceClientConfig) {
     this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
+    this.#onRateLimitUpdate = onRateLimitUpdate;
   }
 
   get(
@@ -122,7 +138,10 @@ export class ServiceClient {
     Response,
     RateLimitError | RequestRejectedError | TransportError
   > {
-    return this.#toResult(this.#send(method, path, options));
+    return this.#toResult(
+      this.#send(method, path, options),
+      options.rateLimitBucket,
+    );
   }
 
   async #send(
@@ -200,15 +219,21 @@ export class ServiceClient {
 
   #toResult(
     promise: Promise<Response>,
+    rateLimitBucket?: RateLimitBucket,
   ): ResultAsync<
     Response,
-    | RateLimitError
-    | RequestRejectedError
-    | RequestRejectedError
-    | TransportError
+    RateLimitError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
       promise.then(async (response) => {
+        const rateLimit = parseRateLimitHeaders(
+          response.headers,
+          rateLimitBucket,
+        );
+        if (rateLimit !== undefined) {
+          this.#notifyRateLimitUpdate(rateLimit);
+        }
+
         if (response.ok) {
           return response;
         }
@@ -218,13 +243,18 @@ export class ServiceClient {
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
-            { retryAfter },
+            { rateLimit, retryAfter },
           );
         }
 
-        const message = await this.#extractResponseErrorMessage(response);
+        const {
+          code,
+          message,
+          retryAfter: retryAfterSeconds,
+        } = await this.#extractResponseError(response);
         throw new RequestRejectedError(message, {
-          retryAfter,
+          code,
+          retryAfter: retryAfter ?? retryAfterSeconds,
           status: response.status,
         });
       }),
@@ -241,6 +271,16 @@ export class ServiceClient {
     );
   }
 
+  #notifyRateLimitUpdate(update: RateLimitUpdate): void {
+    try {
+      void Promise.resolve(this.#onRateLimitUpdate?.(update)).catch(
+        () => undefined,
+      );
+    } catch {
+      // A consumer-provided listener must never affect request handling.
+    }
+  }
+
   #parseRetryAfterHeader(response: Response): number | undefined {
     const value = response.headers.get('retry-after');
 
@@ -251,15 +291,31 @@ export class ServiceClient {
     return Number(value);
   }
 
-  async #extractResponseErrorMessage(response: Response) {
+  async #extractResponseError(
+    response: Response,
+  ): Promise<{ message: string; code?: string; retryAfter?: number }> {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
-      const { error } = await response
+      const {
+        error,
+        code,
+        retry_after_seconds: retryAfterSeconds,
+      } = await response
         .clone()
         .json()
         .catch(() => ({}));
-      if (error) return `${String(error)} (${response.url})`;
+      if (error) {
+        return {
+          message: `${String(error)} (${response.url})`,
+          ...(typeof code === 'string' && code !== '' ? { code } : {}),
+          ...(typeof retryAfterSeconds === 'number' &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds >= 0
+            ? { retryAfter: retryAfterSeconds }
+            : {}),
+        };
+      }
     }
 
     if (contentType?.includes('text/plain')) {
@@ -272,22 +328,28 @@ export class ServiceClient {
         );
 
       if (text) {
-        return `${text} (${response.url})`;
+        return { message: `${text} (${response.url})` };
       }
     }
 
     const server = response.headers.get('server')?.toLowerCase();
     if (server?.includes('cloudflare')) {
-      return `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`;
+      return {
+        message: `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`,
+      };
     }
 
     if (
       contentType?.includes('text/html') ||
       contentType?.includes('application/xhtml+xml')
     ) {
-      return `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`;
+      return {
+        message: `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`,
+      };
     }
 
-    return `Request to ${response.url} failed with status ${response.status} and unreadable response body`;
+    return {
+      message: `Request to ${response.url} failed with status ${response.status} and unreadable response body`,
+    };
   }
 }

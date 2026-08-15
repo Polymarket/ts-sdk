@@ -1,5 +1,6 @@
 import { PolymarketError } from '@polymarket/types';
 import type { ZodError } from 'zod';
+import type { RateLimitUpdate } from './rate-limit';
 import {
   formatInputZodError,
   formatResponseZodError,
@@ -121,13 +122,35 @@ export class ConnectionLostError extends PolymarketError {
   }
 }
 
+/**
+ * Trading restriction reported by the venue while orders cannot be placed
+ * normally. The SDK does not retry automatically; callers decide how to
+ * react, honoring {@link RequestRejectedError.retryAfter} when provided.
+ */
+export enum TradingRestriction {
+  /** The matching engine is restarting and rejects order requests until it is back. */
+  RESTARTING = 'restarting',
+  /** Cancels and post-only orders are accepted; other orders are rejected. */
+  POST_ONLY = 'post_only',
+}
+
 export type RequestRejectedErrorOptions = {
   status: number;
+  /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  code?: string;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
    */
   retryAfter?: number;
+  /**
+   * Trading restriction that caused the rejection, when the response
+   * identified one.
+   */
+  restriction?: TradingRestriction;
 };
 
 /**
@@ -139,10 +162,20 @@ export class RequestRejectedError extends PolymarketError {
 
   readonly status: number;
   /**
+   * Machine-readable error code from the response body, when the service
+   * provided one.
+   */
+  readonly code?: string;
+  /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
    */
   readonly retryAfter?: number;
+  /**
+   * Trading restriction that caused the rejection, when the response
+   * identified one.
+   */
+  readonly restriction?: TradingRestriction;
 
   constructor(
     message: string,
@@ -150,7 +183,9 @@ export class RequestRejectedError extends PolymarketError {
   ) {
     super(message, options);
     this.status = options.status;
+    this.code = options.code;
     this.retryAfter = options.retryAfter;
+    this.restriction = options.restriction;
   }
 }
 
@@ -160,6 +195,11 @@ export type RateLimitErrorOptions = {
    * provided one.
    */
   retryAfter?: number;
+  /**
+   * Rate-limit state reported with the rejection, when the response provided
+   * it.
+   */
+  rateLimit?: RateLimitUpdate;
 };
 
 /**
@@ -174,6 +214,11 @@ export class RateLimitError extends PolymarketError {
    * provided one.
    */
   readonly retryAfter?: number;
+  /**
+   * Rate-limit state reported with the rejection, when the response provided
+   * it.
+   */
+  readonly rateLimit?: RateLimitUpdate;
 
   constructor(
     message: string,
@@ -181,6 +226,7 @@ export class RateLimitError extends PolymarketError {
   ) {
     super(message, options);
     this.retryAfter = options.retryAfter;
+    this.rateLimit = options.rateLimit;
   }
 }
 

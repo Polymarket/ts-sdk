@@ -1,8 +1,15 @@
-import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
+import {
+  OrderSide,
+  OrderType,
+  toPositionId,
+  toTokenId,
+} from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
+import type { OrderRouting } from './asset';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -48,7 +55,7 @@ describe('createUnsignedOrder', () => {
     wallet,
     walletType,
   }) => {
-    const order = createUnsignedOrder(createOrderDraft(wallet), {
+    const order = createUnsignedOrder(createOrderDraft({ wallet }), {
       signer: SIGNER,
       wallet,
       walletType,
@@ -76,29 +83,64 @@ describe('createUnsignedOrder', () => {
       },
     });
 
-    const order = createUnsignedOrder(createOrderDraft(DEPOSIT_WALLET), {
-      signer: SIGNER,
-      wallet: DEPOSIT_WALLET,
-      walletType: WalletType.DEPOSIT_WALLET,
-    });
+    const order = createUnsignedOrder(
+      createOrderDraft({ wallet: DEPOSIT_WALLET }),
+      {
+        signer: SIGNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
 
     expect(order.salt).toBe((2n ** 53n - 1n).toString());
     expect(Number(order.salt)).toBeLessThanOrEqual(Number.MAX_SAFE_INTEGER);
     expect(Number.parseInt(order.salt, 10).toString()).toBe(order.salt);
   });
+
+  it('preserves a position ID and selects the V3 signing domain', () => {
+    const positionId = toPositionId('2');
+    const order = createUnsignedOrder(
+      createOrderDraft({
+        routing: {
+          assetId: positionId,
+          exchangeVersion: ExchangeOrderProtocolVersion.V3,
+        },
+        wallet: DEPOSIT_WALLET,
+      }),
+      {
+        signer: SIGNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
+
+    expect(order.tokenId).toBe(positionId);
+    expect(order.protocolVersion).toBe(ExchangeOrderProtocolVersion.V3);
+  });
 });
 
-function createOrderDraft(funderAddress: EvmAddress): OrderDraft {
+type CreateOrderDraftParams = {
+  routing?: OrderRouting;
+  wallet: EvmAddress;
+};
+
+function createOrderDraft({
+  routing = {
+    assetId: toTokenId('1'),
+    exchangeVersion: ExchangeOrderProtocolVersion.V2,
+  },
+  wallet,
+}: CreateOrderDraftParams): OrderDraft {
   return {
+    ...routing,
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,
-    funderAddress,
+    funderAddress: wallet,
     offeredAmount: 1000000n,
     orderType: OrderType.GTC,
     requestedAmount: 500000n,
     side: OrderSide.BUY,
     signer: SIGNER,
-    tokenId: toTokenId('1'),
   };
 }
