@@ -1,7 +1,5 @@
 import {
   type EvmAddress,
-  expectEvmAddress,
-  expectTxHash,
   type HexString,
   isHexString,
   type TxHash,
@@ -154,17 +152,15 @@ export function toConditionId(value: string): ConditionId {
 /** @deprecated Use {@link toConditionId}. */
 export const toCtfConditionId = toConditionId;
 
-export function toComboConditionId(value: string): ComboConditionId {
+function normalizeComboConditionId(value: string): string | undefined {
   if (!isHexString(value)) {
-    throw new TypeError(
-      `Expected a protocol v2 combo condition ID, received: ${value}`,
-    );
+    return undefined;
   }
 
   const normalized = value.toLowerCase();
 
   if (normalized.length === 64 && normalized.startsWith('0x03')) {
-    return normalized as ComboConditionId;
+    return normalized;
   }
 
   if (
@@ -172,7 +168,17 @@ export function toComboConditionId(value: string): ComboConditionId {
     normalized.startsWith('0x03') &&
     (normalized.endsWith('00') || normalized.endsWith('01'))
   ) {
-    return normalized.slice(0, -2) as ComboConditionId;
+    return normalized.slice(0, -2);
+  }
+
+  return undefined;
+}
+
+export function toComboConditionId(value: string): ComboConditionId {
+  const normalized = normalizeComboConditionId(value);
+
+  if (normalized !== undefined) {
+    return normalized as ComboConditionId;
   }
 
   throw new TypeError(
@@ -308,7 +314,13 @@ export const BuilderCodeSchema = z.string().transform(toBuilderCode);
 export const ClobRewardIdSchema = z.string().transform(toClobRewardId);
 export const CommentIdSchema = z.string().transform(toCommentId);
 export const ComboActivityIdSchema = z.string().transform(toComboActivityId);
-export const ComboConditionIdSchema = z.string().transform(toComboConditionId);
+export const ComboConditionIdSchema = z
+  .string()
+  .refine(
+    (value) => normalizeComboConditionId(value) !== undefined,
+    'Expected a protocol v2 combo condition ID',
+  )
+  .transform((value) => normalizeComboConditionId(value) as ComboConditionId);
 export const ConditionIdSchema = z
   .string()
   .refine(
@@ -331,7 +343,13 @@ export const ConditionIdResponseSchema = z.custom<ConditionId>(
   isHexString,
   'Expected a hex-encoded market condition ID',
 );
-export const EvmAddressSchema = z.string().transform(toEvmAddress);
+export const EvmAddressSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 42,
+    'Expected an EVM address',
+  )
+  .transform(toEvmAddress);
 export const EpochMillisecondsSchema = z
   .number()
   .int()
@@ -459,7 +477,13 @@ export const PaginationCursorSchema = z.custom<PaginationCursor>(
   'Expected a non-empty pagination cursor',
 );
 export const PositionIdSchema = z.string().transform(toPositionId);
-export const QuestionIdSchema = z.string().transform(toQuestionId);
+export const QuestionIdSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 66,
+    'Expected a 32-byte hex string',
+  )
+  .transform((value) => value as QuestionId);
 export const ResolutionRequestIdSchema = z
   .string()
   .transform(toResolutionRequestId);
@@ -471,7 +495,13 @@ export const RfqRequestorPublicIdSchema = z
 export const TagIdSchema = z.string().transform(toTagId);
 export const TokenIdSchema = z.string().transform(toTokenId);
 export const TransactionIdSchema = z.string().min(1).transform(toTransactionId);
-export const TxHashSchema = z.string().transform(toTxHash);
+export const TxHashSchema = z
+  .string()
+  .refine(
+    (value) => isHexString(value) && value.length === 66,
+    'Expected a transaction hash',
+  )
+  .transform((value) => value as TxHash);
 export const DecimalStringSchema = z.string().transform(toDecimalString);
 export const E6BigIntStringToDecimalStringSchema = z
   .string()
@@ -521,11 +551,7 @@ export const OptionalDecimalStringSchema = z.preprocess(
 );
 
 function toEvmAddress(value: string): EvmAddress {
-  return expectEvmAddress(value);
-}
-
-function toTxHash(value: string): TxHash {
-  return expectTxHash(value);
+  return toTaggedString<EvmAddress>(value);
 }
 
 function to32ByteHexString(value: string): HexString {

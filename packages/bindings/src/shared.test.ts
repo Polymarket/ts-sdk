@@ -5,8 +5,11 @@ import {
   ConditionIdSchema,
   type CtfConditionId,
   CtfConditionIdSchema,
+  EvmAddressSchema,
   OptionalConditionIdSchema,
   OptionalCtfConditionIdSchema,
+  QuestionIdSchema,
+  TxHashSchema,
   toComboConditionId,
   toConditionId,
   toCtfConditionId,
@@ -91,6 +94,22 @@ describe('shared ID parsers', () => {
       expect(conditionId).toBe(CANONICAL_COMBO_CONDITION_ID);
       expect(conditionId).toHaveLength(64);
       expect(conditionId).toMatch(COMBO_CONDITION_ID_PATTERN);
+    });
+
+    it('reports invalid values as validation failures', () => {
+      const result = ComboConditionIdSchema.safeParse(
+        `${CANONICAL_COMBO_CONDITION_ID}02`,
+      );
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('branded hex schemas', () => {
+    it('reports invalid values as validation failures', () => {
+      expect(EvmAddressSchema.safeParse('0x1').success).toBe(false);
+      expect(QuestionIdSchema.safeParse('0x1').success).toBe(false);
+      expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
   });
 });
