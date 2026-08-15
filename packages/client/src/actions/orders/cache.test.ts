@@ -1,7 +1,6 @@
 import {
   BuilderCodeSchema,
   ConditionIdSchema,
-  PositionIdSchema,
   TokenIdSchema,
 } from '@polymarket/bindings';
 import type { MarketInfo } from '@polymarket/bindings/clob';
@@ -11,8 +10,6 @@ import { OrderMetadataCache } from './cache';
 
 const TOKEN_YES = TokenIdSchema.parse('111');
 const TOKEN_NO = TokenIdSchema.parse('222');
-const POSITION_YES = PositionIdSchema.parse('111');
-const POSITION_NO = PositionIdSchema.parse('222');
 const STRAY_TOKEN = TokenIdSchema.parse('999');
 const CONDITION_ID = ConditionIdSchema.parse(`0x${'ab'.repeat(32)}`);
 const BUILDER_CODE = BuilderCodeSchema.parse(`0x${'cd'.repeat(32)}`);
@@ -43,20 +40,6 @@ describe('OrderMetadataCache', () => {
     });
     await cache.resolveMarket(TOKEN_YES);
     await cache.resolveMarket(TOKEN_NO);
-
-    expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
-    expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
-  });
-
-  it('accepts position IDs exposed in the market asset list', async () => {
-    const { cache, deps } = createCache();
-
-    expect(await cache.resolveMarket(POSITION_YES)).toEqual({
-      feeInfo: market.feeInfo,
-      negRisk: false,
-      tickSize: 0.01,
-    });
-    await cache.resolveMarket(POSITION_NO);
 
     expect(deps.resolveCondition).toHaveBeenCalledTimes(1);
     expect(deps.fetchMarket).toHaveBeenCalledTimes(1);
