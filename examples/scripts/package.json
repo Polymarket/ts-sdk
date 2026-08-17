@@ -18,10 +18,10 @@
   },
   "dependencies": {
     "@polymarket/client": "workspace:*",
-    "viem": "^2.46.3"
+    "viem": "^2.55.13"
   },
   "devDependencies": {
-    "tsx": "^4.20.3",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.2"
   }
 }
