@@ -11,18 +11,15 @@ import { ExchangeOrderProtocolVersion } from '../../exchange';
 
 /**
  * Identifies the asset to trade. Provide exactly one identifier.
- *
- * Use `tokenId` whenever the selected market outcome provides one. Use
- * `positionId` for position-backed outcomes where `tokenId` is unavailable.
  */
 export type OrderAsset =
   | {
-      /** Token-backed outcome identifier. Prefer this identifier when available. */
+      /** CTF token identifier. */
       tokenId: string;
       positionId?: never;
     }
   | {
-      /** Position-backed outcome identifier, used when `tokenId` is unavailable. */
+      /** Polymarket V2 position identifier. */
       positionId: string;
       tokenId?: never;
     };
