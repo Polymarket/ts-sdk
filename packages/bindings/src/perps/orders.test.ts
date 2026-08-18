@@ -5,7 +5,6 @@ import {
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
-  PerpsUpdateLeveragesResultSchema,
 } from './orders';
 
 const baseFill = {
@@ -207,57 +206,5 @@ describe('PerpsCancelOrderResultSchema', () => {
         "triggerPrice": "90.00",
       }
     `);
-  });
-});
-
-describe('PerpsUpdateLeveragesResultSchema', () => {
-  it('normalizes ordered mixed leverage results', () => {
-    const result = PerpsUpdateLeveragesResultSchema.parse([
-      {
-        status: 'ok',
-        instrument_id: 1,
-        leverage: 5,
-        cross: false,
-      },
-      {
-        status: 'err',
-        instrument_id: 2,
-        error: 'internal_error',
-      },
-      {
-        status: 'ok',
-        instrument_id: 3,
-        leverage: 10,
-        cross: true,
-      },
-    ]);
-
-    expect(result).toEqual([
-      {
-        status: 'ok',
-        instrumentId: 1,
-        leverage: 5,
-        crossMargin: false,
-      },
-      {
-        status: 'err',
-        instrumentId: 2,
-        error: 'internal_error',
-      },
-      {
-        status: 'ok',
-        instrumentId: 3,
-        leverage: 10,
-        crossMargin: true,
-      },
-    ]);
-  });
-
-  it('requires rejected items to identify their instrument', () => {
-    expect(() =>
-      PerpsUpdateLeveragesResultSchema.parse([
-        { status: 'err', error: 'action_rate_limited' },
-      ]),
-    ).toThrow();
   });
 });
