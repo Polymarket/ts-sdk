@@ -46,15 +46,15 @@ describe('Activity', () => {
       expect(firstPage.items.length).toBeGreaterThan(0);
     });
 
-    it('rejects a cursor above the documented ceiling before transport', ({
+    it('rejects a cursor above the documented ceiling before transport', async ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const cursor = btoa(JSON.stringify({ offset: 10_001, pageSize: 20 }));
 
-      expect(() =>
+      await expect(
         publicClient.listTrades({ cursor: cursor as never }).firstPage(),
-      ).toThrow(UserInputError);
+      ).rejects.toThrow(UserInputError);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
@@ -96,17 +96,17 @@ describe('Activity', () => {
       );
     });
 
-    it('rejects a cursor above the documented ceiling before transport', ({
+    it('rejects a cursor above the documented ceiling before transport', async ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const cursor = btoa(JSON.stringify({ offset: 5_001, pageSize: 20 }));
 
-      expect(() =>
+      await expect(
         publicClient
           .listActivity({ cursor: cursor as never, user: TEST_USER })
           .firstPage(),
-      ).toThrow(UserInputError);
+      ).rejects.toThrow(UserInputError);
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   });

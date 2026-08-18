@@ -1497,21 +1497,16 @@ describe('PerpsSession', () => {
       });
     });
 
-    it('throws user input errors for invalid account pagination cursors', () => {
+    it('rejects user input errors for invalid account pagination cursors', async () => {
       const cursor = toPaginationCursor(
         btoa(JSON.stringify({ kind: 'perpsTrades' })),
       );
       const session = createSession();
 
-      let thrown: unknown;
-      try {
-        session.listFundingPayments({ cursor }).firstPage();
-      } catch (error) {
-        thrown = error;
-      }
-
-      expect(thrown).toBeInstanceOf(UserInputError);
-      expect(thrown).toMatchObject({
+      await expect(
+        session.listFundingPayments({ cursor }).firstPage(),
+      ).rejects.toMatchObject({
+        name: UserInputError.name,
         message: 'Invalid Perps account pagination cursor',
         cause: expect.any(Error),
       });

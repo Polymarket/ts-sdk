@@ -24,8 +24,8 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import {
-  cappedOffsetContinuation,
   decodeOffsetCursor,
+  offsetContinuation,
   PageSizeSchema,
   type Paginated,
   paginate,
@@ -89,9 +89,11 @@ export const ListTradesError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pagination stops at the documented 10,000 offset ceiling. Use `start` and
- * `end` to query bounded time windows when deeper history is required; this
- * paginator does not claim complete unbounded history.
+ * Pagination rejects continuation past the documented 10,000 offset ceiling.
+ * Use `start` and `end` to query bounded time windows when deeper history is
+ * required. Without `start`, queries default to roughly three years of
+ * history. A positive `start` can extend user-scoped queries further back,
+ * while market- and event-scoped queries retain the three-year floor.
  *
  * @throws {@link ListTradesError}
  * Thrown on failure.
@@ -147,15 +149,9 @@ export function listTrades(
       })
       .andThen(validateWith(ListTradesResponseSchema))
       .map((trades) => {
-        const continuation = cappedOffsetContinuation(
-          decoded,
-          trades.length >= decoded.pageSize,
-          MAX_TRADES_OFFSET,
-        );
-
         return {
           items: trades,
-          ...continuation,
+          ...offsetContinuation(decoded, trades.length >= decoded.pageSize),
         };
       });
   }, cursor);
@@ -208,9 +204,10 @@ export const ListActivityError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pagination stops at the documented 5,000 offset ceiling. Use `start` and
- * `end` to query bounded time windows when deeper history is required; this
- * paginator does not claim complete unbounded history.
+ * Pagination rejects continuation past the documented 5,000 offset ceiling.
+ * Use `start` and `end` to query bounded time windows when deeper history is
+ * required. Without `start`, descending queries default to roughly three
+ * years of history; ascending queries read from the beginning.
  *
  * @throws {@link ListActivityError}
  * Thrown on failure.
@@ -271,15 +268,9 @@ export function listActivity(
       })
       .andThen(validateWith(ListActivityResponseSchema))
       .map((activity) => {
-        const continuation = cappedOffsetContinuation(
-          decoded,
-          activity.length >= decoded.pageSize,
-          MAX_ACTIVITY_OFFSET,
-        );
-
         return {
           items: activity,
-          ...continuation,
+          ...offsetContinuation(decoded, activity.length >= decoded.pageSize),
         };
       });
   }, cursor);

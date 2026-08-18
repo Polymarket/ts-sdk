@@ -261,7 +261,9 @@ export type PublicAccountActions = Prettify<
      * Lists wallet activity.
      *
      * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
-     * Pagination stops at offset 5,000. Use `start` and `end` to split deeper
+     * Pagination rejects continuation past offset 5,000. Without `start`,
+     * descending queries default to roughly three years of history; ascending
+     * queries read from the beginning. Use `start` and `end` to split deeper
      * history into bounded windows.
      *
      * @throws {@link ListActivityError}
@@ -402,7 +404,9 @@ export type SecureAccountActions = Prettify<
      * Defaults to the authenticated account's wallet when `user` is omitted.
      *
      * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
-     * Pagination stops at offset 5,000. Use `start` and `end` to split deeper
+     * Pagination rejects continuation past offset 5,000. Without `start`,
+     * descending queries default to roughly three years of history; ascending
+     * queries read from the beginning. Use `start` and `end` to split deeper
      * history into bounded windows.
      *
      * @throws {@link ListActivityError}

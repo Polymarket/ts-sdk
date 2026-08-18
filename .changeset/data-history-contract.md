@@ -3,4 +3,4 @@
 "@polymarket/client": patch
 ---
 
-Preserve combo entry-basis fields and stop Data history pagination at documented offset ceilings.
+Preserve exact combo entry-basis fields and reject Data history pagination past documented offset ceilings.

@@ -63,7 +63,7 @@ export function paginate<T, TError>(
 
   function createPaginator(cursor = initialCursor): Paginated<T> {
     return {
-      firstPage() {
+      async firstPage() {
         return unwrap(fetchPage(cursor));
       },
       from(nextCursor) {
@@ -102,6 +102,26 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
 }
 
 /** @internal */
+export function offsetContinuation(
+  state: OffsetCursorState,
+  pageHasMore: boolean,
+):
+  | { hasMore: false; nextCursor?: undefined }
+  | { hasMore: true; nextCursor: PaginationCursor } {
+  if (!pageHasMore) {
+    return { hasMore: false };
+  }
+
+  return {
+    hasMore: true,
+    nextCursor: encodeOffsetCursor({
+      offset: state.offset + state.pageSize,
+      pageSize: state.pageSize,
+    }),
+  };
+}
+
+/** @internal */
 export function decodeOffsetCursor(
   cursor: PaginationCursor | undefined,
   pageSize: number,
@@ -123,26 +143,9 @@ export function decodeOffsetCursor(
 
   if (maxOffset !== undefined && state.offset > maxOffset) {
     throw new UserInputError(
-      `Pagination cursor offset exceeds the endpoint maximum of ${maxOffset}`,
+      `Pagination cannot continue past the endpoint maximum offset of ${maxOffset}; narrow the query before continuing`,
     );
   }
 
   return state;
-}
-
-/** @internal */
-export function cappedOffsetContinuation(
-  state: OffsetCursorState,
-  pageHasMore: boolean,
-  maxOffset: number,
-): { hasMore: boolean; nextCursor?: PaginationCursor } {
-  const nextOffset = state.offset + state.pageSize;
-  const hasMore = pageHasMore && nextOffset <= maxOffset;
-
-  return {
-    hasMore,
-    nextCursor: hasMore
-      ? encodeOffsetCursor({ offset: nextOffset, pageSize: state.pageSize })
-      : undefined,
-  };
 }
