@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { UserInputError } from './errors';
-import {
-  decodeOffsetCursor,
-  encodeOffsetCursor,
-  offsetContinuation,
-  paginate,
-} from './pagination';
+import { decodeOffsetCursor, encodeOffsetCursor, paginate } from './pagination';
 
 describe('capped offset pagination', () => {
   it('allows the last documented offset', () => {
@@ -17,24 +12,16 @@ describe('capped offset pagination', () => {
     });
   });
 
-  it('rejects a supplied cursor above the ceiling', () => {
-    const cursor = encodeOffsetCursor({ offset: 10_001, pageSize: 20 });
+  it('rejects a continuation computed from the last legal offset', () => {
+    const lastPage = { offset: 10_000, pageSize: 500 };
+    const cursor = encodeOffsetCursor({
+      offset: lastPage.offset + lastPage.pageSize,
+      pageSize: lastPage.pageSize,
+    });
 
-    expect(() => decodeOffsetCursor(cursor, 20, 10_000)).toThrow(
+    expect(() => decodeOffsetCursor(cursor, 500, 10_000)).toThrow(
       UserInputError,
     );
-  });
-
-  it('signals truncation by rejecting the continuation after the ceiling', () => {
-    const continuation = offsetContinuation(
-      { offset: 10_000, pageSize: 500 },
-      true,
-    );
-
-    expect(continuation.hasMore).toBe(true);
-    expect(() =>
-      decodeOffsetCursor(continuation.nextCursor, 500, 10_000),
-    ).toThrow(UserInputError);
   });
 
   it('rejects synchronous page setup failures through the promise contract', async () => {

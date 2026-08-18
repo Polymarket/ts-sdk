@@ -25,7 +25,7 @@ import {
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
-  offsetContinuation,
+  encodeOffsetCursor,
   PageSizeSchema,
   type Paginated,
   paginate,
@@ -149,9 +149,17 @@ export function listTrades(
       })
       .andThen(validateWith(ListTradesResponseSchema))
       .map((trades) => {
+        const hasMore = trades.length >= decoded.pageSize;
+
         return {
           items: trades,
-          ...offsetContinuation(decoded, trades.length >= decoded.pageSize),
+          hasMore,
+          nextCursor: hasMore
+            ? encodeOffsetCursor({
+                offset: decoded.offset + decoded.pageSize,
+                pageSize: decoded.pageSize,
+              })
+            : undefined,
         };
       });
   }, cursor);
@@ -268,9 +276,17 @@ export function listActivity(
       })
       .andThen(validateWith(ListActivityResponseSchema))
       .map((activity) => {
+        const hasMore = activity.length >= decoded.pageSize;
+
         return {
           items: activity,
-          ...offsetContinuation(decoded, activity.length >= decoded.pageSize),
+          hasMore,
+          nextCursor: hasMore
+            ? encodeOffsetCursor({
+                offset: decoded.offset + decoded.pageSize,
+                pageSize: decoded.pageSize,
+              })
+            : undefined,
         };
       });
   }, cursor);

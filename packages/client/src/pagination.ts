@@ -15,7 +15,9 @@ export type Page<T> = {
    *
    * On methods without a server-provided continuation signal, a full page
    * reports `true` and the follow-up request returns an empty final page when
-   * the collection ended exactly on a page boundary.
+   * the collection ended exactly on a page boundary. On offset-capped history
+   * methods, following a full page past the endpoint maximum rejects instead,
+   * so capped results are not reported as complete history.
    */
   hasMore: boolean;
   nextCursor?: PaginationCursor;
@@ -99,26 +101,6 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
   return toPaginationCursor(
     btoa(JSON.stringify(OffsetCursorStateSchema.parse(state))),
   );
-}
-
-/** @internal */
-export function offsetContinuation(
-  state: OffsetCursorState,
-  pageHasMore: boolean,
-):
-  | { hasMore: false; nextCursor?: undefined }
-  | { hasMore: true; nextCursor: PaginationCursor } {
-  if (!pageHasMore) {
-    return { hasMore: false };
-  }
-
-  return {
-    hasMore: true,
-    nextCursor: encodeOffsetCursor({
-      offset: state.offset + state.pageSize,
-      pageSize: state.pageSize,
-    }),
-  };
 }
 
 /** @internal */

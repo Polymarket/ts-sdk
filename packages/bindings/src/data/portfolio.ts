@@ -212,6 +212,8 @@ export const ComboPositionSchema = z
     shares_balance: DecimalishSchema,
     entry_avg_price_usdc: DecimalishSchema.nullish(),
     entry_cost_usdc: DecimalishSchema.nullish(),
+    // These fields exist to preserve the exact entry basis and must never
+    // accept numeric JSON that has already lost decimal precision.
     gross_entry_cost_usdc: DecimalStringSchema.nullish(),
     entry_fees_usdc: DecimalStringSchema.nullish(),
     realized_payout_usdc: DecimalishSchema.nullish(),

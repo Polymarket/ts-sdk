@@ -1502,10 +1502,10 @@ describe('PerpsSession', () => {
         btoa(JSON.stringify({ kind: 'perpsTrades' })),
       );
       const session = createSession();
+      const result = session.listFundingPayments({ cursor }).firstPage();
 
-      await expect(
-        session.listFundingPayments({ cursor }).firstPage(),
-      ).rejects.toMatchObject({
+      await expect(result).rejects.toBeInstanceOf(UserInputError);
+      await expect(result).rejects.toMatchObject({
         name: UserInputError.name,
         message: 'Invalid Perps account pagination cursor',
         cause: expect.any(Error),
