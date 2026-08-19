@@ -38,6 +38,8 @@ import {
 
 /** Venue authorization attached to a session-key grant. */
 export enum SessionKeyScope {
+  /** Reserved scope value. It cannot be requested. */
+  UNSPECIFIED = 'UNSPECIFIED',
   /** All current and future venues. Cannot be combined with other scopes. */
   ALL = 'ALL',
   /** Central limit order book trading. */
@@ -50,28 +52,38 @@ export enum SessionKeyScope {
   BLOCKTRADE = 'BLOCKTRADE',
 }
 
-/**
- * Public metadata for a confirmed session-key authorization.
- *
- * @remarks
- * This reflects the validated request after transaction confirmation. It does
- * not report a separate discovery or readiness status.
- */
-export type AuthorizedSessionKey = {
+/** Scope values that may appear in an authorization request or active grant. */
+export type SessionKeyGrantScope =
+  | SessionKeyScope.ALL
+  | SessionKeyScope.CLOB
+  | SessionKeyScope.RFQ
+  | SessionKeyScope.COMBOSRFQ
+  | SessionKeyScope.BLOCKTRADE;
+
+/** Status of a usable session-key grant. */
+export enum SessionKeyStatus {
+  /** The session signer may use its granted scopes until expiry or revocation. */
+  ACTIVE = 'ACTIVE',
+}
+
+/** Public metadata for a usable session-key grant. Never contains key material. */
+export type ActiveSessionKey = {
   /** Public EVM address of the externally managed session signer. */
   address: EvmAddress;
   /** Venue scopes granted to the signer in canonical enum order. */
-  scopes: SessionKeyScope[];
+  scopes: SessionKeyGrantScope[];
   /** Absolute expiry as whole Unix seconds. */
   validUntil: number;
+  /** Current normalized grant status. */
+  status: SessionKeyStatus.ACTIVE;
 };
 
 /** Result of a confirmed session-key authorization. */
 export type AuthorizeSessionKeyResult = {
   /** Identifier assigned to the accepted authorization operation. */
   operationId: string;
-  /** Session-key metadata associated with the confirmed authorization. */
-  sessionKey: AuthorizedSessionKey;
+  /** Active grant associated with the confirmed authorization. */
+  sessionKey: ActiveSessionKey;
   /** Confirmed transaction that applied the authorization. */
   transaction: TransactionOutcome;
 };
@@ -83,14 +95,18 @@ export type AuthorizeSessionKeyRequest = {
   /** Stable key to reuse when retrying the same logical authorization. */
   idempotencyKey?: string;
   /** Non-empty requested scopes. `ALL` must appear alone. */
-  scopes: SessionKeyScope[];
+  scopes: SessionKeyGrantScope[];
   /** Absolute expiry as whole future Unix seconds. */
   validUntil: number;
 };
 
-const SessionKeyScopeSchema = z.enum(
-  SessionKeyScope,
-) satisfies z.ZodType<SessionKeyScope>;
+const SessionKeyGrantScopeSchema = z.enum([
+  SessionKeyScope.ALL,
+  SessionKeyScope.CLOB,
+  SessionKeyScope.RFQ,
+  SessionKeyScope.COMBOSRFQ,
+  SessionKeyScope.BLOCKTRADE,
+]) satisfies z.ZodType<SessionKeyGrantScope>;
 
 const SESSION_KEY_SCOPE_ORDER = [
   SessionKeyScope.ALL,
@@ -103,7 +119,7 @@ const SESSION_KEY_SCOPE_ORDER = [
 type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
-  scopes: SessionKeyScope[];
+  scopes: SessionKeyGrantScope[];
   validUntil: number;
 };
 
@@ -112,7 +128,7 @@ function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
     .object({
       address: EvmAddressSchema,
       idempotencyKey: z.string().trim().min(1).optional(),
-      scopes: z.array(SessionKeyScopeSchema).min(1),
+      scopes: z.array(SessionKeyGrantScopeSchema).min(1),
       validUntil: z.number().int(),
     })
     .superRefine((value, context) => {
@@ -266,6 +282,7 @@ export function authorizeSessionKey(
       sessionKey: {
         address: request.address,
         scopes: request.scopes,
+        status: SessionKeyStatus.ACTIVE,
         validUntil: request.validUntil,
       },
       transaction,
@@ -288,7 +305,7 @@ function assertOwnerDepositWallet(client: BaseSecureClient): void {
 }
 
 function toRelayerSessionSignerScope(
-  scope: SessionKeyScope,
+  scope: SessionKeyGrantScope,
 ): RelayerSessionSignerScope {
   switch (scope) {
     case SessionKeyScope.ALL:
