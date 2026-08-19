@@ -454,6 +454,7 @@ export type SecureAccountActions = Prettify<
     ): Paginated<ClobTrade[]>;
     /**
      * Fetches notifications for the authenticated account.
+     * Notifications of a kind this SDK version does not recognize are omitted.
      *
      * @throws {@link FetchNotificationsError}
      * Thrown on failure.

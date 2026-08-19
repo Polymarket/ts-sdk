@@ -21,13 +21,14 @@ export function createUnsignedOrder(
     makerAmount: order.offeredAmount.toString(),
     metadata: BYTES32_ZERO,
     orderType: order.orderType,
+    protocolVersion: order.exchangeVersion,
     salt: generateOrderSalt().toString(),
     side: order.side,
     signatureType: identity.signatureType,
     signer: identity.signer,
     takerAmount: order.requestedAmount.toString(),
     timestamp: Date.now().toString(),
-    tokenId: order.tokenId,
+    tokenId: order.assetId,
   };
 }
 
@@ -38,6 +39,7 @@ export function createSignedOrder(
   const {
     chainId: _chainId,
     exchangeAddress: _exchangeAddress,
+    protocolVersion: _protocolVersion,
     ...signedFields
   } = order;
 

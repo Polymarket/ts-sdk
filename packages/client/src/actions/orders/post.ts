@@ -19,24 +19,35 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import { mapTradingRestrictionError } from './restrictions';
 import type { SignedOrder } from './types';
 
-const PostOrdersRequestSchema = z.array(z.custom<SignedOrder>()).min(1).max(15);
+const MAX_CLOB_ORDER_SALT = BigInt(Number.MAX_SAFE_INTEGER);
 
-export type PostOrdersRequest = z.input<typeof PostOrdersRequestSchema>;
+const ClobOrderSaltSchema = z.string().refine(isClobSafeSalt, {
+  message: 'Order salt must be a non-negative JavaScript-safe integer.',
+});
+const PostOrderInputSchema = z.looseObject({
+  salt: ClobOrderSaltSchema,
+});
+const PostOrdersRequestSchema = z.array(PostOrderInputSchema).min(1).max(15);
+
+export type PostOrdersRequest = SignedOrder[];
 
 export type PostOrderError =
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const PostOrderError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 export type PostOrdersError =
@@ -78,13 +89,16 @@ export function postOrder(
   client: BaseSecureClient,
 ): (order: SignedOrder) => Promise<OrderResponse> {
   return async function postSignedOrder(order: SignedOrder) {
+    parseUserInput(order, PostOrderInputSchema);
     const payload = createSendOrderPayload(client, order);
 
     return unwrap(
       client.secureClob
         .post('/order', {
           json: payload,
+          rateLimitBucket: 'order',
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponseSchema)),
     );
   };
@@ -113,8 +127,8 @@ export function postOrders(
   client: BaseSecureClient,
 ): (orders: PostOrdersRequest) => Promise<OrderResponses> {
   return async function postSignedOrders(orders: PostOrdersRequest) {
-    const validatedOrders = parseUserInput(orders, PostOrdersRequestSchema);
-    const payload = validatedOrders.map((order) =>
+    parseUserInput(orders, PostOrdersRequestSchema);
+    const payload = orders.map((order) =>
       createSendOrderPayload(client, order),
     );
 
@@ -122,7 +136,9 @@ export function postOrders(
       client.secureClob
         .post('/orders', {
           json: payload,
+          rateLimitBucket: 'order',
         })
+        .mapErr(mapTradingRestrictionError)
         .andThen(validateWith(OrderResponsesSchema)),
     );
   };
@@ -144,7 +160,7 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       maker: order.maker,
       makerAmount: order.makerAmount,
       metadata: order.metadata,
-      salt: Number.parseInt(order.salt, 10),
+      salt: Number(BigInt(order.salt)),
       side: order.side,
       signature: order.signature,
       signatureType: order.signatureType,
@@ -157,4 +173,14 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
     owner: client.credentials.key,
     ...(order.postOnly === true ? { postOnly: true } : {}),
   };
+}
+
+function isClobSafeSalt(value: string): boolean {
+  try {
+    const salt = BigInt(value);
+
+    return salt >= 0n && salt <= MAX_CLOB_ORDER_SALT;
+  } catch {
+    return false;
+  }
 }

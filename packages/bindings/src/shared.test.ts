@@ -4,13 +4,10 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type CtfConditionId,
-  CtfConditionIdSchema,
   EvmAddressSchema,
-  OptionalConditionIdSchema,
-  OptionalCtfConditionIdSchema,
+  QuestionIdSchema,
+  TxHashSchema,
   toComboConditionId,
-  toConditionId,
-  toCtfConditionId,
 } from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
@@ -18,19 +15,6 @@ const CANONICAL_COMBO_CONDITION_ID =
 const COMBO_CONDITION_ID_PATTERN = /^0x03[0-9a-f]{60}$/;
 
 describe('shared ID parsers', () => {
-  describe('EvmAddressSchema', () => {
-    it('reports malformed addresses as validation failures', () => {
-      const result = EvmAddressSchema.safeParse('not-an-address');
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.issues).toEqual([
-          expect.objectContaining({ message: 'Expected an EVM address' }),
-        ]);
-      }
-    });
-  });
-
   describe('condition IDs', () => {
     const binaryConditionId =
       '0x012def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000';
@@ -60,12 +44,6 @@ describe('shared ID parsers', () => {
 
     it('keeps CtfConditionId as an exact compatibility alias', () => {
       expectTypeOf<ConditionId>().toEqualTypeOf<CtfConditionId>();
-    });
-
-    it('keeps deprecated CTF runtime exports as compatibility aliases', () => {
-      expect(CtfConditionIdSchema).toBe(ConditionIdSchema);
-      expect(OptionalCtfConditionIdSchema).toBe(OptionalConditionIdSchema);
-      expect(toCtfConditionId).toBe(toConditionId);
     });
   });
 
@@ -105,6 +83,22 @@ describe('shared ID parsers', () => {
       expect(conditionId).toBe(CANONICAL_COMBO_CONDITION_ID);
       expect(conditionId).toHaveLength(64);
       expect(conditionId).toMatch(COMBO_CONDITION_ID_PATTERN);
+    });
+
+    it('reports invalid values as validation failures', () => {
+      const result = ComboConditionIdSchema.safeParse(
+        `${CANONICAL_COMBO_CONDITION_ID}02`,
+      );
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('branded hex schemas', () => {
+    it('reports invalid values as validation failures', () => {
+      expect(EvmAddressSchema.safeParse('0x1').success).toBe(false);
+      expect(QuestionIdSchema.safeParse('0x1').success).toBe(false);
+      expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
   });
 });

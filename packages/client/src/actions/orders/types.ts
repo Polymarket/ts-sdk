@@ -2,6 +2,7 @@ import type {
   BuilderCode,
   OrderSide,
   OrderType,
+  PositionId,
   TokenId,
 } from '@polymarket/bindings';
 import type { OrderResponse, SignatureType } from '@polymarket/bindings/clob';
@@ -11,13 +12,14 @@ import type {
   EvmSignature,
   HexString,
 } from '@polymarket/types';
+import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { SignOrderRequest } from '../../workflow';
+import type { OrderAsset, OrderRouting } from './asset';
 
-type BasePrepareMarketOrderRequest = {
-  /** TokenID of the Conditional token asset being traded */
-  tokenId: string;
+export type { OrderAsset } from './asset';
 
+type BasePrepareMarketOrderRequest = OrderAsset & {
   /** Optional builder attribution code. */
   builderCode?: HexString;
 
@@ -73,7 +75,7 @@ export type PrepareMarketSellOrderRequest = BasePrepareMarketOrderRequest & {
   side: OrderSide.SELL;
 
   /**
-   * Number of outcome tokens to sell.
+   * Number of outcome shares to sell.
    *
    * This is the human-readable token amount: `1` means one full share, not one
    * 6-decimal base unit.
@@ -95,15 +97,12 @@ export type PrepareMarketOrderRequest =
   | PrepareMarketBuyOrderRequest
   | PrepareMarketSellOrderRequest;
 
-export type PrepareLimitOrderRequest = {
-  /** TokenID of the Conditional token asset being traded */
-  tokenId: string;
-
+export type PrepareLimitOrderRequest = OrderAsset & {
   /** Price used to create the order */
   price: number | string;
 
   /**
-   * Order size in outcome tokens.
+   * Order size in outcome shares.
    *
    * This is the human-readable token amount: `1` means one full share, not one
    * 6-decimal base unit.
@@ -138,7 +137,7 @@ export type PrepareLimitOrderRequest = {
   expiration?: number;
 };
 
-export type OrderDraft = {
+type BaseOrderDraft = {
   builderCode?: BuilderCode;
   chainId: number;
   exchangeAddress: EvmAddress;
@@ -149,8 +148,10 @@ export type OrderDraft = {
   side: OrderSide;
   signer: EvmAddress;
   requestedAmount: bigint;
-  tokenId: TokenId;
 };
+
+/** @internal */
+export type OrderDraft = BaseOrderDraft & OrderRouting;
 
 /**
  * @internal
@@ -164,13 +165,14 @@ export type UnsignedOrder = {
   makerAmount: string;
   metadata: HexString;
   orderType: OrderType;
+  protocolVersion: ExchangeOrderProtocolVersion;
   salt: string;
   side: OrderSide;
   signatureType: SignatureType;
   signer: EvmAddress;
   takerAmount: string;
   timestamp: string;
-  tokenId: TokenId;
+  tokenId: PositionId | TokenId;
 };
 
 export type SignedOrder = {
@@ -186,7 +188,11 @@ export type SignedOrder = {
   signer: EvmAddress;
   takerAmount: string;
   timestamp: string;
-  tokenId: TokenId;
+  /**
+   * Asset identifier encoded in the exchange order. The protocol field is
+   * named `tokenId` for both CTF token IDs and Polymarket V2 position IDs.
+   */
+  tokenId: PositionId | TokenId;
   signature: EvmSignature | Erc1271Signature;
   postOnly?: boolean;
 };
