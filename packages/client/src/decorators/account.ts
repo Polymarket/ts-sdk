@@ -45,7 +45,6 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
-import { withDefaultWallet } from './default-wallet';
 
 type DefaultAccountWallet<TRequest extends { user: string }> = Prettify<
   Omit<TRequest, 'user'> & {
@@ -54,7 +53,7 @@ type DefaultAccountWallet<TRequest extends { user: string }> = Prettify<
      *
      * @defaultValue `client.account.wallet`
      */
-    user?: TRequest['user'];
+    user?: string;
   }
 >;
 
@@ -508,6 +507,26 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
   };
 }
 
+type WithAccountWallet<TRequest> = Omit<TRequest, 'user'> & { user: string };
+
+function withAccountWallet<TRequest extends { user?: string }>(
+  client: BaseSecureClient,
+  request: TRequest = {} as TRequest,
+): WithAccountWallet<TRequest> {
+  if (
+    request === null ||
+    typeof request !== 'object' ||
+    Array.isArray(request)
+  ) {
+    return request as WithAccountWallet<TRequest>;
+  }
+
+  return {
+    ...request,
+    user: request.user === undefined ? client.account.wallet : request.user,
+  };
+}
+
 export function accountActions(client: BasePublicClient): PublicAccountActions;
 export function accountActions(client: BaseSecureClient): SecureAccountActions;
 export function accountActions(
@@ -522,29 +541,22 @@ export function accountActions(
   return {
     ...actions,
     listPositions: (request?: SecureListPositionsRequest) =>
-      listPositions(client, withDefaultWallet(client, 'user', request)),
+      listPositions(client, withAccountWallet(client, request)),
     listClosedPositions: (request?: SecureListClosedPositionsRequest) =>
-      listClosedPositions(client, withDefaultWallet(client, 'user', request)),
+      listClosedPositions(client, withAccountWallet(client, request)),
     listComboPositions: (request?: SecureListComboPositionsRequest) =>
-      listComboPositions(client, withDefaultWallet(client, 'user', request)),
+      listComboPositions(client, withAccountWallet(client, request)),
     fetchPortfolioValue: (request?: SecureFetchPortfolioValueRequest) =>
-      fetchPortfolioValue(client, withDefaultWallet(client, 'user', request)),
+      fetchPortfolioValue(client, withAccountWallet(client, request)),
     fetchTradedMarketCount: (request?: SecureFetchTradedMarketCountRequest) =>
-      fetchTradedMarketCount(
-        client,
-        withDefaultWallet(client, 'user', request),
-      ),
+      fetchTradedMarketCount(client, withAccountWallet(client, request)),
     downloadAccountingSnapshot: (
       request?: SecureDownloadAccountingSnapshotRequest,
-    ) =>
-      downloadAccountingSnapshot(
-        client,
-        withDefaultWallet(client, 'user', request),
-      ),
+    ) => downloadAccountingSnapshot(client, withAccountWallet(client, request)),
     listActivity: (request?: SecureListActivityRequest) =>
-      listActivity(client, withDefaultWallet(client, 'user', request)),
+      listActivity(client, withAccountWallet(client, request)),
     listComboActivity: (request?: SecureListComboActivityRequest) =>
-      listComboActivity(client, withDefaultWallet(client, 'user', request)),
+      listComboActivity(client, withAccountWallet(client, request)),
     listAccountTrades: listAccountTrades.bind(null, client),
     fetchNotifications: fetchNotifications.bind(null, client),
     dropNotifications: dropNotifications.bind(null, client),

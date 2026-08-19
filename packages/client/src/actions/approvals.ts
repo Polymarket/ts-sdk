@@ -321,12 +321,21 @@ export type TradingApprovalRequirements = {
   erc1155: Erc1155TradingApproval[];
 };
 
+/** Parameters for reading a wallet's trading approval state. */
+export type FetchTradingApprovalsStateRequest = {
+  /** Wallet address whose trading approval state should be inspected. */
+  wallet: string;
+};
+
+type ParsedFetchTradingApprovalsStateRequest = {
+  wallet: EvmAddress;
+};
+
 const FetchTradingApprovalsStateRequestSchema = z.object({
   wallet: EvmAddressSchema,
-});
-
-export type FetchTradingApprovalsStateRequest = z.input<
-  typeof FetchTradingApprovalsStateRequestSchema
+}) satisfies z.ZodType<
+  ParsedFetchTradingApprovalsStateRequest,
+  FetchTradingApprovalsStateRequest
 >;
 
 /** The current trading approval state for a wallet. */

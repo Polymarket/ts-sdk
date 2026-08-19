@@ -1,4 +1,3 @@
-import type { Prettify } from '@polymarket/types';
 import {
   approveErc20,
   approveErc1155ForAll,
@@ -27,7 +26,6 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { TransactionHandle } from '../types';
-import { withDefaultWallet } from './default-wallet';
 
 export type PublicWalletActions = {
   /**
@@ -51,19 +49,15 @@ export type PublicWalletActions = {
   ): Promise<TradingApprovalsState>;
 };
 
-type DefaultWallet<TRequest extends { wallet: string }> = Prettify<
-  Omit<TRequest, 'wallet'> & {
-    /**
-     * Wallet address to inspect.
-     *
-     * @defaultValue `client.account.wallet`
-     */
-    wallet?: string;
-  }
->;
-
-export type SecureFetchTradingApprovalsStateRequest =
-  DefaultWallet<FetchTradingApprovalsStateRequest>;
+/** Parameters for reading trading approvals with a secure client. */
+export type SecureFetchTradingApprovalsStateRequest = {
+  /**
+   * Wallet address whose trading approval state should be inspected.
+   *
+   * @defaultValue `client.account.wallet`
+   */
+  wallet?: string;
+};
 
 export type SecureWalletActions = {
   /**
@@ -334,6 +328,25 @@ function publicWalletActions(client: BaseClient): PublicWalletActions {
   };
 }
 
+function withDefaultWallet(
+  client: BaseSecureClient,
+  request: SecureFetchTradingApprovalsStateRequest = {},
+): FetchTradingApprovalsStateRequest {
+  if (
+    request === null ||
+    typeof request !== 'object' ||
+    Array.isArray(request)
+  ) {
+    return request as FetchTradingApprovalsStateRequest;
+  }
+
+  return {
+    ...request,
+    wallet:
+      request.wallet === undefined ? client.account.wallet : request.wallet,
+  };
+}
+
 export function walletActions(client: BasePublicClient): PublicWalletActions;
 export function walletActions(client: BaseSecureClient): SecureWalletActions;
 export function walletActions(
@@ -349,11 +362,7 @@ export function walletActions(
     ...actions,
     fetchTradingApprovalsState: (
       request?: SecureFetchTradingApprovalsStateRequest,
-    ) =>
-      fetchTradingApprovalsState(
-        client,
-        withDefaultWallet(client, 'wallet', request),
-      ),
+    ) => fetchTradingApprovalsState(client, withDefaultWallet(client, request)),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
