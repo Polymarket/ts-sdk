@@ -3,7 +3,7 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type RelayerAuthorizeSessionSignerRequest,
   RelayerAuthorizeSessionSignerResponseSchema,
-  type RelayerSessionSignerScope,
+  RelayerSessionSignerScope,
 } from '@polymarket/bindings/relayer';
 import {
   expectEvmAddress,
@@ -28,6 +28,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
+import type { TransactionOutcome } from '../types';
 import { isDepositWalletOwner } from '../wallet';
 import { completeWith } from '../workflow';
 import {
@@ -37,85 +38,81 @@ import {
 
 /** Venue authorization attached to a session-key grant. */
 export enum SessionKeyScope {
-  /** Reserved service value. It cannot be requested. */
-  UNSPECIFIED = 0,
   /** All current and future venues. Cannot be combined with other scopes. */
-  ALL = 1,
+  ALL = 'ALL',
   /** Central limit order book trading. */
-  CLOB = 2,
+  CLOB = 'CLOB',
   /** Request-for-quote trading. */
-  RFQ = 3,
+  RFQ = 'RFQ',
   /** Combos request-for-quote trading. */
-  COMBOSRFQ = 4,
+  COMBOSRFQ = 'COMBOSRFQ',
   /** Block trading. */
-  BLOCKTRADE = 5,
+  BLOCKTRADE = 'BLOCKTRADE',
 }
 
-/** Scope values that may appear in a request or active grant. */
-export type SessionKeyGrantScope =
-  | SessionKeyScope.ALL
-  | SessionKeyScope.CLOB
-  | SessionKeyScope.RFQ
-  | SessionKeyScope.COMBOSRFQ
-  | SessionKeyScope.BLOCKTRADE;
-
-/** Status of a usable session-key grant. */
-export enum SessionKeyStatus {
-  /** The session signer may use its granted scopes until expiry or revocation. */
-  ACTIVE = 'ACTIVE',
-}
-
-/** Public metadata for a session-key grant. Never contains key material. */
-export type ActiveSessionKey = {
+/**
+ * Public metadata for a confirmed session-key authorization.
+ *
+ * @remarks
+ * This reflects the validated request after transaction confirmation. It does
+ * not report a separate discovery or readiness status.
+ */
+export type AuthorizedSessionKey = {
   /** Public EVM address of the externally managed session signer. */
   address: EvmAddress;
   /** Venue scopes granted to the signer in canonical enum order. */
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   /** Absolute expiry as whole Unix seconds. */
   validUntil: number;
-  /** Current normalized grant status. */
-  status: SessionKeyStatus.ACTIVE;
 };
 
+/** Result of a confirmed session-key authorization. */
 export type AuthorizeSessionKeyResult = {
-  /** Durable operation accepted by the authorization service. */
+  /** Identifier assigned to the accepted authorization operation. */
   operationId: string;
-  /** Grant confirmed by the temporary transaction-readiness check. */
-  sessionKey: ActiveSessionKey;
+  /** Session-key metadata associated with the confirmed authorization. */
+  sessionKey: AuthorizedSessionKey;
+  /** Confirmed transaction that applied the authorization. */
+  transaction: TransactionOutcome;
 };
 
-export type AuthorizeSessionKeyParams = {
+/** Parameters for authorizing a scoped session key. */
+export type AuthorizeSessionKeyRequest = {
   /** Public EVM address of the externally managed session signer. */
   address: string;
-  /** Stable key for safely retrying the same logical authorization. */
+  /** Stable key to reuse when retrying the same logical authorization. */
   idempotencyKey?: string;
   /** Non-empty requested scopes. `ALL` must appear alone. */
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   /** Absolute expiry as whole future Unix seconds. */
   validUntil: number;
 };
 
-const SessionKeyGrantScopeSchema: z.ZodType<SessionKeyGrantScope> = z.union([
-  z.literal(SessionKeyScope.ALL),
-  z.literal(SessionKeyScope.CLOB),
-  z.literal(SessionKeyScope.RFQ),
-  z.literal(SessionKeyScope.COMBOSRFQ),
-  z.literal(SessionKeyScope.BLOCKTRADE),
-]);
+const SessionKeyScopeSchema = z.enum(
+  SessionKeyScope,
+) satisfies z.ZodType<SessionKeyScope>;
 
-type NormalizedAuthorizeSessionKeyParams = {
+const SESSION_KEY_SCOPE_ORDER = [
+  SessionKeyScope.ALL,
+  SessionKeyScope.CLOB,
+  SessionKeyScope.RFQ,
+  SessionKeyScope.COMBOSRFQ,
+  SessionKeyScope.BLOCKTRADE,
+] as const;
+
+type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   validUntil: number;
 };
 
-function createAuthorizeSessionKeyParamsSchema(wallet: EvmAddress) {
-  return z
+function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
+  const schema = z
     .object({
       address: EvmAddressSchema,
       idempotencyKey: z.string().trim().min(1).optional(),
-      scopes: z.array(SessionKeyGrantScopeSchema).min(1),
+      scopes: z.array(SessionKeyScopeSchema).min(1),
       validUntil: z.number().int(),
     })
     .superRefine((value, context) => {
@@ -156,12 +153,19 @@ function createAuthorizeSessionKeyParamsSchema(wallet: EvmAddress) {
       }
     })
     .transform(
-      (value): NormalizedAuthorizeSessionKeyParams => ({
+      (value): ParsedAuthorizeSessionKeyRequest => ({
         ...value,
         address: expectEvmAddress(value.address.toLowerCase()),
-        scopes: [...new Set(value.scopes)].sort((left, right) => left - right),
+        scopes: SESSION_KEY_SCOPE_ORDER.filter((scope) =>
+          value.scopes.includes(scope),
+        ),
       }),
     );
+
+  return schema satisfies z.ZodType<
+    ParsedAuthorizeSessionKeyRequest,
+    AuthorizeSessionKeyRequest
+  >;
 }
 
 export type AuthorizeSessionKeyError =
@@ -193,9 +197,11 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * responsible for generating, storing, and protecting the private key.
  *
  * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
  * This temporary implementation resolves after the submitted transaction is
- * confirmed. Authoritative Wallet Registry readiness polling will replace
- * this check once active session-key listing is available.
+ * confirmed. Session-key listing is not yet available, so the SDK cannot
+ * perform a separate discovery and readiness check.
  *
  * @example
  * ```ts
@@ -211,13 +217,13 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  */
 export function authorizeSessionKey(
   client: BaseSecureClient,
-): (params: AuthorizeSessionKeyParams) => Promise<AuthorizeSessionKeyResult> {
-  return async function authorize(params) {
+): (request: AuthorizeSessionKeyRequest) => Promise<AuthorizeSessionKeyResult> {
+  return async function authorize(input) {
     assertOwnerDepositWallet(client);
 
     const request = parseUserInput(
-      params,
-      createAuthorizeSessionKeyParamsSchema(client.account.wallet),
+      input,
+      createAuthorizeSessionKeyRequestSchema(client.account.wallet),
     );
     const signedBatch = await completeWith(client.signer)(
       buildDepositWalletExecuteRequest(client, [
@@ -250,16 +256,19 @@ export function authorizeSessionKey(
     );
 
     // TODO(TRA-354): Session-key listing is still pending; poll it for authoritative readiness once available.
-    await new GaslessTransactionHandle(client, response).wait();
+    const transaction = await new GaslessTransactionHandle(
+      client,
+      response,
+    ).wait();
 
     return {
       operationId: response.operationId,
       sessionKey: {
         address: request.address,
         scopes: request.scopes,
-        status: SessionKeyStatus.ACTIVE,
         validUntil: request.validUntil,
       },
+      transaction,
     };
   };
 }
@@ -279,18 +288,18 @@ function assertOwnerDepositWallet(client: BaseSecureClient): void {
 }
 
 function toRelayerSessionSignerScope(
-  scope: SessionKeyGrantScope,
+  scope: SessionKeyScope,
 ): RelayerSessionSignerScope {
   switch (scope) {
     case SessionKeyScope.ALL:
-      return 'ALL';
+      return RelayerSessionSignerScope.ALL;
     case SessionKeyScope.CLOB:
-      return 'CLOB';
+      return RelayerSessionSignerScope.CLOB;
     case SessionKeyScope.RFQ:
-      return 'RFQ';
+      return RelayerSessionSignerScope.RFQ;
     case SessionKeyScope.COMBOSRFQ:
-      return 'COMBOSRFQ';
+      return RelayerSessionSignerScope.COMBOSRFQ;
     case SessionKeyScope.BLOCKTRADE:
-      return 'BLOCKTRADE';
+      return RelayerSessionSignerScope.BLOCKTRADE;
   }
 }

@@ -1,5 +1,5 @@
 import {
-  type AuthorizeSessionKeyParams,
+  type AuthorizeSessionKeyRequest,
   type AuthorizeSessionKeyResult,
   authorizeSessionKey,
 } from '../actions';
@@ -14,8 +14,8 @@ export type SessionKeyActions = {
    *
    * @remarks
    * This temporary implementation resolves after the submitted transaction is
-   * confirmed. Authoritative Wallet Registry readiness polling will replace
-   * this check once active session-key listing is available.
+   * confirmed. Session-key listing is not yet available, so the SDK cannot
+   * perform a separate discovery and readiness check.
    *
    * @example
    * ```ts
@@ -30,7 +30,7 @@ export type SessionKeyActions = {
    * Thrown on failure.
    */
   authorizeSessionKey(
-    params: AuthorizeSessionKeyParams,
+    request: AuthorizeSessionKeyRequest,
   ): Promise<AuthorizeSessionKeyResult>;
 };
 
@@ -41,13 +41,8 @@ export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
 }
 
 export type {
-  ActiveSessionKey,
-  AuthorizeSessionKeyParams,
+  AuthorizedSessionKey,
+  AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
-  SessionKeyGrantScope,
 } from '../actions';
-export {
-  AuthorizeSessionKeyError,
-  SessionKeyScope,
-  SessionKeyStatus,
-} from '../actions';
+export { AuthorizeSessionKeyError, SessionKeyScope } from '../actions';
