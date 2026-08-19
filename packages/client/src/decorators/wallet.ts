@@ -1,3 +1,4 @@
+import type { Prettify } from '@polymarket/types';
 import {
   approveErc20,
   approveErc1155ForAll,
@@ -50,14 +51,16 @@ export type PublicWalletActions = {
 };
 
 /** Parameters for reading trading approvals with a secure client. */
-export type SecureFetchTradingApprovalsStateRequest = {
-  /**
-   * Wallet address whose trading approval state should be inspected.
-   *
-   * @defaultValue `client.account.wallet`
-   */
-  wallet?: string;
-};
+export type SecureFetchTradingApprovalsStateRequest = Prettify<
+  Omit<FetchTradingApprovalsStateRequest, 'wallet'> & {
+    /**
+     * Wallet address whose trading approval state should be inspected.
+     *
+     * @defaultValue `client.account.wallet`
+     */
+    wallet?: string;
+  }
+>;
 
 export type SecureWalletActions = {
   /**

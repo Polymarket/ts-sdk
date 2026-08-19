@@ -331,9 +331,14 @@ type ParsedFetchTradingApprovalsStateRequest = {
   wallet: EvmAddress;
 };
 
+// ZodType is covariant, so constrain the shape separately to reject
+// schema-only request keys.
 const FetchTradingApprovalsStateRequestSchema = z.object({
   wallet: EvmAddressSchema,
-}) satisfies z.ZodType<
+} satisfies Record<
+  keyof FetchTradingApprovalsStateRequest,
+  z.ZodType
+>) satisfies z.ZodType<
   ParsedFetchTradingApprovalsStateRequest,
   FetchTradingApprovalsStateRequest
 >;
