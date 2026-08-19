@@ -10,6 +10,7 @@ import {
 } from '@polymarket/types';
 import { AbiParameters, Bytes, Hash } from 'ox';
 import type { TypedDataField, TypedDataPayload } from './types';
+import { wrapDepositWalletSessionSignerSignature } from './wallet';
 
 const PROTOCOL_NAME = 'Polymarket CTF Exchange';
 const DEPOSIT_WALLET_DOMAIN_NAME = 'DepositWallet';
@@ -111,6 +112,7 @@ export type CreateExchangeOrderTypedDataPayloadParams = {
 export type CreateExchangeOrderSignatureParams = {
   domain: ExchangeOrderDomain;
   order: ExchangeOrderInput;
+  sessionSigner?: EvmAddress;
   signature: EvmSignature;
 };
 
@@ -158,9 +160,13 @@ export function createExchangeOrderSignature(
     .toString(16)
     .padStart(4, '0');
 
-  return expectErc1271Signature(
+  const signature = expectErc1271Signature(
     `0x${params.signature.slice(2)}${createExchangeOrderDomainSeparator(params.domain).slice(2)}${createExchangeOrderContentsHash(params.order).slice(2)}${contentsType.slice(2)}${contentsTypeLength}`,
   );
+
+  return params.sessionSigner === undefined
+    ? signature
+    : wrapDepositWalletSessionSignerSignature(params.sessionSigner, signature);
 }
 
 /** @internal */

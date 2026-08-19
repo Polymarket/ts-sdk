@@ -1,4 +1,8 @@
-import type { Erc1271Signature, EvmSignature } from '@polymarket/types';
+import type {
+  Erc1271Signature,
+  EvmAddress,
+  EvmSignature,
+} from '@polymarket/types';
 import {
   createExchangeOrderSignature,
   createExchangeOrderTypedDataPayload,
@@ -18,10 +22,12 @@ export function createOrderTypedDataPayload(
 export function createOrderSignature(
   order: UnsignedOrder,
   signature: EvmSignature,
+  sessionSigner?: EvmAddress,
 ): EvmSignature | Erc1271Signature {
   return createExchangeOrderSignature({
     domain: createOrderExchangeDomain(order),
     order,
+    sessionSigner,
     signature,
   });
 }

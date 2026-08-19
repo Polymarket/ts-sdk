@@ -46,6 +46,7 @@ export type CreateRfqQuoteParams = {
   exchange: EvmAddress;
   request: RfqQuoteRequest;
   response: ParsedRfqQuoteResponse;
+  sessionSigner?: EvmAddress;
   signer: Signer;
 };
 
@@ -75,6 +76,7 @@ export async function createRfqQuote(
     exchange: params.exchange,
     orderPrice: quoteOrderPrice(params.request, params.response.source, price),
     orderSide: quoteOrderSide(params.response.source),
+    sessionSigner: params.sessionSigner,
     signer: params.signer,
     size,
     tokenId: quoteOrderTokenId(params.request, params.response.source),

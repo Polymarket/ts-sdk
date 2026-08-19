@@ -2,6 +2,7 @@ import type { Market, PublicClient } from '@polymarket/client';
 
 export async function findHighVolumeLowPriceMarket(
   publicClient: PublicClient,
+  options: { sportsOnly?: boolean } = {},
 ): Promise<Market> {
   const paginator = publicClient.listMarkets({
     closed: false,
@@ -9,7 +10,9 @@ export async function findHighVolumeLowPriceMarket(
     pageSize: 1000,
     order: 'liquidityNum',
     ascending: false,
-    sportsMarketTypes: ['moneyline', 'spreads', 'totals'],
+    ...(options.sportsOnly !== false && {
+      sportsMarketTypes: ['moneyline', 'spreads', 'totals'],
+    }),
   });
 
   for await (const page of paginator) {

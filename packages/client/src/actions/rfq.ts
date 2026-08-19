@@ -73,7 +73,10 @@ import {
 } from '../exchange';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
-import { resolveOrderIdentity } from '../wallet';
+import {
+  resolveDepositWalletSessionSigner,
+  resolveOrderIdentity,
+} from '../wallet';
 
 export {
   ComboAcceptFailureReason,
@@ -1229,7 +1232,15 @@ async function signComboAcceptanceOrder(
 
   return {
     ...order,
-    signature: createExchangeOrderSignature({ domain, order, signature }),
+    signature: createExchangeOrderSignature({
+      domain,
+      order,
+      sessionSigner: resolveDepositWalletSessionSigner(
+        client.environment,
+        client.account,
+      ),
+      signature,
+    }),
   };
 }
 
