@@ -103,13 +103,6 @@ export enum PerpsKnownCancelOrderErrorCode {
 }
 
 /**
- * Runtime values for known Perps order cancellation rejection identifiers.
- *
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export const PerpsCancelOrderErrorCode = PerpsKnownCancelOrderErrorCode;
-
-/**
  * A Perps order cancellation rejection identifier. Known identifiers are
  * enumerated in {@link PerpsKnownCancelOrderErrorCode}; newly introduced
  * identifiers flow through as plain strings so they can be handled before a

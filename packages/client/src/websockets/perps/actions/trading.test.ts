@@ -362,6 +362,7 @@ describe('Perps trading actions', () => {
       'ip_rate_limited',
       'action_rate_limited',
       'internal_error',
+      'message_rate_limited',
     ])('throws the request-level %s rejection for one order', async (error) => {
       const { client, requests } = cancelExecutor([[{ error, status: 'err' }]]);
 
@@ -372,6 +373,36 @@ describe('Perps trading actions', () => {
         name: RequestRejectedError.name,
       });
       expect(requests).toHaveLength(1);
+    });
+
+    it('keeps identified internal errors after narrowing the retry batch', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const { client, requests } = cancelExecutor([
+        [
+          { oid: 1, status: 'ok' },
+          { error: 'order_in_flight', oid: 2, status: 'err' },
+        ],
+        [{ error: 'internal_error', oid: 2, status: 'err' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, {
+          orderIds: [1, 2],
+          retry: { maxAttempts: 2, maxElapsedMs: 1_000 },
+        }),
+      ).resolves.toEqual([
+        { clientOrderId: undefined, orderId: 1, status: 'ok' },
+        {
+          clientOrderId: undefined,
+          error: 'internal_error',
+          orderId: 2,
+          status: 'err',
+        },
+      ]);
+      expect(requests.map((request) => request.op)).toEqual([
+        ['cancelOrders', [1, 2]],
+        ['cancelOrders', [2]],
+      ]);
     });
 
     it('does not map a request-level rejection to the first batch item', async () => {

@@ -22,6 +22,7 @@ import type {
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
   PerpsCancelOptions,
+  PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
   PerpsSessionAccountError,
@@ -39,7 +40,6 @@ import type {
 } from '../index';
 import {
   FetchPerpsTickerError,
-  PerpsCancelOrderErrorCode,
   PerpsKnownCancelOrderErrorCode,
   UpdatePerpsMarginError,
 } from '../index';
@@ -126,7 +126,6 @@ describe('public Perps exports', () => {
     } else {
       expectTypeOf(result.error).toEqualTypeOf<undefined>();
     }
-    void PerpsCancelOrderErrorCode.OrderInFlight;
     void PerpsKnownCancelOrderErrorCode.OrderInFlight;
   });
 });

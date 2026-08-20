@@ -811,12 +811,6 @@ const DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS = 4;
 const DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS = 2_000;
 const PERPS_CANCEL_RETRY_BASE_DELAY_MS = 100;
 const PERPS_CANCEL_RETRY_MAX_DELAY_MS = 1_000;
-const PERPS_CANCEL_REQUEST_REJECTION_CODES = new Set([
-  'invalid_request',
-  'ip_rate_limited',
-  'action_rate_limited',
-  'internal_error',
-]);
 
 const PerpsCancelRetryOptionsSchema = z
   .object({
@@ -1087,7 +1081,8 @@ function perpsCancelRequestRejectionFrom(
   if (
     results.length !== 1 ||
     result?.status !== 'err' ||
-    !PERPS_CANCEL_REQUEST_REJECTION_CODES.has(result.error)
+    result.orderId !== undefined ||
+    result.clientOrderId !== undefined
   ) {
     return undefined;
   }

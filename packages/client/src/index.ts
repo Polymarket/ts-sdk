@@ -8,7 +8,6 @@ export type * from '@polymarket/bindings/gamma';
 export { WalletType } from '@polymarket/bindings/gamma';
 export type * from '@polymarket/bindings/perps';
 export {
-  PerpsCancelOrderErrorCode,
   PerpsDepositStatus,
   PerpsInstrumentCategory,
   PerpsInstrumentType,
