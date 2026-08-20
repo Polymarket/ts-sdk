@@ -38,52 +38,38 @@ import {
 
 /** Venue authorization attached to a session-key grant. */
 export enum SessionKeyScope {
-  /** Reserved scope value. It cannot be requested. */
-  UNSPECIFIED = 'UNSPECIFIED',
   /** All current and future venues. Cannot be combined with other scopes. */
   ALL = 'ALL',
   /** Central limit order book trading. */
   CLOB = 'CLOB',
-  /** Request-for-quote trading. */
-  RFQ = 'RFQ',
   /** Combos request-for-quote trading. */
   COMBOSRFQ = 'COMBOSRFQ',
   /** Block trading. */
   BLOCKTRADE = 'BLOCKTRADE',
 }
 
-/** Scope values that may appear in an authorization request or active grant. */
-export type SessionKeyGrantScope =
-  | SessionKeyScope.ALL
-  | SessionKeyScope.CLOB
-  | SessionKeyScope.RFQ
-  | SessionKeyScope.COMBOSRFQ
-  | SessionKeyScope.BLOCKTRADE;
-
-/** Status of a usable session-key grant. */
-export enum SessionKeyStatus {
-  /** The session signer may use its granted scopes until expiry or revocation. */
-  ACTIVE = 'ACTIVE',
-}
-
-/** Public metadata for a usable session-key grant. Never contains key material. */
-export type ActiveSessionKey = {
+/**
+ * Public metadata for a confirmed session-key authorization.
+ *
+ * @remarks
+ * This reflects the validated request after transaction confirmation. It does
+ * not report a separate discovery or readiness status.
+ */
+export type AuthorizedSessionKey = {
   /** Public EVM address of the externally managed session signer. */
   address: EvmAddress;
   /** Venue scopes granted to the signer in canonical enum order. */
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   /** Absolute expiry as whole Unix seconds. */
   validUntil: number;
-  /** Current normalized grant status. */
-  status: SessionKeyStatus.ACTIVE;
 };
 
 /** Result of a confirmed session-key authorization. */
 export type AuthorizeSessionKeyResult = {
   /** Identifier assigned to the accepted authorization operation. */
   operationId: string;
-  /** Active grant associated with the confirmed authorization. */
-  sessionKey: ActiveSessionKey;
+  /** Session-key metadata associated with the confirmed authorization. */
+  sessionKey: AuthorizedSessionKey;
   /** Confirmed transaction that applied the authorization. */
   transaction: TransactionOutcome;
 };
@@ -95,23 +81,18 @@ export type AuthorizeSessionKeyRequest = {
   /** Stable key to reuse when retrying the same logical authorization. */
   idempotencyKey?: string;
   /** Non-empty requested scopes. `ALL` must appear alone. */
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   /** Absolute expiry as whole future Unix seconds. */
   validUntil: number;
 };
 
-const SessionKeyGrantScopeSchema = z.enum([
-  SessionKeyScope.ALL,
-  SessionKeyScope.CLOB,
-  SessionKeyScope.RFQ,
-  SessionKeyScope.COMBOSRFQ,
-  SessionKeyScope.BLOCKTRADE,
-]) satisfies z.ZodType<SessionKeyGrantScope>;
+const SessionKeyScopeSchema = z.enum(
+  SessionKeyScope,
+) satisfies z.ZodType<SessionKeyScope>;
 
 const SESSION_KEY_SCOPE_ORDER = [
   SessionKeyScope.ALL,
   SessionKeyScope.CLOB,
-  SessionKeyScope.RFQ,
   SessionKeyScope.COMBOSRFQ,
   SessionKeyScope.BLOCKTRADE,
 ] as const;
@@ -119,7 +100,7 @@ const SESSION_KEY_SCOPE_ORDER = [
 type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
-  scopes: SessionKeyGrantScope[];
+  scopes: SessionKeyScope[];
   validUntil: number;
 };
 
@@ -128,7 +109,7 @@ function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
     .object({
       address: EvmAddressSchema,
       idempotencyKey: z.string().trim().min(1).optional(),
-      scopes: z.array(SessionKeyGrantScopeSchema).min(1),
+      scopes: z.array(SessionKeyScopeSchema).min(1),
       validUntil: z.number().int(),
     })
     .superRefine((value, context) => {
@@ -282,7 +263,6 @@ export async function authorizeSessionKey(
     sessionKey: {
       address: parsedRequest.address,
       scopes: parsedRequest.scopes,
-      status: SessionKeyStatus.ACTIVE,
       validUntil: parsedRequest.validUntil,
     },
     transaction,
@@ -304,15 +284,13 @@ function assertOwnerDepositWallet(client: BaseSecureClient): void {
 }
 
 function toRelayerSessionSignerScope(
-  scope: SessionKeyGrantScope,
+  scope: SessionKeyScope,
 ): RelayerSessionSignerScope {
   switch (scope) {
     case SessionKeyScope.ALL:
       return RelayerSessionSignerScope.ALL;
     case SessionKeyScope.CLOB:
       return RelayerSessionSignerScope.CLOB;
-    case SessionKeyScope.RFQ:
-      return RelayerSessionSignerScope.RFQ;
     case SessionKeyScope.COMBOSRFQ:
       return RelayerSessionSignerScope.COMBOSRFQ;
     case SessionKeyScope.BLOCKTRADE:

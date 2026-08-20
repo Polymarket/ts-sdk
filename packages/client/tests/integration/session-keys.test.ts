@@ -1,10 +1,6 @@
 import { OrderSide } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
-import {
-  createSecureClient,
-  SessionKeyScope,
-  SessionKeyStatus,
-} from '@polymarket/client';
+import { createSecureClient, SessionKeyScope } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { expectPresent } from '@polymarket/types';
 import { http } from 'viem';
@@ -47,7 +43,6 @@ describe('Session keys', { timeout: 300_000 }, () => {
     expect(authorization.sessionKey).toEqual({
       address: sessionAddress.toLowerCase(),
       scopes: [SessionKeyScope.CLOB],
-      status: SessionKeyStatus.ACTIVE,
       validUntil,
     });
 

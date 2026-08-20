@@ -14,8 +14,6 @@ export enum RelayerSessionSignerScope {
   ALL = 'ALL',
   /** Central limit order book trading. */
   CLOB = 'CLOB',
-  /** Request-for-quote trading. */
-  RFQ = 'RFQ',
   /** Combos request-for-quote trading. */
   COMBOSRFQ = 'COMBOSRFQ',
   /** Block trading. */

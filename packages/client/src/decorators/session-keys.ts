@@ -41,13 +41,8 @@ export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
 }
 
 export type {
-  ActiveSessionKey,
+  AuthorizedSessionKey,
   AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
-  SessionKeyGrantScope,
 } from '../actions';
-export {
-  AuthorizeSessionKeyError,
-  SessionKeyScope,
-  SessionKeyStatus,
-} from '../actions';
+export { AuthorizeSessionKeyError, SessionKeyScope } from '../actions';
