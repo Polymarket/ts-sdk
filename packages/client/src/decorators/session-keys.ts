@@ -36,7 +36,7 @@ export type SessionKeyActions = {
 
 export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
   return {
-    authorizeSessionKey: authorizeSessionKey(client),
+    authorizeSessionKey: authorizeSessionKey.bind(null, client),
   };
 }
 

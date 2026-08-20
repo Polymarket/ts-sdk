@@ -221,7 +221,7 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const authorization = await authorizeSessionKey(client)({
+ * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
  *   scopes: [SessionKeyScope.CLOB],
  *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
@@ -231,62 +231,61 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * @throws {@link AuthorizeSessionKeyError}
  * Thrown on failure.
  */
-export function authorizeSessionKey(
+export async function authorizeSessionKey(
   client: BaseSecureClient,
-): (request: AuthorizeSessionKeyRequest) => Promise<AuthorizeSessionKeyResult> {
-  return async function authorize(input) {
-    assertOwnerDepositWallet(client);
+  request: AuthorizeSessionKeyRequest,
+): Promise<AuthorizeSessionKeyResult> {
+  assertOwnerDepositWallet(client);
 
-    const request = parseUserInput(
-      input,
-      createAuthorizeSessionKeyRequestSchema(client.account.wallet),
-    );
-    const signedBatch = await completeWith(client.signer)(
-      buildDepositWalletExecuteRequest(client, [
-        authorizeSessionSignerCall(
-          client.account.wallet,
-          request.address,
-          BigInt(request.validUntil),
-        ),
-      ]),
-    );
-    const payload: RelayerAuthorizeSessionSignerRequest = {
-      deadline: signedBatch.depositWalletParams.deadline,
-      nonce: signedBatch.nonce,
-      scopes: request.scopes.map(toRelayerSessionSignerScope),
-      sessionSignerAddress: request.address,
-      signature: signedBatch.signature,
-      validUntil: `${request.validUntil}`,
-      walletAddress: client.account.wallet,
-    };
-    const response = await unwrap(
-      client.relayer
-        .post('/v1/session-signers/authorizations', {
-          headers: {
-            'Idempotency-Key':
-              request.idempotencyKey ?? globalThis.crypto.randomUUID(),
-          },
-          json: payload,
-        })
-        .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
-    );
+  const parsedRequest = parseUserInput(
+    request,
+    createAuthorizeSessionKeyRequestSchema(client.account.wallet),
+  );
+  const signedBatch = await completeWith(client.signer)(
+    buildDepositWalletExecuteRequest(client, [
+      authorizeSessionSignerCall(
+        client.account.wallet,
+        parsedRequest.address,
+        BigInt(parsedRequest.validUntil),
+      ),
+    ]),
+  );
+  const payload: RelayerAuthorizeSessionSignerRequest = {
+    deadline: signedBatch.depositWalletParams.deadline,
+    nonce: signedBatch.nonce,
+    scopes: parsedRequest.scopes.map(toRelayerSessionSignerScope),
+    sessionSignerAddress: parsedRequest.address,
+    signature: signedBatch.signature,
+    validUntil: `${parsedRequest.validUntil}`,
+    walletAddress: client.account.wallet,
+  };
+  const response = await unwrap(
+    client.relayer
+      .post('/v1/session-signers/authorizations', {
+        headers: {
+          'Idempotency-Key':
+            parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
+        },
+        json: payload,
+      })
+      .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
+  );
 
-    // TODO(TRA-354): Session-key listing is still pending; poll it for authoritative readiness once available.
-    const transaction = await new GaslessTransactionHandle(
-      client,
-      response,
-    ).wait();
+  // TODO(TRA-354): Session-key listing is still pending; poll it for authoritative readiness once available.
+  const transaction = await new GaslessTransactionHandle(
+    client,
+    response,
+  ).wait();
 
-    return {
-      operationId: response.operationId,
-      sessionKey: {
-        address: request.address,
-        scopes: request.scopes,
-        status: SessionKeyStatus.ACTIVE,
-        validUntil: request.validUntil,
-      },
-      transaction,
-    };
+  return {
+    operationId: response.operationId,
+    sessionKey: {
+      address: parsedRequest.address,
+      scopes: parsedRequest.scopes,
+      status: SessionKeyStatus.ACTIVE,
+      validUntil: parsedRequest.validUntil,
+    },
+    transaction,
   };
 }
 
