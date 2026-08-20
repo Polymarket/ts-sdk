@@ -324,17 +324,17 @@ export type TradingApprovalRequirements = {
 /** Parameters for reading a wallet's trading approval state. */
 export type FetchTradingApprovalsStateRequest = {
   /** Wallet address whose trading approval state should be inspected. */
-  wallet: string;
+  user: string;
 };
 
 type ParsedFetchTradingApprovalsStateRequest = {
-  wallet: EvmAddress;
+  user: EvmAddress;
 };
 
 // ZodType is covariant, so constrain the shape separately to reject
 // schema-only request keys.
 const FetchTradingApprovalsStateRequestSchema = z.object({
-  wallet: EvmAddressSchema,
+  user: EvmAddressSchema,
 } satisfies Record<
   keyof FetchTradingApprovalsStateRequest,
   z.ZodType
@@ -372,7 +372,7 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
  * @example
  * ```ts
  * const state = await fetchTradingApprovalsState(client, {
- *   wallet: '0x1234…',
+ *   user: '0x1234…',
  * });
  *
  * if (!state.isFullyApproved) {
@@ -387,11 +387,11 @@ export async function fetchTradingApprovalsState(
   client: BaseClient,
   request: FetchTradingApprovalsStateRequest,
 ): Promise<TradingApprovalsState> {
-  const { wallet } = parseUserInput(
+  const { user } = parseUserInput(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const missing = await resolveMissingTradingApprovals(client, wallet);
+  const missing = await resolveMissingTradingApprovals(client, user);
 
   return {
     isFullyApproved: missing.erc20.length === 0 && missing.erc1155.length === 0,

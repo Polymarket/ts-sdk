@@ -32,7 +32,7 @@ describe('Approvals', () => {
 
       try {
         const state = await publicClient.fetchTradingApprovalsState({
-          wallet: ZERO_ADDRESS,
+          user: ZERO_ADDRESS,
         });
 
         expect(state.isFullyApproved).toBe(false);
@@ -85,8 +85,8 @@ describe('Approvals', () => {
         for (const request of [
           null,
           [],
-          { wallet: null },
-          { wallet: 'not-an-address' },
+          { user: null },
+          { user: 'not-an-address' },
         ]) {
           await expect(
             secureClientWithDepositWallet.fetchTradingApprovalsState(

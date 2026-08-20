@@ -41,7 +41,7 @@ export type PublicWalletActions = {
    * @example
    * ```ts
    * const state = await client.fetchTradingApprovalsState({
-   *   wallet: '0x1234…',
+   *   user: '0x1234…',
    * });
    * ```
    */
@@ -52,13 +52,13 @@ export type PublicWalletActions = {
 
 /** Parameters for reading trading approvals with a secure client. */
 export type SecureFetchTradingApprovalsStateRequest = Prettify<
-  Omit<FetchTradingApprovalsStateRequest, 'wallet'> & {
+  Omit<FetchTradingApprovalsStateRequest, 'user'> & {
     /**
      * Wallet address whose trading approval state should be inspected.
      *
      * @defaultValue `client.account.wallet`
      */
-    wallet?: string;
+    user?: string;
   }
 >;
 
@@ -66,7 +66,7 @@ export type SecureWalletActions = {
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
-   * Defaults to the authenticated account's wallet when `wallet` is omitted.
+   * Defaults to the authenticated account's wallet when `user` is omitted.
    * This method only reads on-chain state and does not submit transactions.
    *
    * @throws {@link FetchTradingApprovalsStateError}
@@ -331,7 +331,7 @@ function publicWalletActions(client: BaseClient): PublicWalletActions {
   };
 }
 
-function withDefaultWallet(
+function withAccountWallet(
   client: BaseSecureClient,
   request: SecureFetchTradingApprovalsStateRequest = {},
 ): FetchTradingApprovalsStateRequest {
@@ -345,8 +345,7 @@ function withDefaultWallet(
 
   return {
     ...request,
-    wallet:
-      request.wallet === undefined ? client.account.wallet : request.wallet,
+    user: request.user === undefined ? client.account.wallet : request.user,
   };
 }
 
@@ -365,7 +364,7 @@ export function walletActions(
     ...actions,
     fetchTradingApprovalsState: (
       request?: SecureFetchTradingApprovalsStateRequest,
-    ) => fetchTradingApprovalsState(client, withDefaultWallet(client, request)),
+    ) => fetchTradingApprovalsState(client, withAccountWallet(client, request)),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
