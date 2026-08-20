@@ -14,8 +14,11 @@ import { describe, expect, it, runMeteredTests } from './fixtures';
 const POLYGON_CHAIN_ID = '137';
 const POLYGON_NATIVE_USDC = '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359';
 const POLYGON_PUSD = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB';
-const WITHDRAWAL_AMOUNT = 2_100_000n;
-const DEPOSIT_AMOUNT = 2_000_000n;
+const WITHDRAWAL_AMOUNT = 2_300_000n;
+const DEPOSIT_AMOUNT = 2_200_000n;
+const MIN_DEPOSIT_OUTPUT = 2_150_000n;
+const MIN_DEPOSIT_RECEIVED = 2.15;
+const MIN_WITHDRAWAL_RECEIVED = 2.2;
 
 describe('Account funding', () => {
   it('fetches the currently supported assets', async ({ publicClient }) => {
@@ -72,8 +75,7 @@ describe('Account funding', () => {
       transactionCount += page.items.length;
       reachedTerminalPage = !page.hasMore;
 
-      // The legacy proxy ignores `limit` and returns one terminal page. Once
-      // pagination is deployed, continued pages must honor the requested size.
+      // Continued pages must honor the requested size and expose a cursor.
       if (page.hasMore) {
         expect(page.items.length).toBeLessThanOrEqual(1);
         expect(page.nextCursor).toEqual(expect.any(String));
@@ -98,15 +100,16 @@ describe('Account funding', () => {
     expect(reachedTerminalPage).toBe(true);
   });
 
-  // This round trip irreversibly spends bridge fees and moves up to 2.10 USDC
-  // of live funds. It is opt-in, guards both routes before the first transfer,
-  // and refreshes the deposit quote immediately before that transfer.
+  // This round trip irreversibly spends bridge fees and moves 2.30 pUSD plus
+  // 2.20 USDC of live funds. It is opt-in, guards both routes before the first
+  // transfer, and refreshes the deposit quote immediately before that transfer.
   it.runIf(runMeteredTests)(
-    'round-trips the minimum pUSD withdrawal through the bridge',
+    'round-trips pUSD through the bridge',
     async ({ builderCode, secureClientWithDepositWallet, skip }) => {
       const client = secureClientWithDepositWallet;
 
       if (
+        client.environment.name !== 'production' ||
         client.environment.chainId !== Number(POLYGON_CHAIN_ID) ||
         client.environment.bridge.rest !== 'https://bridge.polymarket.com' ||
         client.environment.contracts.collateralToken.toLowerCase() !==
@@ -141,7 +144,7 @@ describe('Account funding', () => {
         return;
       }
 
-      if (nativeUsdc.minCheckoutUsd > 2 || pusd.minCheckoutUsd > 2.1) {
+      if (nativeUsdc.minCheckoutUsd > 2.2 || pusd.minCheckoutUsd > 2.3) {
         skip('The metered amounts are below the current funding minimums');
         return;
       }
@@ -149,7 +152,8 @@ describe('Account funding', () => {
       const balanceAllowance = await fetchBalanceAllowance(client, {
         assetType: AssetType.COLLATERAL,
       });
-      if (BigInt(balanceAllowance.balance) < WITHDRAWAL_AMOUNT) {
+      const startingCollateralBalance = BigInt(balanceAllowance.balance);
+      if (startingCollateralBalance < WITHDRAWAL_AMOUNT) {
         skip('The integration wallet has insufficient pUSD for the round trip');
         return;
       }
@@ -180,12 +184,12 @@ describe('Account funding', () => {
       });
 
       if (
-        withdrawalQuote.estFeeBreakdown.minReceived < 2 ||
+        withdrawalQuote.estFeeBreakdown.minReceived < MIN_WITHDRAWAL_RECEIVED ||
         BigInt(withdrawalQuote.estToTokenBaseUnit) < DEPOSIT_AMOUNT ||
-        BigInt(depositPreflightQuote.estToTokenBaseUnit) < 1_950_000n ||
-        depositPreflightQuote.estFeeBreakdown.minReceived < 1.95
+        BigInt(depositPreflightQuote.estToTokenBaseUnit) < MIN_DEPOSIT_OUTPUT ||
+        depositPreflightQuote.estFeeBreakdown.minReceived < MIN_DEPOSIT_RECEIVED
       ) {
-        skip('The live quotes cannot safely complete the minimum round trip');
+        skip('The live quotes cannot safely complete the metered round trip');
         return;
       }
 
@@ -227,13 +231,18 @@ describe('Account funding', () => {
       });
 
       if (
-        BigInt(depositQuote.estToTokenBaseUnit) < 1_950_000n ||
-        depositQuote.estFeeBreakdown.minReceived < 1.95
+        BigInt(depositQuote.estToTokenBaseUnit) < MIN_DEPOSIT_OUTPUT ||
+        depositQuote.estFeeBreakdown.minReceived < MIN_DEPOSIT_RECEIVED
       ) {
         throw new Error(
           'The refreshed deposit quote is unsafe; withdrawn USDC was not deposited',
         );
       }
+      const minimumReturnedCollateral = BigInt(
+        Math.floor(
+          depositQuote.estFeeBreakdown.minReceived * 10 ** pusd.token.decimals,
+        ),
+      );
 
       const deposit = await client.createDepositAddresses({ builderCode });
       const depositNotBefore = Date.now() - 60_000;
@@ -252,6 +261,15 @@ describe('Account funding', () => {
         notBefore: depositNotBefore,
         tokenAddress: POLYGON_NATIVE_USDC,
       });
+
+      const finalBalanceAllowance = await fetchBalanceAllowance(client, {
+        assetType: AssetType.COLLATERAL,
+      });
+      expect(BigInt(finalBalanceAllowance.balance)).toBeGreaterThanOrEqual(
+        startingCollateralBalance -
+          WITHDRAWAL_AMOUNT +
+          minimumReturnedCollateral,
+      );
     },
     20 * 60_000,
   );

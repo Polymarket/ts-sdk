@@ -240,7 +240,7 @@ export const FundingTransactionSchema = z.object({
 
 export const FundingTransactionsPageSchema = z.object({
   transactions: z.array(FundingTransactionSchema),
-  // Production temporarily omits the new field during the pagination rollout.
+  // Older deployments may omit the cursor field; treat them as terminal pages.
   nextCursor: z
     .string()
     .min(1)

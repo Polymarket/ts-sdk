@@ -304,6 +304,10 @@ function forkHeaders(
 /** @internal */
 export const preproduction = forkEnvironmentConfig({
   name: 'preproduction',
+  // Account funding intentionally remains on production until a
+  // preproduction Bridge endpoint is available. Keep this explicit because
+  // these APIs create live funding addresses.
+  bridge: { rest: production.bridge.rest },
   clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
   data: { rest: 'https://data-api-preprod-int.polymarket.com' },
   gamma: { rest: 'https://gamma-api-preprod-int.polymarket.com' },
