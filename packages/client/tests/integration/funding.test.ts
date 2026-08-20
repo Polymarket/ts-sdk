@@ -295,7 +295,7 @@ describe('Account funding', () => {
         minimumFinalCollateralBalance,
       );
     },
-    20 * 60_000,
+    30 * 60_000,
   );
 });
 

@@ -57,6 +57,12 @@ const FundingAssetLocationSchema = z.strictObject({
   tokenAddress: z.string().trim().min(1),
 }) satisfies z.ZodType<FundingAssetLocation>;
 
+/**
+ * Mirrors the EVM chain IDs currently returned by the funding provider via
+ * `fetchSupportedFundingAssets`. Unknown chains intentionally skip EVM
+ * recipient validation for forward compatibility, so add new EVM chains here
+ * when provider support changes.
+ */
 enum KnownEvmFundingChainId {
   Arbitrum = '42161',
   Base = '8453',
