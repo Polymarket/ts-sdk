@@ -19,18 +19,19 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
+import {
+  type OrderAsset,
+  PositionOrderAssetSchema,
+  TokenOrderAssetSchema,
+} from './asset';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
-  tokenId: z.string(),
   orderType: z
     .union([z.literal(OrderType.FAK), z.literal(OrderType.FOK)])
     .default(OrderType.FOK),
 });
 
-export type EstimateMarketBuyPriceRequest = {
-  /** TokenID of the Conditional token asset to estimate. */
-  tokenId: string;
-
+export type EstimateMarketBuyPriceRequest = OrderAsset & {
   /** Buy side of the estimate. */
   side: OrderSide.BUY;
 
@@ -45,10 +46,7 @@ export type EstimateMarketBuyPriceRequest = {
   orderType?: OrderType.FAK | OrderType.FOK;
 };
 
-export type EstimateMarketSellPriceRequest = {
-  /** TokenID of the Conditional token asset to estimate. */
-  tokenId: string;
-
+export type EstimateMarketSellPriceRequest = OrderAsset & {
   /** Sell side of the estimate. */
   side: OrderSide.SELL;
 
@@ -67,15 +65,23 @@ export type EstimateMarketPriceRequest =
   | EstimateMarketBuyPriceRequest
   | EstimateMarketSellPriceRequest;
 
-const EstimateMarketPriceRequestSchema = z.discriminatedUnion('side', [
+const EstimateMarketBuyPriceRequestSchema =
   BaseEstimateMarketPriceRequestSchema.extend({
     side: z.literal(OrderSide.BUY),
     amount: PositiveDecimalNumberSchema,
-  }),
+  });
+
+const EstimateMarketSellPriceRequestSchema =
   BaseEstimateMarketPriceRequestSchema.extend({
     side: z.literal(OrderSide.SELL),
     shares: PositiveDecimalNumberSchema,
-  }),
+  });
+
+const EstimateMarketPriceRequestSchema = z.union([
+  EstimateMarketBuyPriceRequestSchema.extend(TokenOrderAssetSchema.shape),
+  EstimateMarketBuyPriceRequestSchema.extend(PositionOrderAssetSchema.shape),
+  EstimateMarketSellPriceRequestSchema.extend(TokenOrderAssetSchema.shape),
+  EstimateMarketSellPriceRequestSchema.extend(PositionOrderAssetSchema.shape),
 ]) satisfies z.ZodType<EstimateMarketPriceRequest>;
 
 export type EstimateMarketPriceError =
@@ -122,6 +128,15 @@ export const EstimateMarketPriceError = makeErrorGuard(
  * // price === 0.53
  * ```
  *
+ * @example Position-backed outcome
+ * ```ts
+ * const price = await estimateMarketPrice(client, {
+ *   positionId: '456',
+ *   side: OrderSide.SELL,
+ *   shares: 10,
+ * });
+ * ```
+ *
  * @throws {@link EstimateMarketPriceError}
  * Thrown on failure.
  */
@@ -131,12 +146,13 @@ export async function estimateMarketPrice(
 ): Promise<number> {
   const params = parseUserInput(request, EstimateMarketPriceRequestSchema);
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
+  const assetId = params.positionId ?? params.tokenId;
 
   return resolveEstimatedMarketPrice(client, {
     amount,
+    assetId,
     orderType: params.orderType,
     side: params.side,
-    tokenId: params.tokenId,
   });
 }
 
@@ -144,14 +160,14 @@ export async function estimateMarketPrice(
 export async function resolveEstimatedMarketPrice(
   client: BaseClient,
   params: {
+    assetId: string;
     amount: number;
     orderType: OrderType;
     side: OrderSide;
-    tokenId: string;
   },
 ): Promise<number> {
   const orderBook = await fetchOrderBook(client, {
-    tokenId: params.tokenId,
+    tokenId: params.assetId,
   });
 
   return resolveMarketPriceFromOrderBook({

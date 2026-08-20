@@ -7,12 +7,10 @@ import {
   type DecimalString,
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
-  EpochMillisecondsSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
   EvmAddressSchema,
   emptyStringToNull,
   type IsoDateTimeString,
-  NotificationIdSchema,
   OptionalEpochLikeToIsoDateTimeStringSchema,
   type TokenId,
   TokenIdSchema,
@@ -229,28 +227,6 @@ export const ClobTradeSchema = z
 export const ClobTradesPageSchema = createCursorPageSchema(ClobTradeSchema);
 
 export type ClobTradesPage = z.infer<typeof ClobTradesPageSchema>;
-
-const NotificationTimestampSchema = z.preprocess((value) => {
-  if (typeof value !== 'string') {
-    return value;
-  }
-
-  return /^\d+$/.test(value) ? Number(value) : Date.parse(value);
-}, EpochMillisecondsSchema);
-
-export const NotificationSchema = z.object({
-  id: NotificationIdSchema,
-  owner: z.string(),
-  payload: z.unknown(),
-  timestamp: NotificationTimestampSchema,
-  type: z.number(),
-});
-
-export type Notification = z.infer<typeof NotificationSchema>;
-
-export const NotificationsResponseSchema = z.array(NotificationSchema);
-
-export type NotificationsResponse = z.infer<typeof NotificationsResponseSchema>;
 
 export enum AssetType {
   COLLATERAL = 'COLLATERAL',

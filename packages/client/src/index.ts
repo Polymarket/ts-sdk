@@ -13,7 +13,12 @@ export type {
 } from '@polymarket/bindings/bridge';
 export { KnownFundingTransactionStatus } from '@polymarket/bindings/bridge';
 export type * from '@polymarket/bindings/clob';
-export { PriceHistoryInterval, SignatureType } from '@polymarket/bindings/clob';
+export {
+  NotificationType,
+  OrderResponseErrorCode,
+  PriceHistoryInterval,
+  SignatureType,
+} from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';
 export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
@@ -54,5 +59,10 @@ export * from './environments';
 export * from './errors';
 export * from './hmac';
 export type * from './pagination';
+export type {
+  RateLimitBucket,
+  RateLimitUpdate,
+  RateLimitUpdateListener,
+} from './rate-limit';
 export * from './types';
 export type { AccountIdentity } from './wallet';

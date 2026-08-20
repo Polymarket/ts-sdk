@@ -4,12 +4,10 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type CtfConditionId,
-  CtfConditionIdSchema,
-  OptionalConditionIdSchema,
-  OptionalCtfConditionIdSchema,
+  EvmAddressSchema,
+  QuestionIdSchema,
+  TxHashSchema,
   toComboConditionId,
-  toConditionId,
-  toCtfConditionId,
 } from './shared';
 
 const CANONICAL_COMBO_CONDITION_ID =
@@ -46,12 +44,6 @@ describe('shared ID parsers', () => {
 
     it('keeps CtfConditionId as an exact compatibility alias', () => {
       expectTypeOf<ConditionId>().toEqualTypeOf<CtfConditionId>();
-    });
-
-    it('keeps deprecated CTF runtime exports as compatibility aliases', () => {
-      expect(CtfConditionIdSchema).toBe(ConditionIdSchema);
-      expect(OptionalCtfConditionIdSchema).toBe(OptionalConditionIdSchema);
-      expect(toCtfConditionId).toBe(toConditionId);
     });
   });
 
@@ -91,6 +83,22 @@ describe('shared ID parsers', () => {
       expect(conditionId).toBe(CANONICAL_COMBO_CONDITION_ID);
       expect(conditionId).toHaveLength(64);
       expect(conditionId).toMatch(COMBO_CONDITION_ID_PATTERN);
+    });
+
+    it('reports invalid values as validation failures', () => {
+      const result = ComboConditionIdSchema.safeParse(
+        `${CANONICAL_COMBO_CONDITION_ID}02`,
+      );
+
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('branded hex schemas', () => {
+    it('reports invalid values as validation failures', () => {
+      expect(EvmAddressSchema.safeParse('0x1').success).toBe(false);
+      expect(QuestionIdSchema.safeParse('0x1').success).toBe(false);
+      expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
   });
 });
