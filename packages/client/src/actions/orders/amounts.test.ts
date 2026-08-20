@@ -215,4 +215,19 @@ describe('computeMarketOrderAmounts', () => {
       requestedAmount: 97_200_000n,
     });
   });
+
+  it('does not round up protected SELL proceeds when division is exact', () => {
+    expect(
+      computeMarketOrderAmounts({
+        amount: 9.99,
+        price: 0.1,
+        protectPrice: true,
+        side: OrderSide.SELL,
+        tickSize: 0.1,
+      }),
+    ).toEqual({
+      offeredAmount: 9_990_000n,
+      requestedAmount: 999_000n,
+    });
+  });
 });

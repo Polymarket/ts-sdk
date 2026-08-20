@@ -1,12 +1,36 @@
 import { OrderSide, type TickSizeValue } from '@polymarket/bindings';
 import { resolveRoundingConfig } from './context';
 import {
-  decimalPlaces,
-  parseAmount,
-  roundDown,
-  roundNormal,
-  roundUp,
-} from './math';
+  FIXED_SCALE,
+  mulDiv,
+  quantize,
+  Rounding,
+  type ScaledAmount,
+  type ScaledPrice,
+  scaledQuantum,
+  toScaledAmount,
+  toScaledPrice,
+} from './fixed';
+
+function multiplyAmountByPrice(
+  amount: ScaledAmount,
+  price: ScaledPrice,
+  decimalPlaces: number,
+  rounding: Rounding,
+): bigint {
+  const quantum = scaledQuantum(decimalPlaces);
+  return mulDiv(amount, price, FIXED_SCALE * quantum, rounding) * quantum;
+}
+
+function divideAmountByPrice(
+  amount: ScaledAmount,
+  price: ScaledPrice,
+  decimalPlaces: number,
+  rounding: Rounding,
+): bigint {
+  const quantum = scaledQuantum(decimalPlaces);
+  return mulDiv(amount, FIXED_SCALE, price * quantum, rounding) * quantum;
+}
 
 export function computeLimitOrderAmounts(params: {
   price: number;
@@ -18,40 +42,33 @@ export function computeLimitOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundNormal(params.price, roundConfig.price);
+  const price = toScaledPrice(params.price);
+  const size = quantize(
+    toScaledAmount(params.size),
+    roundConfig.size,
+    Rounding.Down,
+  );
 
   if (params.side === OrderSide.BUY) {
-    const rawTakerAmount = roundDown(params.size, roundConfig.size);
-    let rawMakerAmount = rawTakerAmount * rawPrice;
-
-    if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-      rawMakerAmount = roundUp(rawMakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-        rawMakerAmount = roundDown(rawMakerAmount, roundConfig.amount);
-      }
-    }
-
     return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
+      offeredAmount: multiplyAmountByPrice(
+        size,
+        price,
+        roundConfig.amount,
+        Rounding.Down,
+      ),
+      requestedAmount: size,
     };
   }
 
-  const rawMakerAmount = roundDown(params.size, roundConfig.size);
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
   return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
+    offeredAmount: size,
+    requestedAmount: multiplyAmountByPrice(
+      size,
+      price,
+      roundConfig.amount,
+      Rounding.Down,
+    ),
   };
 }
 
@@ -66,42 +83,33 @@ export function computeMarketOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundDown(params.price, roundConfig.price);
-  const rawMakerAmount = roundDown(params.amount, roundConfig.size);
+  const price = toScaledPrice(params.price);
+  const amount = quantize(
+    toScaledAmount(params.amount),
+    roundConfig.size,
+    Rounding.Down,
+  );
+  const rounding = params.protectPrice ? Rounding.Up : Rounding.Down;
 
   if (params.side === OrderSide.BUY) {
-    let rawTakerAmount = rawMakerAmount / rawPrice;
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-        rawTakerAmount = params.protectPrice
-          ? roundUp(rawTakerAmount, roundConfig.amount)
-          : roundDown(rawTakerAmount, roundConfig.amount);
-      }
-    }
-
     return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
+      offeredAmount: amount,
+      requestedAmount: divideAmountByPrice(
+        amount,
+        price,
+        roundConfig.amount,
+        rounding,
+      ),
     };
   }
 
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = params.protectPrice
-        ? roundUp(rawTakerAmount, roundConfig.amount)
-        : roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
   return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
+    offeredAmount: amount,
+    requestedAmount: multiplyAmountByPrice(
+      amount,
+      price,
+      roundConfig.amount,
+      rounding,
+    ),
   };
 }
