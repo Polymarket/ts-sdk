@@ -58,6 +58,9 @@ describe('Session keys', { timeout: 300_000 }, () => {
         legPositionIds: ['1', '2'],
       }),
     ).rejects.toThrow('Combos is not supported with Session Keys');
+    await expect(sessionClient.openPerpsSession()).rejects.toThrow(
+      'Perps is not supported with Session Keys',
+    );
 
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
     let orderId: string | undefined;

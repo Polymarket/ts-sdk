@@ -67,6 +67,7 @@ import {
   type TransactionHandle,
   type TypedDataPayload,
 } from '../types';
+import { resolveDepositWalletSessionSigner } from '../wallet';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
@@ -1182,6 +1183,8 @@ export async function openPerpsSession(
   client: BaseSecureClient,
   request: OpenPerpsSessionRequest = {},
 ): Promise<PerpsSession> {
+  assertPerpsSupportedForAccount(client);
+
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
   const credentials =
     'credentials' in params
@@ -1206,6 +1209,8 @@ export async function revokePerpsCredentials(
   client: BaseSecureClient,
   request: RevokePerpsCredentialsRequest,
 ): Promise<void> {
+  assertPerpsSupportedForAccount(client);
+
   const params = parseUserInput(request, RevokePerpsCredentialsRequestSchema);
   const op = {
     type: 'deleteProxy' as const,
@@ -1263,6 +1268,8 @@ export async function preparePerpsDeposit(
   client: BaseSecureClient,
   request: DepositToPerpsRequest,
 ): Promise<PerpsDepositWorkflow> {
+  assertPerpsSupportedForAccount(client);
+
   const params = parseUserInput(request, DepositToPerpsRequestSchema);
   const { contracts } = client.environment;
   const call = perpsDepositCall(
@@ -1321,6 +1328,8 @@ export async function withdrawFromPerps(
   client: BaseSecureClient,
   request: WithdrawFromPerpsRequest,
 ): Promise<PerpsWithdrawalId> {
+  assertPerpsSupportedForAccount(client);
+
   const params = parseUserInput(request, WithdrawFromPerpsRequestSchema);
   const timestamp = Math.floor(Date.now() / 1000);
   const salt = randomUint32();
@@ -1665,4 +1674,13 @@ function randomUint32(): number {
     'Expected crypto.getRandomValues to return a salt.',
   );
   return value;
+}
+
+function assertPerpsSupportedForAccount(client: BaseSecureClient): void {
+  if (
+    resolveDepositWalletSessionSigner(client.environment, client.account) !==
+    undefined
+  ) {
+    throw new UserInputError('Perps is not supported with Session Keys');
+  }
 }
