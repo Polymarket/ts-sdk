@@ -55,7 +55,6 @@ import type { AccountIdentity } from './wallet';
 import {
   deriveBeaconDepositWalletAddress,
   deriveUupsDepositWalletAddress,
-  resolveDepositWalletSessionSigner,
   tryResolveAccountIdentity,
 } from './wallet';
 import {
@@ -615,10 +614,6 @@ class BaseSecureClient<
           credentials: config.credentials,
           exchange: config.environment.contracts.exchangeV3,
           headers: config.environment.combos.headers,
-          sessionSigner: resolveDepositWalletSessionSigner(
-            config.environment,
-            config.account,
-          ),
           signer: config.signer,
           url: config.environment.combos.ws,
         }),

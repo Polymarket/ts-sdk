@@ -55,7 +55,6 @@ export type RfqQuoterWebSocketManagerOptions = {
   credentials: ApiKeyCreds;
   exchange: EvmAddress;
   headers?: Record<string, string>;
-  sessionSigner?: EvmAddress;
   signer: Signer;
   url: string;
 };
@@ -66,7 +65,6 @@ export class RfqQuoterWebSocketManager {
   readonly #credentials: ApiKeyCreds;
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
-  readonly #sessionSigner: EvmAddress | undefined;
   readonly #signer: Signer;
   readonly #url: string;
   #session: RfqWebSocketSession | undefined;
@@ -80,7 +78,6 @@ export class RfqQuoterWebSocketManager {
     this.#credentials = options.credentials;
     this.#exchange = options.exchange;
     this.#headers = options.headers;
-    this.#sessionSigner = options.sessionSigner;
     this.#signer = options.signer;
     this.#url = options.url;
   }
@@ -103,7 +100,6 @@ export class RfqQuoterWebSocketManager {
       exchange: this.#exchange,
       headers: this.#headers,
       onClose: () => this.#clearSession(session),
-      sessionSigner: this.#sessionSigner,
       signer: this.#signer,
       url: this.#url,
     });
@@ -170,7 +166,6 @@ type RfqWebSocketSessionConfig = {
   exchange: EvmAddress;
   headers?: Record<string, string>;
   onClose: () => void;
-  sessionSigner?: EvmAddress;
   signer: Signer;
   url: string;
 };
@@ -182,7 +177,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
   readonly #onClose: () => void;
-  readonly #sessionSigner: EvmAddress | undefined;
   readonly #signer: Signer;
   readonly #url: string;
   readonly #connection = new WebSocketConnection();
@@ -198,7 +192,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     this.#exchange = options.exchange;
     this.#headers = options.headers;
     this.#onClose = options.onClose;
-    this.#sessionSigner = options.sessionSigner;
     this.#signer = options.signer;
     this.#url = options.url;
   }
@@ -405,7 +398,6 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
       exchange: this.#exchange,
       request,
       response: parsedResponse,
-      sessionSigner: this.#sessionSigner,
       signer: this.#signer,
     });
     const pending = this.#pending.waitFor<RfqQuoteReference>(

@@ -27,7 +27,6 @@ export type SignRfqQuoteOrderParams = {
   exchange: EvmAddress;
   orderPrice: bigint;
   orderSide: OrderSide;
-  sessionSigner?: EvmAddress;
   signer: Signer;
   size: bigint;
   tokenId: PositionId;
@@ -78,12 +77,7 @@ export async function signRfqQuoteOrder(
 
   return {
     ...order,
-    signature: createExchangeOrderSignature({
-      domain,
-      order,
-      sessionSigner: params.sessionSigner,
-      signature,
-    }),
+    signature: createExchangeOrderSignature({ domain, order, signature }),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   createExchangeOrderTypedDataPayload,
 } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
+import { wrapDepositWalletSessionSignerSignature } from '../../wallet';
 import type { UnsignedOrder } from './types';
 
 export function createOrderTypedDataPayload(
@@ -24,12 +25,15 @@ export function createOrderSignature(
   signature: EvmSignature,
   sessionSigner?: EvmAddress,
 ): EvmSignature | Erc1271Signature {
-  return createExchangeOrderSignature({
+  const orderSignature = createExchangeOrderSignature({
     domain: createOrderExchangeDomain(order),
     order,
-    sessionSigner,
     signature,
   });
+
+  return sessionSigner === undefined
+    ? orderSignature
+    : wrapDepositWalletSessionSignerSignature(sessionSigner, orderSignature);
 }
 
 function createOrderExchangeDomain(order: UnsignedOrder) {

@@ -398,10 +398,14 @@ export interface RfqSession extends AsyncIterable<RfqEvent> {
   close(): Promise<void>;
 }
 
-export type OpenRfqSessionError = ConnectionLostError | TransportError;
+export type OpenRfqSessionError =
+  | ConnectionLostError
+  | TransportError
+  | UserInputError;
 export const OpenRfqSessionError = makeErrorGuard(
   ConnectionLostError,
   TransportError,
+  UserInputError,
 );
 
 /**
@@ -418,6 +422,8 @@ export const OpenRfqSessionError = makeErrorGuard(
 export async function openRfqSession(
   client: BaseSecureClient,
 ): Promise<RfqSession> {
+  assertCombosSupportedForAccount(client);
+
   return client.webSockets.rfqQuoter.connect();
 }
 
@@ -749,6 +755,8 @@ export async function requestComboQuote(
   client: BaseSecureClient,
   params: RequestComboQuoteParams,
 ): Promise<RequestComboQuoteResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, RequestComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
 
@@ -1058,6 +1066,8 @@ export async function acceptComboQuote(
   client: BaseSecureClient,
   params: AcceptComboQuoteParams,
 ): Promise<AcceptComboQuoteResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, AcceptComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
 
@@ -1232,15 +1242,7 @@ async function signComboAcceptanceOrder(
 
   return {
     ...order,
-    signature: createExchangeOrderSignature({
-      domain,
-      order,
-      sessionSigner: resolveDepositWalletSessionSigner(
-        client.environment,
-        client.account,
-      ),
-      signature,
-    }),
+    signature: createExchangeOrderSignature({ domain, order, signature }),
   };
 }
 
@@ -1322,6 +1324,8 @@ export async function waitForComboFill(
   client: BaseSecureClient,
   params: WaitForComboFillParams,
 ): Promise<WaitForComboFillResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, WaitForComboFillParamsSchema);
   const timeoutMs = input.timeoutMs ?? DEFAULT_FILL_TIMEOUT_MS;
   const pollingIntervalMs =
@@ -1421,6 +1425,8 @@ export function fetchRfqStatus(
   client: BaseSecureClient,
   params: FetchRfqStatusParams,
 ): Promise<RfqStatusResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, FetchRfqStatusParamsSchema);
 
   return unwrap(
@@ -1429,4 +1435,13 @@ export function fetchRfqStatus(
       .andThen(validateWith(BuilderRfqStatusResponseSchema))
       .mapErr(toRfqRequestRejection),
   );
+}
+
+function assertCombosSupportedForAccount(client: BaseSecureClient): void {
+  if (
+    resolveDepositWalletSessionSigner(client.environment, client.account) !==
+    undefined
+  ) {
+    throw new UserInputError('Combos is not supported with Session Keys');
+  }
 }
