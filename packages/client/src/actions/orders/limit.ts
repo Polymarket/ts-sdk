@@ -25,6 +25,7 @@ import {
   resolveOrderExchangeAddress,
   validatePriceOnTickGrid,
 } from './context';
+import type { ScaledPrice } from './fixed';
 import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
 const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
@@ -101,7 +102,7 @@ export async function prepareLimitOrderDraft(
 type LimitOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: number;
+  price: ScaledPrice;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
 };
@@ -152,7 +153,7 @@ function buildLimitOrderContext(
 function validateExactPriceOnTickGrid(
   price: number,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   try {
     return validatePriceOnTickGrid(price, tickSize);
   } catch (error) {

@@ -2,38 +2,32 @@ import type { TickSizeValue } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
 import { UserInputError } from '../../errors';
 import { resolveRoundingConfig, validatePriceOnTickGrid } from './context';
-import { decimalPlaces } from './math';
+import { FIXED_SCALE, MAX_PRICE_DRIFT } from './fixed';
 
 describe('resolveRoundingConfig', () => {
   it('supports all current tick sizes', () => {
     expect(resolveRoundingConfig(0.1)).toEqual({
       amount: 3,
-      price: 1,
       size: 2,
     });
     expect(resolveRoundingConfig(0.01)).toEqual({
       amount: 4,
-      price: 2,
       size: 2,
     });
     expect(resolveRoundingConfig(0.005)).toEqual({
       amount: 5,
-      price: 3,
       size: 2,
     });
     expect(resolveRoundingConfig(0.0025)).toEqual({
       amount: 6,
-      price: 4,
       size: 2,
     });
     expect(resolveRoundingConfig(0.001)).toEqual({
       amount: 5,
-      price: 3,
       size: 2,
     });
     expect(resolveRoundingConfig(0.0001)).toEqual({
       amount: 6,
-      price: 4,
       size: 2,
     });
   });
@@ -44,17 +38,31 @@ describe('resolveRoundingConfig', () => {
 const ALL_TICKS: TickSizeValue[] = [0.1, 0.01, 0.005, 0.0025, 0.001, 0.0001];
 
 function grid(tick: TickSizeValue): { scale: number; step: number } {
-  const scale = 10 ** decimalPlaces(tick);
-  return { scale, step: Math.round(tick * scale) };
+  switch (tick) {
+    case 0.1:
+      return { scale: 10, step: 1 };
+    case 0.01:
+      return { scale: 100, step: 1 };
+    case 0.005:
+      return { scale: 1_000, step: 5 };
+    case 0.0025:
+      return { scale: 10_000, step: 25 };
+    case 0.001:
+      return { scale: 1_000, step: 1 };
+    case 0.0001:
+      return { scale: 10_000, step: 1 };
+  }
 }
 
 describe('validatePriceOnTickGrid', () => {
-  it('accepts every on-grid price in range and returns it unchanged', () => {
+  it('accepts every on-grid price in range and returns it scaled', () => {
     for (const tick of ALL_TICKS) {
       const { scale, step } = grid(tick);
 
       for (let k = step; k <= scale - step; k += step) {
-        expect(validatePriceOnTickGrid(k / scale, tick)).toBe(k / scale);
+        expect(validatePriceOnTickGrid(k / scale, tick)).toBe(
+          (BigInt(k) * FIXED_SCALE) / BigInt(scale),
+        );
       }
     }
   });
@@ -81,18 +89,50 @@ describe('validatePriceOnTickGrid', () => {
     [0.00255, 0.0025],
     [0.5555, 0.001],
     [0.55555, 0.0001],
-    // Values an integer-scaling grid check would silently snap onto the grid
-    // without the decimal-count guard.
     [0.555001, 0.01],
+  ] as [
+    number,
+    TickSizeValue,
+  ][])('rejects off-grid price %s for tick %s', (price, tick) => {
+    expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
+      'must be a multiple of tick size',
+    );
+  });
+
+  it.each([
     [0.0100001, 0.005],
+    [0.60000000001, 0.1],
     [0.55000000001, 0.1],
     [0.00250000001, 0.0025],
   ] as [
     number,
     TickSizeValue,
-  ][])('rejects %s for exceeding the %s tick precision', (price, tick) => {
+  ][])('rejects unsupported precision in %s for tick %s', (price, tick) => {
     expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
-      'decimal places',
+      'unsupported precision',
+    );
+  });
+
+  it.each([
+    [0.4 + 0.2, 0.1, 600_000n],
+    [(0.2 + 0.4) / 2, 0.1, 300_000n],
+    [1 - 0.9999, 0.0001, 100n],
+  ] as [
+    number,
+    TickSizeValue,
+    bigint,
+  ][])('snaps arithmetic noise in %s for tick %s', (price, tick, expected) => {
+    expect(validatePriceOnTickGrid(price, tick)).toBe(expected);
+  });
+
+  it('accepts drift at the boundary and rejects one epsilon beyond it', () => {
+    const price = 0.6;
+    const atBoundary = price + MAX_PRICE_DRIFT;
+    const beyondBoundary = atBoundary + Number.EPSILON;
+
+    expect(validatePriceOnTickGrid(atBoundary, 0.1)).toBe(600_000n);
+    expect(() => validatePriceOnTickGrid(beyondBoundary, 0.1)).toThrow(
+      'unsupported precision',
     );
   });
 

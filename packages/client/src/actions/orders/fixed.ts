@@ -1,10 +1,12 @@
 import { invariant } from '@polymarket/types';
+import { UserInputError } from '../../errors';
 
 declare const SCALED_AMOUNT_BRAND: unique symbol;
 declare const SCALED_PRICE_BRAND: unique symbol;
 
 export const FIXED_DECIMALS = 6;
 export const FIXED_SCALE = 1_000_000n;
+export const MAX_PRICE_DRIFT = 8 * Number.EPSILON;
 
 export type ScaledAmount = bigint & {
   readonly [SCALED_AMOUNT_BRAND]: true;
@@ -24,7 +26,21 @@ export function toScaledAmount(value: number): ScaledAmount {
 }
 
 export function toScaledPrice(value: number): ScaledPrice {
-  return BigInt(Math.round(value * Number(FIXED_SCALE))) as ScaledPrice;
+  const candidate = Math.round(value * Number(FIXED_SCALE));
+  const canonical = candidate / Number(FIXED_SCALE);
+
+  if (
+    !Number.isSafeInteger(candidate) ||
+    Math.abs(value - canonical) > MAX_PRICE_DRIFT
+  ) {
+    throw new UserInputError('has unsupported precision.');
+  }
+
+  return BigInt(candidate) as ScaledPrice;
+}
+
+export function fromScaledPrice(value: ScaledPrice): number {
+  return Number(value) / Number(FIXED_SCALE);
 }
 
 export function scaledQuantum(decimalPlaces: number): bigint {

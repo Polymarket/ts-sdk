@@ -30,6 +30,7 @@ import {
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
+import { fromScaledPrice, type ScaledPrice, toScaledPrice } from './fixed';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -97,7 +98,7 @@ export async function prepareMarketOrderDraft(
 type MarketOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: number;
+  price: ScaledPrice;
   resolvedAmount: number;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
@@ -200,6 +201,7 @@ function buildProtectedBuyMarketOrderContext(
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
   const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
+  const priceNumber = fromScaledPrice(price);
 
   return {
     exchangeAddress: resolveOrderExchangeAddress(
@@ -215,7 +217,7 @@ function buildProtectedBuyMarketOrderContext(
       maxSpend,
       platformFeeExponent: metadata.feeInfo.exponent,
       platformFeeRate: metadata.feeInfo.rate,
-      price,
+      price: priceNumber,
     }),
     signerAddress: client.account.signer,
     tickSize: metadata.tickSize,
@@ -267,12 +269,14 @@ async function resolveUnprotectedMarketOrderContext(
     );
   }
 
-  const price = resolveMarketPriceFromOrderBook({
-    amount,
-    orderBook,
-    orderType: params.orderType,
-    side: params.side,
-  });
+  const price = toScaledPrice(
+    resolveMarketPriceFromOrderBook({
+      amount,
+      orderBook,
+      orderType: params.orderType,
+      side: params.side,
+    }),
+  );
 
   return {
     exchangeAddress: resolveOrderExchangeAddress(
@@ -285,7 +289,7 @@ async function resolveUnprotectedMarketOrderContext(
     resolvedAmount: resolveUnprotectedMarketOrderAmount(
       params,
       amount,
-      price,
+      fromScaledPrice(price),
       resolvedFeeInputs,
     ),
     signerAddress: client.account.signer,
@@ -320,7 +324,7 @@ function resolveUnprotectedMarketOrderAmount(
 function resolveProtectedMarketOrderPrice(
   params: PrepareMarketOrderDraftParams,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   if (params.side === OrderSide.BUY) {
     invariant(
       params.maxPrice !== undefined,
@@ -348,7 +352,7 @@ function validateProtectedPriceOnTickGrid(
   field: 'maxPrice' | 'minPrice',
   price: number,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   try {
     return validatePriceOnTickGrid(price, tickSize);
   } catch (error) {

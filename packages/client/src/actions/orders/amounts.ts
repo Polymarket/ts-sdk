@@ -9,7 +9,6 @@ import {
   type ScaledPrice,
   scaledQuantum,
   toScaledAmount,
-  toScaledPrice,
 } from './fixed';
 
 function multiplyAmountByPrice(
@@ -33,7 +32,7 @@ function divideAmountByPrice(
 }
 
 export function computeLimitOrderAmounts(params: {
-  price: number;
+  price: ScaledPrice;
   side: OrderSide;
   size: number;
   tickSize: TickSizeValue;
@@ -42,7 +41,6 @@ export function computeLimitOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
-  const price = toScaledPrice(params.price);
   const size = quantize(
     toScaledAmount(params.size),
     roundConfig.size,
@@ -53,7 +51,7 @@ export function computeLimitOrderAmounts(params: {
     return {
       offeredAmount: multiplyAmountByPrice(
         size,
-        price,
+        params.price,
         roundConfig.amount,
         Rounding.Down,
       ),
@@ -65,7 +63,7 @@ export function computeLimitOrderAmounts(params: {
     offeredAmount: size,
     requestedAmount: multiplyAmountByPrice(
       size,
-      price,
+      params.price,
       roundConfig.amount,
       Rounding.Down,
     ),
@@ -74,7 +72,7 @@ export function computeLimitOrderAmounts(params: {
 
 export function computeMarketOrderAmounts(params: {
   amount: number;
-  price: number;
+  price: ScaledPrice;
   protectPrice?: boolean;
   side: OrderSide;
   tickSize: TickSizeValue;
@@ -83,7 +81,6 @@ export function computeMarketOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
-  const price = toScaledPrice(params.price);
   const amount = quantize(
     toScaledAmount(params.amount),
     roundConfig.size,
@@ -96,7 +93,7 @@ export function computeMarketOrderAmounts(params: {
       offeredAmount: amount,
       requestedAmount: divideAmountByPrice(
         amount,
-        price,
+        params.price,
         roundConfig.amount,
         rounding,
       ),
@@ -107,7 +104,7 @@ export function computeMarketOrderAmounts(params: {
     offeredAmount: amount,
     requestedAmount: multiplyAmountByPrice(
       amount,
-      price,
+      params.price,
       roundConfig.amount,
       rounding,
     ),

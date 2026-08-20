@@ -1,6 +1,7 @@
 import { OrderSide, type TickSizeValue } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
 import { computeLimitOrderAmounts, computeMarketOrderAmounts } from './amounts';
+import { toScaledPrice } from './fixed';
 
 const INPUT_AMOUNT = 12.34;
 const SCALED_INPUT_AMOUNT = 12_340_000n;
@@ -64,7 +65,7 @@ describe('computeLimitOrderAmounts', () => {
   }) => {
     expect(
       computeLimitOrderAmounts({
-        price,
+        price: toScaledPrice(price),
         side: OrderSide.BUY,
         size: INPUT_AMOUNT,
         tickSize,
@@ -82,7 +83,7 @@ describe('computeLimitOrderAmounts', () => {
   }) => {
     expect(
       computeLimitOrderAmounts({
-        price,
+        price: toScaledPrice(price),
         side: OrderSide.SELL,
         size: INPUT_AMOUNT,
         tickSize,
@@ -96,7 +97,7 @@ describe('computeLimitOrderAmounts', () => {
   it('rounds the public size down to two decimals before calculating amounts', () => {
     expect(
       computeLimitOrderAmounts({
-        price: 0.37,
+        price: toScaledPrice(0.37),
         side: OrderSide.BUY,
         size: 12.349,
         tickSize: 0.01,
@@ -119,7 +120,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: INPUT_AMOUNT,
-        price,
+        price: toScaledPrice(price),
         side: OrderSide.BUY,
         tickSize,
       }),
@@ -137,7 +138,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: INPUT_AMOUNT,
-        price,
+        price: toScaledPrice(price),
         protectPrice: true,
         side: OrderSide.BUY,
         tickSize,
@@ -159,7 +160,7 @@ describe('computeMarketOrderAmounts', () => {
       expect(
         computeMarketOrderAmounts({
           amount: INPUT_AMOUNT,
-          price,
+          price: toScaledPrice(price),
           protectPrice,
           side: OrderSide.SELL,
           tickSize,
@@ -175,7 +176,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: 12.349,
-        price: 0.37,
+        price: toScaledPrice(0.37),
         protectPrice: true,
         side: OrderSide.BUY,
         tickSize: 0.01,
@@ -190,7 +191,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: 100,
-        price: 0.55,
+        price: toScaledPrice(0.55),
         protectPrice: true,
         side: OrderSide.BUY,
         tickSize: 0.01,
@@ -205,7 +206,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: 180,
-        price: 0.54,
+        price: toScaledPrice(0.54),
         protectPrice: true,
         side: OrderSide.SELL,
         tickSize: 0.01,
@@ -220,7 +221,7 @@ describe('computeMarketOrderAmounts', () => {
     expect(
       computeMarketOrderAmounts({
         amount: 9.99,
-        price: 0.1,
+        price: toScaledPrice(0.1),
         protectPrice: true,
         side: OrderSide.SELL,
         tickSize: 0.1,
