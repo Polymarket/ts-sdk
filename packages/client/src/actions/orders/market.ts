@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
+import { computeMarketOrderAmounts } from './amounts';
 import {
   createOrderRouting,
   type OrderAssetId,
@@ -26,11 +27,9 @@ import {
 } from './cache';
 import {
   resolveOrderExchangeAddress,
-  resolveRoundingConfig,
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
-import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -366,57 +365,6 @@ function hasProtectedPrice(params: PrepareMarketOrderDraftParams): boolean {
     (params.side === OrderSide.BUY && params.maxPrice !== undefined) ||
     (params.side === OrderSide.SELL && params.minPrice !== undefined)
   );
-}
-
-export function computeMarketOrderAmounts(params: {
-  amount: number;
-  price: number;
-  protectPrice?: boolean;
-  side: OrderSide;
-  tickSize: TickSizeValue;
-}): {
-  offeredAmount: bigint;
-  requestedAmount: bigint;
-} {
-  const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundDown(params.price, roundConfig.price);
-  const rawMakerAmount = roundDown(params.amount, roundConfig.size);
-
-  if (params.side === OrderSide.BUY) {
-    let rawTakerAmount = rawMakerAmount / rawPrice;
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-        rawTakerAmount = params.protectPrice
-          ? roundUp(rawTakerAmount, roundConfig.amount)
-          : roundDown(rawTakerAmount, roundConfig.amount);
-      }
-    }
-
-    return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
-    };
-  }
-
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = params.protectPrice
-        ? roundUp(rawTakerAmount, roundConfig.amount)
-        : roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
-  return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
-  };
 }
 
 type FeeInputs = {
