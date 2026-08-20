@@ -35,11 +35,6 @@ const BuilderCodeInputSchema = z
   .regex(/^0x[0-9a-fA-F]{64}$/, 'Expected a 32-byte hex string')
   .pipe(BuilderCodeSchema);
 
-const EvmWalletInputSchema = z
-  .string()
-  .regex(/^0x[0-9a-fA-F]{40}$/, 'Expected an EVM address')
-  .pipe(EvmAddressSchema);
-
 /** Identifies a token on a funding source or destination chain. */
 export type FundingAssetLocation = {
   /** Chain identifier serialized as a decimal string. */
@@ -50,7 +45,10 @@ export type FundingAssetLocation = {
 
 /** Identifies the token and recipient for a funding destination. */
 export type FundingDestination = FundingAssetLocation & {
-  /** Wallet address that receives the destination token. */
+  /**
+   * Wallet address that receives the destination token. EVM destinations
+   * require a 20-byte hex address.
+   */
   recipientAddress: string;
 };
 
@@ -59,13 +57,39 @@ const FundingAssetLocationSchema = z.strictObject({
   tokenAddress: z.string().trim().min(1),
 }) satisfies z.ZodType<FundingAssetLocation>;
 
+enum KnownEvmFundingChainId {
+  Arbitrum = '42161',
+  Base = '8453',
+  BnbSmartChain = '56',
+  Ethereum = '1',
+  HyperEvm = '999',
+  Ink = '57073',
+  Monad = '143',
+  Optimism = '10',
+  Polygon = '137',
+  Robinhood = '4663',
+}
+
+const KnownEvmFundingChainIdSchema = z.enum(KnownEvmFundingChainId);
+
 const FundingDestinationSchema = FundingAssetLocationSchema.extend({
   recipientAddress: z.string().trim().min(1),
+}).superRefine((destination, context) => {
+  if (
+    KnownEvmFundingChainIdSchema.safeParse(destination.chainId).success &&
+    !EvmAddressSchema.safeParse(destination.recipientAddress).success
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Expected an EVM address',
+      path: ['recipientAddress'],
+    });
+  }
 }) satisfies z.ZodType<FundingDestination>;
 
 const CreateDepositAddressesRequestSchema = z.strictObject({
   builderCode: BuilderCodeInputSchema.optional(),
-  wallet: EvmWalletInputSchema,
+  wallet: EvmAddressSchema,
 });
 
 export type CreateDepositAddressesRequest = z.input<
@@ -320,7 +344,7 @@ export function listFundingTransactions(
 const CreateWithdrawalAddressesRequestSchema = z.strictObject({
   builderCode: BuilderCodeInputSchema.optional(),
   destination: FundingDestinationSchema,
-  wallet: EvmWalletInputSchema,
+  wallet: EvmAddressSchema,
 });
 
 export type CreateWithdrawalAddressesRequest = z.input<

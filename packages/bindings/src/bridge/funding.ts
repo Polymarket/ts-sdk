@@ -30,11 +30,6 @@ export const FundingTransactionStatusSchema = z
   .string()
   .transform((value): FundingTransactionStatus => value);
 
-const FundingEvmAddressSchema = z
-  .string()
-  .regex(/^0x[0-9a-fA-F]{40}$/)
-  .pipe(EvmAddressSchema);
-
 /** Chain-specific addresses that can receive funds for a funding workflow. */
 export type FundingAddresses = {
   /** Address used for EVM-compatible source chains. */
@@ -49,7 +44,7 @@ export type FundingAddresses = {
 
 export const FundingAddressesSchema = z
   .object({
-    evm: FundingEvmAddressSchema,
+    evm: EvmAddressSchema,
     svm: z.string().min(1),
     btc: z.string().min(1),
     tron: z.string().min(1).optional(),

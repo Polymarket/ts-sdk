@@ -4,10 +4,11 @@ import {
   RequestRejectedError,
   type SecureClient,
   type TransactionHandle,
+  UserInputError,
 } from '@polymarket/client';
 import {
-  fetchBalanceAllowance,
   type PrepareErc20TransferRequest,
+  updateBalanceAllowance,
 } from '@polymarket/client/actions';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
@@ -56,6 +57,26 @@ describe('Account funding', () => {
 
     expect(quote.quoteId).toEqual(expect.any(String));
     expect(quote.estToTokenBaseUnit).toMatch(/^\d+$/);
+  });
+
+  it('rejects malformed EVM withdrawal recipients', async ({
+    publicClient,
+  }) => {
+    await expect(
+      publicClient.createWithdrawalAddresses({
+        destination: {
+          chainId: POLYGON_CHAIN_ID,
+          recipientAddress: 'not-an-address',
+          tokenAddress: POLYGON_NATIVE_USDC,
+        },
+        wallet: '0x0000000000000000000000000000000000000001',
+      }),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining(
+        'destination.recipientAddress: Expected an EVM address',
+      ),
+      name: UserInputError.name,
+    });
   });
 
   it('lists transaction pages for a documented bridge address', async ({
@@ -149,7 +170,7 @@ describe('Account funding', () => {
         return;
       }
 
-      const balanceAllowance = await fetchBalanceAllowance(client, {
+      const balanceAllowance = await updateBalanceAllowance(client, {
         assetType: AssetType.COLLATERAL,
       });
       const startingCollateralBalance = BigInt(balanceAllowance.balance);
@@ -262,13 +283,16 @@ describe('Account funding', () => {
         tokenAddress: POLYGON_NATIVE_USDC,
       });
 
-      const finalBalanceAllowance = await fetchBalanceAllowance(client, {
-        assetType: AssetType.COLLATERAL,
-      });
-      expect(BigInt(finalBalanceAllowance.balance)).toBeGreaterThanOrEqual(
+      const minimumFinalCollateralBalance =
         startingCollateralBalance -
-          WITHDRAWAL_AMOUNT +
-          minimumReturnedCollateral,
+        WITHDRAWAL_AMOUNT +
+        minimumReturnedCollateral;
+      const finalCollateralBalance = await waitForCollateralBalance(
+        client,
+        minimumFinalCollateralBalance,
+      );
+      expect(finalCollateralBalance).toBeGreaterThanOrEqual(
+        minimumFinalCollateralBalance,
       );
     },
     20 * 60_000,
@@ -349,6 +373,29 @@ async function transferErc20AfterFundingSettlement(
   throw new Error('Timed out waiting for withdrawn USDC to become spendable', {
     cause: lastError,
   });
+}
+
+async function waitForCollateralBalance(
+  client: SecureClient,
+  minimumBalance: bigint,
+): Promise<bigint> {
+  const startedAt = Date.now();
+  let balance = 0n;
+
+  while (Date.now() - startedAt < 60_000) {
+    const balanceAllowance = await updateBalanceAllowance(client, {
+      assetType: AssetType.COLLATERAL,
+    });
+    balance = BigInt(balanceAllowance.balance);
+
+    if (balance >= minimumBalance) {
+      return balance;
+    }
+
+    await delay(10_000);
+  }
+
+  return balance;
 }
 
 function delay(ms: number): Promise<void> {
