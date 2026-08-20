@@ -936,7 +936,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('returns mixed leverage results and internal errors as ordered data', async () => {
+    it('keeps an empty per-item leverage error in the ordered results', async () => {
       mockCommandSession((frame) => {
         if (frame.op?.type === 'updateLeverages') {
           return [
@@ -949,7 +949,7 @@ describe('PerpsSession', () => {
             {
               status: 'err',
               instrument_id: 2,
-              error: 'internal_error',
+              error: '',
             },
             {
               status: 'ok',
@@ -981,7 +981,7 @@ describe('PerpsSession', () => {
             leverage: 5,
             crossMargin: false,
           },
-          { status: 'err', instrumentId: 2, error: 'internal_error' },
+          { status: 'err', instrumentId: 2, error: '' },
           {
             status: 'ok',
             instrumentId: 3,

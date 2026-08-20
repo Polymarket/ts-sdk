@@ -24,10 +24,10 @@ import {
   PerpsTimeInForce,
   PerpsTpSlKind,
   PerpsTpSlScope,
+  type PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageBatchResultSchema,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
-  type PerpsUpdateLeveragesResult,
-  PerpsUpdateLeveragesResultSchema,
 } from '@polymarket/bindings/perps';
 import type {
   PerpsOrderUpdateEvent,
@@ -1217,7 +1217,9 @@ export const UpdatePerpsLeveragesError = makeErrorGuard(
  * Updates are processed sequentially and are not atomic. Results preserve
  * request order. Per-instrument rejections, including `internal_error`, are
  * returned as data; `internal_error` may represent an unknown application
- * outcome for that instrument.
+ * outcome for that instrument. A whole-request `internal_error` also has an
+ * unknown application outcome; reconcile account state before retrying the
+ * batch.
  *
  * @throws {@link UpdatePerpsLeveragesError}
  * Thrown when the complete request is rejected or cannot be sent.
@@ -1227,7 +1229,7 @@ export const UpdatePerpsLeveragesError = makeErrorGuard(
 export async function updatePerpsLeverages(
   client: PerpsCommandExecutor,
   request: UpdatePerpsLeveragesRequest,
-): Promise<PerpsUpdateLeveragesResult> {
+): Promise<PerpsUpdateLeverageBatchResult[]> {
   const params = parseUserInput(request, UpdatePerpsLeveragesRequestSchema);
   return await client.executeCommand(
     {
@@ -1240,7 +1242,7 @@ export async function updatePerpsLeverages(
         ]),
       ],
     },
-    PerpsUpdateLeveragesResultSchema,
+    z.array(PerpsUpdateLeverageBatchResultSchema),
   );
 }
 

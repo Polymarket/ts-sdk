@@ -247,7 +247,7 @@ describe('Perps integration', () => {
 
   it.runIf(runMeteredTests)(
     'updates and restores an ordered Perps leverage batch',
-    async ({ secureClientWithDepositWallet }) => {
+    async ({ secureClientWithDepositWallet, skip }) => {
       const session = await secureClientWithDepositWallet.openPerpsSession({
         expiresIn: 30 * 60_000,
       });
@@ -278,7 +278,11 @@ describe('Perps integration', () => {
           )
           .slice(0, 2);
 
-        expect(selected).toHaveLength(2);
+        if (selected.length < 2) {
+          skip(
+            'Expected at least two unused Perps instruments with configurable leverage',
+          );
+        }
         snapshots.push(
           ...selected.map(({ config }) => ({
             crossMargin: config.cross,

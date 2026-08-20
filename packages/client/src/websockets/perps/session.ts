@@ -16,8 +16,8 @@ import {
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
+  type PerpsUpdateLeverageBatchResult,
   type PerpsUpdateLeverageResult,
-  type PerpsUpdateLeveragesResult,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
 import {
@@ -158,15 +158,13 @@ type EventWaiter = {
   timeout?: ReturnType<typeof setNonBlockingTimeout>;
 };
 
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
 export type {
   PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
   PerpsPostOrderAck,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
-  PerpsUpdateLeveragesResult,
 } from '@polymarket/bindings/perps';
 export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
 export type {
@@ -182,9 +180,6 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
 } from './actions/account';
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -210,9 +205,6 @@ export type {
   UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from './actions/trading';
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
@@ -843,7 +835,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * processed sequentially and are not atomic. Results preserve request
    * order. Per-instrument rejections, including `internal_error`, are returned
    * as data; `internal_error` may represent an unknown application outcome for
-   * that instrument.
+   * that instrument. A whole-request `internal_error` also has an unknown
+   * application outcome; reconcile account state before retrying the batch.
    *
    * @example
    * ```ts
@@ -862,7 +855,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    */
   async updateLeverages(
     request: UpdatePerpsLeveragesRequest,
-  ): Promise<PerpsUpdateLeveragesResult> {
+  ): Promise<PerpsUpdateLeverageBatchResult[]> {
     return await updatePerpsLeverages(this, request);
   }
 

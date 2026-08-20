@@ -218,37 +218,49 @@ export type PerpsUpdateLeverageResult = z.infer<
   typeof PerpsUpdateLeverageResultSchema
 >;
 
-const PerpsUpdateLeverageRejectionSchema = z
+/**
+ * A rejected item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeverageRejectionSchema = z
   .object({
     status: z.literal('err'),
     instrument_id: PerpsInstrumentIdSchema,
-    error: z.string().min(1),
+    error: z.string().optional(),
   })
   .transform((result) => ({
     status: result.status,
     instrumentId: result.instrument_id,
-    error: result.error,
+    error: perpsAckError(result.error),
   }));
 
 /**
- * Ordered results for a batch Perps leverage update.
+ * A rejected item in a batch Perps leverage update.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export const PerpsUpdateLeveragesResultSchema = z.array(
-  z.union([
-    PerpsUpdateLeverageResultSchema,
-    PerpsUpdateLeverageRejectionSchema,
-  ]),
-);
+export type PerpsUpdateLeverageRejection = z.infer<
+  typeof PerpsUpdateLeverageRejectionSchema
+>;
 
 /**
- * Ordered results for a batch Perps leverage update.
+ * The result for one item in a batch Perps leverage update.
  *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsUpdateLeveragesResult = z.infer<
-  typeof PerpsUpdateLeveragesResultSchema
+export const PerpsUpdateLeverageBatchResultSchema = z.union([
+  PerpsUpdateLeverageResultSchema,
+  PerpsUpdateLeverageRejectionSchema,
+]);
+
+/**
+ * The result for one item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeverageBatchResult = z.infer<
+  typeof PerpsUpdateLeverageBatchResultSchema
 >;
 
 function perpsAckError(error: string | undefined): string {
