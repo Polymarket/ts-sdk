@@ -40,11 +40,24 @@ export type ParsedRfqQuoteResponse = {
   source: RfqQuoteSource;
 };
 
+/**
+ * The subset of an RFQ request the quote math needs. The WS session passes
+ * its full {@link RfqQuoteRequest}; the maker REST actions construct it from
+ * caller-supplied fields. `requestedSize` is only consulted when the
+ * response omits an explicit size.
+ */
+export type QuoteOrderInputs = Pick<
+  RfqQuoteRequest,
+  'direction' | 'noPositionId' | 'yesPositionId'
+> & {
+  requestedSize?: RfqRequestedSize;
+};
+
 export type CreateRfqQuoteParams = {
   account: AccountIdentity;
   chainId: number;
   exchange: EvmAddress;
-  request: RfqQuoteRequest;
+  request: QuoteOrderInputs;
   response: ParsedRfqQuoteResponse;
   signer: Signer;
 };
@@ -67,7 +80,7 @@ export async function createRfqQuote(
   const price = params.response.price;
   const size =
     params.response.size === undefined
-      ? defaultQuoteSize(params.request.requestedSize, price)
+      ? defaultQuoteSizeFromRequest(params.request.requestedSize, price)
       : params.response.size;
   const signedOrder = await signRfqQuoteOrder({
     account: params.account,
@@ -84,7 +97,7 @@ export async function createRfqQuote(
 }
 
 function quoteOrderTokenId(
-  request: RfqQuoteRequest,
+  request: QuoteOrderInputs,
   source: RfqQuoteSource,
 ): PositionId {
   if (request.direction === RfqDirection.Buy) {
@@ -97,7 +110,7 @@ function quoteOrderTokenId(
 }
 
 function quoteOrderPrice(
-  request: RfqQuoteRequest,
+  request: QuoteOrderInputs,
   source: RfqQuoteSource,
   price: bigint,
 ): bigint {
@@ -110,6 +123,19 @@ function quoteOrderPrice(
 
 function quoteOrderSide(source: RfqQuoteSource): OrderSide {
   return source === 'collateral' ? OrderSide.BUY : OrderSide.SELL;
+}
+
+function defaultQuoteSizeFromRequest(
+  requestedSize: RfqRequestedSize | undefined,
+  price: bigint,
+): bigint {
+  if (requestedSize === undefined) {
+    throw new UserInputError(
+      'A quote size is required when the requested RFQ size is not provided.',
+    );
+  }
+
+  return defaultQuoteSize(requestedSize, price);
 }
 
 function defaultQuoteSize(
