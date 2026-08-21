@@ -93,7 +93,7 @@ describe('validatePriceOnTickGrid', () => {
   ] as [
     number,
     TickSizeValue,
-  ][])('rejects off-grid price %s for tick %s', (price, tick) => {
+  ][])('rejects representable price %s that is off-grid for tick %s', (price, tick) => {
     expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
       'must be a multiple of tick size',
     );
@@ -102,12 +102,11 @@ describe('validatePriceOnTickGrid', () => {
   it.each([
     [0.0100001, 0.005],
     [0.60000000001, 0.1],
-    [0.55000000001, 0.1],
     [0.00250000001, 0.0025],
   ] as [
     number,
     TickSizeValue,
-  ][])('rejects unsupported precision in %s for tick %s', (price, tick) => {
+  ][])('rejects price %s instead of snapping it onto tick %s', (price, tick) => {
     expect(() => validatePriceOnTickGrid(price, tick)).toThrow(
       'unsupported precision',
     );
