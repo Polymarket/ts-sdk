@@ -21,7 +21,7 @@ export type SessionKeyActions = {
    * ```ts
    * const authorization = await client.authorizeSessionKey({
    *   address: sessionAddress,
-   *   scopes: [SessionKeyScope.CLOB],
+   *   scopes: [SessionKeyKnownScope.CLOB],
    *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
    * });
    * ```
@@ -44,5 +44,6 @@ export type {
   AuthorizedSessionKey,
   AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
+  SessionKeyScope,
 } from '../actions';
-export { AuthorizeSessionKeyError, SessionKeyScope } from '../actions';
+export { AuthorizeSessionKeyError, SessionKeyKnownScope } from '../actions';

@@ -8,21 +8,29 @@ import {
   TxHashSchema,
 } from '../shared';
 
-/** Scope values accepted by session-signer authorization requests. */
-export enum RelayerSessionSignerScope {
+/** Known scope values accepted by session-signer authorization requests. */
+export enum RelayerSessionSignerKnownScope {
   /** All supported scopes. */
   ALL = 'ALL',
   /** Central limit order book trading. */
   CLOB = 'CLOB',
   /** Combos request-for-quote trading. */
   COMBOSRFQ = 'COMBOSRFQ',
-  /** Block trading. */
-  BLOCKTRADE = 'BLOCKTRADE',
 }
 
-export const RelayerSessionSignerScopeSchema = z.enum(
-  RelayerSessionSignerScope,
-);
+/**
+ * A session-signer scope. Known scopes are enumerated in
+ * {@link RelayerSessionSignerKnownScope}; newly introduced scopes flow through
+ * as plain strings before a bindings release enumerates them.
+ */
+export type RelayerSessionSignerScope =
+  | RelayerSessionSignerKnownScope
+  | (string & {});
+
+export const RelayerSessionSignerScopeSchema = z
+  .string()
+  .min(1)
+  .transform((value): RelayerSessionSignerScope => value);
 
 export type RelayerAuthorizeSessionSignerRequest = {
   /** Signed batch deadline encoded as whole Unix seconds. */

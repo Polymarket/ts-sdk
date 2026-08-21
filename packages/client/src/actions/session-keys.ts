@@ -3,7 +3,6 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type RelayerAuthorizeSessionSignerRequest,
   RelayerAuthorizeSessionSignerResponseSchema,
-  RelayerSessionSignerScope,
 } from '@polymarket/bindings/relayer';
 import {
   expectEvmAddress,
@@ -36,17 +35,27 @@ import {
   GaslessTransactionHandle,
 } from './gasless';
 
-/** Venue authorization attached to a session-key grant. */
-export enum SessionKeyScope {
+/**
+ * Known venue authorizations attached to session-key grants.
+ *
+ * Session-key authorization accepts newer scopes as plain strings; see
+ * {@link SessionKeyScope}.
+ */
+export enum SessionKeyKnownScope {
   /** All current and future venues. Cannot be combined with other scopes. */
   ALL = 'ALL',
   /** Central limit order book trading. */
   CLOB = 'CLOB',
   /** Combos request-for-quote trading. */
   COMBOSRFQ = 'COMBOSRFQ',
-  /** Block trading. */
-  BLOCKTRADE = 'BLOCKTRADE',
 }
+
+/**
+ * A session-key scope. Known scopes are enumerated in
+ * {@link SessionKeyKnownScope}; newly introduced scopes remain usable before
+ * an SDK release enumerates them.
+ */
+export type SessionKeyScope = SessionKeyKnownScope | (string & {});
 
 /**
  * Public metadata for a confirmed session-key authorization.
@@ -58,7 +67,7 @@ export enum SessionKeyScope {
 export type AuthorizedSessionKey = {
   /** Public EVM address of the externally managed session signer. */
   address: EvmAddress;
-  /** Venue scopes granted to the signer in canonical enum order. */
+  /** Venue scopes granted to the signer. */
   scopes: SessionKeyScope[];
   /** Absolute expiry as whole Unix seconds. */
   validUntil: number;
@@ -86,15 +95,15 @@ export type AuthorizeSessionKeyRequest = {
   validUntil: number;
 };
 
-const SessionKeyScopeSchema = z.enum(
-  SessionKeyScope,
-) satisfies z.ZodType<SessionKeyScope>;
+const SessionKeyScopeSchema = z
+  .string()
+  .min(1)
+  .transform((value): SessionKeyScope => value);
 
-const SESSION_KEY_SCOPE_ORDER = [
-  SessionKeyScope.ALL,
-  SessionKeyScope.CLOB,
-  SessionKeyScope.COMBOSRFQ,
-  SessionKeyScope.BLOCKTRADE,
+const SESSION_KEY_KNOWN_SCOPE_ORDER = [
+  SessionKeyKnownScope.ALL,
+  SessionKeyKnownScope.CLOB,
+  SessionKeyKnownScope.COMBOSRFQ,
 ] as const;
 
 type ParsedAuthorizeSessionKeyRequest = {
@@ -130,8 +139,8 @@ function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
       }
 
       if (
-        value.scopes.includes(SessionKeyScope.ALL) &&
-        value.scopes.some((scope) => scope !== SessionKeyScope.ALL)
+        value.scopes.includes(SessionKeyKnownScope.ALL) &&
+        value.scopes.some((scope) => scope !== SessionKeyKnownScope.ALL)
       ) {
         context.addIssue({
           code: 'custom',
@@ -149,15 +158,20 @@ function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
         });
       }
     })
-    .transform(
-      (value): ParsedAuthorizeSessionKeyRequest => ({
+    .transform((value): ParsedAuthorizeSessionKeyRequest => {
+      const requestedScopes = new Set(value.scopes);
+
+      return {
         ...value,
         address: expectEvmAddress(value.address.toLowerCase()),
-        scopes: SESSION_KEY_SCOPE_ORDER.filter((scope) =>
-          value.scopes.includes(scope),
-        ),
-      }),
-    );
+        scopes: [
+          ...SESSION_KEY_KNOWN_SCOPE_ORDER.filter((scope) =>
+            requestedScopes.delete(scope),
+          ),
+          ...requestedScopes,
+        ],
+      };
+    });
 
   return schema satisfies z.ZodType<
     ParsedAuthorizeSessionKeyRequest,
@@ -204,7 +218,7 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   scopes: [SessionKeyScope.CLOB],
+ *   scopes: [SessionKeyKnownScope.CLOB],
  *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
  * });
  * ```
@@ -234,7 +248,7 @@ export async function authorizeSessionKey(
   const payload: RelayerAuthorizeSessionSignerRequest = {
     deadline: signedBatch.depositWalletParams.deadline,
     nonce: signedBatch.nonce,
-    scopes: parsedRequest.scopes.map(toRelayerSessionSignerScope),
+    scopes: parsedRequest.scopes,
     sessionSignerAddress: parsedRequest.address,
     signature: signedBatch.signature,
     validUntil: `${parsedRequest.validUntil}`,
@@ -280,20 +294,5 @@ function assertOwnerDepositWallet(client: BaseSecureClient): void {
     throw new UserInputError(
       'Session keys can only be authorized by the Deposit Wallet owner.',
     );
-  }
-}
-
-function toRelayerSessionSignerScope(
-  scope: SessionKeyScope,
-): RelayerSessionSignerScope {
-  switch (scope) {
-    case SessionKeyScope.ALL:
-      return RelayerSessionSignerScope.ALL;
-    case SessionKeyScope.CLOB:
-      return RelayerSessionSignerScope.CLOB;
-    case SessionKeyScope.COMBOSRFQ:
-      return RelayerSessionSignerScope.COMBOSRFQ;
-    case SessionKeyScope.BLOCKTRADE:
-      return RelayerSessionSignerScope.BLOCKTRADE;
   }
 }

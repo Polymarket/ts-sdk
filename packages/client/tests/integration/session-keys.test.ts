@@ -1,6 +1,6 @@
 import { OrderSide } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
-import { createSecureClient, SessionKeyScope } from '@polymarket/client';
+import { createSecureClient, SessionKeyKnownScope } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { expectPresent } from '@polymarket/types';
 import { http } from 'viem';
@@ -27,7 +27,7 @@ describe('Session keys', { timeout: 300_000 }, () => {
     const authorization =
       await secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
-        scopes: [SessionKeyScope.CLOB],
+        scopes: [SessionKeyKnownScope.CLOB],
         validUntil,
       });
 
@@ -42,7 +42,7 @@ describe('Session keys', { timeout: 300_000 }, () => {
     expect(authorization.transaction.transactionId).not.toBeNull();
     expect(authorization.sessionKey).toEqual({
       address: sessionAddress.toLowerCase(),
-      scopes: [SessionKeyScope.CLOB],
+      scopes: [SessionKeyKnownScope.CLOB],
       validUntil,
     });
 
