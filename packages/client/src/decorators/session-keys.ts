@@ -16,6 +16,7 @@ export type SessionKeyActions = {
    *
    * The SDK receives only the public address. The application remains
    * responsible for generating, storing, and protecting the private key.
+   * When scopes are omitted, authorization defaults to `ALL`.
    *
    * @remarks
    * Resolves after the submitted transaction is confirmed and the session key
@@ -25,7 +26,6 @@ export type SessionKeyActions = {
    * ```ts
    * const authorization = await client.authorizeSessionKey({
    *   address: sessionAddress,
-   *   scopes: [SessionKeyKnownScope.CLOB],
    *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
    * });
    * ```

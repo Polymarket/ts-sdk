@@ -14,7 +14,7 @@ const market = await findHighVolumeLowPriceMarket(publicClient, {
 });
 
 describe('Session keys', { timeout: 600_000 }, () => {
-  it('authorizes, lists, uses, and revokes a CLOB session key', async ({
+  it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
     annotate,
     environment,
     secureClientWithDepositWallet,
@@ -27,7 +27,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
     const authorization =
       await secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
-        scopes: [SessionKeyKnownScope.CLOB],
         validUntil,
       });
 
@@ -42,7 +41,7 @@ describe('Session keys', { timeout: 600_000 }, () => {
     expect(authorization.transaction.transactionId).not.toBeNull();
     expect(authorization.sessionKey).toEqual({
       address: sessionAddress.toLowerCase(),
-      scopes: [SessionKeyKnownScope.CLOB],
+      scopes: [SessionKeyKnownScope.ALL],
       validUntil,
     });
 

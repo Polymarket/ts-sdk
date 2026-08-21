@@ -89,8 +89,8 @@ export type AuthorizeSessionKeyRequest = {
   address: string;
   /** Stable key to reuse when retrying the same logical authorization. */
   idempotencyKey?: string;
-  /** Non-empty requested scopes. `ALL` must appear alone. */
-  scopes: SessionKeyScope[];
+  /** Requested scopes. Defaults to `ALL`, which must appear alone. */
+  scopes?: SessionKeyScope[];
   /** Absolute expiry as whole future Unix seconds. */
   validUntil: number;
 };
@@ -106,6 +106,8 @@ const SESSION_KEY_KNOWN_SCOPE_ORDER = [
   SessionKeyKnownScope.COMBOSRFQ,
 ] as const;
 
+const DEFAULT_SESSION_KEY_SCOPES = [SessionKeyKnownScope.ALL] as const;
+
 type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
@@ -118,7 +120,14 @@ function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
     .object({
       address: EvmAddressSchema,
       idempotencyKey: z.string().trim().min(1).optional(),
-      scopes: z.array(SessionKeyScopeSchema).min(1),
+      scopes: z
+        .array(SessionKeyScopeSchema)
+        .min(1)
+        .optional()
+        .transform(
+          (scopes): SessionKeyScope[] =>
+            scopes ?? [...DEFAULT_SESSION_KEY_SCOPES],
+        ),
       validUntil: z.number().int(),
     })
     .superRefine((value, context) => {
@@ -260,6 +269,7 @@ export async function fetchSessionKeys(
  *
  * The SDK receives only the public address. The application remains
  * responsible for generating, storing, and protecting the private key.
+ * When scopes are omitted, authorization defaults to `ALL`.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -271,7 +281,6 @@ export async function fetchSessionKeys(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   scopes: [SessionKeyKnownScope.CLOB],
  *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
  * });
  * ```
