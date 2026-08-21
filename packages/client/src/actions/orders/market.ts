@@ -258,13 +258,13 @@ async function resolveUnprotectedMarketOrderContext(
       ? resolveFeeInputs(client, assetId, params.builderCode)
       : undefined;
   const [orderBook, resolvedFeeInputs] = await Promise.all([
-    fetchOrderBook(client, { tokenId: assetId }),
+    fetchOrderBook(client, { assetId }),
     feeInputs,
   ]);
 
-  if (orderBook.tokenId !== assetId) {
+  if (orderBook.assetId !== assetId) {
     throw new UnexpectedResponseError(
-      `Order book returned asset ${orderBook.tokenId} for requested asset ${assetId}.`,
+      `Order book returned asset ${orderBook.assetId} for requested asset ${assetId}.`,
     );
   }
 

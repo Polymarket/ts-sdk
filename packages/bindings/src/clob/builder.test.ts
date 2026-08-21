@@ -33,6 +33,8 @@ describe('BuilderTradeSchema', () => {
     });
 
     expect(trade.conditionId).toBe(baseBuilderTrade.market);
+    expect(trade.assetId).toBe(baseBuilderTrade.assetId);
+    expect(trade.tokenId).toBe(trade.assetId);
     expect(trade).not.toHaveProperty('market');
     expect(trade.matchedAt).toBe('2026-05-05T16:00:29.000Z');
     expect(trade.createdAt).toBe('2026-05-05T16:00:30.00756Z');

@@ -3,6 +3,7 @@ import {
   toPaginationCursor,
 } from '@polymarket/bindings';
 import {
+  type AssetType,
   AssetTypeSchema,
   type BalanceAllowanceResponse,
   BalanceAllowanceResponseSchema,
@@ -43,6 +44,7 @@ import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { validateWith } from '../response';
 import { toSignatureType } from '../wallet';
+import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
 export type FetchClosedOnlyModeError =
@@ -84,16 +86,33 @@ export async function fetchClosedOnlyMode(
   return response.closedOnly;
 }
 
-const ListOpenOrdersRequestSchema = z
-  .object({
-    tokenId: z.string().optional(),
-    cursor: PaginationCursorSchema.optional(),
-    id: z.string().optional(),
-    market: z.string().optional(),
-  })
-  .default({});
+const ListOpenOrdersRequestFieldsSchema = z.object({
+  cursor: PaginationCursorSchema.optional(),
+  id: z.string().optional(),
+  market: z.string().optional(),
+});
 
-export type ListOpenOrdersRequest = z.input<typeof ListOpenOrdersRequestSchema>;
+const ListOpenOrdersRequestSchema = optionalExchangeAssetRequestSchema(
+  ListOpenOrdersRequestFieldsSchema.shape,
+).default({});
+
+export type ListOpenOrdersRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      cursor?: string;
+      id?: string;
+      market?: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      cursor?: string;
+      id?: string;
+      market?: string;
+    };
 export type ListOpenOrdersError =
   | RateLimitError
   | RequestRejectedError
@@ -149,18 +168,21 @@ export function listOpenOrders(
   client: BaseSecureClient,
   request?: ListOpenOrdersRequest,
 ): Paginated<OpenOrder[]> {
-  const { cursor, ...params } = parseUserInput(
-    request,
-    ListOpenOrdersRequestSchema,
-  );
+  const params = parseUserInput(request, ListOpenOrdersRequestSchema);
+  const { cursor } = params;
 
   return paginate(
     (nextCursor) =>
       client.secureClob
         .get('/data/orders', {
           params: toSearchParams(
-            { ...params, nextCursor },
-            snakeCase({ tokenId: 'asset_id' }),
+            {
+              assetId: params.assetId ?? params.tokenId,
+              id: params.id,
+              market: params.market,
+              nextCursor,
+            },
+            snakeCase({ assetId: 'asset_id' }),
           ),
         })
         .andThen(validateWith(OpenOrdersPageSchema))
@@ -227,7 +249,6 @@ export async function fetchOrder(
 
 const ListAccountTradesRequestFields = {
   after: z.string().optional(),
-  tokenId: z.string().optional(),
   before: z.string().optional(),
   cursor: PaginationCursorSchema.optional(),
   id: z.string().optional(),
@@ -235,13 +256,33 @@ const ListAccountTradesRequestFields = {
   market: z.string().optional(),
 };
 
-const ListAccountTradesRequestSchema = z
-  .object(ListAccountTradesRequestFields)
-  .default({});
+const ListAccountTradesRequestSchema = optionalExchangeAssetRequestSchema(
+  ListAccountTradesRequestFields,
+).default({});
 
-export type ListAccountTradesRequest = z.input<
-  typeof ListAccountTradesRequestSchema
->;
+export type ListAccountTradesRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      after?: string;
+      before?: string;
+      cursor?: string;
+      id?: string;
+      makerAddress?: string;
+      market?: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      after?: string;
+      before?: string;
+      cursor?: string;
+      id?: string;
+      makerAddress?: string;
+      market?: string;
+    };
 export type ListAccountTradesError =
   | RateLimitError
   | RequestRejectedError
@@ -297,18 +338,24 @@ export function listAccountTrades(
   client: BaseSecureClient,
   request?: ListAccountTradesRequest,
 ): Paginated<ClobTrade[]> {
-  const { cursor, ...params } = parseUserInput(
-    request,
-    ListAccountTradesRequestSchema,
-  );
+  const params = parseUserInput(request, ListAccountTradesRequestSchema);
+  const { cursor } = params;
 
   return paginate(
     (nextCursor) =>
       client.secureClob
         .get('/data/trades', {
           params: toSearchParams(
-            { ...params, nextCursor },
-            snakeCase({ tokenId: 'asset_id' }),
+            {
+              after: params.after,
+              assetId: params.assetId ?? params.tokenId,
+              before: params.before,
+              id: params.id,
+              makerAddress: params.makerAddress,
+              market: params.market,
+              nextCursor,
+            },
+            snakeCase({ assetId: 'asset_id' }),
           ),
         })
         .andThen(validateWith(ClobTradesPageSchema))
@@ -427,14 +474,27 @@ export async function dropNotifications(
   );
 }
 
-const FetchBalanceAllowanceRequestSchema = z.object({
+const BalanceAllowanceRequestFieldsSchema = z.object({
   assetType: AssetTypeSchema,
-  tokenId: z.string().optional(),
 });
 
-export type FetchBalanceAllowanceRequest = z.input<
-  typeof FetchBalanceAllowanceRequestSchema
->;
+const FetchBalanceAllowanceRequestSchema = optionalExchangeAssetRequestSchema(
+  BalanceAllowanceRequestFieldsSchema.shape,
+);
+
+export type FetchBalanceAllowanceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      assetType: AssetType;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      assetType: AssetType;
+    };
 
 export type FetchBalanceAllowanceError =
   | RateLimitError
@@ -478,20 +538,36 @@ export async function fetchBalanceAllowance(
   return unwrap(
     client.secureClob
       .get('/balance-allowance', {
-        params: toSearchParams({ ...params, signatureType }, snakeCase()),
+        params: toSearchParams(
+          {
+            assetType: params.assetType,
+            tokenId: params.assetId ?? params.tokenId,
+            signatureType,
+          },
+          snakeCase(),
+        ),
       })
       .andThen(validateWith(BalanceAllowanceResponseSchema)),
   );
 }
 
-const UpdateBalanceAllowanceRequestSchema = z.object({
-  assetType: AssetTypeSchema,
-  tokenId: z.string().optional(),
-});
+const UpdateBalanceAllowanceRequestSchema = optionalExchangeAssetRequestSchema(
+  BalanceAllowanceRequestFieldsSchema.shape,
+);
 
-export type UpdateBalanceAllowanceRequest = z.input<
-  typeof UpdateBalanceAllowanceRequestSchema
->;
+export type UpdateBalanceAllowanceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      assetType: AssetType;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      assetType: AssetType;
+    };
 
 export type UpdateBalanceAllowanceError =
   | RateLimitError
@@ -532,7 +608,11 @@ export async function updateBalanceAllowance(
   const params = parseUserInput(request, UpdateBalanceAllowanceRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
   const searchParams = toSearchParams(
-    { ...params, signatureType },
+    {
+      assetType: params.assetType,
+      tokenId: params.assetId ?? params.tokenId,
+      signatureType,
+    },
     snakeCase(),
   );
 

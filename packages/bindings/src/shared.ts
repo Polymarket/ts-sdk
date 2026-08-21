@@ -466,6 +466,13 @@ export const PaginationCursorSchema = z.custom<PaginationCursor>(
   'Expected a non-empty pagination cursor',
 );
 export const PositionIdSchema = z.string().transform(toPositionId);
+/**
+ * CLOB payloads do not distinguish CTF token IDs from Polymarket V2 position
+ * IDs, so preserve both possible branded types when parsing an asset ID.
+ */
+export const ClobAssetIdSchema = z
+  .string()
+  .transform((value): PositionId | TokenId => value as PositionId | TokenId);
 export const QuestionIdSchema = z
   .string()
   .refine(

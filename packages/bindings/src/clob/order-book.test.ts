@@ -14,7 +14,11 @@ const orderBook = {
 
 describe('OrderBookSchema', () => {
   it('normalizes tick size to a supported numeric value', () => {
-    expect(OrderBookSchema.parse(orderBook).tickSize).toBe(0.01);
+    const parsed = OrderBookSchema.parse(orderBook);
+
+    expect(parsed.assetId).toBe(orderBook.asset_id);
+    expect(parsed.tokenId).toBe(parsed.assetId);
+    expect(parsed.tickSize).toBe(0.01);
   });
 
   it('rejects unsupported tick sizes', () => {
