@@ -2,6 +2,11 @@ import {
   type AuthorizeSessionKeyRequest,
   type AuthorizeSessionKeyResult,
   authorizeSessionKey,
+  fetchSessionKeys,
+  type RevokeSessionKeyRequest,
+  type RevokeSessionKeyResult,
+  revokeSessionKey,
+  type SessionKey,
 } from '../actions';
 import type { BaseSecureClient } from '../clients';
 
@@ -13,9 +18,8 @@ export type SessionKeyActions = {
    * responsible for generating, storing, and protecting the private key.
    *
    * @remarks
-   * This temporary implementation resolves after the submitted transaction is
-   * confirmed. Session-key listing is not yet available, so the SDK cannot
-   * perform a separate discovery and readiness check.
+   * Resolves after the submitted transaction is confirmed and the session key
+   * appears in the active session-key list.
    *
    * @example
    * ```ts
@@ -32,18 +36,60 @@ export type SessionKeyActions = {
   authorizeSessionKey(
     request: AuthorizeSessionKeyRequest,
   ): Promise<AuthorizeSessionKeyResult>;
+
+  /**
+   * Fetches the active session keys authorized for the Deposit Wallet.
+   *
+   * @example
+   * ```ts
+   * const sessionKeys = await client.fetchSessionKeys();
+   * ```
+   *
+   * @throws {@link FetchSessionKeysError}
+   * Thrown on failure.
+   */
+  fetchSessionKeys(): Promise<SessionKey[]>;
+
+  /**
+   * Revokes a session key authorized for the Deposit Wallet.
+   *
+   * Revocation may take several minutes while existing activity is canceled and
+   * the on-chain revocation is confirmed.
+   *
+   * @example
+   * ```ts
+   * const revocation = await client.revokeSessionKey({
+   *   address: sessionAddress,
+   * });
+   * ```
+   *
+   * @throws {@link RevokeSessionKeyError}
+   * Thrown on failure.
+   */
+  revokeSessionKey(
+    request: RevokeSessionKeyRequest,
+  ): Promise<RevokeSessionKeyResult>;
 };
 
 export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
   return {
     authorizeSessionKey: authorizeSessionKey.bind(null, client),
+    fetchSessionKeys: fetchSessionKeys.bind(null, client),
+    revokeSessionKey: revokeSessionKey.bind(null, client),
   };
 }
 
 export type {
-  AuthorizedSessionKey,
   AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
+  RevokeSessionKeyRequest,
+  RevokeSessionKeyResult,
+  SessionKey,
   SessionKeyScope,
 } from '../actions';
-export { AuthorizeSessionKeyError, SessionKeyKnownScope } from '../actions';
+export {
+  AuthorizeSessionKeyError,
+  FetchSessionKeysError,
+  RevokeSessionKeyError,
+  SessionKeyKnownScope,
+} from '../actions';

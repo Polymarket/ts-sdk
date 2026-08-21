@@ -76,3 +76,42 @@ export const RelayerAuthorizeSessionSignerResponseSchema = z.object({
   transactionHash: TxHashSchema.nullish().transform((value) => value ?? null),
   transactionId: TransactionIdSchema,
 }) satisfies z.ZodType<RelayerAuthorizeSessionSignerResponse>;
+
+export type RelayerRevokeSessionSignerRequest = {
+  /** Signed batch deadline encoded as whole Unix seconds. */
+  deadline: string;
+  /** Deposit Wallet nonce encoded as a base-10 integer. */
+  nonce: string;
+  /** Public address of the session signer to revoke. */
+  sessionSignerAddress: EvmAddress;
+  /** Owner signature authorizing the wallet call. */
+  signature: string;
+  /** Deposit Wallet that revokes the authorization. */
+  walletAddress: EvmAddress;
+};
+
+export const RelayerRevokeSessionSignerRequestSchema = z.object({
+  deadline: z.string().regex(/^\d+$/),
+  nonce: z.string().regex(/^\d+$/),
+  sessionSignerAddress: EvmAddressSchema,
+  signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/),
+  walletAddress: EvmAddressSchema,
+}) satisfies z.ZodType<RelayerRevokeSessionSignerRequest>;
+
+export type RelayerRevokeSessionSignerResponse = {
+  /** Whether the off-chain revocation fence was durable at submission time. */
+  fenced: boolean;
+  /** Identifier assigned to the accepted revocation operation. */
+  operationId: string;
+  /** Raw operation status returned at submission time. */
+  status: string;
+  /** Identifier used to poll the submitted transaction. */
+  transactionId: TransactionId;
+};
+
+export const RelayerRevokeSessionSignerResponseSchema = z.object({
+  fenced: z.boolean(),
+  operationId: z.string().min(1),
+  status: z.string().min(1),
+  transactionId: TransactionIdSchema,
+}) satisfies z.ZodType<RelayerRevokeSessionSignerResponse>;

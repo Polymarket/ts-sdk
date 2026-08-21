@@ -13,8 +13,8 @@ const market = await findHighVolumeLowPriceMarket(publicClient, {
   sportsOnly: false,
 });
 
-describe('Session keys', { timeout: 300_000 }, () => {
-  it('authorizes a CLOB session key that places and cancels a limit order', async ({
+describe('Session keys', { timeout: 600_000 }, () => {
+  it('authorizes, lists, uses, and revokes a CLOB session key', async ({
     annotate,
     environment,
     secureClientWithDepositWallet,
@@ -46,6 +46,10 @@ describe('Session keys', { timeout: 300_000 }, () => {
       validUntil,
     });
 
+    const activeSessionKeys =
+      await secureClientWithDepositWallet.fetchSessionKeys();
+    expect(activeSessionKeys).toContainEqual(authorization.sessionKey);
+
     const sessionClient = await createSecureClient({
       environment,
       signer: sessionSigner,
@@ -61,6 +65,7 @@ describe('Session keys', { timeout: 300_000 }, () => {
 
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
     let orderId: string | undefined;
+    let revoked = false;
 
     annotate(`Market ID: ${market.id}`);
     annotate(`Token ID: ${tokenId}`);
@@ -81,9 +86,37 @@ describe('Session keys', { timeout: 300_000 }, () => {
       const cancellation = await sessionClient.cancelOrder({ orderId });
       expect(cancellation.canceled).toContain(orderId);
       orderId = undefined;
+
+      const revocation = await secureClientWithDepositWallet.revokeSessionKey({
+        address: sessionAddress,
+      });
+      revoked = true;
+
+      annotate(`Revocation operation: ${revocation.operationId}`);
+      annotate(
+        `Revocation transaction: ${revocation.transaction.transactionHash}`,
+      );
+      expect(revocation.transaction.transactionHash).toMatch(
+        /^0x[0-9a-f]{64}$/i,
+      );
+      expect(revocation.transaction.transactionId).not.toBeNull();
+
+      const remainingSessionKeys =
+        await secureClientWithDepositWallet.fetchSessionKeys();
+      expect(
+        remainingSessionKeys.some(
+          (sessionKey) =>
+            sessionKey.address.toLowerCase() === sessionAddress.toLowerCase(),
+        ),
+      ).toBe(false);
     } finally {
       if (orderId !== undefined) {
         await sessionClient.cancelOrder({ orderId }).catch(() => undefined);
+      }
+      if (!revoked) {
+        await secureClientWithDepositWallet
+          .revokeSessionKey({ address: sessionAddress })
+          .catch(() => undefined);
       }
     }
   });

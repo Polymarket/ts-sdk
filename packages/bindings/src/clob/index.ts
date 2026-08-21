@@ -9,5 +9,6 @@ export * from './order-book';
 export * from './order-response';
 export * from './pagination';
 export * from './rewards';
+export * from './session-signer';
 export * from './signature-type';
 export * from './tick-size';
