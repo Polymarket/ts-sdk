@@ -2,7 +2,11 @@ import { OrderSide } from '@polymarket/bindings';
 import {
   ComboAcceptFailureReason,
   ComboQuoteUnavailableReason,
+  MakerRfqStatus,
+  RfqConfirmationDecision,
+  RfqDirection,
   RfqRejectionCode,
+  RfqRequestedSizeUnit,
   RfqStatus,
 } from '@polymarket/bindings/combos';
 import { WalletType } from '@polymarket/bindings/gamma';
@@ -26,9 +30,13 @@ import type { Signer } from '../types';
 import {
   type AcceptComboQuoteParams,
   acceptComboQuote,
+  cancelMakerQuote,
   type RequestComboQuoteParams,
+  RfqCancelQuoteRejectedError,
   RfqRequestRejectedError,
   requestComboQuote,
+  submitMakerConfirmation,
+  submitMakerQuote,
   waitForComboFill,
 } from './rfq';
 
@@ -615,6 +623,7 @@ type CreateClientOptions = {
   getResults?: GatewayResult[];
   hasBuilderApiKey?: boolean;
   postResults?: GatewayResult[];
+  secureRfqPostResults?: GatewayResult[];
 };
 
 function createClient(options: CreateClientOptions = {}) {
@@ -629,6 +638,12 @@ function createClient(options: CreateClientOptions = {}) {
   const gatewayGet = vi.fn(() => {
     const next = getQueue.shift();
     if (next === undefined) throw new Error('Unexpected gateway GET');
+    return next;
+  });
+  const secureRfqQueue = [...(options.secureRfqPostResults ?? [])];
+  const secureRfqPost = vi.fn(() => {
+    const next = secureRfqQueue.shift();
+    if (next === undefined) throw new Error('Unexpected secureRfq POST');
     return next;
   });
   const signTypedData = vi.fn(async () => SIGNATURE);
@@ -649,10 +664,11 @@ function createClient(options: CreateClientOptions = {}) {
     builderGateway: { get: gatewayGet, post: gatewayPost },
     environment: production,
     hasBuilderApiKey: options.hasBuilderApiKey ?? true,
+    secureRfq: { post: secureRfqPost },
     signer,
   } as unknown as BaseSecureClient;
 
-  return { client, gatewayGet, gatewayPost, signTypedData };
+  return { client, gatewayGet, gatewayPost, secureRfqPost, signTypedData };
 }
 
 function jsonResponse(payload: unknown): Response {
@@ -660,3 +676,177 @@ function jsonResponse(payload: unknown): Response {
     headers: { 'content-type': 'application/json' },
   });
 }
+
+const makerSnapshotWire = {
+  request: {
+    rfq_id: 'rfq-77',
+    direction: 'BUY',
+    leg_position_ids: ['101', '102'],
+    signature_type: 0,
+    side: 'YES',
+    requested_size: { unit: 'notional', value_e6: '90000000' },
+  },
+  status: 'COLLECTING_QUOTES',
+};
+
+describe('submitMakerQuote', () => {
+  it('signs, generates a quote id, and posts the wire body', async () => {
+    const { client, secureRfqPost } = createClient({
+      secureRfqPostResults: [okAsync(jsonResponse(makerSnapshotWire))],
+    });
+
+    const result = await submitMakerQuote(client, {
+      direction: RfqDirection.Buy,
+      noPositionId: '202',
+      price: 0.45,
+      rfqId: 'rfq-77',
+      size: 20,
+      validUntil: 1_755_600_000_000,
+      yesPositionId: '201',
+    });
+
+    expect(result.quoteId).toMatch(/^quote_[0-9a-f]{32}$/);
+    expect(result.snapshot.status).toBe(MakerRfqStatus.CollectingQuotes);
+
+    expect(secureRfqPost).toHaveBeenCalledWith('/v1/maker/quotes', {
+      json: expect.objectContaining({
+        maker_address: SIGNER,
+        price_e6: '450000',
+        quote_id: result.quoteId,
+        rfq_id: 'rfq-77',
+        signature_type: 0,
+        signer_address: SIGNER,
+        size_e6: '20000000',
+        valid_until: 1_755_600_000_000,
+      }),
+    });
+    const [, options] = secureRfqPost.mock.calls[0] as unknown as [
+      string,
+      { json: { signed_order: { builder?: string }; responded_at?: unknown } },
+    ];
+    expect(options.json.signed_order).toBeDefined();
+    expect(options.json.signed_order.builder).toBe(`0x${'0'.repeat(64)}`);
+  });
+
+  it('defaults the size from the requested RFQ size', async () => {
+    const { client, secureRfqPost } = createClient({
+      secureRfqPostResults: [okAsync(jsonResponse(makerSnapshotWire))],
+    });
+
+    await submitMakerQuote(client, {
+      direction: RfqDirection.Buy,
+      noPositionId: '202',
+      price: 0.45,
+      requestedSize: { unit: RfqRequestedSizeUnit.Notional, value: 90 },
+      rfqId: 'rfq-77',
+      yesPositionId: '201',
+    });
+
+    const [, options] = secureRfqPost.mock.calls[0] as unknown as [
+      string,
+      { json: { size_e6: string } },
+    ];
+    // 90 pUSD notional at 0.45 = 200 shares.
+    expect(options.json.size_e6).toBe('200000000');
+  });
+
+  it('rejects when neither size nor requestedSize is given', async () => {
+    const { client } = createClient();
+
+    await expect(
+      submitMakerQuote(client, {
+        direction: RfqDirection.Buy,
+        noPositionId: '202',
+        price: 0.45,
+        rfqId: 'rfq-77',
+        yesPositionId: '201',
+      }),
+    ).rejects.toBeInstanceOf(UserInputError);
+  });
+});
+
+describe('cancelMakerQuote', () => {
+  it('posts the cancel body and parses the snapshot', async () => {
+    const { client, secureRfqPost } = createClient({
+      secureRfqPostResults: [okAsync(jsonResponse(makerSnapshotWire))],
+    });
+
+    const snapshot = await cancelMakerQuote(client, {
+      quoteId: `quote_${'a'.repeat(32)}`,
+      rfqId: 'rfq-77',
+    });
+
+    expect(snapshot.status).toBe(MakerRfqStatus.CollectingQuotes);
+    expect(secureRfqPost).toHaveBeenCalledWith('/v1/maker/quotes/cancel', {
+      json: {
+        maker_address: SIGNER,
+        quote_id: `quote_${'a'.repeat(32)}`,
+        rfq_id: 'rfq-77',
+        signature_type: 0,
+        signer_address: SIGNER,
+      },
+    });
+  });
+
+  it('maps a codeless rejection body onto the cancel rejection error', async () => {
+    const { client } = createClient({
+      secureRfqPostResults: [
+        errAsync(
+          new RequestRejectedError('submission window closed (url)', {
+            status: 409,
+          }),
+        ),
+      ],
+    });
+
+    const failure = await cancelMakerQuote(client, {
+      quoteId: `quote_${'a'.repeat(32)}`,
+      rfqId: 'rfq-77',
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(RfqCancelQuoteRejectedError);
+    const rejection = failure as RfqCancelQuoteRejectedError;
+    expect(rejection.code).toBeUndefined();
+    expect(rejection.rfqId).toBe('rfq-77');
+    expect(rejection.quoteId).toBe(`quote_${'a'.repeat(32)}`);
+  });
+});
+
+describe('submitMakerConfirmation', () => {
+  it('posts the decision without responded_at and parses the handoff', async () => {
+    const { client, secureRfqPost } = createClient({
+      secureRfqPostResults: [
+        okAsync(
+          jsonResponse({
+            execution: {
+              execution_id: 'exec-9',
+              quote_id: `quote_${'b'.repeat(32)}`,
+              bundle: {
+                requested_shares_e6: '1000000',
+                blended_price_e6: '500000',
+                allocations: [],
+              },
+            },
+          }),
+        ),
+      ],
+    });
+
+    const result = await submitMakerConfirmation(client, {
+      decision: RfqConfirmationDecision.Confirm,
+      quoteId: `quote_${'b'.repeat(32)}`,
+      rfqId: 'rfq-77',
+    });
+
+    expect(result.execution?.executionId).toBe('exec-9');
+    expect(result.snapshot).toBeUndefined();
+
+    const [path, options] = secureRfqPost.mock.calls[0] as unknown as [
+      string,
+      { json: Record<string, unknown> },
+    ];
+    expect(path).toBe('/v1/maker/confirmations');
+    expect(options.json).not.toHaveProperty('responded_at');
+    expect(options.json.decision).toBe('CONFIRM');
+  });
+});
