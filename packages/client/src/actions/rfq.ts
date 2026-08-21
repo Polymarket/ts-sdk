@@ -6,6 +6,7 @@ import type {
   TxHash,
 } from '@polymarket/bindings';
 import {
+  DecimalishSchema,
   OrderSide,
   OrderSideSchema,
   toBaseUnits,
@@ -39,6 +40,14 @@ import {
   BuilderRfqStatusResponseSchema,
   ComboAcceptFailureReason,
   ComboQuoteUnavailableReason,
+  type MakerConfirmationRequest,
+  type MakerConfirmationResult,
+  MakerConfirmationResultSchema,
+  type MakerQuoteCancelRequest,
+  type MakerQuoteSubmitRequest,
+  type MakerRfqSnapshot,
+  MakerRfqSnapshotSchema,
+  RfqConfirmationDecision,
   RfqDirection,
   RfqExecutionStatus,
   RfqKnownErrorCode,
@@ -74,10 +83,22 @@ import {
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
 import { resolveOrderIdentity } from '../wallet';
+import { createRfqQuote, parseRfqQuoteResponse } from '../websockets/rfq/quote';
 
+export type {
+  BuilderRfqError,
+  MakerConfirmationEntry,
+  MakerConfirmationResult,
+  MakerExecutionHandoff,
+  MakerFillAllocation,
+  MakerFillBundle,
+  MakerRfqRequest,
+  MakerRfqSnapshot,
+} from '@polymarket/bindings/combos';
 export {
   ComboAcceptFailureReason,
   ComboQuoteUnavailableReason,
+  MakerRfqStatus,
   RfqConfirmationDecision,
   RfqDirection,
   RfqExecutionStatus,
@@ -88,7 +109,6 @@ export {
   RfqStatus,
 } from '@polymarket/bindings/combos';
 export type {
-  BuilderRfqError,
   RfqConfirmationRequest,
   RfqErrorCode,
   RfqExecutionUpdate,
@@ -1418,4 +1438,404 @@ export function fetchRfqStatus(
       .andThen(validateWith(BuilderRfqStatusResponseSchema))
       .mapErr(toRfqRequestRejection),
   );
+}
+
+const MAKER_QUOTES_PATH = '/v1/maker/quotes';
+const MAKER_QUOTES_CANCEL_PATH = '/v1/maker/quotes/cancel';
+const MAKER_CONFIRMATIONS_PATH = '/v1/maker/confirmations';
+
+/**
+ * Generates a client-side maker quote identifier.
+ *
+ * @remarks
+ * Unlike the streaming session, where the server assigns quote identifiers,
+ * the maker quote endpoints require a client-generated one and do not echo it
+ * back; the generated identifier is the key later cancellation and
+ * confirmation calls use. The format mirrors the server's own identifiers.
+ */
+function generateMakerQuoteId(): RfqQuoteId {
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  const hex = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, '0'),
+  ).join('');
+
+  return toRfqQuoteId(`quote_${hex}`);
+}
+
+/** User-facing requested-size input for {@link submitMakerQuote}. */
+export type MakerRequestedSizeInput = {
+  unit: RfqRequestedSizeUnit;
+  value: number | string;
+};
+
+const RequestedSizeInputSchema = z.object({
+  unit: z.enum(RfqRequestedSizeUnit),
+  value: DecimalishSchema,
+});
+
+const SubmitMakerQuoteParamsSchema = z
+  .strictObject({
+    rfqId: z.string().min(1).transform(toRfqId),
+    direction: z.enum(RfqDirection),
+    yesPositionId: z.string().min(1).transform(toPositionId),
+    noPositionId: z.string().min(1).transform(toPositionId),
+    requestedSize: RequestedSizeInputSchema.optional(),
+    price: z.union([z.number(), z.string()]),
+    size: z.union([z.number(), z.string()]).optional(),
+    source: z.enum(['collateral', 'inventory']).optional(),
+    validUntil: z.number().int().positive().optional(),
+  })
+  .refine(
+    (params) => params.size !== undefined || params.requestedSize !== undefined,
+    {
+      message: 'Either size or requestedSize is required.',
+    },
+  );
+
+export type SubmitMakerQuoteParams = {
+  /** RFQ identifier the quote responds to. */
+  rfqId: string;
+  /** Direction of the RFQ request being quoted. */
+  direction: RfqDirection;
+  /** YES-outcome position identifier of the RFQ's combo. */
+  yesPositionId: string;
+  /** NO-outcome position identifier of the RFQ's combo. */
+  noPositionId: string;
+  /**
+   * Requested RFQ size, used to quote the full requested size when `size` is
+   * omitted. Required when `size` is not provided. A streaming session
+   * event's `requestedSize` can be passed as-is.
+   */
+  requestedSize?: MakerRequestedSizeInput;
+  /** Quote price in pUSD per outcome token, for example `0.45` or `"0.45"`. */
+  price: number | string;
+  /** Quote size in outcome tokens. Defaults to the full requested size. */
+  size?: number | string;
+  /**
+   * How the maker wants to fund the quote. Defaults to `collateral`. See
+   * {@link RfqQuoteResponse.source} for the funding semantics.
+   */
+  source?: RfqQuoteSource;
+  /** Optional quote expiry as a unix-milliseconds timestamp. */
+  validUntil?: number;
+};
+
+export type SubmitMakerQuoteResult = {
+  /**
+   * The client-generated quote identifier. Keep it: cancellation and
+   * confirmation calls key on it, and the snapshot does not echo it.
+   */
+  quoteId: RfqQuoteId;
+  /** Engine snapshot of the RFQ after the quote was accepted. */
+  snapshot: MakerRfqSnapshot;
+};
+
+export type SubmitMakerQuoteError =
+  | RateLimitError
+  | RfqQuoteRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const SubmitMakerQuoteError = makeErrorGuard(
+  RateLimitError,
+  RfqQuoteRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Submits a maker quote for an open RFQ over HTTP.
+ *
+ * @remarks
+ * This is the request/response alternative to quoting through
+ * {@link openRfqSession}. Quote submission and cancellation work fully over
+ * HTTP, but last-look confirmation requests are only delivered over the
+ * streaming session: a maker quoting over HTTP alone cannot observe the
+ * confirmation window (roughly one second in production) and will time out,
+ * which fails the RFQ and counts toward the maker's decline limits. Keep a
+ * streaming session open to receive confirmation requests, and respond with
+ * either the session event or {@link submitMakerConfirmation}.
+ *
+ * There is no endpoint for listing resting quotes; track submitted quote
+ * identifiers locally.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client
+ * instance API.
+ *
+ * @throws {@link SubmitMakerQuoteError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const { quoteId, snapshot } = await submitMakerQuote(client, {
+ *   rfqId: event.rfqId,
+ *   direction: event.direction,
+ *   yesPositionId: event.yesPositionId,
+ *   noPositionId: event.noPositionId,
+ *   requestedSize: event.requestedSize,
+ *   price: 0.45,
+ * });
+ *
+ * console.log(quoteId, snapshot.status);
+ * ```
+ */
+export async function submitMakerQuote(
+  client: BaseSecureClient,
+  params: SubmitMakerQuoteParams,
+): Promise<SubmitMakerQuoteResult> {
+  const input = parseUserInput(params, SubmitMakerQuoteParamsSchema);
+  const response = parseRfqQuoteResponse({
+    price: input.price,
+    ...(input.size === undefined ? {} : { size: input.size }),
+    ...(input.source === undefined ? {} : { source: input.source }),
+  });
+  const quote = await createRfqQuote({
+    account: client.account,
+    chainId: client.environment.chainId,
+    exchange: client.environment.contracts.exchangeV3,
+    request: {
+      direction: input.direction,
+      noPositionId: input.noPositionId,
+      yesPositionId: input.yesPositionId,
+      ...(input.requestedSize === undefined
+        ? {}
+        : { requestedSize: input.requestedSize }),
+    },
+    response,
+    signer: client.signer,
+  });
+  const identity = resolveOrderIdentity(client.account);
+  const quoteId = generateMakerQuoteId();
+  const request: MakerQuoteSubmitRequest = {
+    maker_address: identity.maker,
+    price_e6: quote.price.toString(),
+    quote_id: quoteId,
+    rfq_id: input.rfqId,
+    signature_type: identity.signatureType,
+    signed_order: quote.signedOrder,
+    signer_address: identity.signer,
+    size_e6: quote.size.toString(),
+    ...(input.validUntil === undefined
+      ? {}
+      : { valid_until: input.validUntil }),
+  };
+
+  const snapshot = await unwrap(
+    client.secureRfq
+      .post(MAKER_QUOTES_PATH, { json: request })
+      .andThen(validateWith(MakerRfqSnapshotSchema))
+      .mapErr((error) =>
+        toMakerRejection(error, RfqQuoteRejectedError, input.rfqId, quoteId),
+      ),
+  );
+
+  return { quoteId, snapshot };
+}
+
+const CancelMakerQuoteParamsSchema = z.strictObject({
+  rfqId: z.string().min(1).transform(toRfqId),
+  quoteId: z.string().min(1).transform(toRfqQuoteId),
+});
+
+export type CancelMakerQuoteParams = {
+  /** RFQ identifier the quote belongs to. */
+  rfqId: string;
+  /** Quote identifier returned by {@link submitMakerQuote}. */
+  quoteId: string;
+};
+
+export type CancelMakerQuoteError =
+  | RateLimitError
+  | RfqCancelQuoteRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const CancelMakerQuoteError = makeErrorGuard(
+  RateLimitError,
+  RfqCancelQuoteRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Cancels a resting maker quote over HTTP.
+ *
+ * @remarks
+ * Cancellation succeeds while the RFQ is still collecting quotes and is
+ * idempotent there. Once the maker's quote has been selected and last look
+ * has started, a cancellation is treated as a decline: it fails the entire
+ * RFQ and counts toward the maker's decline limits. After the requester has
+ * accepted or execution has started, cancellation is rejected.
+ *
+ * The identity fields sent with the cancellation must match the credentials
+ * that submitted the quote, whether it was submitted over HTTP or through a
+ * streaming session.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client
+ * instance API.
+ *
+ * @throws {@link CancelMakerQuoteError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const snapshot = await cancelMakerQuote(client, {
+ *   rfqId: 'rfq-123',
+ *   quoteId,
+ * });
+ *
+ * console.log(snapshot.status);
+ * ```
+ */
+export async function cancelMakerQuote(
+  client: BaseSecureClient,
+  params: CancelMakerQuoteParams,
+): Promise<MakerRfqSnapshot> {
+  const input = parseUserInput(params, CancelMakerQuoteParamsSchema);
+  const identity = resolveOrderIdentity(client.account);
+  const request: MakerQuoteCancelRequest = {
+    maker_address: identity.maker,
+    quote_id: input.quoteId,
+    rfq_id: input.rfqId,
+    signature_type: identity.signatureType,
+    signer_address: identity.signer,
+  };
+
+  return unwrap(
+    client.secureRfq
+      .post(MAKER_QUOTES_CANCEL_PATH, { json: request })
+      .andThen(validateWith(MakerRfqSnapshotSchema))
+      .mapErr((error) =>
+        toMakerRejection(
+          error,
+          RfqCancelQuoteRejectedError,
+          input.rfqId,
+          input.quoteId,
+        ),
+      ),
+  );
+}
+
+const SubmitMakerConfirmationParamsSchema = z.strictObject({
+  rfqId: z.string().min(1).transform(toRfqId),
+  quoteId: z.string().min(1).transform(toRfqQuoteId),
+  decision: z.enum(RfqConfirmationDecision),
+});
+
+export type SubmitMakerConfirmationParams = {
+  /** RFQ identifier awaiting the maker's confirmation. */
+  rfqId: string;
+  /** Quote identifier the confirmation request names. */
+  quoteId: string;
+  /** Whether to confirm or decline the fill. */
+  decision: RfqConfirmationDecision;
+};
+
+export type SubmitMakerConfirmationError =
+  | RateLimitError
+  | RfqConfirmationRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const SubmitMakerConfirmationError = makeErrorGuard(
+  RateLimitError,
+  RfqConfirmationRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Responds to a last-look confirmation request over HTTP.
+ *
+ * @remarks
+ * Confirmation requests themselves are only delivered through
+ * {@link openRfqSession}; this endpoint is the response channel. The
+ * confirmation window is short (roughly one second in production), so
+ * respond immediately. A non-final confirmation returns a snapshot; the
+ * final confirming maker receives the execution handoff instead. Declining
+ * fails the entire RFQ.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client
+ * instance API.
+ *
+ * @throws {@link SubmitMakerConfirmationError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const result = await submitMakerConfirmation(client, {
+ *   rfqId: request.rfqId,
+ *   quoteId,
+ *   decision: RfqConfirmationDecision.Confirm,
+ * });
+ *
+ * if (result.execution) {
+ *   console.log('final confirmation', result.execution.executionId);
+ * }
+ * ```
+ */
+export async function submitMakerConfirmation(
+  client: BaseSecureClient,
+  params: SubmitMakerConfirmationParams,
+): Promise<MakerConfirmationResult> {
+  const input = parseUserInput(params, SubmitMakerConfirmationParamsSchema);
+  const identity = resolveOrderIdentity(client.account);
+  // responded_at is deliberately not sent: the server treats a non-zero
+  // client value as the response time for confirmation-window accounting.
+  const request: MakerConfirmationRequest = {
+    decision: input.decision,
+    maker_address: identity.maker,
+    quote_id: input.quoteId,
+    rfq_id: input.rfqId,
+    signature_type: identity.signatureType,
+    signer_address: identity.signer,
+  };
+
+  return unwrap(
+    client.secureRfq
+      .post(MAKER_CONFIRMATIONS_PATH, { json: request })
+      .andThen(validateWith(MakerConfirmationResultSchema))
+      .mapErr((error) =>
+        toMakerRejection(
+          error,
+          RfqConfirmationRejectedError,
+          input.rfqId,
+          input.quoteId,
+        ),
+      ),
+  );
+}
+
+type MakerRejectionClass<T> = new (
+  message: string,
+  options: ErrorOptions & { quoteId: RfqQuoteId; rfqId: RfqId },
+) => T;
+
+// Maker endpoint error bodies carry a message but no machine code, unlike
+// the streaming session and the builder gateway, so the rejection keeps the
+// message and leaves `code` unset.
+function toMakerRejection<T>(
+  error:
+    | RateLimitError
+    | RequestRejectedError
+    | TransportError
+    | UnexpectedResponseError,
+  RejectionClass: MakerRejectionClass<T>,
+  rfqId: RfqId,
+  quoteId: RfqQuoteId,
+): T | RateLimitError | TransportError | UnexpectedResponseError {
+  if (error instanceof RequestRejectedError) {
+    return new RejectionClass(error.message, { cause: error, quoteId, rfqId });
+  }
+
+  return error;
 }

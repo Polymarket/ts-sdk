@@ -581,6 +581,11 @@ class BaseSecureClient<
         }),
         root: config.environment.clob.rest,
       }),
+      secureRfq: new ServiceClient({
+        headers: config.environment.combos.headers,
+        resolveHeaders: (request) => this.#createL2Headers(request),
+        root: config.environment.combos.rest,
+      }),
       combos: new ServiceClient({
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
@@ -662,6 +667,11 @@ class BaseSecureClient<
   /** @internal */
   get secureClob(): ServiceClient {
     return this.context.secureClob;
+  }
+
+  /** @internal */
+  get secureRfq(): ServiceClient {
+    return this.context.secureRfq;
   }
 
   /** @internal */
@@ -839,6 +849,8 @@ type SecureContext = PublicContext & {
   signer: Signer;
   /** @internal */
   secureClob: ServiceClient;
+  /** @internal */
+  secureRfq: ServiceClient;
   /** @internal */
   combos: ServiceClient;
   /** @internal */

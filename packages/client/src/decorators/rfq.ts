@@ -1,16 +1,25 @@
 import type {
   AcceptComboQuoteParams,
   AcceptComboQuoteResult,
+  CancelMakerQuoteParams,
+  MakerConfirmationResult,
+  MakerRfqSnapshot,
   RequestComboQuoteParams,
   RequestComboQuoteResult,
   RfqSession,
+  SubmitMakerConfirmationParams,
+  SubmitMakerQuoteParams,
+  SubmitMakerQuoteResult,
   WaitForComboFillParams,
   WaitForComboFillResult,
 } from '../actions';
 import {
   acceptComboQuote,
+  cancelMakerQuote,
   openRfqSession,
   requestComboQuote,
+  submitMakerConfirmation,
+  submitMakerQuote,
   waitForComboFill,
 } from '../actions';
 import type { BaseSecureClient } from '../clients';
@@ -19,6 +28,11 @@ export type {
   BuilderRfqError,
   ComboQuote,
   FetchRfqStatusParams,
+  MakerConfirmationEntry,
+  MakerExecutionHandoff,
+  MakerFillAllocation,
+  MakerFillBundle,
+  MakerRfqRequest,
   RfqCancelQuoteAck,
   RfqCancelQuoteRejectedErrorOptions,
   RfqConfirmationAck,
@@ -45,9 +59,11 @@ export type {
 } from '../actions/rfq';
 export {
   AcceptComboQuoteError,
+  CancelMakerQuoteError,
   ComboAcceptFailureReason,
   ComboQuoteUnavailableReason,
   FetchRfqStatusError,
+  MakerRfqStatus,
   OpenRfqSessionError,
   RequestComboQuoteError,
   RfqCancelQuoteError,
@@ -65,13 +81,21 @@ export {
   RfqRequestRejectedError,
   RfqSide,
   RfqStatus,
+  SubmitMakerConfirmationError,
+  SubmitMakerQuoteError,
   WaitForComboFillError,
 } from '../actions/rfq';
 export type {
   AcceptComboQuoteParams,
   AcceptComboQuoteResult,
+  CancelMakerQuoteParams,
+  MakerConfirmationResult,
+  MakerRfqSnapshot,
   RequestComboQuoteParams,
   RequestComboQuoteResult,
+  SubmitMakerConfirmationParams,
+  SubmitMakerQuoteParams,
+  SubmitMakerQuoteResult,
   WaitForComboFillParams,
   WaitForComboFillResult,
 };
@@ -315,6 +339,79 @@ export type SecureRfqActions = {
   waitForComboFill(
     params: WaitForComboFillParams,
   ): Promise<WaitForComboFillResult>;
+
+  /**
+   * Submits a maker quote for an open RFQ over HTTP.
+   *
+   * @remarks
+   * The request/response alternative to quoting through
+   * {@link SecureRfqActions.openRfqSession | openRfqSession}. Quote
+   * submission and cancellation work fully over HTTP, but last-look
+   * confirmation requests are only delivered through the streaming session;
+   * keep one open to observe them. There is no endpoint for listing resting
+   * quotes; keep the returned `quoteId`, later calls key on it.
+   *
+   * @throws {@link SubmitMakerQuoteError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const { quoteId, snapshot } = await client.submitMakerQuote({
+   *   rfqId: event.rfqId,
+   *   direction: event.direction,
+   *   yesPositionId: event.yesPositionId,
+   *   noPositionId: event.noPositionId,
+   *   requestedSize: event.requestedSize,
+   *   price: 0.45,
+   * });
+   * ```
+   */
+  submitMakerQuote(
+    params: SubmitMakerQuoteParams,
+  ): Promise<SubmitMakerQuoteResult>;
+
+  /**
+   * Cancels a resting maker quote over HTTP.
+   *
+   * @remarks
+   * Clean and idempotent while the RFQ is collecting quotes. Once last look
+   * has started, cancellation is treated as a decline: it fails the entire
+   * RFQ and counts toward the maker's decline limits.
+   *
+   * @throws {@link CancelMakerQuoteError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const snapshot = await client.cancelMakerQuote({ rfqId, quoteId });
+   * ```
+   */
+  cancelMakerQuote(params: CancelMakerQuoteParams): Promise<MakerRfqSnapshot>;
+
+  /**
+   * Responds to a last-look confirmation request over HTTP.
+   *
+   * @remarks
+   * Confirmation requests are delivered through the streaming session; this
+   * is the response channel. The window is short, so respond immediately.
+   * The final confirming maker receives the execution handoff instead of a
+   * snapshot.
+   *
+   * @throws {@link SubmitMakerConfirmationError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const result = await client.submitMakerConfirmation({
+   *   rfqId,
+   *   quoteId,
+   *   decision: RfqConfirmationDecision.Confirm,
+   * });
+   * ```
+   */
+  submitMakerConfirmation(
+    params: SubmitMakerConfirmationParams,
+  ): Promise<MakerConfirmationResult>;
 };
 
 export function rfqActions(client: BaseSecureClient): SecureRfqActions {
@@ -330,6 +427,15 @@ export function rfqActions(client: BaseSecureClient): SecureRfqActions {
     },
     waitForComboFill(params: WaitForComboFillParams) {
       return waitForComboFill(client, params);
+    },
+    submitMakerQuote(params: SubmitMakerQuoteParams) {
+      return submitMakerQuote(client, params);
+    },
+    cancelMakerQuote(params: CancelMakerQuoteParams) {
+      return cancelMakerQuote(client, params);
+    },
+    submitMakerConfirmation(params: SubmitMakerConfirmationParams) {
+      return submitMakerConfirmation(client, params);
     },
   };
 }
