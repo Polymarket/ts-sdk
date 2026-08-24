@@ -95,6 +95,8 @@ export type AuthorizeSessionKeyRequest = {
   validUntil: number;
 };
 
+// Intentionally open: scope names are validated server-side, and the SDK
+// must accept scopes it does not enumerate.
 const SessionKeyScopeSchema = z
   .string()
   .min(1)
