@@ -5,20 +5,24 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
-  type TokenId,
-  TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
 import {
+  createOrderRouting,
+  type OrderRouting,
+  PositionOrderAssetSchema,
+  TokenOrderAssetSchema,
+} from './asset';
+import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
   resolveOrderMarketMetadata,
 } from './cache';
 import {
-  resolveExchangeAddress,
+  resolveOrderExchangeAddress,
   resolveRoundingConfig,
   validatePriceOnTickGrid,
 } from './context';
@@ -33,16 +37,20 @@ import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
 const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
 
+const BasePrepareLimitOrderParamsSchema = z.strictObject({
+  price: PositiveDecimalNumberSchema,
+  size: PositiveDecimalNumberSchema,
+  side: OrderSideSchema,
+  builderCode: BuilderCodeSchema.optional(),
+  postOnly: z.boolean().default(false),
+  expiration: z.number().int().nonnegative().optional(),
+});
+
 export const PrepareLimitOrderParamsSchema = z
-  .strictObject({
-    tokenId: TokenIdSchema,
-    price: PositiveDecimalNumberSchema,
-    size: PositiveDecimalNumberSchema,
-    side: OrderSideSchema,
-    builderCode: BuilderCodeSchema.optional(),
-    postOnly: z.boolean().default(false),
-    expiration: z.number().int().nonnegative().optional(),
-  })
+  .union([
+    BasePrepareLimitOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
+    BasePrepareLimitOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
+  ])
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
       const minimumExpiration =
@@ -63,17 +71,18 @@ export type PrepareLimitOrderDraftParams = z.output<
 >;
 
 type ResolveLimitOrderContextParams = {
+  routing: OrderRouting;
   price: number;
-  tokenId: TokenId;
 };
 
 export async function prepareLimitOrderDraft(
   client: BaseSecureClient,
   params: PrepareLimitOrderDraftParams,
 ): Promise<OrderDraft> {
+  const routing = createOrderRouting(params);
   const context = await resolveLimitOrderContext(client, {
+    routing,
     price: params.price,
-    tokenId: params.tokenId,
   });
   const amounts = computeLimitOrderAmounts({
     price: context.price,
@@ -83,6 +92,7 @@ export async function prepareLimitOrderDraft(
   });
 
   return {
+    ...routing,
     builderCode: params.builderCode,
     chainId: client.environment.chainId,
     exchangeAddress: context.exchangeAddress,
@@ -93,7 +103,6 @@ export async function prepareLimitOrderDraft(
     side: params.side,
     signer: context.signerAddress,
     requestedAmount: amounts.requestedAmount,
-    tokenId: params.tokenId,
   };
 }
 
@@ -109,7 +118,8 @@ async function resolveLimitOrderContext(
   client: BaseSecureClient,
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
-  const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
+  const { assetId } = params.routing;
+  const metadata = await resolveOrderMarketMetadata(client, assetId);
 
   try {
     return buildLimitOrderContext(client, params, metadata);
@@ -120,7 +130,7 @@ async function resolveLimitOrderContext(
 
     const currentMetadata = await fetchCurrentOrderMarketMetadata(
       client,
-      params.tokenId,
+      assetId,
     );
 
     return buildLimitOrderContext(client, params, currentMetadata);
@@ -135,7 +145,11 @@ function buildLimitOrderContext(
   const price = validateExactPriceOnTickGrid(params.price, metadata.tickSize);
 
   return {
-    exchangeAddress: resolveExchangeAddress(client, metadata.negRisk),
+    exchangeAddress: resolveOrderExchangeAddress(
+      client,
+      params.routing,
+      metadata.negRisk,
+    ),
     funderAddress: client.account.wallet,
     price,
     signerAddress: client.account.signer,

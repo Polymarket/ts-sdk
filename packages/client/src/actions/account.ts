@@ -348,6 +348,7 @@ export type DropNotificationsRequest = z.input<
 
 /**
  * Fetches notifications for the authenticated account.
+ * Notifications of a kind this SDK version does not recognize are omitted.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

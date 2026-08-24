@@ -3,6 +3,8 @@ import type { EvmAddress } from '@polymarket/types';
 import { invariant } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
+import type { OrderRouting } from './asset';
 import { decimalPlaces, isMultipleOf } from './math';
 
 export type RoundingConfig = {
@@ -75,4 +77,15 @@ export function resolveExchangeAddress(
   return negRisk
     ? client.environment.contracts.negRiskExchange
     : client.environment.contracts.standardExchange;
+}
+
+/** @internal */
+export function resolveOrderExchangeAddress(
+  client: BaseSecureClient,
+  routing: OrderRouting,
+  negRisk: boolean,
+): EvmAddress {
+  return routing.exchangeVersion === ExchangeOrderProtocolVersion.V3
+    ? client.environment.contracts.exchangeV3
+    : resolveExchangeAddress(client, negRisk);
 }
