@@ -71,7 +71,7 @@ export function computeLimitOrderAmounts(params: {
 }
 
 export function computeMarketOrderAmounts(params: {
-  amount: number;
+  amount: ScaledAmount;
   price: ScaledPrice;
   protectPrice?: boolean;
   side: OrderSide;
@@ -81,11 +81,7 @@ export function computeMarketOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
-  const amount = quantize(
-    toScaledAmount(params.amount),
-    roundConfig.size,
-    Rounding.Down,
-  );
+  const amount = quantize(params.amount, roundConfig.size, Rounding.Down);
   const rounding = params.protectPrice ? Rounding.Up : Rounding.Down;
 
   if (params.side === OrderSide.BUY) {

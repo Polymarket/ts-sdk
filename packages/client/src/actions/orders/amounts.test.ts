@@ -2,10 +2,10 @@ import { OrderSide, type TickSizeValue } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
 import { computeLimitOrderAmounts, computeMarketOrderAmounts } from './amounts';
 import { validatePriceOnTickGrid } from './context';
-import { type ScaledPrice, toScaledPrice } from './fixed';
+import { type ScaledPrice, toScaledAmount, toScaledPrice } from './fixed';
 
 const INPUT_AMOUNT = 12.34;
-const SCALED_INPUT_AMOUNT = 12_340_000n;
+const SCALED_INPUT_AMOUNT = toScaledAmount(INPUT_AMOUNT);
 
 const TICK_CASES = [
   {
@@ -136,7 +136,7 @@ describe('computeMarketOrderAmounts', () => {
   }) => {
     expect(
       computeMarketOrderAmounts({
-        amount: INPUT_AMOUNT,
+        amount: SCALED_INPUT_AMOUNT,
         price: scaledPrice,
         side: OrderSide.BUY,
         tickSize,
@@ -154,7 +154,7 @@ describe('computeMarketOrderAmounts', () => {
   }) => {
     expect(
       computeMarketOrderAmounts({
-        amount: INPUT_AMOUNT,
+        amount: SCALED_INPUT_AMOUNT,
         price: scaledPrice,
         protectPrice: true,
         side: OrderSide.BUY,
@@ -176,7 +176,7 @@ describe('computeMarketOrderAmounts', () => {
     for (const protectPrice of [false, true]) {
       expect(
         computeMarketOrderAmounts({
-          amount: INPUT_AMOUNT,
+          amount: SCALED_INPUT_AMOUNT,
           price: scaledPrice,
           protectPrice,
           side: OrderSide.SELL,
@@ -189,10 +189,10 @@ describe('computeMarketOrderAmounts', () => {
     }
   });
 
-  it('rounds the public amount down to two decimals before calculating amounts', () => {
+  it('rounds the scaled amount down to two decimals before calculating amounts', () => {
     expect(
       computeMarketOrderAmounts({
-        amount: 12.349,
+        amount: toScaledAmount(12.349),
         price: toScaledPrice(0.37),
         protectPrice: true,
         side: OrderSide.BUY,
@@ -207,7 +207,7 @@ describe('computeMarketOrderAmounts', () => {
   it('does not round up protected SELL proceeds when division is exact', () => {
     expect(
       computeMarketOrderAmounts({
-        amount: 9.99,
+        amount: toScaledAmount(9.99),
         price: toScaledPrice(0.1),
         protectPrice: true,
         side: OrderSide.SELL,
