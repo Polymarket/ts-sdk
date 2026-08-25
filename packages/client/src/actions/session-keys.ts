@@ -462,6 +462,9 @@ async function waitForAuthorizedSessionKey(
 function haveSameScopes(
   left: SessionKeyScope[],
   right: SessionKeyScope[],
+function haveSameScopes(
+  left: SessionKeyScope[],
+  right: SessionKeyScope[],
 ): boolean {
   const rightScopes = new Set(right);
 
