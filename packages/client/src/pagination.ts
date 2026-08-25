@@ -15,7 +15,9 @@ export type Page<T> = {
    *
    * On methods without a server-provided continuation signal, a full page
    * reports `true` and the follow-up request returns an empty final page when
-   * the collection ended exactly on a page boundary.
+   * the collection ended exactly on a page boundary. On offset-capped history
+   * methods, following a full page past the endpoint maximum rejects instead,
+   * so capped results are not reported as complete history.
    */
   hasMore: boolean;
   nextCursor?: PaginationCursor;
@@ -63,7 +65,7 @@ export function paginate<T, TError>(
 
   function createPaginator(cursor = initialCursor): Paginated<T> {
     return {
-      firstPage() {
+      async firstPage() {
         return unwrap(fetchPage(cursor));
       },
       from(nextCursor) {
@@ -105,6 +107,7 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
 export function decodeOffsetCursor(
   cursor: PaginationCursor | undefined,
   pageSize: number,
+  maxOffset?: number,
 ): OffsetCursorState {
   if (cursor === undefined) {
     return {
@@ -113,9 +116,18 @@ export function decodeOffsetCursor(
     };
   }
 
+  let state: OffsetCursorState;
   try {
-    return OffsetCursorStateSchema.parse(JSON.parse(atob(cursor)));
+    state = OffsetCursorStateSchema.parse(JSON.parse(atob(cursor)));
   } catch (error) {
     throw new UserInputError('Invalid pagination cursor', { cause: error });
   }
+
+  if (maxOffset !== undefined && state.offset > maxOffset) {
+    throw new UserInputError(
+      `Pagination cannot continue past the endpoint maximum offset of ${maxOffset}; narrow the query before continuing`,
+    );
+  }
+
+  return state;
 }

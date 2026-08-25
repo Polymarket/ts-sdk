@@ -35,6 +35,9 @@ import { snakeCase, toDataSearchParams, toSearchParams } from './params';
 
 export { ComboActivityType } from '@polymarket/bindings/data';
 
+const MAX_TRADES_OFFSET = 10_000;
+const MAX_ACTIVITY_OFFSET = 5_000;
+
 const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 
 const ListTradesRequestSchema = z
@@ -86,6 +89,12 @@ export const ListTradesError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Pagination rejects continuation past the documented 10,000 offset ceiling.
+ * Use `start` and `end` to query bounded time windows when deeper history is
+ * required. Without `start`, queries default to roughly three years of
+ * history. A positive `start` can extend user-scoped queries further back,
+ * while market- and event-scoped queries retain the three-year floor.
+ *
  * @throws {@link ListTradesError}
  * Thrown on failure.
  *
@@ -128,7 +137,7 @@ export function listTrades(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, MAX_TRADES_OFFSET);
 
     return client.data
       .get('/trades', {
@@ -203,6 +212,11 @@ export const ListActivityError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Pagination rejects continuation past the documented 5,000 offset ceiling.
+ * Use `start` and `end` to query bounded time windows when deeper history is
+ * required. Without `start`, descending queries default to roughly three
+ * years of history; ascending queries read from the beginning.
+ *
  * @throws {@link ListActivityError}
  * Thrown on failure.
  *
@@ -245,7 +259,7 @@ export function listActivity(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, MAX_ACTIVITY_OFFSET);
 
     return client.data
       .get('/activity', {

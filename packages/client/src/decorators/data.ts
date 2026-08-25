@@ -277,6 +277,12 @@ export type DataActions = {
   /**
    * Lists trades for a wallet, market, or event.
    *
+   * Pagination rejects continuation past offset 10,000. Without `start`,
+   * queries default to roughly three years of history. A positive `start` can
+   * extend user-scoped queries further back, while market- and event-scoped
+   * queries retain the three-year floor. Use `start` and `end` to split deeper
+   * history into bounded windows.
+   *
    * @throws {@link ListTradesError}
    * Thrown on failure.
    *

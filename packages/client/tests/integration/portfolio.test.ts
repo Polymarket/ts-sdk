@@ -113,6 +113,8 @@ describe('Portfolio', () => {
           positionId: expect.any(String),
           redeemable: expect.any(Boolean),
           wallet: TEST_USER,
+          grossEntryCostUsdc: expect.any(String),
+          entryFeesUsdc: expect.any(String),
           realizedPayoutUsdc: expect.any(String),
           totalCostUsdc: expect.any(String),
         }),
