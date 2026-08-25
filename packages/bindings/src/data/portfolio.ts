@@ -1,3 +1,4 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
   ClobAssetIdSchema,
@@ -8,6 +9,7 @@ import {
   type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
+  EvmAddressSchema,
   emptyStringToNull,
   type IsoCalendarDateString,
   IsoCalendarDateStringSchema,
@@ -19,7 +21,6 @@ import {
   PositionIdSchema,
   type TokenId,
 } from '../shared';
-import { type Address, AddressSchema } from './common';
 
 export enum ComboPositionStatus {
   Open = 'OPEN',
@@ -39,7 +40,7 @@ export enum ComboPositionOutcome {
 export const ComboPositionOutcomeSchema = z.enum(ComboPositionOutcome);
 
 export type Position = {
-  wallet: Address | null | undefined;
+  wallet: EvmAddress | null | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId | null | undefined;
   /** @deprecated Use `assetId`. */
@@ -75,7 +76,7 @@ export type Position = {
 
 export const PositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema,
     size: DecimalishSchema.nullish(),
@@ -112,7 +113,7 @@ export const PositionSchema = z
   })) satisfies z.ZodType<Position>;
 
 export type ClosedPosition = {
-  wallet: Address | null | undefined;
+  wallet: EvmAddress | null | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId | null | undefined;
   /** @deprecated Use `assetId`. */
@@ -139,7 +140,7 @@ export type ClosedPosition = {
 
 export const ClosedPositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema.nullish(),
     avgPrice: DecimalishSchema.nullish(),
@@ -167,12 +168,12 @@ export const ClosedPositionSchema = z
   })) satisfies z.ZodType<ClosedPosition>;
 
 export const ValueSchema = z.object({
-  user: AddressSchema.nullish(),
+  user: EvmAddressSchema.nullish(),
   value: DecimalishSchema.nullish(),
 });
 
 export type MarketPosition = {
-  wallet: Address | null | undefined;
+  wallet: EvmAddress | null | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId | null | undefined;
   /** @deprecated Use `assetId`. */
@@ -195,7 +196,7 @@ export type MarketPosition = {
 
 export const MarketPositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     name: z.string().nullish(),
     profileImage: z.string().nullish(),
     verified: z.boolean().nullish(),
@@ -316,7 +317,7 @@ export const ComboPositionSchema = z
     combo_position_id: PositionIdSchema,
     side: ComboPositionOutcomeSchema,
     module_id: z.number().int(),
-    user_address: AddressSchema,
+    user_address: EvmAddressSchema,
     shares_balance: DecimalishSchema,
     entry_avg_price_usdc: DecimalishSchema.nullish(),
     entry_cost_usdc: DecimalishSchema.nullish(),

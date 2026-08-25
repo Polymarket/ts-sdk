@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-export const AddressSchema = z.string();
-
 export enum ActivityType {
   TRADE = 'TRADE',
   SPLIT = 'SPLIT',
@@ -38,7 +36,6 @@ export const LeaderboardCategorySchema = z.enum([
 
 export const LeaderboardOrderBySchema = z.enum(['PNL', 'VOL']);
 
-export type Address = z.infer<typeof AddressSchema>;
 export type Side = z.infer<typeof SideSchema>;
 export type TimePeriod = z.infer<typeof TimePeriodSchema>;
 export type LeaderboardCategory = z.infer<typeof LeaderboardCategorySchema>;

@@ -1,3 +1,4 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
   ClobAssetIdSchema,
@@ -5,13 +6,13 @@ import {
   ConditionIdSchema,
   DecimalishSchema,
   type DecimalString,
+  EvmAddressSchema,
   type PositionId,
   type TokenId,
 } from '../shared';
-import { type Address, AddressSchema } from './common';
 
 export type Holder = {
-  wallet: Address | null | undefined;
+  wallet: EvmAddress | null | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId | null | undefined;
   /** @deprecated Use `assetId`. */
@@ -28,7 +29,7 @@ export type Holder = {
 
 export const HolderSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     bio: z.string().nullish(),
     asset: ClobAssetIdSchema.nullish(),
     pseudonym: z.string().nullish(),

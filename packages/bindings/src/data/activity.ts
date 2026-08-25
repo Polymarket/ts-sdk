@@ -1,3 +1,4 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
   ClobAssetIdSchema,
@@ -11,6 +12,7 @@ import {
   type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
+  EvmAddressSchema,
   emptyStringToNull,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
@@ -24,8 +26,6 @@ import {
 import {
   ActivityType,
   ActivityTypeSchema,
-  type Address,
-  AddressSchema,
   type Side,
   SideSchema,
 } from './common';
@@ -45,7 +45,7 @@ const ComboActivityTypeSchema = z.enum(ComboActivityType);
 
 export type ActivityBase = {
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Polygon transaction hash that produced or records this activity. */
@@ -248,7 +248,7 @@ type ComboActivityBase = {
   /** Normalized lifecycle activity type. */
   type: ComboActivityType;
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Combo condition id involved in this activity. */
   conditionId: ComboConditionId;
   /** Combo module id. */
@@ -313,7 +313,7 @@ export type ComboActivity =
 const RawComboActivitySchema = z.object({
   id: ComboActivityIdSchema,
   type: ComboActivityTypeSchema,
-  user_address: AddressSchema,
+  user_address: EvmAddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
   module_id: z.number().int(),
@@ -336,7 +336,7 @@ const OptionalTextSchema = z.preprocess(
 );
 
 export type Trade = {
-  wallet: Address | null | undefined;
+  wallet: EvmAddress | null | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId | null | undefined;
   /** @deprecated Use `assetId`. */
@@ -362,7 +362,7 @@ export type Trade = {
 
 export const TradeSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     side: SideSchema.nullish(),
     asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema.nullish(),
@@ -390,7 +390,7 @@ export const TradeSchema = z
   })) satisfies z.ZodType<Trade>;
 
 const RawActivitySchema = z.object({
-  proxyWallet: AddressSchema.nullish(),
+  proxyWallet: EvmAddressSchema.nullish(),
   timestamp: EpochSecondsToMillisecondsSchema.nullish(),
   conditionId: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -430,7 +430,7 @@ export const ActivitySchema: z.ZodType<Activity> =
   RawActivitySchema.transform(normalizeActivity);
 
 export const TradedSchema = z.object({
-  user: AddressSchema.nullish(),
+  user: EvmAddressSchema.nullish(),
   traded: z.number().int().nullish(),
 });
 
