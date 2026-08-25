@@ -8,7 +8,6 @@ import {
 import { ActiveSessionSignersResponseSchema } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
-  type RelayerAuthorizeSessionSignerRequest,
   RelayerAuthorizeSessionSignerResponseSchema,
   type RelayerRevokeSessionSignerRequest,
   RelayerRevokeSessionSignerResponseSchema,
@@ -265,7 +264,7 @@ export async function authorizeSessionKey(
       ),
     ]),
   );
-  const payload: RelayerAuthorizeSessionSignerRequest = {
+  const payload = {
     deadline: signedBatch.depositWalletParams.deadline,
     nonce: signedBatch.nonce,
     scopes: parsedRequest.scopes,

@@ -1,29 +1,11 @@
 import { z } from 'zod';
 import {
   type EvmAddress,
-  type SessionSignerScope,
   type TransactionId,
   TransactionIdSchema,
   type TxHash,
   TxHashSchema,
 } from '../shared';
-
-export type RelayerAuthorizeSessionSignerRequest = {
-  /** Signed batch deadline encoded as whole Unix seconds. */
-  deadline: string;
-  /** Deposit Wallet nonce encoded as a base-10 integer. */
-  nonce: string;
-  /** Venue scopes assigned to the session signer. */
-  scopes: SessionSignerScope[];
-  /** Public address of the session signer. */
-  sessionSignerAddress: EvmAddress;
-  /** Owner signature authorizing the wallet call. */
-  signature: string;
-  /** Session-signer expiry encoded as whole Unix seconds. */
-  validUntil: string;
-  /** Deposit Wallet that grants the authorization. */
-  walletAddress: EvmAddress;
-};
 
 export enum RelayerAuthorizeSessionSignerStatus {
   SUBMITTED = 'SUBMITTED',
