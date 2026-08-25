@@ -42,6 +42,7 @@ import {
   buildDepositWalletExecuteRequest,
   GaslessTransactionHandle,
 } from './gasless';
+import { assertSessionSignerOperationAccepted } from './session-key-status';
 
 export type { SessionKeyScope };
 export { SessionKeyKnownScope };
@@ -283,6 +284,10 @@ export async function authorizeSessionKey(
       })
       .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
   );
+  assertSessionSignerOperationAccepted({
+    kind: 'authorization',
+    status: response.status,
+  });
 
   const transaction = await new GaslessTransactionHandle(
     client,
@@ -419,6 +424,10 @@ export async function revokeSessionKey(
       })
       .andThen(validateWith(RelayerRevokeSessionSignerResponseSchema)),
   );
+  assertSessionSignerOperationAccepted({
+    kind: 'revocation',
+    status: response.status,
+  });
   const transaction = await new GaslessTransactionHandle(client, {
     transactionHash: null,
     transactionId: response.transactionId,
