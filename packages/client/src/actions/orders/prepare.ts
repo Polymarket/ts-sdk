@@ -11,6 +11,7 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import { wrapDepositWalletSignature } from '../../wallet';
 import { PrepareLimitOrderParamsSchema, prepareLimitOrderDraft } from './limit';
 import {
   PrepareMarketOrderParamsSchema,
@@ -84,7 +85,10 @@ export async function prepareMarketOrder(
 
     return createSignedOrder(
       unsignedOrder,
-      createOrderSignature(unsignedOrder, signature),
+      wrapDepositWalletSignature(
+        client.account,
+        createOrderSignature(unsignedOrder, signature),
+      ),
     );
   }.call(null);
 }
@@ -142,7 +146,10 @@ export async function prepareLimitOrder(
 
     const order = createSignedOrder(
       unsignedOrder,
-      createOrderSignature(unsignedOrder, signature),
+      wrapDepositWalletSignature(
+        client.account,
+        createOrderSignature(unsignedOrder, signature),
+      ),
     );
 
     return params.postOnly === true ? { ...order, postOnly: true } : order;

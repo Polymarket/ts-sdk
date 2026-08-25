@@ -40,6 +40,30 @@ export enum TradeStatus {
   Failed = 'TRADE_STATUS_FAILED',
 }
 
+/** Known venue scopes accepted by session-signer APIs. */
+export enum SessionSignerKnownScope {
+  /** All current and future venues. Cannot be combined with other scopes. */
+  ALL = 'ALL',
+  /** Central limit order book trading. */
+  CLOB = 'CLOB',
+  /** Combos request-for-quote trading. */
+  COMBOSRFQ = 'COMBOSRFQ',
+}
+
+/**
+ * A session-signer scope. Known scopes are enumerated in
+ * {@link SessionSignerKnownScope}; newly introduced scopes flow through as
+ * plain strings before a bindings release enumerates them.
+ */
+export type SessionSignerScope = SessionSignerKnownScope | (string & {});
+
+// Intentionally open: scope names are validated server-side, and the SDK must
+// accept scopes it does not enumerate.
+export const SessionSignerScopeSchema = z
+  .string()
+  .min(1)
+  .transform((value): SessionSignerScope => value);
+
 function toTaggedString<T extends string>(value: string): T {
   return value as T;
 }

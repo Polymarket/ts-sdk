@@ -1,6 +1,10 @@
 import { SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
-import { expectEvmAddress, ZERO_ADDRESS } from '@polymarket/types';
+import {
+  expectEvmAddress,
+  expectEvmSignature,
+  ZERO_ADDRESS,
+} from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -14,7 +18,9 @@ import {
   getDepositWalletFactoryBeacon,
   isBeaconDepositWalletFactory,
   resolveAccountIdentity,
+  SignerType,
   toSignatureType,
+  wrapDepositWalletSignature,
 } from './wallet';
 
 const root = 'http://localhost:4013';
@@ -72,6 +78,7 @@ describe('Wallet', () => {
     expect(wallet).toBe(expectedWallet);
     expect(resolveAccountIdentity(production, signer, wallet)).toEqual({
       signer,
+      signerType: SignerType.OWNER,
       wallet,
       walletType,
     });
@@ -88,19 +95,44 @@ describe('Wallet', () => {
 
     expect(resolveAccountIdentity(production, signer, depositWallet)).toEqual({
       signer,
+      signerType: SignerType.OWNER,
       wallet: depositWallet,
       walletType: WalletType.DEPOSIT_WALLET,
     });
   });
 
-  it('rejects unsupported wallet addresses', () => {
+  it('defaults wallets that cannot be derived from the signer to Deposit Wallet', () => {
     const unknownWallet = expectEvmAddress(
       '0x0000000000000000000000000000000000000002',
     );
 
-    expect(() =>
-      resolveAccountIdentity(production, signer, unknownWallet),
-    ).toThrow(/does not match the signer/);
+    expect(resolveAccountIdentity(production, signer, unknownWallet)).toEqual({
+      signer,
+      signerType: SignerType.SESSION_KEY,
+      wallet: unknownWallet,
+      walletType: WalletType.DEPOSIT_WALLET,
+    });
+  });
+
+  it('wraps session-signer signatures and preserves owner signatures', () => {
+    const signature = expectEvmSignature(`0x${'11'.repeat(65)}`);
+    const owner = resolveAccountIdentity(
+      production,
+      signer,
+      deriveBeaconDepositWalletAddress(signer, production.walletDerivation),
+    );
+    const session = resolveAccountIdentity(
+      production,
+      signer,
+      expectEvmAddress('0x0000000000000000000000000000000000000002'),
+    );
+
+    expect(wrapDepositWalletSignature(owner, signature)).toBe(signature);
+
+    const wrapped = wrapDepositWalletSignature(session, signature);
+    expect(wrapped).not.toBe(signature);
+    expect(wrapped).toContain(signer.slice(2).padStart(64, '0'));
+    expect(wrapped.endsWith('6492'.repeat(16))).toBe(true);
   });
 });
 

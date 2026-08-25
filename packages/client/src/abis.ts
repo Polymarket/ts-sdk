@@ -24,6 +24,12 @@ const ERC20_ALLOWANCE_FUNCTION = AbiFunction.from(
 const ERC20_TRANSFER_FUNCTION = AbiFunction.from(
   'function transfer(address recipient, uint256 amount)',
 );
+const DEPOSIT_WALLET_AUTHORIZE_SESSION_SIGNER_FUNCTION = AbiFunction.from(
+  'function authorizeSessionSigner(address sessionSigner, uint256 validUntil)',
+);
+const DEPOSIT_WALLET_REVOKE_SESSION_SIGNER_FUNCTION = AbiFunction.from(
+  'function revokeSessionSigner(address sessionSigner)',
+);
 const PERPS_DEPOSIT_FUNCTION = AbiFunction.from(
   'function deposit(address token, uint256 amount, address to)',
 );
@@ -216,6 +222,35 @@ export function erc20TransferCall(
   return {
     data: encodeErc20TransferCall(recipient, amount),
     to: tokenAddress,
+  };
+}
+
+/** @internal */
+export function authorizeSessionSignerCall(
+  walletAddress: EvmAddress,
+  sessionSigner: EvmAddress,
+  validUntil: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(
+      DEPOSIT_WALLET_AUTHORIZE_SESSION_SIGNER_FUNCTION,
+      [sessionSigner, expectUint256(validUntil, 'Session key expiry')],
+    ),
+    to: walletAddress,
+  };
+}
+
+/** @internal */
+export function revokeSessionSignerCall(
+  walletAddress: EvmAddress,
+  sessionSigner: EvmAddress,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(
+      DEPOSIT_WALLET_REVOKE_SESSION_SIGNER_FUNCTION,
+      [sessionSigner],
+    ),
+    to: walletAddress,
   };
 }
 

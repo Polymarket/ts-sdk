@@ -8,6 +8,7 @@ import {
   isHexString,
   isPrivateKey,
   type PrivateKey,
+  type SessionSignerSignature,
   type TxHash,
 } from './hex';
 
@@ -87,6 +88,17 @@ export function expectErc1271Signature(
 ): Erc1271Signature {
   invariant(isHexString(value), message);
   return value as Erc1271Signature;
+}
+
+/**
+ * Refines a string to a Deposit Wallet session-signer signature envelope or throws when the value is invalid.
+ */
+export function expectSessionSignerSignature(
+  value: unknown,
+  message = 'Expected a session-signer signature envelope',
+): SessionSignerSignature {
+  invariant(isHexString(value), message);
+  return value as SessionSignerSignature;
 }
 
 /**

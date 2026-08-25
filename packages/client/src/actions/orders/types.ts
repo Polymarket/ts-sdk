@@ -11,6 +11,7 @@ import type {
   EvmAddress,
   EvmSignature,
   HexString,
+  SessionSignerSignature,
 } from '@polymarket/types';
 import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
@@ -175,6 +176,11 @@ export type UnsignedOrder = {
   tokenId: PositionId | TokenId;
 };
 
+export type OrderSignature =
+  | EvmSignature
+  | Erc1271Signature
+  | SessionSignerSignature;
+
 export type SignedOrder = {
   builder: HexString;
   expiration: number;
@@ -193,7 +199,7 @@ export type SignedOrder = {
    * named `tokenId` for both CTF token IDs and Polymarket V2 position IDs.
    */
   tokenId: PositionId | TokenId;
-  signature: EvmSignature | Erc1271Signature;
+  signature: OrderSignature;
   postOnly?: boolean;
 };
 

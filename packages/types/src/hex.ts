@@ -26,6 +26,14 @@ export type EvmSignature = Tagged<HexString, 'EvmSignature'>;
 export type Erc1271Signature = Tagged<HexString, 'Erc1271Signature'>;
 
 /**
+ * A hex-encoded signature envelope produced by a Deposit Wallet session signer.
+ */
+export type SessionSignerSignature = Tagged<
+  HexString,
+  'SessionSignerSignature'
+>;
+
+/**
  * A transaction hash returned by an EVM-compatible network.
  */
 export type TxHash = Tagged<HexString, 'TxHash'>;

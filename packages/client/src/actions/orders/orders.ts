@@ -1,7 +1,12 @@
 import type { HexString } from '@polymarket/types';
 import type { AccountIdentity } from '../../wallet';
 import { resolveOrderIdentity } from '../../wallet';
-import type { OrderDraft, SignedOrder, UnsignedOrder } from './types';
+import type {
+  OrderDraft,
+  OrderSignature,
+  SignedOrder,
+  UnsignedOrder,
+} from './types';
 
 const BYTES32_ZERO =
   '0x0000000000000000000000000000000000000000000000000000000000000000' satisfies HexString;
@@ -34,7 +39,7 @@ export function createUnsignedOrder(
 
 export function createSignedOrder(
   order: UnsignedOrder,
-  signature: SignedOrder['signature'],
+  signature: OrderSignature,
 ): SignedOrder {
   const {
     chainId: _chainId,

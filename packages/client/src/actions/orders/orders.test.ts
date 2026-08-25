@@ -9,6 +9,7 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
+import { SignerType } from '../../wallet';
 import type { OrderRouting } from './asset';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
@@ -57,6 +58,7 @@ describe('createUnsignedOrder', () => {
   }) => {
     const order = createUnsignedOrder(createOrderDraft({ wallet }), {
       signer: SIGNER,
+      signerType: SignerType.OWNER,
       wallet,
       walletType,
     });
@@ -87,6 +89,7 @@ describe('createUnsignedOrder', () => {
       createOrderDraft({ wallet: DEPOSIT_WALLET }),
       {
         signer: SIGNER,
+        signerType: SignerType.OWNER,
         wallet: DEPOSIT_WALLET,
         walletType: WalletType.DEPOSIT_WALLET,
       },
@@ -109,6 +112,7 @@ describe('createUnsignedOrder', () => {
       }),
       {
         signer: SIGNER,
+        signerType: SignerType.OWNER,
         wallet: DEPOSIT_WALLET,
         walletType: WalletType.DEPOSIT_WALLET,
       },

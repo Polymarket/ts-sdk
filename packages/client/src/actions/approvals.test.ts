@@ -14,6 +14,7 @@ import type { BaseSecureClient } from '../clients';
 import { production } from '../environments';
 import type { EthCallRequest } from '../rpc';
 import type { TransactionHandle } from '../types';
+import { SignerType } from '../wallet';
 import { prepareTradingApprovals } from './approvals';
 
 const FALSE_RESULT = `0x${'0'.repeat(64)}` as HexString;
@@ -124,7 +125,11 @@ function createClient(results: HexString[]) {
     async (_calls: readonly EthCallRequest[]): Promise<HexString[]> => results,
   );
   const client = {
-    account: { wallet, walletType: WalletType.EOA },
+    account: {
+      signerType: SignerType.OWNER,
+      wallet,
+      walletType: WalletType.EOA,
+    },
     environment: production,
     rpc: { ethCallBatch },
   } as unknown as BaseSecureClient;
