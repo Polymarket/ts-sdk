@@ -207,6 +207,19 @@ export type PublicAccountActions = Prettify<
      *
      * const firstPage = await paginator.firstPage();
      * ```
+     *
+     * @example
+     * Filter to any of several resolved statuses:
+     * ```ts
+     * const paginator = client.listComboPositions({
+     *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+     *   status: [
+     *     ComboPositionStatus.ResolvedWin,
+     *     ComboPositionStatus.ResolvedPartial,
+     *     ComboPositionStatus.ResolvedLoss,
+     *   ],
+     * });
+     * ```
      */
     listComboPositions(
       request: ListComboPositionsRequest,
@@ -357,6 +370,17 @@ export type SecureAccountActions = Prettify<
      *
      * @throws {@link ListComboPositionsError}
      * Thrown on failure.
+     *
+     * @example
+     * Filter the authenticated account's positions to multiple statuses:
+     * ```ts
+     * const paginator = client.listComboPositions({
+     *   status: [
+     *     ComboPositionStatus.ResolvedWin,
+     *     ComboPositionStatus.ResolvedPartial,
+     *   ],
+     * });
+     * ```
      */
     listComboPositions(
       request?: SecureListComboPositionsRequest,
@@ -574,6 +598,7 @@ export {
   ListPositionsError,
 } from '../actions';
 export { ComboActivityType } from '../actions/activity';
+export type { ComboPositionStatusFilter } from '../actions/portfolio';
 export {
   ComboPositionOutcome,
   ComboPositionSort,

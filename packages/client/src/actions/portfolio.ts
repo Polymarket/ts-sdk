@@ -5,6 +5,7 @@ import {
 import {
   type ClosedPosition,
   type ComboPosition,
+  type ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
   ListClosedPositionsResponseSchema,
@@ -302,20 +303,36 @@ const ComboConditionIdFilterSchema = z.union([
   z.array(ComboConditionIdSchema),
 ]);
 
+/**
+ * One status or a non-empty ordered list of statuses for filtering combo positions.
+ * Pass multiple statuses as an array rather than a comma-separated string.
+ */
+export type ComboPositionStatusFilter =
+  | ComboPositionStatus
+  | readonly [ComboPositionStatus, ...ComboPositionStatus[]];
+
+const ComboPositionStatusFilterSchema = z.union([
+  ComboPositionStatusSchema,
+  z.tuple([ComboPositionStatusSchema], ComboPositionStatusSchema),
+]) satisfies z.ZodType<ComboPositionStatusFilter>;
+
 const ListComboPositionsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
   user: z.string(),
   pageSize: PageSizeSchema.default(20),
-  status: ComboPositionStatusSchema.optional(),
+  status: ComboPositionStatusFilterSchema.optional(),
   sort: ComboPositionSortSchema.optional(),
   conditionId: ComboConditionIdFilterSchema.optional(),
   updatedAfter: z.number().int().min(0).optional(),
   updatedBefore: z.number().int().min(0).optional(),
 });
 
-export type ListComboPositionsRequest = z.input<
-  typeof ListComboPositionsRequestSchema
->;
+export type ListComboPositionsRequest = Omit<
+  z.input<typeof ListComboPositionsRequestSchema>,
+  'status'
+> & {
+  status?: ComboPositionStatusFilter;
+};
 
 export type ListComboPositionsError =
   | RateLimitError
@@ -366,6 +383,20 @@ export const ListComboPositionsError = makeErrorGuard(
  * ```
  *
  * @example
+ * Filter to any of several resolved statuses. Pass multiple statuses as an
+ * array rather than a comma-separated string:
+ * ```ts
+ * const result = listComboPositions(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   status: [
+ *     ComboPositionStatus.ResolvedWin,
+ *     ComboPositionStatus.ResolvedPartial,
+ *     ComboPositionStatus.ResolvedLoss,
+ *   ],
+ * });
+ * ```
+ *
+ * @example
  * Incrementally sync changed combo positions:
  * ```ts
  * const result = listComboPositions(client, {
@@ -380,7 +411,7 @@ export function listComboPositions(
   client: BaseClient,
   request: ListComboPositionsRequest,
 ): Paginated<ComboPosition[]> {
-  const { cursor, pageSize, conditionId, ...params } = parseUserInput(
+  const { cursor, pageSize, conditionId, status, ...params } = parseUserInput(
     request,
     ListComboPositionsRequestSchema,
   );
@@ -399,6 +430,7 @@ export function listComboPositions(
     );
 
     appendConditionId(searchParams, conditionId);
+    appendStatus(searchParams, status);
 
     return client.data
       .get('/v1/positions/combos', {
@@ -428,6 +460,20 @@ function appendConditionId(
   searchParams.append(
     'market_id',
     Array.isArray(conditionId) ? conditionId.join(',') : conditionId,
+  );
+}
+
+function appendStatus(
+  searchParams: URLSearchParams,
+  status: z.output<typeof ComboPositionStatusFilterSchema> | undefined,
+): void {
+  if (status === undefined) {
+    return;
+  }
+
+  searchParams.append(
+    'status',
+    typeof status === 'string' ? status : status.join(','),
   );
 }
 
