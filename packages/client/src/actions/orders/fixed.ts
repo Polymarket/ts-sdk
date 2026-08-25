@@ -1,21 +1,13 @@
-import { invariant } from '@polymarket/types';
+import { invariant, type Tagged } from '@polymarket/types';
 import { UserInputError } from '../../errors';
-
-declare const SCALED_AMOUNT_BRAND: unique symbol;
-declare const SCALED_PRICE_BRAND: unique symbol;
 
 export const FIXED_SCALE = 1_000_000n;
 export const MAX_PRICE_DRIFT = 8 * Number.EPSILON;
 const FIXED_DECIMALS = 6;
 const MAX_SCALED_AMOUNT_DRIFT = 8 * Number.EPSILON;
 
-export type ScaledAmount = bigint & {
-  readonly [SCALED_AMOUNT_BRAND]: true;
-};
-
-export type ScaledPrice = bigint & {
-  readonly [SCALED_PRICE_BRAND]: true;
-};
+export type ScaledAmount = Tagged<bigint, 'ScaledAmount'>;
+export type ScaledPrice = Tagged<bigint, 'ScaledPrice'>;
 
 export enum Rounding {
   Down = 'down',
