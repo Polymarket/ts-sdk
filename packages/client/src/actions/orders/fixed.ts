@@ -4,9 +4,10 @@ import { UserInputError } from '../../errors';
 declare const SCALED_AMOUNT_BRAND: unique symbol;
 declare const SCALED_PRICE_BRAND: unique symbol;
 
-export const FIXED_DECIMALS = 6;
 export const FIXED_SCALE = 1_000_000n;
 export const MAX_PRICE_DRIFT = 8 * Number.EPSILON;
+const FIXED_DECIMALS = 6;
+const MAX_SCALED_AMOUNT_DRIFT = 8 * Number.EPSILON;
 
 export type ScaledAmount = bigint & {
   readonly [SCALED_AMOUNT_BRAND]: true;
@@ -22,7 +23,13 @@ export enum Rounding {
 }
 
 export function toScaledAmount(value: number): ScaledAmount {
-  return BigInt(Math.trunc(value * Number(FIXED_SCALE))) as ScaledAmount;
+  const scaled = value * Number(FIXED_SCALE);
+  const candidate = Math.round(scaled);
+  const maxDrift = MAX_SCALED_AMOUNT_DRIFT * Math.max(1, Math.abs(scaled));
+  const normalized =
+    Math.abs(scaled - candidate) <= maxDrift ? candidate : Math.trunc(scaled);
+
+  return BigInt(normalized) as ScaledAmount;
 }
 
 export function toScaledPrice(value: number): ScaledPrice {

@@ -109,6 +109,20 @@ describe('computeLimitOrderAmounts', () => {
     });
   });
 
+  it('preserves a two-decimal size whose scaled product drifts down', () => {
+    expect(
+      computeLimitOrderAmounts({
+        price: toScaledPrice(0.5),
+        side: OrderSide.BUY,
+        size: 2.01,
+        tickSize: 0.1,
+      }),
+    ).toEqual({
+      offeredAmount: 1_005_000n,
+      requestedAmount: 2_010_000n,
+    });
+  });
+
   it('calculates amounts from a price normalized after arithmetic', () => {
     const price = validatePriceOnTickGrid(0.4 + 0.2, 0.1);
 
@@ -201,6 +215,20 @@ describe('computeMarketOrderAmounts', () => {
     ).toEqual({
       offeredAmount: SCALED_INPUT_AMOUNT,
       requestedAmount: 33_351_400n,
+    });
+  });
+
+  it('preserves a two-decimal amount whose scaled product drifts down', () => {
+    expect(
+      computeMarketOrderAmounts({
+        amount: 8.03,
+        price: toScaledPrice(0.5),
+        side: OrderSide.SELL,
+        tickSize: 0.1,
+      }),
+    ).toEqual({
+      offeredAmount: 8_030_000n,
+      requestedAmount: 4_015_000n,
     });
   });
 

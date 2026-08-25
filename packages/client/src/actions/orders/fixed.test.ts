@@ -14,6 +14,11 @@ describe('fixed-point conversion', () => {
     expect(toScaledPrice(0.3725)).toBe(372_500n);
   });
 
+  it('recovers insignificant drift introduced while scaling amounts', () => {
+    expect(toScaledAmount(2.01)).toBe(2_010_000n);
+    expect(toScaledAmount(8.03)).toBe(8_030_000n);
+  });
+
   it('truncates precision beyond the six-decimal boundary', () => {
     expect(toScaledAmount(12.340000000001)).toBe(12_340_000n);
     expect(toScaledAmount(12.3499999)).toBe(12_349_999n);
