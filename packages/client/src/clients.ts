@@ -51,7 +51,7 @@ import type { AccountIdentity } from './wallet';
 import {
   deriveBeaconDepositWalletAddress,
   deriveUupsDepositWalletAddress,
-  tryResolveAccountIdentity,
+  resolveAccountIdentity,
 } from './wallet';
 import {
   ClobMarketWebSocketManager,
@@ -442,7 +442,7 @@ class BasePublicClient<
         const nonce = params?.nonce ?? 0;
         const signerAddress = expectEvmAddress(yield requestAddress());
         const wallet = expectEvmAddress(params.wallet);
-        const identity = tryResolveAccountIdentity(
+        const identity = resolveAccountIdentity(
           this.environment,
           signerAddress,
           wallet,

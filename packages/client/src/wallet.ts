@@ -47,15 +47,6 @@ export function resolveAccountIdentity(
   signer: EvmAddress,
   wallet: EvmAddress,
 ): AccountIdentity {
-  return tryResolveAccountIdentity(environment, signer, wallet);
-}
-
-/** @internal */
-export function tryResolveAccountIdentity(
-  environment: EnvironmentConfig,
-  signer: EvmAddress,
-  wallet: EvmAddress,
-): AccountIdentity {
   const classification = classifyAccount(environment, signer, wallet);
 
   return { signer, wallet, ...classification };
