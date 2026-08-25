@@ -53,4 +53,4 @@ export type {
   RateLimitUpdateListener,
 } from './rate-limit';
 export * from './types';
-export type { AccountIdentity } from './wallet';
+export { type AccountIdentity, SignerType } from './wallet';

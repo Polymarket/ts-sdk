@@ -1,8 +1,4 @@
-import {
-  ApiKeySchema,
-  type EvmAddress,
-  EvmAddressSchema,
-} from '@polymarket/bindings';
+import { ApiKeySchema, EvmAddressSchema } from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -446,8 +442,8 @@ class BasePublicClient<
         const nonce = params?.nonce ?? 0;
         const signerAddress = expectEvmAddress(yield requestAddress());
         const wallet = expectEvmAddress(params.wallet);
-        const identity = await resolveAuthenticationAccountIdentity(
-          this,
+        const identity = tryResolveAccountIdentity(
+          this.environment,
           signerAddress,
           wallet,
         );
@@ -1073,35 +1069,6 @@ async function resolveRequestedWallet(
   return deriveBeaconDepositWalletAddress(
     signerAddress,
     client.environment.walletDerivation,
-  );
-}
-
-async function resolveAuthenticationAccountIdentity(
-  client: BasePublicClient,
-  signer: EvmAddress,
-  wallet: EvmAddress,
-): Promise<AccountIdentity> {
-  const account = tryResolveAccountIdentity(client.environment, signer, wallet);
-
-  if (account !== undefined) {
-    return account;
-  }
-
-  if (
-    await isWalletDeployed(client, {
-      wallet,
-      type: WalletType.DEPOSIT_WALLET,
-    })
-  ) {
-    return {
-      signer,
-      wallet,
-      walletType: WalletType.DEPOSIT_WALLET,
-    };
-  }
-
-  throw new UserInputError(
-    `Wallet ${wallet} does not match the signer ${signer} or a deployed Deposit Wallet.`,
   );
 }
 

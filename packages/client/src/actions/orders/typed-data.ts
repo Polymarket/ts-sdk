@@ -1,14 +1,9 @@
-import type {
-  Erc1271Signature,
-  EvmAddress,
-  EvmSignature,
-} from '@polymarket/types';
+import type { Erc1271Signature, EvmSignature } from '@polymarket/types';
 import {
   createExchangeOrderSignature,
   createExchangeOrderTypedDataPayload,
 } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
-import { wrapDepositWalletSessionSignerSignature } from '../../wallet';
 import type { UnsignedOrder } from './types';
 
 export function createOrderTypedDataPayload(
@@ -23,17 +18,12 @@ export function createOrderTypedDataPayload(
 export function createOrderSignature(
   order: UnsignedOrder,
   signature: EvmSignature,
-  sessionSigner?: EvmAddress,
 ): EvmSignature | Erc1271Signature {
-  const orderSignature = createExchangeOrderSignature({
+  return createExchangeOrderSignature({
     domain: createOrderExchangeDomain(order),
     order,
     signature,
   });
-
-  return sessionSigner === undefined
-    ? orderSignature
-    : wrapDepositWalletSessionSignerSignature(sessionSigner, orderSignature);
 }
 
 function createOrderExchangeDomain(order: UnsignedOrder) {

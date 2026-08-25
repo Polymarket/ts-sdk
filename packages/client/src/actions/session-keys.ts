@@ -1,4 +1,10 @@
-import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
+import {
+  type EvmAddress,
+  EvmAddressSchema,
+  SessionSignerKnownScope as SessionKeyKnownScope,
+  type SessionSignerScope as SessionKeyScope,
+  SessionSignerScopeSchema,
+} from '@polymarket/bindings';
 import { ActiveSessionSignersResponseSchema } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -32,34 +38,15 @@ import {
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
 import type { TransactionOutcome } from '../types';
-import { isDepositWalletOwner } from '../wallet';
+import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
 import {
   buildDepositWalletExecuteRequest,
   GaslessTransactionHandle,
 } from './gasless';
 
-/**
- * Known venue authorizations attached to session-key grants.
- *
- * Session-key authorization accepts newer scopes as plain strings; see
- * {@link SessionKeyScope}.
- */
-export enum SessionKeyKnownScope {
-  /** All current and future venues. Cannot be combined with other scopes. */
-  ALL = 'ALL',
-  /** Central limit order book trading. */
-  CLOB = 'CLOB',
-  /** Combos request-for-quote trading. */
-  COMBOSRFQ = 'COMBOSRFQ',
-}
-
-/**
- * A session-key scope. Known scopes are enumerated in
- * {@link SessionKeyKnownScope}; newly introduced scopes remain usable before
- * an SDK release enumerates them.
- */
-export type SessionKeyScope = SessionKeyKnownScope | (string & {});
+export type { SessionKeyScope };
+export { SessionKeyKnownScope };
 
 /**
  * A scoped session key authorized for the Deposit Wallet.
@@ -72,145 +59,6 @@ export type SessionKey = {
   /** Absolute expiry as whole Unix seconds. */
   validUntil: number;
 };
-
-/** Result of a confirmed session-key authorization. */
-export type AuthorizeSessionKeyResult = {
-  /** Identifier assigned to the accepted authorization operation. */
-  operationId: string;
-  /** Session-key metadata associated with the confirmed authorization. */
-  sessionKey: SessionKey;
-  /** Confirmed transaction that applied the authorization. */
-  transaction: TransactionOutcome;
-};
-
-/** Parameters for authorizing a scoped session key. */
-export type AuthorizeSessionKeyRequest = {
-  /** Public EVM address of the externally managed session signer. */
-  address: string;
-  /** Stable key to reuse when retrying the same logical authorization. */
-  idempotencyKey?: string;
-  /** Requested scopes. Defaults to `ALL`, which must appear alone. */
-  scopes?: SessionKeyScope[];
-  /** Absolute expiry as whole future Unix seconds. */
-  validUntil: number;
-};
-
-// Intentionally open: scope names are validated server-side, and the SDK
-// must accept scopes it does not enumerate.
-const SessionKeyScopeSchema = z
-  .string()
-  .min(1)
-  .transform((value): SessionKeyScope => value);
-
-const SESSION_KEY_KNOWN_SCOPE_ORDER = [
-  SessionKeyKnownScope.ALL,
-  SessionKeyKnownScope.CLOB,
-  SessionKeyKnownScope.COMBOSRFQ,
-] as const;
-
-const DEFAULT_SESSION_KEY_SCOPES = [SessionKeyKnownScope.ALL] as const;
-
-type ParsedAuthorizeSessionKeyRequest = {
-  address: EvmAddress;
-  idempotencyKey?: string;
-  scopes: SessionKeyScope[];
-  validUntil: number;
-};
-
-function createAuthorizeSessionKeyRequestSchema(wallet: EvmAddress) {
-  const schema = z
-    .object({
-      address: EvmAddressSchema,
-      idempotencyKey: z.string().trim().min(1).optional(),
-      scopes: z
-        .array(SessionKeyScopeSchema)
-        .min(1)
-        .optional()
-        .transform(
-          (scopes): SessionKeyScope[] =>
-            scopes ?? [...DEFAULT_SESSION_KEY_SCOPES],
-        ),
-      validUntil: z.number().int(),
-    })
-    .superRefine((value, context) => {
-      if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Session key address must not be the zero address.',
-          path: ['address'],
-        });
-      }
-
-      if (isSameEvmAddress(value.address, wallet)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Session key address must differ from the Deposit Wallet.',
-          path: ['address'],
-        });
-      }
-
-      if (
-        value.scopes.includes(SessionKeyKnownScope.ALL) &&
-        value.scopes.some((scope) => scope !== SessionKeyKnownScope.ALL)
-      ) {
-        context.addIssue({
-          code: 'custom',
-          message:
-            'Session key scope ALL cannot be combined with another scope.',
-          path: ['scopes'],
-        });
-      }
-
-      if (value.validUntil <= Math.floor(Date.now() / 1_000)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Session key expiry must be a future Unix timestamp.',
-          path: ['validUntil'],
-        });
-      }
-    })
-    .transform((value): ParsedAuthorizeSessionKeyRequest => {
-      const requestedScopes = new Set(value.scopes);
-
-      return {
-        ...value,
-        address: expectEvmAddress(value.address.toLowerCase()),
-        scopes: [
-          ...SESSION_KEY_KNOWN_SCOPE_ORDER.filter((scope) =>
-            requestedScopes.delete(scope),
-          ),
-          ...requestedScopes,
-        ],
-      };
-    });
-
-  return schema satisfies z.ZodType<
-    ParsedAuthorizeSessionKeyRequest,
-    AuthorizeSessionKeyRequest
-  >;
-}
-
-export type AuthorizeSessionKeyError =
-  | CancelledSigningError
-  | RateLimitError
-  | RequestRejectedError
-  | SigningError
-  | TimeoutError
-  | TransactionFailedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const AuthorizeSessionKeyError = makeErrorGuard(
-  CancelledSigningError,
-  RateLimitError,
-  RequestRejectedError,
-  SigningError,
-  TimeoutError,
-  TransactionFailedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
 
 export type FetchSessionKeysError =
   | RateLimitError
@@ -261,10 +109,111 @@ export async function fetchSessionKeys(
 
   return response.signers.map((sessionSigner) => ({
     address: expectEvmAddress(sessionSigner.address.toLowerCase()),
-    scopes: sessionSigner.scopes.map((scope): SessionKeyScope => scope),
+    scopes: sessionSigner.scopes,
     validUntil: sessionSigner.validUntil,
   }));
 }
+
+/** Parameters for authorizing a scoped session key. */
+export type AuthorizeSessionKeyRequest = {
+  /** Public EVM address of the externally managed session signer. */
+  address: string;
+  /** Stable key to reuse when retrying the same logical authorization. */
+  idempotencyKey?: string;
+  /** Requested scopes. Defaults to `ALL`, which must appear alone. */
+  scopes?: SessionKeyScope[];
+  /** Absolute expiry as whole future Unix seconds. */
+  validUntil: number;
+};
+
+type ParsedAuthorizeSessionKeyRequest = {
+  address: EvmAddress;
+  idempotencyKey?: string;
+  scopes: SessionKeyScope[];
+  validUntil: number;
+};
+
+const DEFAULT_SESSION_KEY_SCOPES = [
+  SessionKeyKnownScope.ALL,
+] satisfies SessionKeyScope[];
+
+const AuthorizeSessionKeyRequestSchema = z
+  .object({
+    address: EvmAddressSchema,
+    idempotencyKey: z.string().trim().min(1).optional(),
+    scopes: z
+      .array(SessionSignerScopeSchema)
+      .min(1)
+      .default(DEFAULT_SESSION_KEY_SCOPES),
+    validUntil: z.number().int(),
+  })
+  .superRefine((value, context) => {
+    if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Session key address must not be the zero address.',
+        path: ['address'],
+      });
+    }
+
+    if (
+      value.scopes.includes(SessionKeyKnownScope.ALL) &&
+      value.scopes.some((scope) => scope !== SessionKeyKnownScope.ALL)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Session key scope ALL cannot be combined with another scope.',
+        path: ['scopes'],
+      });
+    }
+
+    if (value.validUntil <= Math.floor(Date.now() / 1_000)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Session key expiry must be a future Unix timestamp.',
+        path: ['validUntil'],
+      });
+    }
+  })
+  .transform(
+    (value): ParsedAuthorizeSessionKeyRequest => ({
+      ...value,
+      address: expectEvmAddress(value.address.toLowerCase()),
+    }),
+  ) satisfies z.ZodType<
+  ParsedAuthorizeSessionKeyRequest,
+  AuthorizeSessionKeyRequest
+>;
+
+/** Result of a confirmed session-key authorization. */
+export type AuthorizeSessionKeyResult = {
+  /** Session-key metadata associated with the confirmed authorization. */
+  sessionKey: SessionKey;
+  /** Confirmed transaction that applied the authorization. */
+  transaction: TransactionOutcome;
+};
+
+export type AuthorizeSessionKeyError =
+  | CancelledSigningError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TimeoutError
+  | TransactionFailedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const AuthorizeSessionKeyError = makeErrorGuard(
+  CancelledSigningError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TimeoutError,
+  TransactionFailedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
 
 /**
  * Authorizes an externally managed signer for selected venues.
@@ -272,6 +221,7 @@ export async function fetchSessionKeys(
  * The SDK receives only the public address. The application remains
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
+ * Requires builder API-key authentication.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -283,7 +233,7 @@ export async function fetchSessionKeys(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
+ *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
  * });
  * ```
  *
@@ -296,9 +246,15 @@ export async function authorizeSessionKey(
 ): Promise<AuthorizeSessionKeyResult> {
   assertOwnerDepositWallet(client);
 
+  if (!client.hasBuilderApiKey) {
+    throw new UserInputError(
+      'Session-key authorization requires builder API-key authentication.',
+    );
+  }
+
   const parsedRequest = parseUserInput(
     request,
-    createAuthorizeSessionKeyRequestSchema(client.account.wallet),
+    AuthorizeSessionKeyRequestSchema,
   );
   const signedBatch = await completeWith(client.signer)(
     buildDepositWalletExecuteRequest(client, [
@@ -342,7 +298,6 @@ export async function authorizeSessionKey(
   });
 
   return {
-    operationId: response.operationId,
     sessionKey,
     transaction,
   };
@@ -361,46 +316,29 @@ type ParsedRevokeSessionKeyRequest = {
   idempotencyKey?: string;
 };
 
-function createRevokeSessionKeyRequestSchema(wallet: EvmAddress) {
-  const schema = z
-    .object({
-      address: EvmAddressSchema,
-      idempotencyKey: z.string().trim().min(1).optional(),
-    })
-    .superRefine((value, context) => {
-      if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Session key address must not be the zero address.',
-          path: ['address'],
-        });
-      }
-
-      if (isSameEvmAddress(value.address, wallet)) {
-        context.addIssue({
-          code: 'custom',
-          message: 'Session key address must differ from the Deposit Wallet.',
-          path: ['address'],
-        });
-      }
-    })
-    .transform(
-      (value): ParsedRevokeSessionKeyRequest => ({
-        ...value,
-        address: expectEvmAddress(value.address.toLowerCase()),
-      }),
-    );
-
-  return schema satisfies z.ZodType<
-    ParsedRevokeSessionKeyRequest,
-    RevokeSessionKeyRequest
-  >;
-}
+const RevokeSessionKeyRequestSchema = z
+  .object({
+    address: EvmAddressSchema,
+    idempotencyKey: z.string().trim().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Session key address must not be the zero address.',
+        path: ['address'],
+      });
+    }
+  })
+  .transform(
+    (value): ParsedRevokeSessionKeyRequest => ({
+      ...value,
+      address: expectEvmAddress(value.address.toLowerCase()),
+    }),
+  ) satisfies z.ZodType<ParsedRevokeSessionKeyRequest, RevokeSessionKeyRequest>;
 
 /** Result of a confirmed session-key revocation. */
 export type RevokeSessionKeyResult = {
-  /** Identifier assigned to the accepted revocation operation. */
-  operationId: string;
   /** Confirmed transaction that applied the revocation. */
   transaction: TransactionOutcome;
 };
@@ -432,6 +370,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
  *
  * Revocation may take several minutes while existing activity is canceled and
  * the on-chain revocation is confirmed.
+ * Requires API-key authentication that supports gasless transactions.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -452,10 +391,13 @@ export async function revokeSessionKey(
 ): Promise<RevokeSessionKeyResult> {
   assertOwnerDepositWallet(client);
 
-  const parsedRequest = parseUserInput(
-    request,
-    createRevokeSessionKeyRequestSchema(client.account.wallet),
-  );
+  if (!client.supportsGasless) {
+    throw new UserInputError(
+      'Session-key revocation requires API-key authentication that supports gasless transactions.',
+    );
+  }
+
+  const parsedRequest = parseUserInput(request, RevokeSessionKeyRequestSchema);
   const signedBatch = await completeWith(client.signer)(
     buildDepositWalletExecuteRequest(client, [
       revokeSessionSignerCall(client.account.wallet, parsedRequest.address),
@@ -485,7 +427,6 @@ export async function revokeSessionKey(
   }).wait();
 
   return {
-    operationId: response.operationId,
     transaction,
   };
 }
@@ -494,6 +435,8 @@ async function waitForAuthorizedSessionKey(
   client: BaseSecureClient,
   expected: SessionKey,
 ): Promise<SessionKey> {
+  // This temporary readiness check deliberately reuses the relayer transaction
+  // polling limits instead of introducing session-key-specific configuration.
   for (
     let pollCount = 0;
     pollCount < client.environment.relayerMaxPolls;
@@ -522,8 +465,11 @@ function haveSameScopes(
   left: SessionKeyScope[],
   right: SessionKeyScope[],
 ): boolean {
+  const rightScopes = new Set(right);
+
   return (
-    left.length === right.length && left.every((scope) => right.includes(scope))
+    new Set(left).size === rightScopes.size &&
+    left.every((scope) => rightScopes.has(scope))
   );
 }
 
@@ -534,7 +480,7 @@ function assertOwnerDepositWallet(client: BaseSecureClient): void {
     );
   }
 
-  if (!isDepositWalletOwner(client.environment, client.account)) {
+  if (client.account.signerType !== SignerType.OWNER) {
     throw new UserInputError(
       'Session keys can only be managed by the Deposit Wallet owner.',
     );

@@ -17,6 +17,7 @@ export type SessionKeyActions = {
    * The SDK receives only the public address. The application remains
    * responsible for generating, storing, and protecting the private key.
    * When scopes are omitted, authorization defaults to `ALL`.
+   * Requires builder API-key authentication.
    *
    * @remarks
    * Resolves after the submitted transaction is confirmed and the session key
@@ -26,7 +27,7 @@ export type SessionKeyActions = {
    * ```ts
    * const authorization = await client.authorizeSessionKey({
    *   address: sessionAddress,
-   *   validUntil: Math.floor(Date.now() / 1_000) + 15 * 60,
+   *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
    * });
    * ```
    *
@@ -55,6 +56,7 @@ export type SessionKeyActions = {
    *
    * Revocation may take several minutes while existing activity is canceled and
    * the on-chain revocation is confirmed.
+   * Requires API-key authentication that supports gasless transactions.
    *
    * @example
    * ```ts

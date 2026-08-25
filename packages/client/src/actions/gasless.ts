@@ -59,8 +59,7 @@ import type {
 } from '../types';
 import {
   deriveCurrentDepositWalletAddress,
-  resolveDepositWalletSessionSigner,
-  wrapDepositWalletSessionSignerSignature,
+  wrapDepositWalletSignature,
 } from '../wallet';
 import {
   type RequestAddressRequest,
@@ -599,7 +598,7 @@ export async function* buildDepositWalletExecuteRequest(
   const deadline = `${Math.floor(Date.now() / 1000) + DEPOSIT_WALLET_DEFAULT_DEADLINE_SECONDS}`;
 
   const signature = wrapDepositWalletSignature(
-    client,
+    client.account,
     expectEvmSignature(
       yield signGaslessTypedData(
         createDepositWalletBatchTypedDataPayload({
@@ -645,7 +644,7 @@ export async function* resignDepositWalletExecuteRequest(
   EvmAddress | EvmSignature | TransactionHandle
 > {
   const signature = wrapDepositWalletSignature(
-    client,
+    client.account,
     expectEvmSignature(
       yield signGaslessTypedData(
         createDepositWalletBatchTypedDataPayload({
@@ -660,20 +659,6 @@ export async function* resignDepositWalletExecuteRequest(
   );
 
   return { ...request, nonce, signature };
-}
-
-function wrapDepositWalletSignature(
-  client: BaseSecureClient,
-  signature: EvmSignature,
-) {
-  const sessionSigner = resolveDepositWalletSessionSigner(
-    client.environment,
-    client.account,
-  );
-
-  return sessionSigner === undefined
-    ? signature
-    : wrapDepositWalletSessionSignerSignature(sessionSigner, signature);
 }
 
 async function* prepareSafeWalletGaslessTransaction(

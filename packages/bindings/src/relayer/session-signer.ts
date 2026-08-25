@@ -1,36 +1,12 @@
 import { z } from 'zod';
 import {
   type EvmAddress,
-  EvmAddressSchema,
+  type SessionSignerScope,
   type TransactionId,
   TransactionIdSchema,
   type TxHash,
   TxHashSchema,
 } from '../shared';
-
-/** Known scope values accepted by session-signer authorization requests. */
-export enum RelayerSessionSignerKnownScope {
-  /** All supported scopes. */
-  ALL = 'ALL',
-  /** Central limit order book trading. */
-  CLOB = 'CLOB',
-  /** Combos request-for-quote trading. */
-  COMBOSRFQ = 'COMBOSRFQ',
-}
-
-/**
- * A session-signer scope. Known scopes are enumerated in
- * {@link RelayerSessionSignerKnownScope}; newly introduced scopes flow through
- * as plain strings before a bindings release enumerates them.
- */
-export type RelayerSessionSignerScope =
-  | RelayerSessionSignerKnownScope
-  | (string & {});
-
-export const RelayerSessionSignerScopeSchema = z
-  .string()
-  .min(1)
-  .transform((value): RelayerSessionSignerScope => value);
 
 export type RelayerAuthorizeSessionSignerRequest = {
   /** Signed batch deadline encoded as whole Unix seconds. */
@@ -38,7 +14,7 @@ export type RelayerAuthorizeSessionSignerRequest = {
   /** Deposit Wallet nonce encoded as a base-10 integer. */
   nonce: string;
   /** Venue scopes assigned to the session signer. */
-  scopes: RelayerSessionSignerScope[];
+  scopes: SessionSignerScope[];
   /** Public address of the session signer. */
   sessionSignerAddress: EvmAddress;
   /** Owner signature authorizing the wallet call. */
@@ -49,30 +25,28 @@ export type RelayerAuthorizeSessionSignerRequest = {
   walletAddress: EvmAddress;
 };
 
-export const RelayerAuthorizeSessionSignerRequestSchema = z.object({
-  deadline: z.string().regex(/^\d+$/),
-  nonce: z.string().regex(/^\d+$/),
-  scopes: z.array(RelayerSessionSignerScopeSchema).min(1),
-  sessionSignerAddress: EvmAddressSchema,
-  signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/),
-  validUntil: z.string().regex(/^\d+$/),
-  walletAddress: EvmAddressSchema,
-}) satisfies z.ZodType<RelayerAuthorizeSessionSignerRequest>;
+export enum RelayerAuthorizeSessionSignerStatus {
+  SUBMITTED = 'SUBMITTED',
+  REGISTRY_PENDING = 'REGISTRY_PENDING',
+  REGISTERED = 'REGISTERED',
+  FAILED = 'FAILED',
+  SUPERSEDED = 'SUPERSEDED',
+  REPAIR_REQUIRED = 'REPAIR_REQUIRED',
+}
 
 export type RelayerAuthorizeSessionSignerResponse = {
-  /** Identifier assigned to the accepted authorization operation. */
-  operationId: string;
-  /** Raw operation status returned at submission time. */
-  status: string;
+  /** Lifecycle status of the authorization operation. */
+  status: RelayerAuthorizeSessionSignerStatus;
   /** Submitted transaction hash when it is already available. */
   transactionHash: TxHash | null;
   /** Identifier used to poll the submitted transaction. */
   transactionId: TransactionId;
 };
 
+// The upstream `operationId` is omitted from the normalized response because
+// it is an opaque identifier with no SDK consumer.
 export const RelayerAuthorizeSessionSignerResponseSchema = z.object({
-  operationId: z.string().min(1),
-  status: z.string().min(1),
+  status: z.enum(RelayerAuthorizeSessionSignerStatus),
   transactionHash: TxHashSchema.nullish().transform((value) => value ?? null),
   transactionId: TransactionIdSchema,
 }) satisfies z.ZodType<RelayerAuthorizeSessionSignerResponse>;
@@ -90,28 +64,27 @@ export type RelayerRevokeSessionSignerRequest = {
   walletAddress: EvmAddress;
 };
 
-export const RelayerRevokeSessionSignerRequestSchema = z.object({
-  deadline: z.string().regex(/^\d+$/),
-  nonce: z.string().regex(/^\d+$/),
-  sessionSignerAddress: EvmAddressSchema,
-  signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/),
-  walletAddress: EvmAddressSchema,
-}) satisfies z.ZodType<RelayerRevokeSessionSignerRequest>;
+export enum RelayerRevokeSessionSignerStatus {
+  PENDING = 'PENDING',
+  FENCED = 'FENCED',
+  SWEPT = 'SWEPT',
+  CHAIN_SUBMITTED = 'CHAIN_SUBMITTED',
+  CONFIRMED = 'CONFIRMED',
+  FAILED = 'FAILED',
+}
 
 export type RelayerRevokeSessionSignerResponse = {
-  /** Whether the off-chain revocation fence was durable at submission time. */
-  fenced: boolean;
-  /** Identifier assigned to the accepted revocation operation. */
-  operationId: string;
-  /** Raw operation status returned at submission time. */
-  status: string;
+  /** Lifecycle status of the revocation operation. */
+  status: RelayerRevokeSessionSignerStatus;
   /** Identifier used to poll the submitted transaction. */
   transactionId: TransactionId;
 };
 
+// The upstream response includes `operationId` and `fenced`. They are omitted
+// from the normalized response because the operation ID has no SDK consumer,
+// while `fenced` is only a submission-time snapshot rather than the eventual
+// revocation outcome.
 export const RelayerRevokeSessionSignerResponseSchema = z.object({
-  fenced: z.boolean(),
-  operationId: z.string().min(1),
-  status: z.string().min(1),
+  status: z.enum(RelayerRevokeSessionSignerStatus),
   transactionId: TransactionIdSchema,
 }) satisfies z.ZodType<RelayerRevokeSessionSignerResponse>;

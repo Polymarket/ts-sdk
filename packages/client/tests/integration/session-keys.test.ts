@@ -1,6 +1,10 @@
 import { OrderSide } from '@polymarket/bindings';
 import { OrderPostStatus } from '@polymarket/bindings/clob';
-import { createSecureClient, SessionKeyKnownScope } from '@polymarket/client';
+import {
+  createSecureClient,
+  SessionKeyKnownScope,
+  SignerType,
+} from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { expectPresent } from '@polymarket/types';
 import { http } from 'viem';
@@ -14,16 +18,60 @@ const market = await findHighVolumeLowPriceMarket(publicClient, {
 });
 
 describe('Session keys', { timeout: 600_000 }, () => {
-  it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
-    annotate,
-    environment,
+  it('requires builder authentication before authorizing a session key', async ({
     secureClientWithDepositWallet,
   }) => {
+    const sessionAddress = await privateKey(generatePrivateKey()).getAddress();
+
+    expect(secureClientWithDepositWallet.hasBuilderApiKey).toBe(false);
+    await expect(
+      secureClientWithDepositWallet.authorizeSessionKey({
+        address: sessionAddress,
+        validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
+      }),
+    ).rejects.toThrow(
+      'Session-key authorization requires builder API-key authentication.',
+    );
+  });
+
+  it('requires gasless authentication before revoking a session key', async ({
+    depositWalletAddress,
+    depositWalletSigner,
+    environment,
+  }) => {
+    const client = await createSecureClient({
+      environment,
+      signer: depositWalletSigner,
+      wallet: depositWalletAddress,
+    });
+    const sessionAddress = await privateKey(generatePrivateKey()).getAddress();
+
+    expect(client.supportsGasless).toBe(false);
+    await expect(
+      client.revokeSessionKey({ address: sessionAddress }),
+    ).rejects.toThrow(
+      'Session-key revocation requires API-key authentication that supports gasless transactions.',
+    );
+  });
+
+  it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
+    annotate,
+    builderAuthentication,
+    depositWalletAddress,
+    depositWalletSigner,
+    environment,
+  }) => {
+    const secureClientWithDepositWallet = await createSecureClient({
+      apiKey: builderAuthentication,
+      environment,
+      signer: depositWalletSigner,
+      wallet: depositWalletAddress,
+    });
     const sessionSigner = privateKey(generatePrivateKey(), {
       transport: http(environment.rpc),
     });
     const sessionAddress = await sessionSigner.getAddress();
-    const validUntil = Math.floor(Date.now() / 1_000) + 15 * 60;
+    const validUntil = Math.floor(Date.now() / 1_000) + 2 * 60 * 60;
     const authorization =
       await secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
@@ -31,7 +79,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
       });
 
     annotate(`Session address: ${sessionAddress}`);
-    annotate(`Authorization operation: ${authorization.operationId}`);
     annotate(
       `Authorization transaction: ${authorization.transaction.transactionHash}`,
     );
@@ -54,6 +101,7 @@ describe('Session keys', { timeout: 600_000 }, () => {
       signer: sessionSigner,
       wallet: secureClientWithDepositWallet.account.wallet,
     });
+    expect(sessionClient.account.signerType).toBe(SignerType.SESSION_KEY);
     await expect(
       sessionClient.requestComboQuote({
         amount: 1,
@@ -91,7 +139,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
       });
       revoked = true;
 
-      annotate(`Revocation operation: ${revocation.operationId}`);
       annotate(
         `Revocation transaction: ${revocation.transaction.transactionHash}`,
       );

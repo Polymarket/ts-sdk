@@ -73,10 +73,7 @@ import {
 } from '../exchange';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
-import {
-  resolveDepositWalletSessionSigner,
-  resolveOrderIdentity,
-} from '../wallet';
+import { resolveOrderIdentity, SignerType } from '../wallet';
 
 export {
   ComboAcceptFailureReason,
@@ -1438,10 +1435,7 @@ export function fetchRfqStatus(
 }
 
 function assertCombosSupportedForAccount(client: BaseSecureClient): void {
-  if (
-    resolveDepositWalletSessionSigner(client.environment, client.account) !==
-    undefined
-  ) {
+  if (client.account.signerType === SignerType.SESSION_KEY) {
     throw new UserInputError('Combos is not supported with Session Keys');
   }
 }

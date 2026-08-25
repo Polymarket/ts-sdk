@@ -4,11 +4,12 @@ import type { HexString } from '@polymarket/types';
 import {
   type Erc1271Signature,
   type EvmAddress,
-  expectErc1271Signature,
+  type EvmSignature,
   expectEvmAddress,
   expectHexString,
+  expectSessionSignerSignature,
   isSameEvmAddress,
-  never,
+  type SessionSignerSignature,
   ZERO_ADDRESS,
 } from '@polymarket/types';
 import { AbiParameters, Bytes, ContractAddress, Hash } from 'ox';
@@ -16,9 +17,19 @@ import type { EnvironmentConfig, WalletDerivationConfig } from './environments';
 import type { JsonRpcClient } from './rpc';
 import { isJsonRpcContractRevert } from './rpc';
 
+/** Relationship between the authenticated signer and the active account wallet. */
+export enum SignerType {
+  /** Signer owns or deterministically controls the active account wallet. */
+  OWNER = 'OWNER',
+  /** Signer uses the Deposit Wallet session-signature path. */
+  SESSION_KEY = 'SESSION_KEY',
+}
+
 export type AccountIdentity = {
   /** Authenticated EOA that signs API authentication, orders, and wallet operations. */
   signer: EvmAddress;
+  /** Relationship between the authenticated signer and the active account wallet. */
+  signerType: SignerType;
   /** Active Polymarket account/funder wallet used for balances, positions, and execution. */
   wallet: EvmAddress;
   /** Wallet classification used for order signatures and transaction routing. */
@@ -36,15 +47,7 @@ export function resolveAccountIdentity(
   signer: EvmAddress,
   wallet: EvmAddress,
 ): AccountIdentity {
-  const account = tryResolveAccountIdentity(environment, signer, wallet);
-
-  if (account !== undefined) {
-    return account;
-  }
-
-  never(
-    `Wallet ${wallet} does not match the signer ${signer} or any supported deterministic wallet address.`,
-  );
+  return tryResolveAccountIdentity(environment, signer, wallet);
 }
 
 /** @internal */
@@ -52,14 +55,10 @@ export function tryResolveAccountIdentity(
   environment: EnvironmentConfig,
   signer: EvmAddress,
   wallet: EvmAddress,
-): AccountIdentity | undefined {
-  const walletType = classifyWalletType(environment, signer, wallet);
+): AccountIdentity {
+  const classification = classifyAccount(environment, signer, wallet);
 
-  if (walletType === undefined) {
-    return undefined;
-  }
-
-  return { signer, wallet, walletType };
+  return { signer, wallet, ...classification };
 }
 
 /** @internal */
@@ -98,48 +97,19 @@ export function resolveOrderIdentity(account: AccountIdentity): OrderIdentity {
 }
 
 /** @internal */
-export function isDepositWalletOwner(
-  environment: EnvironmentConfig,
+export function wrapDepositWalletSignature(
   account: AccountIdentity,
-): boolean {
-  if (account.walletType !== WalletType.DEPOSIT_WALLET) {
-    return false;
-  }
-
-  const config = environment.walletDerivation;
-
-  return (
-    isSameEvmAddress(
-      account.wallet,
-      deriveBeaconDepositWalletAddress(account.signer, config),
-    ) ||
-    isSameEvmAddress(
-      account.wallet,
-      deriveUupsDepositWalletAddress(account.signer, config),
-    )
-  );
+  signature: EvmSignature | Erc1271Signature,
+): EvmSignature | Erc1271Signature | SessionSignerSignature {
+  return account.signerType === SignerType.OWNER
+    ? signature
+    : createSessionSignerSignature(account.signer, signature);
 }
 
-/** @internal */
-export function resolveDepositWalletSessionSigner(
-  environment: EnvironmentConfig,
-  account: AccountIdentity,
-): EvmAddress | undefined {
-  if (
-    account.walletType !== WalletType.DEPOSIT_WALLET ||
-    isDepositWalletOwner(environment, account)
-  ) {
-    return undefined;
-  }
-
-  return account.signer;
-}
-
-/** @internal */
-export function wrapDepositWalletSessionSignerSignature(
+function createSessionSignerSignature(
   sessionSigner: EvmAddress,
   signature: HexString,
-): Erc1271Signature {
+): SessionSignerSignature {
   const signerId = expectHexString(
     `0x${sessionSigner.slice(2).padStart(64, '0')}`,
   );
@@ -148,7 +118,7 @@ export function wrapDepositWalletSessionSignerSignature(
     [signerId, BYTES32_ZERO, signature],
   );
 
-  return expectErc1271Signature(
+  return expectSessionSignerSignature(
     `${payload}${SESSION_SIGNER_MAGIC_BYTES.slice(2)}`,
   );
 }
@@ -352,13 +322,21 @@ function decodeAddressReturnData(data: HexString): EvmAddress {
   return expectEvmAddress(`0x${data.slice(-40)}`);
 }
 
-function classifyWalletType(
+type AccountClassification = {
+  signerType: SignerType;
+  walletType: WalletType;
+};
+
+function classifyAccount(
   environment: EnvironmentConfig,
   signer: EvmAddress,
   wallet: EvmAddress,
-): WalletType | undefined {
+): AccountClassification {
   if (isSameEvmAddress(wallet, signer)) {
-    return WalletType.EOA;
+    return {
+      signerType: SignerType.OWNER,
+      walletType: WalletType.EOA,
+    };
   }
 
   const config = environment.walletDerivation;
@@ -366,22 +344,39 @@ function classifyWalletType(
   if (
     isSameEvmAddress(wallet, deriveBeaconDepositWalletAddress(signer, config))
   ) {
-    return WalletType.DEPOSIT_WALLET;
+    return {
+      signerType: SignerType.OWNER,
+      walletType: WalletType.DEPOSIT_WALLET,
+    };
   }
 
   if (
     isSameEvmAddress(wallet, deriveUupsDepositWalletAddress(signer, config))
   ) {
-    return WalletType.DEPOSIT_WALLET;
+    return {
+      signerType: SignerType.OWNER,
+      walletType: WalletType.DEPOSIT_WALLET,
+    };
   }
 
   if (isSameEvmAddress(wallet, deriveSafeWalletAddress(signer, config))) {
-    return WalletType.GNOSIS_SAFE;
+    return {
+      signerType: SignerType.OWNER,
+      walletType: WalletType.GNOSIS_SAFE,
+    };
   }
 
   if (isSameEvmAddress(wallet, deriveProxyWalletAddress(signer, config))) {
-    return WalletType.POLY_PROXY;
+    return {
+      signerType: SignerType.OWNER,
+      walletType: WalletType.POLY_PROXY,
+    };
   }
 
-  return undefined;
+  // TEMP: Default to a Deposit Wallet session key when the wallet cannot be
+  // derived from the signer, to support session keys.
+  return {
+    signerType: SignerType.SESSION_KEY,
+    walletType: WalletType.DEPOSIT_WALLET,
+  };
 }

@@ -34,7 +34,7 @@ import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
 
-export type { OrderAsset } from '../actions';
+export type { OrderAsset, OrderSignature, SignedOrder } from '../actions';
 
 export type SecureTradingActions = {
   /**
