@@ -9,7 +9,6 @@ import { ActiveSessionSignersResponseSchema } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
   RelayerAuthorizeSessionSignerResponseSchema,
-  type RelayerRevokeSessionSignerRequest,
   RelayerRevokeSessionSignerResponseSchema,
 } from '@polymarket/bindings/relayer';
 import {
@@ -402,7 +401,7 @@ export async function revokeSessionKey(
       revokeSessionSignerCall(client.account.wallet, parsedRequest.address),
     ]),
   );
-  const payload: RelayerRevokeSessionSignerRequest = {
+  const payload = {
     deadline: signedBatch.depositWalletParams.deadline,
     nonce: signedBatch.nonce,
     sessionSignerAddress: parsedRequest.address,

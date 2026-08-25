@@ -1,6 +1,5 @@
 import { z } from 'zod';
 import {
-  type EvmAddress,
   type TransactionId,
   TransactionIdSchema,
   type TxHash,
@@ -32,19 +31,6 @@ export const RelayerAuthorizeSessionSignerResponseSchema = z.object({
   transactionHash: TxHashSchema.nullish().transform((value) => value ?? null),
   transactionId: TransactionIdSchema,
 }) satisfies z.ZodType<RelayerAuthorizeSessionSignerResponse>;
-
-export type RelayerRevokeSessionSignerRequest = {
-  /** Signed batch deadline encoded as whole Unix seconds. */
-  deadline: string;
-  /** Deposit Wallet nonce encoded as a base-10 integer. */
-  nonce: string;
-  /** Public address of the session signer to revoke. */
-  sessionSignerAddress: EvmAddress;
-  /** Owner signature authorizing the wallet call. */
-  signature: string;
-  /** Deposit Wallet that revokes the authorization. */
-  walletAddress: EvmAddress;
-};
 
 export enum RelayerRevokeSessionSignerStatus {
   PENDING = 'PENDING',
