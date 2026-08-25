@@ -1,5 +1,6 @@
 import { OrderSide } from '@polymarket/bindings';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { validatePriceOnTickGrid } from './context';
 import { PrepareLimitOrderParamsSchema } from './limit';
 
 describe('PrepareLimitOrderParamsSchema', () => {
@@ -35,5 +36,25 @@ describe('PrepareLimitOrderParamsSchema', () => {
         tokenId: '123',
       }).success,
     ).toBe(false);
+  });
+
+  it.each([
+    [0.4 + 0.2, 0.1, 600_000n],
+    [String(0.4 + 0.2), 0.1, 600_000n],
+    [1 - 0.9999, 0.0001, 100n],
+    [String(1 - 0.9999), 0.0001, 100n],
+  ] as [
+    number | string,
+    0.1 | 0.0001,
+    bigint,
+  ][])('normalizes equivalent numeric and string prices before grid validation', (price, tickSize, expected) => {
+    const params = PrepareLimitOrderParamsSchema.parse({
+      price,
+      side: OrderSide.BUY,
+      size: 10,
+      tokenId: '123',
+    });
+
+    expect(validatePriceOnTickGrid(params.price, tickSize)).toBe(expected);
   });
 });

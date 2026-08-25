@@ -1,6 +1,5 @@
 import {
   BuilderCodeSchema,
-  OrderSide,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -10,6 +9,7 @@ import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
+import { computeLimitOrderAmounts } from './amounts';
 import {
   createOrderRouting,
   type OrderRouting,
@@ -23,16 +23,9 @@ import {
 } from './cache';
 import {
   resolveOrderExchangeAddress,
-  resolveRoundingConfig,
   validatePriceOnTickGrid,
 } from './context';
-import {
-  decimalPlaces,
-  parseAmount,
-  roundDown,
-  roundNormal,
-  roundUp,
-} from './math';
+import type { ScaledPrice } from './fixed';
 import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
 const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
@@ -109,7 +102,7 @@ export async function prepareLimitOrderDraft(
 type LimitOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: number;
+  price: ScaledPrice;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
 };
@@ -160,7 +153,7 @@ function buildLimitOrderContext(
 function validateExactPriceOnTickGrid(
   price: number,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   try {
     return validatePriceOnTickGrid(price, tickSize);
   } catch (error) {
@@ -170,51 +163,4 @@ function validateExactPriceOnTickGrid(
 
     throw new UserInputError(`Price ${error.message}`, { cause: error });
   }
-}
-
-function computeLimitOrderAmounts(params: {
-  price: number;
-  side: OrderSide;
-  size: number;
-  tickSize: TickSizeValue;
-}): {
-  offeredAmount: bigint;
-  requestedAmount: bigint;
-} {
-  const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundNormal(params.price, roundConfig.price);
-
-  if (params.side === OrderSide.BUY) {
-    const rawTakerAmount = roundDown(params.size, roundConfig.size);
-    let rawMakerAmount = rawTakerAmount * rawPrice;
-
-    if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-      rawMakerAmount = roundUp(rawMakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-        rawMakerAmount = roundDown(rawMakerAmount, roundConfig.amount);
-      }
-    }
-
-    return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
-    };
-  }
-
-  const rawMakerAmount = roundDown(params.size, roundConfig.size);
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
-  return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
-  };
 }

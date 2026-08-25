@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
+import { computeMarketOrderAmounts } from './amounts';
 import {
   createOrderRouting,
   type OrderAssetId,
@@ -26,11 +27,10 @@ import {
 } from './cache';
 import {
   resolveOrderExchangeAddress,
-  resolveRoundingConfig,
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
-import { decimalPlaces, parseAmount, roundDown, roundUp } from './math';
+import { fromScaledPrice, type ScaledPrice, toScaledPrice } from './fixed';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -98,7 +98,7 @@ export async function prepareMarketOrderDraft(
 type MarketOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: number;
+  price: ScaledPrice;
   resolvedAmount: number;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
@@ -201,6 +201,7 @@ function buildProtectedBuyMarketOrderContext(
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
   const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
+  const priceNumber = fromScaledPrice(price);
 
   return {
     exchangeAddress: resolveOrderExchangeAddress(
@@ -216,7 +217,7 @@ function buildProtectedBuyMarketOrderContext(
       maxSpend,
       platformFeeExponent: metadata.feeInfo.exponent,
       platformFeeRate: metadata.feeInfo.rate,
-      price,
+      price: priceNumber,
     }),
     signerAddress: client.account.signer,
     tickSize: metadata.tickSize,
@@ -268,12 +269,14 @@ async function resolveUnprotectedMarketOrderContext(
     );
   }
 
-  const price = resolveMarketPriceFromOrderBook({
-    amount,
-    orderBook,
-    orderType: params.orderType,
-    side: params.side,
-  });
+  const price = toScaledPrice(
+    resolveMarketPriceFromOrderBook({
+      amount,
+      orderBook,
+      orderType: params.orderType,
+      side: params.side,
+    }),
+  );
 
   return {
     exchangeAddress: resolveOrderExchangeAddress(
@@ -286,7 +289,7 @@ async function resolveUnprotectedMarketOrderContext(
     resolvedAmount: resolveUnprotectedMarketOrderAmount(
       params,
       amount,
-      price,
+      fromScaledPrice(price),
       resolvedFeeInputs,
     ),
     signerAddress: client.account.signer,
@@ -321,7 +324,7 @@ function resolveUnprotectedMarketOrderAmount(
 function resolveProtectedMarketOrderPrice(
   params: PrepareMarketOrderDraftParams,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   if (params.side === OrderSide.BUY) {
     invariant(
       params.maxPrice !== undefined,
@@ -349,7 +352,7 @@ function validateProtectedPriceOnTickGrid(
   field: 'maxPrice' | 'minPrice',
   price: number,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   try {
     return validatePriceOnTickGrid(price, tickSize);
   } catch (error) {
@@ -366,57 +369,6 @@ function hasProtectedPrice(params: PrepareMarketOrderDraftParams): boolean {
     (params.side === OrderSide.BUY && params.maxPrice !== undefined) ||
     (params.side === OrderSide.SELL && params.minPrice !== undefined)
   );
-}
-
-export function computeMarketOrderAmounts(params: {
-  amount: number;
-  price: number;
-  protectPrice?: boolean;
-  side: OrderSide;
-  tickSize: TickSizeValue;
-}): {
-  offeredAmount: bigint;
-  requestedAmount: bigint;
-} {
-  const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundDown(params.price, roundConfig.price);
-  const rawMakerAmount = roundDown(params.amount, roundConfig.size);
-
-  if (params.side === OrderSide.BUY) {
-    let rawTakerAmount = rawMakerAmount / rawPrice;
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-        rawTakerAmount = params.protectPrice
-          ? roundUp(rawTakerAmount, roundConfig.amount)
-          : roundDown(rawTakerAmount, roundConfig.amount);
-      }
-    }
-
-    return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
-    };
-  }
-
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = params.protectPrice
-        ? roundUp(rawTakerAmount, roundConfig.amount)
-        : roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
-  return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
-  };
 }
 
 type FeeInputs = {
