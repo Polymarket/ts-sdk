@@ -95,14 +95,14 @@ describe('Orders', { timeout: 60_000 }, () => {
       }
 
       const position = page.items.find(
-        (candidate) => candidate.tokenId === market.outcomes.yes.tokenId,
+        (candidate) => candidate.assetId === market.outcomes.yes.tokenId,
       );
 
       await secureClient
         .placeMarketOrder({
           side: OrderSide.SELL,
           shares: expectPresent(position?.size),
-          tokenId: expectPresent(position?.tokenId),
+          tokenId: expectPresent(market.outcomes.yes.tokenId),
         })
         .then(expectAcceptedOrderResponse);
     });
@@ -121,7 +121,7 @@ describe('Orders', { timeout: 60_000 }, () => {
           .firstPage();
         const existingPosition = positions.items.find(
           (candidate) =>
-            candidate.tokenId === yesTokenId && Number(candidate.size ?? 0) > 0,
+            candidate.assetId === yesTokenId && Number(candidate.size ?? 0) > 0,
         );
 
         if (existingPosition !== undefined) {
