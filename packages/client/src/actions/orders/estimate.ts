@@ -1,5 +1,4 @@
 import {
-  ClobAssetIdSchema,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -20,7 +19,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
-import type { OrderAssetId } from './asset';
+import { type OrderAssetId, OrderAssetInputSchema } from './asset';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
   orderType: z
@@ -122,32 +121,21 @@ const EstimateMarketSellPriceRequestSchema =
     shares: PositiveDecimalNumberSchema,
   });
 
-const EstimateMarketPriceInputSchema = z.union([
-  EstimateMarketBuyPriceRequestSchema.extend({
-    assetId: ClobAssetIdSchema,
-    tokenId: z.never().optional(),
-  }),
-  EstimateMarketBuyPriceRequestSchema.extend({
-    assetId: z.never().optional(),
-    tokenId: ClobAssetIdSchema,
-  }),
-  EstimateMarketSellPriceRequestSchema.extend({
-    assetId: ClobAssetIdSchema,
-    tokenId: z.never().optional(),
-  }),
-  EstimateMarketSellPriceRequestSchema.extend({
-    assetId: z.never().optional(),
-    tokenId: ClobAssetIdSchema,
-  }),
-]);
-
-const EstimateMarketPriceRequestSchema =
-  EstimateMarketPriceInputSchema.transform(
-    ({ assetId, tokenId, ...params }) => ({
-      ...params,
-      assetId: assetId ?? tokenId,
-    }),
-  ) satisfies z.ZodType<EstimateMarketPriceParams, EstimateMarketPriceRequest>;
+const EstimateMarketPriceRequestSchema = z
+  .intersection(
+    z.discriminatedUnion('side', [
+      EstimateMarketBuyPriceRequestSchema,
+      EstimateMarketSellPriceRequestSchema,
+    ]),
+    OrderAssetInputSchema,
+  )
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  })) satisfies z.ZodType<
+  EstimateMarketPriceParams,
+  EstimateMarketPriceRequest
+>;
 
 export type EstimateMarketPriceError =
   | InsufficientLiquidityError

@@ -1,6 +1,5 @@
 import {
   BuilderCodeSchema,
-  ClobAssetIdSchema,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -11,7 +10,11 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
 import { computeLimitOrderAmounts } from './amounts';
-import { createOrderRouting, type OrderRouting } from './asset';
+import {
+  createOrderRouting,
+  OrderAssetInputSchema,
+  type OrderRouting,
+} from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -26,26 +29,20 @@ import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
 const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
 
-const BasePrepareLimitOrderParamsSchema = z.strictObject({
+const PrepareLimitOrderFieldsSchema = z.strictObject({
   price: PositiveDecimalNumberSchema,
   size: PositiveDecimalNumberSchema,
   side: OrderSideSchema,
   builderCode: BuilderCodeSchema.optional(),
   postOnly: z.boolean().default(false),
   expiration: z.number().int().nonnegative().optional(),
+  // Recognized here so the strict object can compose with OrderAssetInputSchema.
+  assetId: z.unknown().optional(),
+  tokenId: z.unknown().optional(),
 });
 
 const PrepareLimitOrderInputSchema = z
-  .union([
-    BasePrepareLimitOrderParamsSchema.extend({
-      assetId: ClobAssetIdSchema,
-      tokenId: z.never().optional(),
-    }),
-    BasePrepareLimitOrderParamsSchema.extend({
-      assetId: z.never().optional(),
-      tokenId: ClobAssetIdSchema,
-    }),
-  ])
+  .intersection(PrepareLimitOrderFieldsSchema, OrderAssetInputSchema)
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
       const minimumExpiration =
@@ -59,20 +56,18 @@ const PrepareLimitOrderInputSchema = z
         });
       }
     }
-  });
-
-const NormalizedPrepareLimitOrderParamsSchema =
-  PrepareLimitOrderInputSchema.transform(({ assetId, tokenId, ...params }) => ({
+  })
+  .transform(({ assetId, tokenId, ...params }) => ({
     ...params,
     assetId: assetId ?? tokenId,
   }));
 
 export type PrepareLimitOrderDraftParams = z.output<
-  typeof NormalizedPrepareLimitOrderParamsSchema
+  typeof PrepareLimitOrderInputSchema
 >;
 
 export const PrepareLimitOrderParamsSchema =
-  NormalizedPrepareLimitOrderParamsSchema satisfies z.ZodType<
+  PrepareLimitOrderInputSchema satisfies z.ZodType<
     PrepareLimitOrderDraftParams,
     PrepareLimitOrderRequest
   >;

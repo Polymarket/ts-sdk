@@ -1,7 +1,6 @@
 import {
   type BuilderCode,
   BuilderCodeSchema,
-  ClobAssetIdSchema,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -16,6 +15,7 @@ import { computeMarketOrderAmounts } from './amounts';
 import {
   createOrderRouting,
   type OrderAssetId,
+  OrderAssetInputSchema,
   type OrderRouting,
 } from './asset';
 import {
@@ -54,39 +54,25 @@ const PrepareMarketSellOrderParamsSchema =
     minPrice: PositiveDecimalNumberSchema.optional(),
   });
 
-const PrepareMarketOrderInputSchema = z.union([
-  PrepareMarketBuyOrderParamsSchema.extend({
-    assetId: ClobAssetIdSchema,
-    tokenId: z.never().optional(),
-  }),
-  PrepareMarketBuyOrderParamsSchema.extend({
-    assetId: z.never().optional(),
-    tokenId: ClobAssetIdSchema,
-  }),
-  PrepareMarketSellOrderParamsSchema.extend({
-    assetId: ClobAssetIdSchema,
-    tokenId: z.never().optional(),
-  }),
-  PrepareMarketSellOrderParamsSchema.extend({
-    assetId: z.never().optional(),
-    tokenId: ClobAssetIdSchema,
-  }),
-]);
-
-const NormalizedPrepareMarketOrderParamsSchema =
-  PrepareMarketOrderInputSchema.transform(
-    ({ assetId, tokenId, ...params }) => ({
-      ...params,
-      assetId: assetId ?? tokenId,
-    }),
-  );
+const PrepareMarketOrderInputSchema = z
+  .intersection(
+    z.discriminatedUnion('side', [
+      PrepareMarketBuyOrderParamsSchema,
+      PrepareMarketSellOrderParamsSchema,
+    ]),
+    OrderAssetInputSchema,
+  )
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  }));
 
 export type PrepareMarketOrderDraftParams = z.output<
-  typeof NormalizedPrepareMarketOrderParamsSchema
+  typeof PrepareMarketOrderInputSchema
 >;
 
 export const PrepareMarketOrderParamsSchema =
-  NormalizedPrepareMarketOrderParamsSchema satisfies z.ZodType<
+  PrepareMarketOrderInputSchema satisfies z.ZodType<
     PrepareMarketOrderDraftParams,
     PrepareMarketOrderRequest
   >;

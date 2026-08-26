@@ -1,14 +1,28 @@
 import {
+  ClobAssetIdSchema,
   type PositionId,
   type TokenId,
   toPositionId,
   toTokenId,
 } from '@polymarket/bindings';
+import { z } from 'zod';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { isV2PositionId } from '../../protocol';
 
 /** @internal */
 export type OrderAssetId = PositionId | TokenId;
+
+/** @internal */
+export const OrderAssetInputSchema = z.union([
+  z.object({
+    assetId: ClobAssetIdSchema,
+    tokenId: z.never().optional(),
+  }),
+  z.object({
+    assetId: z.never().optional(),
+    tokenId: ClobAssetIdSchema,
+  }),
+]);
 
 /** @internal */
 export type OrderRouting =
