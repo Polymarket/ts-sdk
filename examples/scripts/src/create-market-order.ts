@@ -2,18 +2,22 @@ import { createSecureClient, OrderSide, OrderType } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { never } from './lib/assert';
 import { requireEnv } from './lib/env';
-import { findOrderExampleMarket } from './lib/markets';
+import {
+  findOrderExampleMarket,
+  OrderExampleMarketVersion,
+} from './lib/markets';
 
 const secureClient = await createSecureClient({
   wallet: requireEnv('POLYMARKET_DEPOSIT_WALLET'),
   signer: privateKey(requireEnv('POLYMARKET_PRIVATE_KEY')),
 });
 
-const market = await findOrderExampleMarket(secureClient);
+const { market, version } = await findOrderExampleMarket(secureClient);
 const assetId =
-  market.outcomes.yes.positionId ??
-  market.outcomes.yes.tokenId ??
-  never('No YES asset found for market');
+  version === OrderExampleMarketVersion.V1
+    ? (market.outcomes.yes.tokenId ?? never('No YES token found for market'))
+    : (market.outcomes.yes.positionId ??
+      never('No YES position found for market'));
 const minimumOrderSize =
   market.trading.minimumOrderSize ?? never('No minimum order size found');
 
