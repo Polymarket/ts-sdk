@@ -11,6 +11,7 @@ import {
   canonicalizeComboLegs,
   decodeV2OutcomePositionId,
   deriveComboPositionContext,
+  isV2PositionId,
 } from './protocol';
 
 const CONDITION_ID = toComboConditionId(
@@ -18,6 +19,26 @@ const CONDITION_ID = toComboConditionId(
 );
 
 describe('Protocol helpers', () => {
+  describe('isV2PositionId', () => {
+    it('recognizes the reserved protocol v2 position-ID namespace', () => {
+      const positionId = v2Position(1, 7, 1);
+
+      expect(isV2PositionId(positionId)).toBe(true);
+      expect(
+        isV2PositionId((BigInt(positionId) | (1n << 40n)).toString()),
+      ).toBe(false);
+    });
+
+    it.each([
+      '',
+      '  ',
+      '-1',
+      'invalid',
+    ])('rejects an invalid uint256 value: %j', (value) => {
+      expect(isV2PositionId(value)).toBe(false);
+    });
+  });
+
   describe('canonicalizeComboLegs', () => {
     it('sorts unordered legs', () => {
       const legs = canonicalizeComboLegs([

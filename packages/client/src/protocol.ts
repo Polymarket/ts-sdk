@@ -17,6 +17,7 @@ const NEG_RISK_MODULE_ID = 2n;
 const COMBINATORIAL_MODULE_ID = 3n;
 const MAX_COMBO_LEGS = 50;
 const UINT256_MAX = (1n << 256n) - 1n;
+const V2_RESERVED_BITS_MASK = ((1n << 64n) - 1n) << 40n;
 
 export type CanonicalComboLegs = Tagged<
   readonly bigint[],
@@ -129,6 +130,20 @@ export type DecodedV2OutcomePositionId = {
 };
 
 /**
+ * Classifies whether an identifier occupies the protocol v2 position-ID
+ * namespace based on its reserved bits.
+ *
+ * @internal
+ */
+export function isV2PositionId(assetId: string): assetId is PositionId {
+  try {
+    return (parsePositionId(assetId) & V2_RESERVED_BITS_MASK) === 0n;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Decodes a protocol v2 YES/NO position ID into its condition ID and outcome index.
  *
  * @throws {@link UserInputError}
@@ -164,7 +179,7 @@ export function decodeV2OutcomePositionId(
   };
 }
 
-function parsePositionId(positionId: PositionId): bigint {
+function parsePositionId(positionId: string): bigint {
   const value = positionId.trim();
   let parsed: bigint;
 

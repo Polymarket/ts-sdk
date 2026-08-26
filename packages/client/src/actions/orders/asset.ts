@@ -5,9 +5,7 @@ import {
   toTokenId,
 } from '@polymarket/bindings';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
-
-const UINT256_MAX = (1n << 256n) - 1n;
-const V2_RESERVED_BITS_MASK = ((1n << 64n) - 1n) << 40n;
+import { isV2PositionId } from '../../protocol';
 
 /** @internal */
 export type OrderAssetId = PositionId | TokenId;
@@ -25,7 +23,7 @@ export type OrderRouting =
 
 /** @internal */
 export function createOrderRouting(assetId: string): OrderRouting {
-  return isV2AssetId(assetId)
+  return isV2PositionId(assetId)
     ? {
         assetId: toPositionId(assetId),
         exchangeVersion: ExchangeOrderProtocolVersion.V3,
@@ -34,18 +32,4 @@ export function createOrderRouting(assetId: string): OrderRouting {
         assetId: toTokenId(assetId),
         exchangeVersion: ExchangeOrderProtocolVersion.V2,
       };
-}
-
-function isV2AssetId(assetId: string): boolean {
-  try {
-    const value = BigInt(assetId);
-
-    return (
-      value >= 0n &&
-      value <= UINT256_MAX &&
-      (value & V2_RESERVED_BITS_MASK) === 0n
-    );
-  } catch {
-    return false;
-  }
 }
