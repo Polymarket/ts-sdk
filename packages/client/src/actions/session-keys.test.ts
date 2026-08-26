@@ -33,7 +33,7 @@ describe('session-key relayer submissions', () => {
   it.each([
     ['authorization', '/v1/session-signers/authorizations'],
     ['revocation', '/v1/session-signers/revocations'],
-  ] as const)('allows the %s response up to five minutes', async (kind, path) => {
+  ] as const)('passes a five-minute timeout to the %s submission', async (kind, path) => {
     const { client, relayerPost, rejection } = createClient();
 
     const operation =
