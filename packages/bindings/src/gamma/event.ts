@@ -207,6 +207,7 @@ export const TeamSchema = z.object({
   updatedAt: IsoDateTimeStringSchema.nullish(),
   providerId: z.number().int().nullish(),
   color: z.string().nullish(),
+  ordering: z.string().nullish(),
 });
 
 export const SportsMetadataSchema = z.object({
