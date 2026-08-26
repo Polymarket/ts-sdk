@@ -177,6 +177,13 @@ export type ConversionActivity = ActivityBase & {
   eventSlug: string;
 };
 
+export type MigrationActivity = ActivityBase & {
+  /** A position migrated from the legacy protocol to protocol v2. */
+  type: 'MIGRATION';
+  /** The migrated position value in USD. */
+  amount: DecimalString;
+};
+
 export type RewardActivity = ActivityBase & {
   /** An account-level reward credit. */
   type: 'REWARD';
@@ -232,6 +239,7 @@ export type Activity =
   | MergeActivity
   | RedeemActivity
   | ConversionActivity
+  | MigrationActivity
   | RewardActivity
   | MakerRebateActivity
   | ReferralRewardActivity
@@ -506,6 +514,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         icon: activity.icon ?? null,
         eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
       };
+    case ActivityType.MIGRATION:
     case ActivityType.REWARD:
     case ActivityType.MAKER_REBATE:
     case ActivityType.REFERRAL_REWARD:
