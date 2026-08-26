@@ -32,6 +32,10 @@ const ListTradesV2RequestSchema = z
     // forwarding them would silently widen the request to the global feed.
     user: z.string().min(1).optional(),
     takerOnly: z.boolean().optional(),
+    // Unlike v1, either filter field may be sent alone (verified 200 live):
+    // the service always applies the dust filter, defaulting the missing half
+    // (TOKENS / 0.01) — so a both-or-neither rule here would reject requests
+    // the service answers.
     filterType: TradeV2FilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
     market: z.array(z.string().min(1)).min(1).optional(),
@@ -78,7 +82,8 @@ export const ListTradesV2Error = makeErrorGuard(
  * Defaults are the service's: `pageSize` is 100 (at most 1000 — larger values
  * are rejected, not clamped), only the taker side of each match is returned
  * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
- * applies unless `filterType`/`filterAmount` say otherwise. An omitted window
+ * applies unless `filterType`/`filterAmount` say otherwise — either may be
+ * sent alone, and the service fills the other half in. An omitted window
  * serves the recent feed; `start`/`end` are Unix seconds. Transient rate
  * limits are absorbed by retrying after the server-requested delay.
  *
