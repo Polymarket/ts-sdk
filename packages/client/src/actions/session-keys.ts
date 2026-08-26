@@ -136,6 +136,8 @@ const DEFAULT_SESSION_KEY_SCOPES = [
   SessionKeyKnownScope.ALL,
 ] satisfies SessionKeyScope[];
 
+const SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS = 5 * 60 * 1_000;
+
 const AuthorizeSessionKeyRequestSchema = z
   .object({
     address: EvmAddressSchema,
@@ -281,6 +283,7 @@ export async function authorizeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
   );
@@ -421,6 +424,7 @@ export async function revokeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerRevokeSessionSignerResponseSchema)),
   );
