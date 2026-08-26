@@ -49,7 +49,7 @@ const ListTradesRequestSchema = z
     // The service default; anything past 1000 is rejected, not clamped.
     pageSize: PageSizeSchema.max(1000).default(100),
     // Empty filters are rejected rather than sent: the service reads an empty
-    // `user` as absent and keys routing on `market`/`event_id` presence, so
+    // `user` as absent and keys routing on `condition`/`event_id` presence, so
     // forwarding them would silently widen the request to the global feed.
     user: z.string().min(1).optional(),
     takerOnly: z.boolean().optional(),
@@ -59,14 +59,16 @@ const ListTradesRequestSchema = z
     // the service answers.
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
-    market: z.array(z.string().min(1)).min(1).optional(),
+    // Encodes to `condition_id`, an accepted alias of the canonical
+    // `condition` key.
+    conditionId: z.array(z.string().min(1)).min(1).optional(),
     eventId: z.array(z.number().int()).min(1).optional(),
     side: SideSchema.optional(),
     start: z.number().int().min(0).optional(),
     end: z.number().int().min(0).optional(),
   })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
+  .refine((value) => !(value.conditionId && value.eventId), {
+    message: 'Provide conditionId or eventId, not both',
     path: ['eventId'],
   })
   // A zero `end` means unbounded, mirroring the service.

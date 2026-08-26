@@ -101,7 +101,9 @@ describe('Data envelope', () => {
     const response = await unwrap(publicClient.data.get('v2/oi'));
 
     const markets = dataEnvelopeSchema(
-      z.array(z.object({ market_id: z.string(), value: z.number() }).loose()),
+      z.array(
+        z.object({ condition_id: z.string(), value: z.number() }).loose(),
+      ),
     ).parse(await response.json());
 
     expect(markets.length).toBeGreaterThan(0);
