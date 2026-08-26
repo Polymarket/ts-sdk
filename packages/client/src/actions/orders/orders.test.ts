@@ -10,7 +10,7 @@ import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { SignerType } from '../../wallet';
-import type { OrderRouting } from './asset';
+import type { OrderAssetId } from './asset';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -104,10 +104,7 @@ describe('createUnsignedOrder', () => {
     const positionId = toPositionId('2');
     const order = createUnsignedOrder(
       createOrderDraft({
-        routing: {
-          assetId: positionId,
-          exchangeVersion: ExchangeOrderProtocolVersion.V3,
-        },
+        assetId: positionId,
         wallet: DEPOSIT_WALLET,
       }),
       {
@@ -124,19 +121,16 @@ describe('createUnsignedOrder', () => {
 });
 
 type CreateOrderDraftParams = {
-  routing?: OrderRouting;
+  assetId?: OrderAssetId;
   wallet: EvmAddress;
 };
 
 function createOrderDraft({
-  routing = {
-    assetId: toTokenId('1'),
-    exchangeVersion: ExchangeOrderProtocolVersion.V2,
-  },
+  assetId = toTokenId('1'),
   wallet,
 }: CreateOrderDraftParams): OrderDraft {
   return {
-    ...routing,
+    assetId,
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,

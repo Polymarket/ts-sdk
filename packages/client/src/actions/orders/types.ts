@@ -16,7 +16,7 @@ import type {
 import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { SignOrderRequest } from '../../workflow';
-import type { OrderRouting } from './asset';
+import type { OrderAssetId } from './asset';
 
 export type PrepareMarketBuyOrderRequest =
   | {
@@ -164,7 +164,9 @@ type BaseOrderDraft = {
 };
 
 /** @internal */
-export type OrderDraft = BaseOrderDraft & OrderRouting;
+export type OrderDraft = BaseOrderDraft & {
+  assetId: OrderAssetId;
+};
 
 /**
  * @internal

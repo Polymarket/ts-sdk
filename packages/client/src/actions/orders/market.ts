@@ -12,12 +12,7 @@ import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
 import { computeMarketOrderAmounts } from './amounts';
-import {
-  createOrderRouting,
-  type OrderAssetId,
-  OrderAssetInputSchema,
-  type OrderRouting,
-} from './asset';
+import { type OrderAssetId, OrderAssetInputSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -81,8 +76,11 @@ export async function prepareMarketOrderDraft(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
 ): Promise<OrderDraft> {
-  const routing = createOrderRouting(params.assetId);
-  const context = await resolveMarketOrderContext(client, params, routing);
+  const context = await resolveMarketOrderContext(
+    client,
+    params,
+    params.assetId,
+  );
   const amounts = computeMarketOrderAmounts({
     amount: context.resolvedAmount,
     price: context.price,
@@ -92,7 +90,7 @@ export async function prepareMarketOrderDraft(
   });
 
   return {
-    ...routing,
+    assetId: params.assetId,
     builderCode: params.builderCode,
     chainId: client.environment.chainId,
     exchangeAddress: context.exchangeAddress,
@@ -118,19 +116,18 @@ type MarketOrderContext = {
 async function resolveMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: OrderAssetId,
 ): Promise<MarketOrderContext> {
   return hasProtectedPrice(params)
-    ? resolveProtectedMarketOrderContext(client, params, routing)
-    : resolveUnprotectedMarketOrderContext(client, params, routing);
+    ? resolveProtectedMarketOrderContext(client, params, assetId)
+    : resolveUnprotectedMarketOrderContext(client, params, assetId);
 }
 
 async function resolveProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: OrderAssetId,
 ): Promise<MarketOrderContext> {
-  const { assetId } = routing;
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
   if (params.side === OrderSide.BUY && params.maxSpend !== undefined) {
@@ -144,7 +141,7 @@ async function resolveProtectedMarketOrderContext(
       return buildProtectedBuyMarketOrderContext(
         client,
         params,
-        routing,
+        assetId,
         amount,
         builderTakerFeeRate,
         params.maxSpend,
@@ -163,7 +160,7 @@ async function resolveProtectedMarketOrderContext(
       return buildProtectedBuyMarketOrderContext(
         client,
         params,
-        routing,
+        assetId,
         amount,
         builderTakerFeeRate,
         params.maxSpend,
@@ -178,7 +175,7 @@ async function resolveProtectedMarketOrderContext(
     return buildProtectedMarketOrderContext(
       client,
       params,
-      routing,
+      assetId,
       amount,
       metadata,
     );
@@ -195,7 +192,7 @@ async function resolveProtectedMarketOrderContext(
     return buildProtectedMarketOrderContext(
       client,
       params,
-      routing,
+      assetId,
       amount,
       currentMetadata,
     );
@@ -205,7 +202,7 @@ async function resolveProtectedMarketOrderContext(
 function buildProtectedBuyMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: OrderAssetId,
   amount: number,
   builderTakerFeeRate: number,
   maxSpend: number,
@@ -217,7 +214,7 @@ function buildProtectedBuyMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       metadata.negRisk,
     ),
     funderAddress: client.account.wallet,
@@ -238,7 +235,7 @@ function buildProtectedBuyMarketOrderContext(
 function buildProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: OrderAssetId,
   amount: number,
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
@@ -247,7 +244,7 @@ function buildProtectedMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       metadata.negRisk,
     ),
     funderAddress: client.account.wallet,
@@ -261,9 +258,8 @@ function buildProtectedMarketOrderContext(
 async function resolveUnprotectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: OrderAssetId,
 ): Promise<MarketOrderContext> {
-  const { assetId } = routing;
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
   const feeInputs =
     params.side === OrderSide.BUY && params.maxSpend !== undefined
@@ -292,7 +288,7 @@ async function resolveUnprotectedMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       orderBook.negRisk,
     ),
     funderAddress: client.account.wallet,
