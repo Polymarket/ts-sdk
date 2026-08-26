@@ -30,6 +30,7 @@ import {
   SideSchema,
 } from './common';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
+import { dataV2PageSchema } from './v2';
 
 export enum ComboActivityType {
   Split = 'SPLIT',
@@ -369,6 +370,64 @@ export const TradeSchema = z
     tokenId: asset,
   }));
 
+const UnknownOutcomeIndexToUndefinedSchema = z.preprocess(
+  (value) => (value === 999 ? undefined : value),
+  z.number().int().optional(),
+);
+
+/**
+ * A `/v2/trades` row, normalized to the SDK vocabulary.
+ *
+ * The v2 wire is strict snake_case with every field present: absence arrives
+ * as an empty string (normalized to `undefined` here) and an unknown outcome
+ * index arrives as the sentinel `999` (also normalized to `undefined` —
+ * missing is never `0`). Timestamps arrive as epoch seconds and normalize to
+ * epoch milliseconds. `size` is a share count and `price` is USD per share.
+ */
+export const TradeV2Schema = z
+  .object({
+    proxy_wallet: AddressSchema,
+    side: SideSchema,
+    token_id: TokenIdSchema,
+    market_id: ConditionIdSchema,
+    size: z.number(),
+    price: z.number(),
+    timestamp: EpochSecondsToMillisecondsSchema,
+    title: OptionalTextSchema,
+    slug: OptionalTextSchema,
+    icon: OptionalTextSchema,
+    event_slug: OptionalTextSchema,
+    outcome: OptionalTextSchema,
+    outcome_index: UnknownOutcomeIndexToUndefinedSchema,
+    name: OptionalTextSchema,
+    pseudonym: OptionalTextSchema,
+    bio: OptionalTextSchema,
+    profile_image: OptionalTextSchema,
+    profile_image_optimized: OptionalTextSchema,
+    transaction_hash: TxHashSchema,
+  })
+  .transform((trade) => ({
+    wallet: trade.proxy_wallet,
+    side: trade.side,
+    tokenId: trade.token_id,
+    conditionId: trade.market_id,
+    size: trade.size,
+    price: trade.price,
+    timestamp: trade.timestamp,
+    title: trade.title,
+    slug: trade.slug,
+    icon: trade.icon,
+    eventSlug: trade.event_slug,
+    outcome: trade.outcome,
+    outcomeIndex: trade.outcome_index,
+    name: trade.name,
+    pseudonym: trade.pseudonym,
+    bio: trade.bio,
+    profileImage: trade.profile_image,
+    profileImageOptimized: trade.profile_image_optimized,
+    transactionHash: trade.transaction_hash,
+  }));
+
 const RawActivitySchema = z.object({
   proxyWallet: AddressSchema.nullish(),
   timestamp: EpochSecondsToMillisecondsSchema.nullish(),
@@ -415,6 +474,7 @@ export const TradedSchema = z.object({
 });
 
 export const ListTradesResponseSchema = z.array(TradeSchema);
+export const ListTradesV2ResponseSchema = dataV2PageSchema(TradeV2Schema);
 export const ListActivityResponseSchema = z.array(ActivitySchema);
 export const ListComboActivityResponseSchema = z
   .object({
@@ -437,6 +497,7 @@ export const ListComboActivityResponseSchema = z
   }));
 
 export type Trade = z.infer<typeof TradeSchema>;
+export type TradeV2 = z.output<typeof TradeV2Schema>;
 export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;

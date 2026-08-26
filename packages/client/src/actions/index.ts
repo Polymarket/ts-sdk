@@ -1,5 +1,6 @@
 export * from './account';
 export * from './activity';
+export * from './activity-v2';
 export * from './approvals';
 export * from './auth';
 export * from './builders';

@@ -81,6 +81,35 @@ export function toDataSearchParams<TParams extends SearchParamsInput>(
   return searchParams;
 }
 
+/**
+ * Data v2 endpoints use snake_case query keys and comma-separated arrays.
+ */
+export function toDataV2SearchParams<TParams extends SearchParamsInput>(
+  params: TParams,
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    const searchParamKey = toSnakeCase(key);
+
+    if (isSearchParamArray(value)) {
+      searchParams.append(
+        searchParamKey,
+        value.map(toSearchParamValue).join(','),
+      );
+      continue;
+    }
+
+    searchParams.append(searchParamKey, toSearchParamValue(value));
+  }
+
+  return searchParams;
+}
+
 function isSnakeCaseSearchParamMappings(
   mappings:
     | SearchParamMappings<SearchParamsInput>

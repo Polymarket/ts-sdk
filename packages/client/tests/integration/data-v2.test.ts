@@ -2,7 +2,6 @@ import {
   dataV2EnvelopeSchema,
   dataV2PageSchema,
 } from '@polymarket/bindings/data';
-import type { Page } from '@polymarket/client';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { describe, expect, it } from './fixtures';
@@ -10,16 +9,68 @@ import { describe, expect, it } from './fixtures';
 // A wallet shape that is valid but cannot correspond to a real account.
 const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
 
-const LeaderboardEntrySchema = z
-  .object({
-    rank: z.number().int(),
-    user_id: z.string(),
-    pnl: z.number(),
-    volume: z.number(),
-    verified: z.boolean(),
-  })
-  .loose();
+describe('Data v2 pagination', () => {
+  it('walks consecutive pages with for await and re-sends filters', async ({
+    publicClient,
+  }) => {
+    const paginator = publicClient.listTradesV2({ pageSize: 5, side: 'BUY' });
 
+    const pages = [];
+    for await (const page of paginator) {
+      pages.push(page);
+      if (pages.length === 3) {
+        break;
+      }
+    }
+
+    expect(pages).toHaveLength(3);
+    for (const page of pages) {
+      expect(page.items).toHaveLength(5);
+      expect(page.hasMore).toBe(true);
+      expect(page.nextCursor).toEqual(expect.any(String));
+      // The cursor carries only the paging anchor, so BUY rows on every page
+      // prove the original filters were re-sent with each continuation.
+      for (const trade of page.items) {
+        expect(trade.side).toBe('BUY');
+      }
+    }
+
+    // Server-minted cursors advance — three pages, three distinct cursors.
+    expect(new Set(pages.map((page) => page.nextCursor)).size).toBe(3);
+
+    // The feed is newest-first and the keyset anchor is stable, so
+    // timestamps never increase across the whole walk.
+    const timestamps = pages.flatMap((page) =>
+      page.items.map((trade) => trade.timestamp),
+    );
+    expect(timestamps).toEqual([...timestamps].sort((a, b) => b - a));
+  });
+
+  it('continues from a first-page cursor', async ({ publicClient }) => {
+    const paginator = publicClient.listTradesV2({ pageSize: 5 });
+    const firstPage = await paginator.firstPage();
+
+    expect(firstPage.items).toHaveLength(5);
+    expect(firstPage.nextCursor).toBeDefined();
+
+    const secondPage = await paginator.from(firstPage.nextCursor).firstPage();
+
+    expect(secondPage.items).toHaveLength(5);
+    const lastOfFirst = firstPage.items[firstPage.items.length - 1];
+    const firstOfSecond = secondPage.items[0];
+    expect(lastOfFirst).toBeDefined();
+    expect(firstOfSecond).toBeDefined();
+    expect(firstOfSecond?.timestamp).toBeLessThanOrEqual(
+      lastOfFirst?.timestamp ?? 0,
+    );
+  });
+});
+
+/**
+ * Envelope-level coverage for v2 surfaces that have no public action yet.
+ * Each block below folds into its action's integration test as the
+ * corresponding endpoint lands in the SDK.
+ */
 describe('Data v2 envelope', () => {
   it('parses a paginated list envelope into the page shape', async ({
     publicClient,
@@ -30,17 +81,21 @@ describe('Data v2 envelope', () => {
       }),
     );
 
-    const page = dataV2PageSchema(LeaderboardEntrySchema).parse(
-      await response.json(),
-    );
+    const page = dataV2PageSchema(
+      z
+        .object({
+          rank: z.number().int(),
+          user_id: z.string(),
+          pnl: z.number(),
+          volume: z.number(),
+          verified: z.boolean(),
+        })
+        .loose(),
+    ).parse(await response.json());
 
-    // The schema output IS the SDK page shape — no re-mapping between the
-    // envelope and the pagination walker.
-    const asPage: Page<Array<z.output<typeof LeaderboardEntrySchema>>> = page;
-
-    expect(asPage.items.length).toBeGreaterThan(0);
-    expect(asPage.hasMore).toBe(true);
-    expect(asPage.nextCursor).toEqual(expect.any(String));
+    expect(page.items.length).toBeGreaterThan(0);
+    expect(page.hasMore).toBe(true);
+    expect(page.nextCursor).toEqual(expect.any(String));
   });
 
   it('unwraps a single-object envelope to the payload', async ({
