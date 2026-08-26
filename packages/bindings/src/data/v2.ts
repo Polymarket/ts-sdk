@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type PaginationCursor, toPaginationCursor } from '../shared';
+import { toPaginationCursor } from '../shared';
 
 /**
  * The `/v2` list envelope's pagination block, normalized to camelCase with the
@@ -15,15 +15,22 @@ export const DataV2PaginationSchema = z
     limit: z.number().int(),
     offset: z.number().int(),
     has_more: z.boolean(),
-    next_cursor: z.string().nullable(),
+    next_cursor: z.string().min(1).nullable(),
+  })
+  // The service mints the cursor exactly when another page exists, so the two
+  // fields are equivalent. Enforcing that here turns a broken upstream
+  // invariant into a loud validation failure instead of its silent failure
+  // mode: `hasMore: true` with no cursor restarts the page walker from the
+  // first page, forever.
+  .refine((value) => value.has_more === (value.next_cursor !== null), {
+    message: 'has_more and next_cursor must agree',
+    path: ['next_cursor'],
   })
   .transform(({ has_more, next_cursor, ...rest }) => ({
     ...rest,
     hasMore: has_more,
     nextCursor:
-      next_cursor === null
-        ? undefined
-        : (toPaginationCursor(next_cursor) satisfies PaginationCursor),
+      next_cursor === null ? undefined : toPaginationCursor(next_cursor),
   }));
 
 export type DataV2Pagination = z.output<typeof DataV2PaginationSchema>;

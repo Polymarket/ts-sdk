@@ -46,21 +46,32 @@ describe('withRateLimitRetry', () => {
     expect(waits).toEqual([2000]);
   });
 
-  it('assumes one second when the server supplies no delay and caps long delays', async () => {
+  it('assumes one second when the server supplies no delay', async () => {
     const { waits, sleep } = recordingSleep();
     const pipeline = scripted(
       () => errAsync(new RateLimitError('limited')),
-      () => errAsync(new RateLimitError('limited', { retryAfter: 120 })),
       () => okAsync('served'),
     );
+
+    const result = await withRateLimitRetry(pipeline.run, { sleep });
+
+    expect(result._unsafeUnwrap()).toBe('served');
+    expect(waits).toEqual([1000]);
+  });
+
+  it('propagates instead of retrying early when the requested delay exceeds the cap', async () => {
+    const { waits, sleep } = recordingSleep();
+    const limited = new RateLimitError('limited', { retryAfter: 120 });
+    const pipeline = scripted(() => errAsync(limited));
 
     const result = await withRateLimitRetry(pipeline.run, {
       maxDelaySeconds: 5,
       sleep,
     });
 
-    expect(result._unsafeUnwrap()).toBe('served');
-    expect(waits).toEqual([1000, 5000]);
+    expect(result._unsafeUnwrapErr()).toBe(limited);
+    expect(pipeline.calls()).toBe(1);
+    expect(waits).toEqual([]);
   });
 
   it('surfaces the rate limit once retries are exhausted', async () => {
