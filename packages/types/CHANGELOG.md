@@ -1,5 +1,11 @@
 # @polymarket/types
 
+## 0.2.0
+
+### Minor Changes
+
+- 0db340d: Add scoped Deposit Wallet session-key authorization, active-key fetching, revocation, and ordinary SecureClient support for authorized session signers. Known scopes have enum members, while newer scope strings remain accepted and preserved for forward compatibility. Authorizations default to `ALL` when scopes are omitted.
+
 ## 0.1.0
 
 ### Minor Changes
