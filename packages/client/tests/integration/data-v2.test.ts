@@ -2,6 +2,7 @@ import {
   dataV2EnvelopeSchema,
   dataV2PageSchema,
 } from '@polymarket/bindings/data';
+import type { Page } from '@polymarket/client';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { describe, expect, it } from './fixtures';
@@ -9,8 +10,18 @@ import { describe, expect, it } from './fixtures';
 // A wallet shape that is valid but cannot correspond to a real account.
 const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
 
+const LeaderboardEntrySchema = z
+  .object({
+    rank: z.number().int(),
+    user_id: z.string(),
+    pnl: z.number(),
+    volume: z.number(),
+    verified: z.boolean(),
+  })
+  .loose();
+
 describe('Data v2 envelope', () => {
-  it('parses a paginated list envelope with a server-minted cursor', async ({
+  it('parses a paginated list envelope into the page shape', async ({
     publicClient,
   }) => {
     const response = await unwrap(
@@ -19,31 +30,29 @@ describe('Data v2 envelope', () => {
       }),
     );
 
-    const page = dataV2PageSchema(
-      z
-        .object({
-          rank: z.number().int(),
-          user_id: z.string(),
-          pnl: z.number(),
-          volume: z.number(),
-          verified: z.boolean(),
-        })
-        .loose(),
-    ).parse(await response.json());
+    const page = dataV2PageSchema(LeaderboardEntrySchema).parse(
+      await response.json(),
+    );
 
-    expect(page.data.length).toBeGreaterThan(0);
-    expect(page.pagination.hasMore).toBe(true);
-    expect(page.pagination.nextCursor).toEqual(expect.any(String));
+    // The schema output IS the SDK page shape — no re-mapping between the
+    // envelope and the pagination walker.
+    const asPage: Page<Array<z.output<typeof LeaderboardEntrySchema>>> = page;
+
+    expect(asPage.items.length).toBeGreaterThan(0);
+    expect(asPage.hasMore).toBe(true);
+    expect(asPage.nextCursor).toEqual(expect.any(String));
   });
 
-  it('parses a single-object envelope', async ({ publicClient }) => {
+  it('unwraps a single-object envelope to the payload', async ({
+    publicClient,
+  }) => {
     const response = await unwrap(publicClient.data.get('v2/oi'));
 
-    const envelope = dataV2EnvelopeSchema(
+    const markets = dataV2EnvelopeSchema(
       z.array(z.object({ market_id: z.string(), value: z.number() }).loose()),
     ).parse(await response.json());
 
-    expect(envelope.data.length).toBeGreaterThan(0);
+    expect(markets.length).toBeGreaterThan(0);
   });
 
   it('keeps a null answer parsed rather than failing validation', async ({
@@ -55,10 +64,10 @@ describe('Data v2 envelope', () => {
       }),
     );
 
-    const envelope = dataV2EnvelopeSchema(
+    const stats = dataV2EnvelopeSchema(
       z.object({ trades: z.number().int() }).loose().nullable(),
     ).parse(await response.json());
 
-    expect(envelope.data).toBeNull();
+    expect(stats).toBeNull();
   });
 });

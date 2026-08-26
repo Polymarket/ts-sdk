@@ -1,4 +1,4 @@
-import { errAsync, ResultAsync } from '@polymarket/types';
+import { delay, errAsync, ResultAsync } from '@polymarket/types';
 import { RateLimitError } from './errors';
 
 type SleepFn = (milliseconds: number) => Promise<void>;
@@ -19,12 +19,6 @@ export type RateLimitRetryOptions = {
   sleep?: SleepFn;
 };
 
-function defaultSleep(milliseconds: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
-}
-
 /**
  * Retries a request pipeline when it is rate limited, honoring the
  * server-requested delay.
@@ -44,7 +38,7 @@ export function withRateLimitRetry<T, E>(
   run: () => ResultAsync<T, E>,
   options: RateLimitRetryOptions = {},
 ): ResultAsync<T, E> {
-  const { retries = 2, maxDelaySeconds = 5, sleep = defaultSleep } = options;
+  const { retries = 2, maxDelaySeconds = 5, sleep = delay } = options;
 
   function attempt(remaining: number): ResultAsync<T, E> {
     return run().orElse((error) => {

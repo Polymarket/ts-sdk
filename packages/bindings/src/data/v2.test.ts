@@ -1,27 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { DataV2PaginationSchema } from './v2';
+import { z } from 'zod';
+import { dataV2EnvelopeSchema, dataV2PageSchema } from './v2';
 
-describe('DataV2PaginationSchema', () => {
-  it('normalizes a continuing page to a branded cursor', () => {
-    const page = DataV2PaginationSchema.parse({
-      limit: 2,
-      offset: 0,
-      has_more: true,
-      next_cursor: 'eyJkYXRhIjp7…',
+const ItemSchema = z.object({ id: z.string() });
+
+describe('dataV2PageSchema', () => {
+  it('parses a continuing page into the page shape with a branded cursor', () => {
+    const page = dataV2PageSchema(ItemSchema).parse({
+      data: [{ id: 'a' }, { id: 'b' }],
+      pagination: {
+        limit: 2,
+        offset: 0,
+        has_more: true,
+        next_cursor: 'eyJkYXRhIjp7…',
+      },
     });
 
+    expect(page.items).toEqual([{ id: 'a' }, { id: 'b' }]);
     expect(page.hasMore).toBe(true);
     expect(page.nextCursor).toBe('eyJkYXRhIjp7…');
   });
 
-  it('normalizes the final page to an absent cursor', () => {
-    const page = DataV2PaginationSchema.parse({
-      limit: 2,
-      offset: 4,
-      has_more: false,
-      next_cursor: null,
+  it('parses the final page with an absent cursor', () => {
+    const page = dataV2PageSchema(ItemSchema).parse({
+      data: [],
+      pagination: { limit: 2, offset: 4, has_more: false, next_cursor: null },
     });
 
+    expect(page.items).toEqual([]);
     expect(page.hasMore).toBe(false);
     expect(page.nextCursor).toBeUndefined();
   });
@@ -39,13 +45,25 @@ describe('DataV2PaginationSchema', () => {
     has_more,
     next_cursor,
   }) => {
-    const result = DataV2PaginationSchema.safeParse({
-      limit: 2,
-      offset: 0,
-      has_more,
-      next_cursor,
+    const result = dataV2PageSchema(ItemSchema).safeParse({
+      data: [],
+      pagination: { limit: 2, offset: 0, has_more, next_cursor },
     });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe('dataV2EnvelopeSchema', () => {
+  it('unwraps the payload', () => {
+    expect(
+      dataV2EnvelopeSchema(ItemSchema).parse({ data: { id: 'a' } }),
+    ).toEqual({ id: 'a' });
+  });
+
+  it('keeps a null answer a parsed value when the payload is nullable', () => {
+    expect(
+      dataV2EnvelopeSchema(ItemSchema.nullable()).parse({ data: null }),
+    ).toBeNull();
   });
 });
