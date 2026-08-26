@@ -10,20 +10,22 @@ const secureClient = await createSecureClient({
 });
 
 const market = await findOrderExampleMarket(secureClient);
-const tokenId =
-  market?.outcomes.yes.tokenId ?? never('No YES token found for market');
+const assetId =
+  market.outcomes.yes.positionId ??
+  market.outcomes.yes.tokenId ??
+  never('No YES asset found for market');
 const minimumOrderSize =
   market.trading.minimumOrderSize ?? never('No minimum order size found');
 
 const estimatedPrice = await secureClient.estimateMarketPrice({
-  tokenId,
+  assetId,
   side: OrderSide.BUY,
   amount: minimumOrderSize,
   orderType: OrderType.FAK,
 });
 
 const order = await secureClient.createMarketOrder({
-  tokenId,
+  assetId,
   side: OrderSide.BUY,
   amount: minimumOrderSize,
   orderType: OrderType.FAK,
@@ -32,7 +34,7 @@ const order = await secureClient.createMarketOrder({
 console.table({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
   minimumOrderSize,
-  tokenId: order.tokenId,
+  assetId: order.tokenId,
   side: order.side,
   orderType: order.orderType,
   estimatedPrice,

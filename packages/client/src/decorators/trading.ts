@@ -34,7 +34,7 @@ import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
 
-export type { OrderAsset, OrderSignature, SignedOrder } from '../actions';
+export type { OrderSignature, SignedOrder } from '../actions';
 
 export type SecureTradingActions = {
   /**
@@ -46,27 +46,30 @@ export type SecureTradingActions = {
    * @example Basic market buy
    * ```ts
    * const order = await client.createMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   amount: 10,
    *   side: OrderSide.BUY,
-   *   tokenId: '123',
    * });
    * ```
    *
    * @example Protected market buy
    * ```ts
    * const order = await client.createMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   amount: 10,
    *   maxPrice: '0.55',
    *   side: OrderSide.BUY,
-   *   tokenId: '123',
    * });
    * ```
    *
-   * @example Position-backed market buy
+   * @example Polymarket V2 market buy
    * ```ts
    * const order = await client.createMarketOrder({
+   *   assetId:
+   *     '512621228394368573489767381548878758725236764214074924933294838260328038400',
    *   amount: 10,
-   *   positionId: '456',
    *   side: OrderSide.BUY,
    * });
    * ```
@@ -86,9 +89,10 @@ export type SecureTradingActions = {
    * @example Basic market buy
    * ```ts
    * const response = await client.placeMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   amount: 10,
    *   side: OrderSide.BUY,
-   *   tokenId: '123',
    * });
    *
    * // response: OrderResponse
@@ -97,10 +101,11 @@ export type SecureTradingActions = {
    * @example Protected market sell
    * ```ts
    * const response = await client.placeMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   minPrice: '0.54',
    *   shares: 10,
    *   side: OrderSide.SELL,
-   *   tokenId: '123',
    * });
    *
    * // response: OrderResponse
@@ -109,9 +114,10 @@ export type SecureTradingActions = {
    * @example Market buy followed to settlement
    * ```ts
    * const response = await client.placeMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   amount: 10,
    *   side: OrderSide.BUY,
-   *   tokenId: '123',
    * });
    *
    * if (response.ok) {
@@ -132,22 +138,24 @@ export type SecureTradingActions = {
    * @throws {@link CreateLimitOrderError}
    * Thrown on failure.
    *
-   * @example Token-backed limit order
+   * @example CTF limit order
    * ```ts
    * const order = await client.createLimitOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   postOnly: true,
    *   price: 0.52,
    *   side: OrderSide.BUY,
    *   size: 10,
-   *   tokenId: '123',
    * });
    * ```
    *
-   * @example Position-backed limit order
+   * @example Polymarket V2 limit order
    * ```ts
    * const order = await client.createLimitOrder({
+   *   assetId:
+   *     '512621228394368573489767381548878758725236764214074924933294838260328038400',
    *   postOnly: true,
-   *   positionId: '456',
    *   price: 0.52,
    *   side: OrderSide.BUY,
    *   size: 10,
@@ -169,11 +177,12 @@ export type SecureTradingActions = {
    * @example
    * ```ts
    * const response = await client.placeLimitOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   postOnly: true,
    *   price: 0.52,
    *   side: OrderSide.BUY,
    *   size: 10,
-   *   tokenId: '123',
    * });
    *
    * // response: OrderResponse
@@ -223,9 +232,10 @@ export type SecureTradingActions = {
    * @example
    * ```ts
    * const response = await client.placeMarketOrder({
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   amount: 10,
    *   side: OrderSide.BUY,
-   *   tokenId: '123',
    * });
    *
    * if (response.ok) {

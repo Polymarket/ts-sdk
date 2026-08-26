@@ -62,10 +62,11 @@ export const CreateMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const order = await createMarketOrder(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   amount: '100',
  *   maxPrice: '0.55',
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -106,10 +107,11 @@ export const PlaceMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const response = await placeMarketOrder(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   minPrice: '0.54',
  *   shares: '180',
  *   side: OrderSide.SELL,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -118,7 +120,11 @@ export function placeMarketOrder(
   request: PrepareMarketOrderRequest,
 ): Promise<OrderResponse> {
   return createMarketOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order, createOrderRouting(request)),
+    postOrderWithAllowanceRecovery(
+      client,
+      order,
+      createOrderRouting(order.tokenId),
+    ),
   );
 }
 
@@ -190,7 +196,11 @@ export function placeLimitOrder(
   request: PrepareLimitOrderRequest,
 ): Promise<OrderResponse> {
   return createLimitOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order, createOrderRouting(request)),
+    postOrderWithAllowanceRecovery(
+      client,
+      order,
+      createOrderRouting(order.tokenId),
+    ),
   );
 }
 

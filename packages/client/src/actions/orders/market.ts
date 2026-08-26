@@ -1,6 +1,7 @@
 import {
   type BuilderCode,
   BuilderCodeSchema,
+  ClobAssetIdSchema,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -16,8 +17,6 @@ import {
   createOrderRouting,
   type OrderAssetId,
   type OrderRouting,
-  PositionOrderAssetSchema,
-  TokenOrderAssetSchema,
 } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
@@ -55,22 +54,48 @@ const PrepareMarketSellOrderParamsSchema =
     minPrice: PositiveDecimalNumberSchema.optional(),
   });
 
-export const PrepareMarketOrderParamsSchema = z.union([
-  PrepareMarketBuyOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-  PrepareMarketBuyOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
-  PrepareMarketSellOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-  PrepareMarketSellOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
-]) satisfies z.ZodType<PrepareMarketOrderRequest>;
+const PrepareMarketOrderInputSchema = z.union([
+  PrepareMarketBuyOrderParamsSchema.extend({
+    assetId: ClobAssetIdSchema,
+    tokenId: z.never().optional(),
+  }),
+  PrepareMarketBuyOrderParamsSchema.extend({
+    assetId: z.never().optional(),
+    tokenId: ClobAssetIdSchema,
+  }),
+  PrepareMarketSellOrderParamsSchema.extend({
+    assetId: ClobAssetIdSchema,
+    tokenId: z.never().optional(),
+  }),
+  PrepareMarketSellOrderParamsSchema.extend({
+    assetId: z.never().optional(),
+    tokenId: ClobAssetIdSchema,
+  }),
+]);
+
+const NormalizedPrepareMarketOrderParamsSchema =
+  PrepareMarketOrderInputSchema.transform(
+    ({ assetId, tokenId, ...params }) => ({
+      ...params,
+      assetId: assetId ?? tokenId,
+    }),
+  );
 
 export type PrepareMarketOrderDraftParams = z.output<
-  typeof PrepareMarketOrderParamsSchema
+  typeof NormalizedPrepareMarketOrderParamsSchema
 >;
+
+export const PrepareMarketOrderParamsSchema =
+  NormalizedPrepareMarketOrderParamsSchema satisfies z.ZodType<
+    PrepareMarketOrderDraftParams,
+    PrepareMarketOrderRequest
+  >;
 
 export async function prepareMarketOrderDraft(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
 ): Promise<OrderDraft> {
-  const routing = createOrderRouting(params);
+  const routing = createOrderRouting(params.assetId);
   const context = await resolveMarketOrderContext(client, params, routing);
   const amounts = computeMarketOrderAmounts({
     amount: context.resolvedAmount,

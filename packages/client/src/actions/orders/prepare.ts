@@ -61,10 +61,11 @@ export const PrepareMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const workflow = await prepareMarketOrder(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   amount: 10,
  *   maxPrice: '0.55',
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -121,11 +122,12 @@ export const PrepareLimitOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const workflow = await prepareLimitOrder(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   postOnly: true,
  *   price: 0.52,
  *   side: OrderSide.BUY,
  *   size: 10,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -171,10 +173,11 @@ export const PrepareMarketOrderPostingError = PrepareMarketOrderError;
  * @example
  * ```ts
  * const workflow = await prepareMarketOrderPosting(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   minPrice: '0.54',
  *   shares: 10,
  *   side: OrderSide.SELL,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -203,11 +206,12 @@ export const PrepareLimitOrderPostingError = PrepareLimitOrderError;
  * @example
  * ```ts
  * const workflow = await prepareLimitOrderPosting(client, {
+ *   assetId:
+ *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
  *   postOnly: true,
  *   price: 0.52,
  *   side: OrderSide.BUY,
  *   size: 10,
- *   tokenId: '123',
  * });
  * ```
  */

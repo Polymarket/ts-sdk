@@ -1,40 +1,13 @@
 import {
   type PositionId,
-  PositionIdSchema,
   type TokenId,
-  TokenIdSchema,
   toPositionId,
   toTokenId,
 } from '@polymarket/bindings';
-import { z } from 'zod';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 
-/**
- * Identifies the asset to trade. Provide exactly one identifier.
- */
-export type OrderAsset =
-  | {
-      /** CTF token identifier. */
-      tokenId: string;
-      positionId?: never;
-    }
-  | {
-      /** Polymarket V2 position identifier. */
-      positionId: string;
-      tokenId?: never;
-    };
-
-/** @internal */
-export const TokenOrderAssetSchema = z.object({
-  tokenId: TokenIdSchema,
-  positionId: z.never().optional(),
-});
-
-/** @internal */
-export const PositionOrderAssetSchema = z.object({
-  positionId: PositionIdSchema,
-  tokenId: z.never().optional(),
-});
+const UINT256_MAX = (1n << 256n) - 1n;
+const V2_RESERVED_BITS_MASK = ((1n << 64n) - 1n) << 40n;
 
 /** @internal */
 export type OrderAssetId = PositionId | TokenId;
@@ -51,14 +24,28 @@ export type OrderRouting =
     };
 
 /** @internal */
-export function createOrderRouting(request: OrderAsset): OrderRouting {
-  return request.positionId !== undefined
+export function createOrderRouting(assetId: string): OrderRouting {
+  return isV2AssetId(assetId)
     ? {
-        assetId: toPositionId(request.positionId),
+        assetId: toPositionId(assetId),
         exchangeVersion: ExchangeOrderProtocolVersion.V3,
       }
     : {
-        assetId: toTokenId(request.tokenId),
+        assetId: toTokenId(assetId),
         exchangeVersion: ExchangeOrderProtocolVersion.V2,
       };
+}
+
+function isV2AssetId(assetId: string): boolean {
+  try {
+    const value = BigInt(assetId);
+
+    return (
+      value >= 0n &&
+      value <= UINT256_MAX &&
+      (value & V2_RESERVED_BITS_MASK) === 0n
+    );
+  } catch {
+    return false;
+  }
 }

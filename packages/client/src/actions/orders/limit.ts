@@ -1,5 +1,6 @@
 import {
   BuilderCodeSchema,
+  ClobAssetIdSchema,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -10,12 +11,7 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
 import { computeLimitOrderAmounts } from './amounts';
-import {
-  createOrderRouting,
-  type OrderRouting,
-  PositionOrderAssetSchema,
-  TokenOrderAssetSchema,
-} from './asset';
+import { createOrderRouting, type OrderRouting } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -39,10 +35,16 @@ const BasePrepareLimitOrderParamsSchema = z.strictObject({
   expiration: z.number().int().nonnegative().optional(),
 });
 
-export const PrepareLimitOrderParamsSchema = z
+const PrepareLimitOrderInputSchema = z
   .union([
-    BasePrepareLimitOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-    BasePrepareLimitOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
+    BasePrepareLimitOrderParamsSchema.extend({
+      assetId: ClobAssetIdSchema,
+      tokenId: z.never().optional(),
+    }),
+    BasePrepareLimitOrderParamsSchema.extend({
+      assetId: z.never().optional(),
+      tokenId: ClobAssetIdSchema,
+    }),
   ])
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
@@ -57,11 +59,23 @@ export const PrepareLimitOrderParamsSchema = z
         });
       }
     }
-  }) satisfies z.ZodType<PrepareLimitOrderRequest>;
+  });
+
+const NormalizedPrepareLimitOrderParamsSchema =
+  PrepareLimitOrderInputSchema.transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  }));
 
 export type PrepareLimitOrderDraftParams = z.output<
-  typeof PrepareLimitOrderParamsSchema
+  typeof NormalizedPrepareLimitOrderParamsSchema
 >;
+
+export const PrepareLimitOrderParamsSchema =
+  NormalizedPrepareLimitOrderParamsSchema satisfies z.ZodType<
+    PrepareLimitOrderDraftParams,
+    PrepareLimitOrderRequest
+  >;
 
 type ResolveLimitOrderContextParams = {
   routing: OrderRouting;
@@ -72,7 +86,7 @@ export async function prepareLimitOrderDraft(
   client: BaseSecureClient,
   params: PrepareLimitOrderDraftParams,
 ): Promise<OrderDraft> {
-  const routing = createOrderRouting(params);
+  const routing = createOrderRouting(params.assetId);
   const context = await resolveLimitOrderContext(client, {
     routing,
     price: params.price,

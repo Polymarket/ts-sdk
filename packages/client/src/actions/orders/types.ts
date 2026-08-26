@@ -16,127 +16,139 @@ import type {
 import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { SignOrderRequest } from '../../workflow';
-import type { OrderAsset, OrderRouting } from './asset';
+import type { OrderRouting } from './asset';
 
-export type { OrderAsset } from './asset';
+export type PrepareMarketBuyOrderRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      /** Buy side of the order. */
+      side: OrderSide.BUY;
+      /**
+       * Desired USD notional to buy, before market and builder taker fees.
+       * Fees are paid on top unless `maxSpend` limits the all-in spend.
+       */
+      amount: number | string;
+      /**
+       * Optional estimated all-in USD spend target, including applicable fees.
+       * The SDK reduces the signed buy amount when necessary to stay within it.
+       */
+      maxSpend?: number | string;
+      /** Highest acceptable price per share; the order only fills at this price or better. */
+      maxPrice?: number | string;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /** @defaultValue OrderType.FAK */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      /** Buy side of the order. */
+      side: OrderSide.BUY;
+      /**
+       * Desired USD notional to buy, before market and builder taker fees.
+       * Fees are paid on top unless `maxSpend` limits the all-in spend.
+       */
+      amount: number | string;
+      /**
+       * Optional estimated all-in USD spend target, including applicable fees.
+       * The SDK reduces the signed buy amount when necessary to stay within it.
+       */
+      maxSpend?: number | string;
+      /** Highest acceptable price per share; the order only fills at this price or better. */
+      maxPrice?: number | string;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /** @defaultValue OrderType.FAK */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    };
 
-type BasePrepareMarketOrderRequest = OrderAsset & {
-  /** Optional builder attribution code. */
-  builderCode?: HexString;
-
-  /**
-   * Specifies the type of order execution.
-   * - FOK (Fill or Kill): must be filled entirely or not at all
-   * - FAK (Fill and Kill): partially fills, cancels any unfilled remainder
-   *
-   * @defaultValue OrderType.FAK
-   */
-  orderType?: OrderType.FAK | OrderType.FOK;
-};
-
-export type PrepareMarketBuyOrderRequest = BasePrepareMarketOrderRequest & {
-  /** Buy side of the order. */
-  side: OrderSide.BUY;
-
-  /**
-   * Desired USD notional to buy, before market and builder taker fees.
-   *
-   * By default, the SDK prepares the order for this full buy amount and applicable
-   * fees are paid on top. Set `maxSpend` to let the SDK resize the amount against
-   * an estimated all-in spend target.
-   */
-  amount: number | string;
-
-  /**
-   * Optional estimated all-in USD spend target for BUY market orders, including
-   * market and builder taker fees.
-   *
-   * When provided, the SDK keeps `amount` unchanged if `maxSpend` covers the
-   * requested buy amount plus estimated fees. Otherwise, the SDK reduces the
-   * signed buy amount using the order price and recently resolved fee rates.
-   *
-   * Set `maxSpend` equal to `amount` when the requested amount should include
-   * fees. Leave it unset to pay fees on top of `amount`.
-   */
-  maxSpend?: number | string;
-
-  /**
-   * Highest acceptable price per share for the BUY.
-   *
-   * The order may only fill at this price or better. For FOK, the full
-   * `amount` must fill within this bound or the order is killed. For FAK, any
-   * immediately available liquidity within this bound fills and the remainder
-   * is canceled.
-   */
-  maxPrice?: number | string;
-};
-
-export type PrepareMarketSellOrderRequest = BasePrepareMarketOrderRequest & {
-  /** Sell side of the order. */
-  side: OrderSide.SELL;
-
-  /**
-   * Number of outcome shares to sell.
-   *
-   * This is the human-readable token amount: `1` means one full share, not one
-   * 6-decimal base unit.
-   */
-  shares: number | string;
-
-  /**
-   * Lowest acceptable price per share for the SELL.
-   *
-   * The order may only fill at this price or better. For FOK, all `shares`
-   * must fill within this bound or the order is killed. For FAK, any
-   * immediately available liquidity within this bound fills and the remainder
-   * is canceled.
-   */
-  minPrice?: number | string;
-};
+export type PrepareMarketSellOrderRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      /** Sell side of the order. */
+      side: OrderSide.SELL;
+      /** Number of outcome shares to sell in human-readable units. */
+      shares: number | string;
+      /** Lowest acceptable price per share; the order only fills at this price or better. */
+      minPrice?: number | string;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /** @defaultValue OrderType.FAK */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      /** Sell side of the order. */
+      side: OrderSide.SELL;
+      /** Number of outcome shares to sell in human-readable units. */
+      shares: number | string;
+      /** Lowest acceptable price per share; the order only fills at this price or better. */
+      minPrice?: number | string;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /** @defaultValue OrderType.FAK */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    };
 
 export type PrepareMarketOrderRequest =
   | PrepareMarketBuyOrderRequest
   | PrepareMarketSellOrderRequest;
 
-export type PrepareLimitOrderRequest = OrderAsset & {
-  /** Price used to create the order */
-  price: number | string;
-
-  /**
-   * Order size in outcome shares.
-   *
-   * This is the human-readable token amount: `1` means one full share, not one
-   * 6-decimal base unit.
-   */
-  size: number | string;
-
-  /** Side of the order */
-  side: OrderSide;
-
-  /** Optional builder attribution code. */
-  builderCode?: HexString;
-
-  /**
-   * Posts the prepared order as post-only when submitted.
-   *
-   * @defaultValue false
-   */
-  postOnly?: boolean;
-
-  /**
-   * Unix timestamp in seconds after which the order expires.
-   *
-   * When provided, the SDK prepares a Good-Til-Date (GTD) limit order that
-   * expires at the given timestamp.
-   *
-   * The timestamp must be at least 3 minutes in the future. Add your own
-   * buffer for network latency and clock skew when deriving it from the
-   * current time.
-   *
-   * When omitted, the SDK prepares a Good-Til-Cancelled (GTC) limit order.
-   */
-  expiration?: number;
-};
+export type PrepareLimitOrderRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      /** Price used to create the order. */
+      price: number | string;
+      /** Order size in outcome shares, expressed in human-readable units. */
+      size: number | string;
+      /** Side of the order. */
+      side: OrderSide;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /**
+       * Posts the prepared order as post-only when submitted.
+       * @defaultValue false
+       */
+      postOnly?: boolean;
+      /**
+       * Unix timestamp in seconds after which the order expires. When provided,
+       * it must be at least 3 minutes in the future and creates a GTD order.
+       */
+      expiration?: number;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      /** Price used to create the order. */
+      price: number | string;
+      /** Order size in outcome shares, expressed in human-readable units. */
+      size: number | string;
+      /** Side of the order. */
+      side: OrderSide;
+      /** Optional builder attribution code. */
+      builderCode?: string;
+      /**
+       * Posts the prepared order as post-only when submitted.
+       * @defaultValue false
+       */
+      postOnly?: boolean;
+      /**
+       * Unix timestamp in seconds after which the order expires. When provided,
+       * it must be at least 3 minutes in the future and creates a GTD order.
+       */
+      expiration?: number;
+    };
 
 type BaseOrderDraft = {
   builderCode?: BuilderCode;

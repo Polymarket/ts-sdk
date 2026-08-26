@@ -228,18 +228,10 @@ export type DataActions = {
    * @example
    * ```ts
    * const price = await client.estimateMarketPrice({
-   *   tokenId: '123',
+   *   assetId:
+   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
    *   side: OrderSide.BUY,
    *   amount: 10,
-   * });
-   * ```
-   *
-   * @example Position-backed outcome
-   * ```ts
-   * const price = await client.estimateMarketPrice({
-   *   positionId: '456',
-   *   side: OrderSide.SELL,
-   *   shares: 10,
    * });
    * ```
    */
