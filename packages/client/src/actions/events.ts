@@ -29,7 +29,7 @@ import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
@@ -351,7 +351,7 @@ export async function fetchEventLiveVolume(
   return unwrap(
     client.data
       .get('/live-volume', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(FetchEventLiveVolumeResponseSchema)),
   );

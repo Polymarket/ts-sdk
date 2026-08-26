@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { toPaginationCursor } from '../shared';
 
 /**
- * Parses the `/v2` paginated list envelope straight into the SDK's page shape
+ * Parses the data-service paginated list envelope straight into the SDK's page shape
  * — `{ items, hasMore, nextCursor }` — so actions hand the result to the
  * pagination walker as-is. The wire envelope never escapes bindings, and no
  * second pagination vocabulary exists: whatever the upstream strategy, the
@@ -14,7 +14,7 @@ import { toPaginationCursor } from '../shared';
  * `undefined`. The wire's `limit`/`offset` echoes are dropped: they restate
  * the request.
  */
-export function dataV2PageSchema<TItem extends z.ZodType>(item: TItem) {
+export function dataPageSchema<TItem extends z.ZodType>(item: TItem) {
   return (
     z
       .object({
@@ -51,14 +51,14 @@ export function dataV2PageSchema<TItem extends z.ZodType>(item: TItem) {
 }
 
 /**
- * Parses the `/v2` single-object envelope — `{ data }` — and unwraps it to
+ * Parses the data-service single-object envelope — `{ data }` — and unwraps it to
  * the payload, so the envelope never escapes bindings.
  *
  * Endpoints whose ordinary answer includes "no such row" serve `data: null`;
  * model that by passing a nullable payload schema, so absence stays a parsed
  * value rather than a validation failure.
  */
-export function dataV2EnvelopeSchema<TPayload extends z.ZodType>(
+export function dataEnvelopeSchema<TPayload extends z.ZodType>(
   payload: TPayload,
 ) {
   // The inference cast is load-bearing: for a bare generic payload schema,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ActivitySchema, TradeV2Schema } from './activity';
+import { ActivitySchema, TradeSchema } from './activity';
 import { ActivityType } from './common';
 
 describe('ActivitySchema', () => {
@@ -21,9 +21,9 @@ describe('ActivitySchema', () => {
   });
 });
 
-describe('TradeV2Schema', () => {
+describe('TradeSchema', () => {
   it('normalizes the strict wire row to the SDK vocabulary', () => {
-    const trade = TradeV2Schema.parse({
+    const trade = TradeSchema.parse({
       proxy_wallet: `0x${'1'.repeat(40)}`,
       side: 'BUY',
       token_id: '123',
@@ -82,6 +82,6 @@ describe('TradeV2Schema', () => {
       transaction_hash: `0x${'a'.repeat(64)}`,
     };
 
-    expect(TradeV2Schema.parse(row).outcomeIndex).toBe(0);
+    expect(TradeSchema.parse(row).outcomeIndex).toBe(0);
   });
 });

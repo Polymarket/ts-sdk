@@ -30,7 +30,7 @@ import {
   paginate,
 } from '../pagination';
 import { validateWith } from '../response';
-import { toDataSearchParams } from './params';
+import { toLegacyDataSearchParams } from './params';
 
 const ListBuilderLeaderboardRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
@@ -130,7 +130,7 @@ export function listBuilderLeaderboard(
 
     return client.data
       .get('/v1/builders/leaderboard', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           limit: decoded.pageSize,
           offset: decoded.offset,
@@ -195,7 +195,7 @@ export async function fetchBuilderVolume(
   return unwrap(
     client.data
       .get('/v1/builders/volume', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(ListBuilderVolumeResponseSchema)),
   );
@@ -269,7 +269,7 @@ export function listTraderLeaderboard(
 
     return client.data
       .get('/v1/leaderboard', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           limit: decoded.pageSize,
           offset: decoded.offset,

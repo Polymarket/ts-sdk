@@ -10,7 +10,6 @@ import {
   type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
-  emptyStringToNull,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
@@ -29,8 +28,8 @@ import {
   type Side,
   SideSchema,
 } from './common';
+import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
-import { dataV2PageSchema } from './v2';
 
 export enum ComboActivityType {
   Split = 'SPLIT',
@@ -342,49 +341,21 @@ const OptionalTextSchema = z.preprocess(
   z.string().optional(),
 );
 
-export const TradeSchema = z
-  .object({
-    proxyWallet: AddressSchema.nullish(),
-    side: SideSchema.nullish(),
-    asset: TokenIdSchema.nullish(),
-    conditionId: ConditionIdSchema.nullish(),
-    size: DecimalishSchema.nullish(),
-    price: DecimalishSchema.nullish(),
-    timestamp: EpochSecondsToMillisecondsSchema.nullish(),
-    title: z.string().nullish(),
-    slug: z.string().nullish(),
-    icon: z.preprocess(emptyStringToNull, z.string().nullish()),
-    eventSlug: z.string().nullish(),
-    outcome: z.string().nullish(),
-    outcomeIndex: z.number().int().nullish(),
-    name: z.string().nullish(),
-    pseudonym: z.string().nullish(),
-    bio: z.string().nullish(),
-    profileImage: z.string().nullish(),
-    profileImageOptimized: z.string().nullish(),
-    transactionHash: z.string().nullish(),
-  })
-  .transform(({ asset, proxyWallet, ...rest }) => ({
-    ...rest,
-    wallet: proxyWallet,
-    tokenId: asset,
-  }));
-
 const UnknownOutcomeIndexToUndefinedSchema = z.preprocess(
   (value) => (value === 999 ? undefined : value),
   z.number().int().optional(),
 );
 
 /**
- * A `/v2/trades` row, normalized to the SDK vocabulary.
+ * A trades-feed row, normalized to the SDK vocabulary.
  *
- * The v2 wire is strict snake_case with every field present: absence arrives
+ * The wire is strict snake_case with every field present: absence arrives
  * as an empty string (normalized to `undefined` here) and an unknown outcome
  * index arrives as the sentinel `999` (also normalized to `undefined` —
  * missing is never `0`). Timestamps arrive as epoch seconds and normalize to
  * epoch milliseconds. `size` is a share count and `price` is USD per share.
  */
-export const TradeV2Schema = z
+export const TradeSchema = z
   .object({
     proxy_wallet: AddressSchema,
     side: SideSchema,
@@ -473,8 +444,7 @@ export const TradedSchema = z.object({
   traded: z.number().int().nullish(),
 });
 
-export const ListTradesResponseSchema = z.array(TradeSchema);
-export const ListTradesV2ResponseSchema = dataV2PageSchema(TradeV2Schema);
+export const ListTradesResponseSchema = dataPageSchema(TradeSchema);
 export const ListActivityResponseSchema = z.array(ActivitySchema);
 export const ListComboActivityResponseSchema = z
   .object({
@@ -497,7 +467,6 @@ export const ListComboActivityResponseSchema = z
   }));
 
 export type Trade = z.infer<typeof TradeSchema>;
-export type TradeV2 = z.output<typeof TradeV2Schema>;
 export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;

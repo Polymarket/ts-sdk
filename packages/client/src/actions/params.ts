@@ -58,9 +58,11 @@ export function snakeCase<TParams extends SearchParamsInput>(
 }
 
 /**
- * Data endpoints use camelCase query keys and comma-separated arrays.
+ * Legacy data endpoints use camelCase query keys and comma-separated arrays.
+ * Dies with the last legacy data action; new data actions use
+ * {@link toDataSearchParams}.
  */
-export function toDataSearchParams<TParams extends SearchParamsInput>(
+export function toLegacyDataSearchParams<TParams extends SearchParamsInput>(
   params: TParams,
 ): URLSearchParams {
   const searchParams = new URLSearchParams();
@@ -82,9 +84,9 @@ export function toDataSearchParams<TParams extends SearchParamsInput>(
 }
 
 /**
- * Data v2 endpoints use snake_case query keys and comma-separated arrays.
+ * Data endpoints use snake_case query keys and comma-separated arrays.
  */
-export function toDataV2SearchParams<TParams extends SearchParamsInput>(
+export function toDataSearchParams<TParams extends SearchParamsInput>(
   params: TParams,
 ): URLSearchParams {
   const searchParams = new URLSearchParams();

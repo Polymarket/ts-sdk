@@ -13,7 +13,6 @@ import type {
   MetaHolder,
   OpenInterest,
   Trade,
-  TradeV2,
 } from '@polymarket/bindings/data';
 import {
   type EstimateMarketPriceRequest,
@@ -45,11 +44,9 @@ import {
   type ListMarketHoldersRequest,
   type ListOpenInterestRequest,
   type ListTradesRequest,
-  type ListTradesV2Request,
   listMarketHolders,
   listOpenInterest,
   listTrades,
-  listTradesV2,
 } from '../actions';
 import type {
   BaseClient,
@@ -278,7 +275,19 @@ export type DataActions = {
    */
   listMarketHolders(request: ListMarketHoldersRequest): Promise<MetaHolder[]>;
   /**
-   * Lists trades for a wallet, market, or event.
+   * Lists trades with exact continuation signals — for a wallet, market,
+   * event, or the global feed when no filter is given.
+   *
+   * Pagination is cursor-only: `hasMore` is exact and `nextCursor` is
+   * server-minted, so the end of the collection never costs an extra request.
+   * Every page re-sends the original filters. `pageSize` defaults to 100 (at
+   * most 1000 — larger values are rejected, not clamped). Only the taker side
+   * of each match is returned by default (`takerOnly: false` includes maker
+   * rows), and a dust filter of 0.01 shares applies unless
+   * `filterType`/`filterAmount` say otherwise (either may be sent alone —
+   * the service fills the other half in). `start`/`end` are Unix
+   * seconds. Transient rate limits are absorbed by retrying after the
+   * server-requested delay.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.
@@ -313,54 +322,6 @@ export type DataActions = {
    * ```
    */
   listTrades(request?: ListTradesRequest): Paginated<Trade[]>;
-  /**
-   * Lists trades with exact continuation signals — for a wallet, market,
-   * event, or the global feed when no filter is given.
-   *
-   * Pagination is cursor-only: `hasMore` is exact and `nextCursor` is
-   * server-minted, so the end of the collection never costs an extra request.
-   * Every page re-sends the original filters. `pageSize` defaults to 100 (at
-   * most 1000 — larger values are rejected, not clamped). Only the taker side
-   * of each match is returned by default (`takerOnly: false` includes maker
-   * rows), and a dust filter of 0.01 shares applies unless
-   * `filterType`/`filterAmount` say otherwise (either may be sent alone —
-   * the service fills the other half in). `start`/`end` are Unix
-   * seconds. Transient rate limits are absorbed by retrying after the
-   * server-requested delay.
-   *
-   * @throws {@link ListTradesV2Error}
-   * Thrown on failure.
-   *
-   * @example
-   * Fetch the first page of results:
-   * ```ts
-   * const paginator = client.listTradesV2({
-   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
-   *   pageSize: 10,
-   * });
-   *
-   * const firstPage = await paginator.firstPage();
-   *
-   * // Optionally, fetch additional pages:
-   * for await (const page of paginator.from(firstPage.nextCursor)) {
-   *   // page.items: TradeV2[]
-   * }
-   * ```
-   *
-   * @example
-   * Loop through all pages with `for await`:
-   * ```ts
-   * const paginator = client.listTradesV2({
-   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
-   *   pageSize: 10,
-   * });
-   *
-   * for await (const page of paginator) {
-   *   // page.items: TradeV2[]
-   * }
-   * ```
-   */
-  listTradesV2(request?: ListTradesV2Request): Paginated<TradeV2[]>;
 };
 
 export function dataActions(client: BasePublicClient): DataActions;
@@ -383,7 +344,6 @@ export function dataActions(client: BaseClient): DataActions {
     listOpenInterest: listOpenInterest.bind(null, client),
     listMarketHolders: listMarketHolders.bind(null, client),
     listTrades: listTrades.bind(null, client),
-    listTradesV2: listTradesV2.bind(null, client),
   };
 }
 
@@ -407,5 +367,4 @@ export {
   ListMarketHoldersError,
   ListOpenInterestError,
   ListTradesError,
-  ListTradesV2Error,
 } from '../actions';

@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { dataV2EnvelopeSchema, dataV2PageSchema } from './v2';
+import { dataEnvelopeSchema, dataPageSchema } from './envelope';
 
 const ItemSchema = z.object({ id: z.string() });
 
-describe('dataV2PageSchema', () => {
+describe('dataPageSchema', () => {
   it('parses a continuing page into the page shape with a branded cursor', () => {
-    const page = dataV2PageSchema(ItemSchema).parse({
+    const page = dataPageSchema(ItemSchema).parse({
       data: [{ id: 'a' }, { id: 'b' }],
       pagination: {
         limit: 2,
@@ -22,7 +22,7 @@ describe('dataV2PageSchema', () => {
   });
 
   it('parses the final page with an absent cursor', () => {
-    const page = dataV2PageSchema(ItemSchema).parse({
+    const page = dataPageSchema(ItemSchema).parse({
       data: [],
       pagination: { limit: 2, offset: 4, has_more: false, next_cursor: null },
     });
@@ -45,7 +45,7 @@ describe('dataV2PageSchema', () => {
     has_more,
     next_cursor,
   }) => {
-    const result = dataV2PageSchema(ItemSchema).safeParse({
+    const result = dataPageSchema(ItemSchema).safeParse({
       data: [],
       pagination: { limit: 2, offset: 0, has_more, next_cursor },
     });
@@ -54,16 +54,16 @@ describe('dataV2PageSchema', () => {
   });
 });
 
-describe('dataV2EnvelopeSchema', () => {
+describe('dataEnvelopeSchema', () => {
   it('unwraps the payload', () => {
-    expect(
-      dataV2EnvelopeSchema(ItemSchema).parse({ data: { id: 'a' } }),
-    ).toEqual({ id: 'a' });
+    expect(dataEnvelopeSchema(ItemSchema).parse({ data: { id: 'a' } })).toEqual(
+      { id: 'a' },
+    );
   });
 
   it('keeps a null answer a parsed value when the payload is nullable', () => {
     expect(
-      dataV2EnvelopeSchema(ItemSchema.nullable()).parse({ data: null }),
+      dataEnvelopeSchema(ItemSchema.nullable()).parse({ data: null }),
     ).toBeNull();
   });
 });

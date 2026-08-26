@@ -36,7 +36,7 @@ import {
   paginate,
 } from '../pagination';
 import { readBlob, validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
 
 export {
   ComboPositionOutcome,
@@ -153,7 +153,7 @@ export function listPositions(
 
     return client.data
       .get('/positions', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           limit: decoded.pageSize,
           offset: decoded.offset,
@@ -272,7 +272,7 @@ export function listClosedPositions(
 
     return client.data
       .get('/closed-positions', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           limit: decoded.pageSize,
           offset: decoded.offset,
@@ -527,7 +527,7 @@ export async function fetchPortfolioValue(
   return unwrap(
     client.data
       .get('/value', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(FetchPortfolioValueResponseSchema)),
   );
@@ -582,7 +582,7 @@ export async function fetchTradedMarketCount(
   return unwrap(
     client.data
       .get('/traded', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(TradedSchema)),
   );
@@ -640,7 +640,7 @@ export async function downloadAccountingSnapshot(
   return unwrap(
     client.data
       .get('/v1/accounting/snapshot', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(readBlob),
   );

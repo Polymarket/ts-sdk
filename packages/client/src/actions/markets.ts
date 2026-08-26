@@ -44,7 +44,7 @@ import {
 } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
 
 // The public markets endpoint forces active=true and archived=false server-side.
 const ListMarketsRequestSchema = z.object({
@@ -474,7 +474,7 @@ export async function listMarketHolders(
   return unwrap(
     client.data
       .get('/holders', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(ListMarketHoldersResponseSchema)),
   );
@@ -521,7 +521,7 @@ export async function listOpenInterest(
   return unwrap(
     client.data
       .get('/oi', {
-        params: toDataSearchParams(params),
+        params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(ListOpenInterestResponseSchema)),
   );
@@ -593,7 +593,7 @@ export function listMarketPositions(
 
     return client.data
       .get('/v1/market-positions', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           limit: decoded.pageSize,
           offset: decoded.offset,

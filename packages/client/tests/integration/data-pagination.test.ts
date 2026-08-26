@@ -1,7 +1,4 @@
-import {
-  dataV2EnvelopeSchema,
-  dataV2PageSchema,
-} from '@polymarket/bindings/data';
+import { dataEnvelopeSchema, dataPageSchema } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { describe, expect, it } from './fixtures';
@@ -9,11 +6,11 @@ import { describe, expect, it } from './fixtures';
 // A wallet shape that is valid but cannot correspond to a real account.
 const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
 
-describe('Data v2 pagination', () => {
+describe('Data pagination', () => {
   it('walks consecutive pages with for await and re-sends filters', async ({
     publicClient,
   }) => {
-    const paginator = publicClient.listTradesV2({ pageSize: 5, side: 'BUY' });
+    const paginator = publicClient.listTrades({ pageSize: 5, side: 'BUY' });
 
     const pages = [];
     for await (const page of paginator) {
@@ -47,7 +44,7 @@ describe('Data v2 pagination', () => {
   });
 
   it('continues from a first-page cursor', async ({ publicClient }) => {
-    const paginator = publicClient.listTradesV2({ pageSize: 5 });
+    const paginator = publicClient.listTrades({ pageSize: 5 });
     const firstPage = await paginator.firstPage();
 
     expect(firstPage.items).toHaveLength(5);
@@ -71,7 +68,7 @@ describe('Data v2 pagination', () => {
  * Each block below folds into its action's integration test as the
  * corresponding endpoint lands in the SDK.
  */
-describe('Data v2 envelope', () => {
+describe('Data envelope', () => {
   it('parses a paginated list envelope into the page shape', async ({
     publicClient,
   }) => {
@@ -81,7 +78,7 @@ describe('Data v2 envelope', () => {
       }),
     );
 
-    const page = dataV2PageSchema(
+    const page = dataPageSchema(
       z
         .object({
           rank: z.number().int(),
@@ -103,7 +100,7 @@ describe('Data v2 envelope', () => {
   }) => {
     const response = await unwrap(publicClient.data.get('v2/oi'));
 
-    const markets = dataV2EnvelopeSchema(
+    const markets = dataEnvelopeSchema(
       z.array(z.object({ market_id: z.string(), value: z.number() }).loose()),
     ).parse(await response.json());
 
@@ -119,7 +116,7 @@ describe('Data v2 envelope', () => {
       }),
     );
 
-    const stats = dataV2EnvelopeSchema(
+    const stats = dataEnvelopeSchema(
       z.object({ trades: z.number().int() }).loose().nullable(),
     ).parse(await response.json());
 
