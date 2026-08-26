@@ -319,9 +319,10 @@ export type DataActions = {
    *
    * Pagination is cursor-only: `hasMore` is exact and `nextCursor` is
    * server-minted, so the end of the collection never costs an extra request.
-   * Every page re-sends the original filters. Only the taker side of each
-   * match is returned by default (`takerOnly: false` includes maker rows),
-   * and a dust filter of 0.01 shares applies unless
+   * Every page re-sends the original filters. `pageSize` defaults to 100 (at
+   * most 1000 — larger values are rejected, not clamped). Only the taker side
+   * of each match is returned by default (`takerOnly: false` includes maker
+   * rows), and a dust filter of 0.01 shares applies unless
    * `filterType`/`filterAmount` say otherwise. `start`/`end` are Unix
    * seconds. Transient rate limits are absorbed by retrying after the
    * server-requested delay.

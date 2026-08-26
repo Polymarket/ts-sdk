@@ -75,7 +75,8 @@ export const ListTradesV2Error = makeErrorGuard(
  * filters — the cursor carries only the paging anchor, and continuing it
  * under different filters is not expressible through this function.
  *
- * Defaults are the service's: only the taker side of each match is returned
+ * Defaults are the service's: `pageSize` is 100 (at most 1000 — larger values
+ * are rejected, not clamped), only the taker side of each match is returned
  * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
  * applies unless `filterType`/`filterAmount` say otherwise. An omitted window
  * serves the recent feed; `start`/`end` are Unix seconds. Transient rate
