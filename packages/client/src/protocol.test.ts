@@ -4,6 +4,7 @@ import {
   toComboConditionId,
   toConditionId,
   toPositionId,
+  toTokenId,
 } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
 import {
@@ -25,7 +26,9 @@ describe('Protocol helpers', () => {
 
       expect(isV2PositionId(positionId)).toBe(true);
       expect(
-        isV2PositionId((BigInt(positionId) | (1n << 40n)).toString()),
+        isV2PositionId(
+          toTokenId((BigInt(positionId) | (1n << 40n)).toString()),
+        ),
       ).toBe(false);
     });
 
@@ -35,7 +38,7 @@ describe('Protocol helpers', () => {
       '-1',
       'invalid',
     ])('rejects an invalid uint256 value: %j', (value) => {
-      expect(isV2PositionId(value)).toBe(false);
+      expect(isV2PositionId(toTokenId(value))).toBe(false);
     });
   });
 

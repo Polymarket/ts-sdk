@@ -22,7 +22,7 @@ export type OrderRouting =
     };
 
 /** @internal */
-export function createOrderRouting(assetId: string): OrderRouting {
+export function createOrderRouting(assetId: OrderAssetId): OrderRouting {
   return isV2PositionId(assetId)
     ? {
         assetId: toPositionId(assetId),

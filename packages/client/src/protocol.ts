@@ -2,6 +2,7 @@ import {
   type ComboConditionId,
   type ConditionId,
   type PositionId,
+  type TokenId,
   toComboConditionId,
   toConditionId,
   toPositionId,
@@ -135,7 +136,7 @@ export type DecodedV2OutcomePositionId = {
  *
  * @internal
  */
-export function isV2PositionId(assetId: string): assetId is PositionId {
+export function isV2PositionId(assetId: PositionId | TokenId): boolean {
   try {
     return (parsePositionId(assetId) & V2_RESERVED_BITS_MASK) === 0n;
   } catch {
