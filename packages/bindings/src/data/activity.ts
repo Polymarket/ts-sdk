@@ -22,6 +22,8 @@ import {
   ActivityTypeSchema,
   type Side,
   SideSchema,
+  type TipSide,
+  TipSideSchema,
 } from './common';
 import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
@@ -235,6 +237,11 @@ export type TipActivity = ActivityBase & {
   type: 'TIP';
   /** The tipped amount in USD. */
   amount: number;
+  /**
+   * Direction from this wallet's perspective: `IN` received, `OUT` sent.
+   * `null` on rows served before the wire carried a direction.
+   */
+  side: TipSide | null;
 };
 
 export type Activity =
@@ -438,9 +445,11 @@ const RawActivitySchema = z.object({
     (value) => (value === '' ? undefined : value),
     ClobAssetIdSchema.optional(),
   ),
+  // Trade rows carry BUY/SELL; TIP rows carry IN/OUT. The per-variant
+  // normalizers narrow to the vocabulary their type allows.
   side: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    SideSchema.optional(),
+    z.union([SideSchema, TipSideSchema]).optional(),
   ),
   // Flag only, present on V2/V3 combo trade rows and omitted otherwise.
   is_combo: z.boolean().optional(),
@@ -550,11 +559,20 @@ function normalizeActivity(activity: RawActivity): Activity {
     case ActivityType.DEPOSIT:
     case ActivityType.WITHDRAWAL:
     case ActivityType.TAKER_REBATE:
+      return {
+        ...base,
+        type: activity.type,
+        amount: activity.usdc_size,
+      };
     case ActivityType.TIP:
       return {
         ...base,
         type: activity.type,
         amount: activity.usdc_size,
+        side:
+          activity.side === undefined
+            ? null
+            : TipSideSchema.parse(activity.side),
       };
   }
 }
@@ -566,7 +584,7 @@ function normalizeTradeActivity(
   const trade = {
     ...base,
     type: ActivityType.TRADE as ActivityType.TRADE,
-    side: expectPresent(activity.side, 'side'),
+    side: SideSchema.parse(expectPresent(activity.side, 'side')),
     shares: activity.size,
     amount: activity.usdc_size,
     price: activity.price,

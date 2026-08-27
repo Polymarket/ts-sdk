@@ -205,8 +205,9 @@ export const ListActivityError = makeErrorGuard(
 /**
  * Lists wallet activity, newest-first by default.
  *
- * All activity types are returned by default, including deposits and
- * withdrawals; use the `type` filter to narrow results. `window: 'full'`
+ * Every activity type the service serves is included by default — deposits
+ * and withdrawals are not filtered out; use the `type` filter to narrow
+ * results. `window: 'full'`
  * requests the complete history (an omitted window serves the service's
  * default range — the most recent three years). `pageSize` defaults to 100
  * (max 1000). Transient rate limits are retried automatically.

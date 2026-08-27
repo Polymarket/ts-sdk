@@ -138,3 +138,21 @@ describe('TradeSchema', () => {
     expect(TradeSchema.parse(row).outcomeIndex).toBe(0);
   });
 });
+
+describe('TipActivity', () => {
+  it('normalizes the IN/OUT direction the wire serves on tip rows', () => {
+    const tip = ActivitySchema.parse(
+      activityRow({ type: ActivityType.TIP, usdc_size: 2.5, side: 'IN' }),
+    );
+
+    expect(tip).toMatchObject({ type: 'TIP', amount: 2.5, side: 'IN' });
+  });
+
+  it('serves side as null on tip rows predating the direction field', () => {
+    const tip = ActivitySchema.parse(
+      activityRow({ type: ActivityType.TIP, usdc_size: 1, side: '' }),
+    );
+
+    expect(tip).toMatchObject({ type: 'TIP', amount: 1, side: null });
+  });
+});
