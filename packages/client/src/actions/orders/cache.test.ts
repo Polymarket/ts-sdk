@@ -20,8 +20,8 @@ const market: MarketInfo = {
   negRisk: false,
   tickSize: 0.01,
   tokens: [
-    { outcome: 'Yes', tokenId: TOKEN_YES },
-    { outcome: 'No', tokenId: TOKEN_NO },
+    { assetId: TOKEN_YES, outcome: 'Yes', tokenId: TOKEN_YES },
+    { assetId: TOKEN_NO, outcome: 'No', tokenId: TOKEN_NO },
   ],
 };
 

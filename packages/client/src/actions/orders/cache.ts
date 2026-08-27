@@ -133,7 +133,7 @@ export class OrderMetadataCache {
 
   async #fetchMarket(conditionId: ConditionId): Promise<MarketRecord> {
     const market = await this.#deps.fetchMarket(conditionId);
-    const assetIds = new Set(market.tokens.map(({ tokenId }) => tokenId));
+    const assetIds = new Set(market.tokens.map(({ assetId }) => assetId));
 
     for (const assetId of assetIds) {
       this.#conditions.set(assetId, resolvedEntry(conditionId));
@@ -226,8 +226,7 @@ function resolveCache(client: BaseClient): OrderMetadataCache {
     fetchBuilderTakerFeeRate: async (builderCode) =>
       (await fetchBuilderFeeRates(client, { builderCode })).taker,
     fetchMarket: (conditionId) => fetchMarketInfo(client, { conditionId }),
-    resolveCondition: (assetId) =>
-      resolveConditionByToken(client, { tokenId: assetId }),
+    resolveCondition: (assetId) => resolveConditionByToken(client, { assetId }),
   });
   cachesByClient.set(client, created);
 

@@ -1,5 +1,7 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
   type ComboActivityId,
   ComboActivityIdSchema,
   type ComboConditionId,
@@ -10,6 +12,7 @@ import {
   type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
+  EvmAddressSchema,
   emptyStringToNull,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
@@ -17,15 +20,12 @@ import {
   type PositionId,
   PositionIdSchema,
   type TokenId,
-  TokenIdSchema,
   type TxHash,
   TxHashSchema,
 } from '../shared';
 import {
   ActivityType,
   ActivityTypeSchema,
-  type Address,
-  AddressSchema,
   type Side,
   SideSchema,
 } from './common';
@@ -45,7 +45,7 @@ const ComboActivityTypeSchema = z.enum(ComboActivityType);
 
 export type ActivityBase = {
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Polygon transaction hash that produced or records this activity. */
@@ -63,9 +63,9 @@ export type ActivityBase = {
 };
 
 type TradeActivityBase = ActivityBase & {
-  /** A directional outcome-token trade. */
+  /** A directional outcome trade. */
   type: ActivityType.TRADE;
-  /** Whether this trade is for a Combo position instead of a binary market token. */
+  /** Whether this trade is for a Combo position instead of an ordinary market. */
   isCombo: boolean;
   /** Direction of the wallet's trade. */
   side: Side;
@@ -82,15 +82,17 @@ type TradeActivityBase = ActivityBase & {
 };
 
 export type ClobTradeActivity = TradeActivityBase & {
-  /** CLOB market trades are binary market outcome-token trades. */
+  /** Ordinary market trades are distinct from Combo position trades. */
   isCombo: false;
   /** Condition id of the market traded by the wallet. */
   conditionId: ConditionId;
-  /** Outcome token id bought or sold by the wallet. */
-  tokenId: TokenId;
-  /** Display label of the outcome token traded by the wallet. */
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  /** Display label of the outcome traded by the wallet. */
   outcome: string;
-  /** Zero-based index of the outcome token in the market's outcome list. */
+  /** Zero-based index of the outcome in the market's outcome list. */
   outcomeIndex: number;
   /** URL slug of the market traded by the wallet. */
   slug: string;
@@ -254,7 +256,7 @@ type ComboActivityBase = {
   /** Normalized lifecycle activity type. */
   type: ComboActivityType;
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Combo condition id involved in this activity. */
   conditionId: ComboConditionId;
   /** Combo module id. */
@@ -319,7 +321,7 @@ export type ComboActivity =
 const RawComboActivitySchema = z.object({
   id: ComboActivityIdSchema,
   type: ComboActivityTypeSchema,
-  user_address: AddressSchema,
+  user_address: EvmAddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
   module_id: z.number().int(),
@@ -341,11 +343,36 @@ const OptionalTextSchema = z.preprocess(
   z.string().optional(),
 );
 
+export type Trade = {
+  wallet: EvmAddress | null | undefined;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId | null | undefined;
+  side?: Side | null;
+  conditionId?: ConditionId | null;
+  size?: DecimalString | null;
+  price?: DecimalString | null;
+  timestamp?: EpochMilliseconds | null;
+  title?: string | null;
+  slug?: string | null;
+  icon?: string | null;
+  eventSlug?: string | null;
+  outcome?: string | null;
+  outcomeIndex?: number | null;
+  name?: string | null;
+  pseudonym?: string | null;
+  bio?: string | null;
+  profileImage?: string | null;
+  profileImageOptimized?: string | null;
+  transactionHash?: string | null;
+};
+
 export const TradeSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     side: SideSchema.nullish(),
-    asset: TokenIdSchema.nullish(),
+    asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema.nullish(),
     size: DecimalishSchema.nullish(),
     price: DecimalishSchema.nullish(),
@@ -366,15 +393,16 @@ export const TradeSchema = z
   .transform(({ asset, proxyWallet, ...rest }) => ({
     ...rest,
     wallet: proxyWallet,
+    assetId: asset,
     tokenId: asset,
-  }));
+  })) satisfies z.ZodType<Trade>;
 
 const RawActivitySchema = z.object({
-  proxyWallet: AddressSchema.nullish(),
+  proxyWallet: EvmAddressSchema.nullish(),
   timestamp: EpochSecondsToMillisecondsSchema.nullish(),
   conditionId: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().optional(),
+    ConditionIdSchema.optional(),
   ),
   type: ActivityTypeSchema,
   size: DecimalishSchema.nullish(),
@@ -383,7 +411,7 @@ const RawActivitySchema = z.object({
   price: DecimalishSchema.nullish(),
   asset: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().optional(),
+    ClobAssetIdSchema.optional(),
   ),
   side: z.preprocess(
     (value) => (value === '' ? undefined : value),
@@ -410,7 +438,7 @@ export const ActivitySchema: z.ZodType<Activity> =
   RawActivitySchema.transform(normalizeActivity);
 
 export const TradedSchema = z.object({
-  user: AddressSchema.nullish(),
+  user: EvmAddressSchema.nullish(),
   traded: z.number().int().nullish(),
 });
 
@@ -436,7 +464,6 @@ export const ListComboActivityResponseSchema = z
     },
   }));
 
-export type Trade = z.infer<typeof TradeSchema>;
 export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;
@@ -505,9 +532,7 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        conditionId: ConditionIdSchema.parse(
-          expectPresent(activity.conditionId, 'conditionId'),
-        ),
+        conditionId: expectPresent(activity.conditionId, 'conditionId'),
         amount: inferAmount(activity),
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
@@ -558,13 +583,14 @@ function normalizeTradeActivity(
     };
   }
 
+  const assetId = expectPresent(activity.asset, 'asset');
+
   return {
     ...trade,
     isCombo: false,
-    conditionId: ConditionIdSchema.parse(
-      expectPresent(activity.conditionId, 'conditionId'),
-    ),
-    tokenId: TokenIdSchema.parse(expectPresent(activity.asset, 'asset')),
+    conditionId: expectPresent(activity.conditionId, 'conditionId'),
+    assetId,
+    tokenId: assetId,
     outcome: expectPresent(activity.outcome, 'outcome'),
     outcomeIndex: expectPresent(activity.outcomeIndex, 'outcomeIndex'),
     slug: expectPresent(activity.slug, 'slug'),

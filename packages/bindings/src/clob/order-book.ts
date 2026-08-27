@@ -1,15 +1,16 @@
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
   DecimalStringSchema,
   type EpochMilliseconds,
   EpochMillisecondsStringSchema,
+  type PositionId,
   type TickSizeValue,
   TickSizeValueSchema,
   type TokenId,
-  TokenIdSchema,
 } from '../shared';
 
 export type OrderBookLevel = {
@@ -21,9 +22,12 @@ export type OrderBookLevel = {
 export type OrderBookHash = string & { readonly __tag: 'OrderBookHash' };
 
 export type OrderBook = {
+  /** Exchange asset identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
   /** Condition ID for the market this book belongs to. */
   conditionId: ConditionId;
-  tokenId: TokenId;
   timestamp?: EpochMilliseconds | null;
 
   /** Bid levels in ascending price order, lowest bid first. */
@@ -55,7 +59,7 @@ const OrderBookTickSizeSchema =
 export const OrderBookSchema = z
   .object({
     market: ConditionIdSchema,
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
     bids: z.array(OrderBookLevelSchema),
     asks: z.array(OrderBookLevelSchema),
@@ -77,6 +81,7 @@ export const OrderBookSchema = z
     }) => ({
       ...rest,
       conditionId: market,
+      assetId: asset_id,
       tokenId: asset_id,
       minOrderSize: min_order_size,
       tickSize: tick_size,
