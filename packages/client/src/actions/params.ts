@@ -85,7 +85,11 @@ export function toLegacyDataSearchParams<TParams extends SearchParamsInput>(
   return searchParams;
 }
 
-const EpochSecondsLikeSchema = z
+/**
+ * An instant accepted as epoch seconds or a `Date` (floored to seconds) —
+ * the wire's time vocabulary.
+ */
+export const EpochSecondsLikeSchema = z
   .union([z.number().int().min(0), z.date()])
   .transform((value) =>
     value instanceof Date ? Math.floor(value.getTime() / 1000) : value,

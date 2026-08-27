@@ -35,6 +35,7 @@ import { readBlob, validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
   distinctIdList,
+  EpochSecondsLikeSchema,
   TimeWindowSchema,
   toDataSearchParams,
   toLegacyDataSearchParams,
@@ -249,6 +250,15 @@ const ListComboPositionsRequestSchema = z.object({
    */
   sortBy: ComboPositionsSortBySchema.optional(),
   sortDirection: SortDirectionSchema.optional(),
+  // A change-watermark on the row's `updatedAt`, not a history window —
+  // deliberately separate from the `window` option.
+  /**
+   * Inclusive lower bound on the row's `updatedAt` change watermark — epoch
+   * seconds or `Date`. Pairs with `sortBy: 'UPDATED'` for incremental sync.
+   */
+  updatedAfter: EpochSecondsLikeSchema.optional(),
+  /** Inclusive upper bound on the row's `updatedAt` change watermark. */
+  updatedBefore: EpochSecondsLikeSchema.optional(),
 });
 
 export type ListComboPositionsRequest = Omit<
@@ -278,8 +288,9 @@ export const ListComboPositionsError = makeErrorGuard(
  * `status: 'OPEN'` is the superset including custody-held redeemable
  * positions; `'REDEEMABLE'` (sole value) narrows to exactly the rows whose
  * `redeemable` flag is set. Every row carries its legs enriched with market
- * metadata and exact entry economics. `pageSize` defaults to 100 (max 1000).
- * Transient rate limits are retried automatically.
+ * metadata and exact entry economics. `updatedAfter`/`updatedBefore` bound
+ * the rows' change watermark for incremental sync. `pageSize` defaults to
+ * 100 (max 1000). Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -323,6 +334,17 @@ export const ListComboPositionsError = makeErrorGuard(
  * const result = listComboPositions(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
  *   status: 'REDEEMABLE',
+ * });
+ * ```
+ *
+ * @example
+ * Incrementally sync changed Combo positions:
+ * ```ts
+ * const result = listComboPositions(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   updatedAfter: 1_797_360_000,
+ *   sortBy: 'UPDATED',
+ *   sortDirection: 'ASC',
  * });
  * ```
  */

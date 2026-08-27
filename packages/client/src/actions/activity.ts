@@ -57,7 +57,9 @@ const ListTradesRequestSchema = z
     // `condition` key. The service dedupes and then caps the selector at 20
     // DISTINCT ids (DENG-588) — mirror both halves here so the cap error
     // stays typed.
-    conditionId: distinctIdList(ConditionIdSchema, 20).optional(),
+    conditionId: z
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
+      .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     side: SideSchema.optional(),
     window: TimeWindowSchema.optional(),
@@ -168,7 +170,9 @@ const ListActivityRequestSchema = z
     user: EvmAddressSchema,
     // Capped well under the edge's URL-length limit so an oversized list
     // fails typed instead of as an opaque transport error.
-    conditionId: distinctIdList(ConditionIdSchema, 100).optional(),
+    conditionId: z
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 100)])
+      .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     type: z.array(ActivityTypeSchema).min(1).optional(),
     side: SideSchema.optional(),
@@ -276,7 +280,12 @@ const ListComboActivityRequestSchema = z.object({
   pageSize: PageSizeSchema.max(1000).default(100),
   /** The feed is wallet-anchored — `user` is required. */
   user: EvmAddressSchema,
-  conditionId: distinctIdList(ComboConditionIdSchema, 100).optional(),
+  conditionId: z
+    .union([
+      ComboConditionIdSchema,
+      distinctIdList(ComboConditionIdSchema, 100),
+    ])
+    .optional(),
 });
 
 export type ListComboActivityRequest = z.input<
