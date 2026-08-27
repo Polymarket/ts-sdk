@@ -20,7 +20,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
-import { OrderAssetInputSchema } from './asset';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
   orderType: z
@@ -123,13 +123,12 @@ const EstimateMarketSellPriceRequestSchema =
   });
 
 const EstimateMarketPriceRequestSchema = z
-  .intersection(
-    z.discriminatedUnion('side', [
-      EstimateMarketBuyPriceRequestSchema,
-      EstimateMarketSellPriceRequestSchema,
-    ]),
-    OrderAssetInputSchema,
-  )
+  .union([
+    EstimateMarketBuyPriceRequestSchema.extend(AssetIdOrderAssetSchema.shape),
+    EstimateMarketBuyPriceRequestSchema.extend(TokenIdOrderAssetSchema.shape),
+    EstimateMarketSellPriceRequestSchema.extend(AssetIdOrderAssetSchema.shape),
+    EstimateMarketSellPriceRequestSchema.extend(TokenIdOrderAssetSchema.shape),
+  ])
   .transform(({ assetId, tokenId, ...params }) => ({
     ...params,
     assetId: assetId ?? tokenId,

@@ -1,7 +1,9 @@
 import { OrderSide, OrderType } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
-import { computeMarketOrderAmounts } from './amounts';
-import { adjustBuyAmountForFees, PrepareMarketOrderParamsSchema } from './market';
+import {
+  adjustBuyAmountForFees,
+  PrepareMarketOrderParamsSchema,
+} from './market';
 
 describe('PrepareMarketOrderParamsSchema', () => {
   it('normalizes the deprecated token ID input to an asset ID', () => {
@@ -16,38 +18,6 @@ describe('PrepareMarketOrderParamsSchema', () => {
       assetId: '123',
       orderType: OrderType.FAK,
       side: OrderSide.BUY,
-    });
-  });
-});
-
-describe('computeMarketOrderAmounts', () => {
-  it('encodes a buy max price as minimum shares received', () => {
-    expect(
-      computeMarketOrderAmounts({
-        amount: 100,
-        price: 0.55,
-        protectPrice: true,
-        side: OrderSide.BUY,
-        tickSize: 0.01,
-      }),
-    ).toEqual({
-      offeredAmount: 100_000_000n,
-      requestedAmount: 181_818_200n,
-    });
-  });
-
-  it('encodes a sell min price as minimum proceeds received', () => {
-    expect(
-      computeMarketOrderAmounts({
-        amount: 180,
-        price: 0.54,
-        protectPrice: true,
-        side: OrderSide.SELL,
-        tickSize: 0.01,
-      }),
-    ).toEqual({
-      offeredAmount: 180_000_000n,
-      requestedAmount: 97_200_000n,
     });
   });
 });

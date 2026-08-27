@@ -13,7 +13,7 @@ import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
 import { computeMarketOrderAmounts } from './amounts';
-import { OrderAssetInputSchema } from './asset';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -50,28 +50,39 @@ const PrepareMarketSellOrderParamsSchema =
     minPrice: PositiveDecimalNumberSchema.optional(),
   });
 
-const PrepareMarketOrderInputSchema = z
-  .intersection(
-    z.discriminatedUnion('side', [
-      PrepareMarketBuyOrderParamsSchema,
-      PrepareMarketSellOrderParamsSchema,
-    ]),
-    OrderAssetInputSchema,
-  )
+export type PrepareMarketOrderDraftParams =
+  | {
+      assetId: ClobAssetId;
+      amount: number;
+      builderCode?: BuilderCode;
+      maxPrice?: number;
+      maxSpend?: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+      side: OrderSide.BUY;
+    }
+  | {
+      assetId: ClobAssetId;
+      builderCode?: BuilderCode;
+      minPrice?: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+      shares: number;
+      side: OrderSide.SELL;
+    };
+
+export const PrepareMarketOrderParamsSchema = z
+  .union([
+    PrepareMarketBuyOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    PrepareMarketBuyOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
+    PrepareMarketSellOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    PrepareMarketSellOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
+  ])
   .transform(({ assetId, tokenId, ...params }) => ({
     ...params,
     assetId: assetId ?? tokenId,
-  }));
-
-export type PrepareMarketOrderDraftParams = z.output<
-  typeof PrepareMarketOrderInputSchema
+  })) satisfies z.ZodType<
+  PrepareMarketOrderDraftParams,
+  PrepareMarketOrderRequest
 >;
-
-export const PrepareMarketOrderParamsSchema =
-  PrepareMarketOrderInputSchema satisfies z.ZodType<
-    PrepareMarketOrderDraftParams,
-    PrepareMarketOrderRequest
-  >;
 
 export async function prepareMarketOrderDraft(
   client: BaseSecureClient,
