@@ -275,19 +275,15 @@ export type DataActions = {
    */
   listMarketHolders(request: ListMarketHoldersRequest): Promise<MetaHolder[]>;
   /**
-   * Lists trades with exact continuation signals — for a wallet, market,
-   * event, or the global feed when no filter is given.
+   * Lists trades for a wallet, market, or event — or the global recent-trades
+   * feed when no filter is given.
    *
-   * Pagination is cursor-only: `hasMore` is exact and `nextCursor` is
-   * server-minted, so the end of the collection never costs an extra request.
-   * Every page re-sends the original filters. `pageSize` defaults to 100 (at
-   * most 1000 — larger values are rejected, not clamped). Only the taker side
-   * of each match is returned by default (`takerOnly: false` includes maker
-   * rows), and a dust filter of 0.01 shares applies unless
-   * `filterType`/`filterAmount` say otherwise (either may be sent alone —
-   * the service fills the other half in). `conditionId` accepts at most 20
-   * ids. `start`/`end` are Unix seconds. Transient rate limits are absorbed
-   * by retrying after the server-requested delay.
+   * Only the taker side of each match is returned by default
+   * (`takerOnly: false` includes maker rows), and a dust filter of 0.01
+   * shares applies unless `filterType`/`filterAmount` say otherwise (either
+   * may be sent alone). `conditionId` accepts at most 20 ids. `pageSize`
+   * defaults to 100 (max 1000). `start`/`end` are Unix seconds. Transient
+   * rate limits are retried automatically.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.
