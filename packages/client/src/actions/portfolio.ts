@@ -70,8 +70,10 @@ const ListPositionsRequestSchema = z
      * With `user`, narrows that user's positions (all ids honoured). Without
      * `user`, anchors on the market's holders — exactly one id there.
      */
+    // The service dedupes and then caps every condition selector at 20
+    // DISTINCT ids (one shared parser across the surface).
     conditionId: z
-      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 100)])
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
       .optional(),
     /** OPEN (default, includes REDEEMABLE rows) | REDEEMABLE | CLOSED. */
     status: PositionStatusSchema.optional(),
@@ -141,7 +143,7 @@ export const ListPositionsError = makeErrorGuard(
  * carries `redeemable`/`mergeable` flags and fee-exclusive entry economics. A
  * dust floor of 0.1 shares applies on OPEN/REDEEMABLE unless
  * `filterType`/`filterAmount` say otherwise. `conditionId` accepts at most
- * 100 distinct ids (with `user`). `pageSize` defaults to 100 (max 1000).
+ * 20 distinct ids (with `user`). `pageSize` defaults to 100 (max 1000).
  * Transient rate limits are retried automatically.
  *
  * @remarks
@@ -237,11 +239,9 @@ const ListComboPositionsRequestSchema = z.object({
   pageSize: PageSizeSchema.max(1000).default(100),
   /** The wallet to anchor on. Required — combo positions are wallet-anchored. */
   user: EvmAddressSchema,
+  // Same shared 20-DISTINCT service cap as the other condition selectors.
   conditionId: z
-    .union([
-      ComboConditionIdSchema,
-      distinctIdList(ComboConditionIdSchema, 100),
-    ])
+    .union([ComboConditionIdSchema, distinctIdList(ComboConditionIdSchema, 20)])
     .optional(),
   status: ComboPositionStatusFilterSchema.optional(),
   /**

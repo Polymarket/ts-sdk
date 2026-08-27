@@ -168,10 +168,11 @@ const ListActivityRequestSchema = z
     pageSize: PageSizeSchema.max(1000).default(100),
     /** The feed is wallet-anchored — `user` is required. */
     user: EvmAddressSchema,
-    // Capped well under the edge's URL-length limit so an oversized list
-    // fails typed instead of as an opaque transport error.
+    // The service dedupes and then caps every condition selector at 20
+    // DISTINCT ids (one shared parser across the surface) — mirror both
+    // halves here so the cap error stays typed.
     conditionId: z
-      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 100)])
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
       .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     type: z.array(ActivityTypeSchema).min(1).optional(),
@@ -280,11 +281,9 @@ const ListComboActivityRequestSchema = z.object({
   pageSize: PageSizeSchema.max(1000).default(100),
   /** The feed is wallet-anchored — `user` is required. */
   user: EvmAddressSchema,
+  // Same shared 20-DISTINCT service cap as the other condition selectors.
   conditionId: z
-    .union([
-      ComboConditionIdSchema,
-      distinctIdList(ComboConditionIdSchema, 100),
-    ])
+    .union([ComboConditionIdSchema, distinctIdList(ComboConditionIdSchema, 20)])
     .optional(),
 });
 
