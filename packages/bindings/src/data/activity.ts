@@ -8,14 +8,9 @@ import {
   ComboConditionIdSchema,
   type ConditionId,
   ConditionIdSchema,
-  DecimalishSchema,
-  type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
-  type IsoDateTimeString,
-  IsoDateTimeStringSchema,
-  PaginationCursorSchema,
   type PositionId,
   PositionIdSchema,
   type TokenId,
@@ -70,11 +65,11 @@ type TradeActivityBase = ActivityBase & {
   /** Direction of the wallet's trade. */
   side: Side;
   /** Number of shares traded by the wallet. */
-  shares: DecimalString;
+  shares: number;
   /** The notional value of the traded shares in USD. */
-  amount: DecimalString;
+  amount: number;
   /** The execution price per share in USD. */
-  price: DecimalString;
+  price: number;
   /** Human-readable title of the traded market or Combo. */
   title: string;
   /** Icon URL for the traded market or Combo, when available. */
@@ -117,7 +112,7 @@ export type SplitActivity = ActivityBase & {
   /** Condition id of the market whose complete set was created. */
   conditionId: ConditionId;
   /** The collateral amount split into the complete set in USD. */
-  amount: DecimalString;
+  amount: number;
   /** Human-readable title of the market whose complete set was created. */
   title: string;
   /** URL slug of the market whose complete set was created. */
@@ -134,7 +129,7 @@ export type MergeActivity = ActivityBase & {
   /** Condition id of the market whose complete set was merged. */
   conditionId: ConditionId;
   /** The collateral amount received from merging the complete set in USD. */
-  amount: DecimalString;
+  amount: number;
   /** Human-readable title of the market whose complete set was merged. */
   title: string;
   /** URL slug of the market whose complete set was merged. */
@@ -151,7 +146,7 @@ export type RedeemActivity = ActivityBase & {
   /** Condition id of the market redeemed by the wallet. */
   conditionId: ConditionId;
   /** The proceeds redeemed from the resolved market in USD. */
-  amount: DecimalString;
+  amount: number;
   /** Human-readable title of the market redeemed by the wallet. */
   title: string;
   /** URL slug of the market redeemed by the wallet. */
@@ -168,7 +163,7 @@ export type ConversionActivity = ActivityBase & {
   /** Condition id of the market involved in the conversion. */
   conditionId: ConditionId;
   /** The amount converted or migrated for the market in USD. */
-  amount: DecimalString;
+  amount: number;
   /** Human-readable title of the market involved in the conversion. */
   title: string;
   /** URL slug of the market involved in the conversion. */
@@ -183,56 +178,56 @@ export type MigrationActivity = ActivityBase & {
   /** A position migrated from the legacy protocol to protocol v2. */
   type: 'MIGRATION';
   /** The migrated position value in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type RewardActivity = ActivityBase & {
   /** An account-level reward credit. */
   type: 'REWARD';
   /** The reward amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type MakerRebateActivity = ActivityBase & {
   /** An account-level maker rebate credit. */
   type: 'MAKER_REBATE';
   /** The maker rebate amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type ReferralRewardActivity = ActivityBase & {
   /** An account-level referral reward credit. */
   type: 'REFERRAL_REWARD';
   /** The referral reward amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type YieldActivity = ActivityBase & {
   /** An account-level yield credit. */
   type: 'YIELD';
   /** The yield amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type DepositActivity = ActivityBase & {
   /** An account-level deposit credit. */
   type: 'DEPOSIT';
   /** The deposit amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type WithdrawalActivity = ActivityBase & {
   /** An account-level withdrawal debit. */
   type: 'WITHDRAWAL';
   /** The withdrawal amount debited from the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type TakerRebateActivity = ActivityBase & {
   /** An account-level taker rebate credit. */
   type: 'TAKER_REBATE';
   /** The taker rebate amount credited to the wallet in USD. */
-  amount: DecimalString;
+  amount: number;
 };
 
 export type Activity =
@@ -259,18 +254,14 @@ type ComboActivityBase = {
   wallet: EvmAddress;
   /** Combo condition id involved in this activity. */
   conditionId: ComboConditionId;
-  /** Combo module id. */
-  moduleId: number;
+  /** Combo position id involved in this activity. */
+  positionId: PositionId;
   /** Amount associated with the lifecycle event in USD. */
-  amount: DecimalString | null;
+  amount: number | null;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
-  /** Activity transaction time as an ISO date-time string. */
-  transactionAt: IsoDateTimeString;
   /** Polygon transaction hash that produced this activity. */
   transactionHash: TxHash;
-  /** Log index within the transaction. */
-  logIndex: number;
   /** Polygon block number. */
   blockNumber: number;
   /** Combo legs enriched with market metadata at read time. */
@@ -303,10 +294,8 @@ export type ComboUnwrapActivity = ComboActivityBase & {
 
 export type ComboRedeemActivity = ComboActivityBase & {
   type: ComboActivityType.Redeem;
-  /** Redeemed Combo position id. Only redeem rows carry a source position id. */
-  positionId: PositionId;
   /** Payout from the redemption in USD. Only redeem rows carry payout semantics. */
-  payout: DecimalString | null;
+  payout: number | null;
 };
 
 export type ComboActivity =
@@ -321,16 +310,13 @@ export type ComboActivity =
 const RawComboActivitySchema = z.object({
   id: ComboActivityIdSchema,
   type: ComboActivityTypeSchema,
-  user_address: EvmAddressSchema,
+  proxy_wallet: EvmAddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
-  module_id: z.number().int(),
-  amount_usdc: DecimalishSchema.nullable(),
-  payout_usdc: DecimalishSchema.nullable(),
+  amount_usdc: z.number().nullish(),
+  payout_usdc: z.number().nullish(),
   timestamp: EpochSecondsToMillisecondsSchema,
-  tx_dttm: IsoDateTimeStringSchema,
-  tx_hash: TxHashSchema,
-  log_index: z.number().int(),
+  transaction_hash: TxHashSchema,
   block_number: z.number().int(),
   legs: z.array(ComboPositionLegSchema),
 });
@@ -429,40 +415,38 @@ export const TradeSchema = z
   })) satisfies z.ZodType<Trade>;
 
 const RawActivitySchema = z.object({
-  proxyWallet: EvmAddressSchema.nullish(),
-  timestamp: EpochSecondsToMillisecondsSchema.nullish(),
-  conditionId: z.preprocess(
+  proxy_wallet: EvmAddressSchema,
+  timestamp: EpochSecondsToMillisecondsSchema,
+  condition_id: z.preprocess(
     (value) => (value === '' ? undefined : value),
     ConditionIdSchema.optional(),
   ),
   type: ActivityTypeSchema,
-  size: DecimalishSchema.nullish(),
-  usdcSize: DecimalishSchema.nullish(),
-  transactionHash: TxHashSchema.nullish(),
-  price: DecimalishSchema.nullish(),
-  asset: z.preprocess(
+  size: z.number(),
+  usdc_size: z.number(),
+  transaction_hash: TxHashSchema,
+  price: z.number(),
+  token_id: z.preprocess(
     (value) => (value === '' ? undefined : value),
     ClobAssetIdSchema.optional(),
   ),
   side: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    SideSchema.nullish(),
+    SideSchema.optional(),
   ),
-  isCombo: z.boolean().optional(),
-  outcomeIndex: z.preprocess(
-    (value) => (value === 999 ? undefined : value),
-    z.number().int().optional(),
-  ),
+  // Flag only, present on V2/V3 combo trade rows and omitted otherwise.
+  is_combo: z.boolean().optional(),
+  outcome_index: UnknownOutcomeIndexToUndefinedSchema,
   title: OptionalTextSchema,
   slug: OptionalTextSchema,
   icon: OptionalTextSchema,
-  eventSlug: OptionalTextSchema,
+  event_slug: OptionalTextSchema,
   outcome: OptionalTextSchema,
   name: OptionalTextSchema,
   pseudonym: OptionalTextSchema,
   bio: OptionalTextSchema,
-  profileImage: OptionalTextSchema,
-  profileImageOptimized: OptionalTextSchema,
+  profile_image: OptionalTextSchema,
+  profile_image_optimized: OptionalTextSchema,
 });
 
 export const ActivitySchema: z.ZodType<Activity> =
@@ -474,26 +458,9 @@ export const TradedSchema = z.object({
 });
 
 export const ListTradesResponseSchema = dataPageSchema(TradeSchema);
-export const ListActivityResponseSchema = z.array(ActivitySchema);
-export const ListComboActivityResponseSchema = z
-  .object({
-    activity: z.array(ComboActivitySchema),
-    pagination: z.object({
-      limit: z.number().int(),
-      offset: z.number().int(),
-      has_more: z.boolean(),
-      next_cursor: PaginationCursorSchema.nullish(),
-    }),
-  })
-  .transform(({ pagination, ...rest }) => ({
-    ...rest,
-    pagination: {
-      limit: pagination.limit,
-      offset: pagination.offset,
-      hasMore: pagination.has_more,
-      nextCursor: pagination.next_cursor,
-    },
-  }));
+export const ListActivityResponseSchema = dataPageSchema(ActivitySchema);
+export const ListComboActivityResponseSchema =
+  dataPageSchema(ComboActivitySchema);
 
 export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
@@ -525,8 +492,7 @@ function normalizeComboActivity(activity: RawComboActivity): ComboActivity {
       return {
         ...base,
         type: ComboActivityType.Redeem,
-        positionId: activity.combo_position_id,
-        payout: activity.payout_usdc,
+        payout: activity.payout_usdc ?? null,
       };
   }
 }
@@ -537,14 +503,12 @@ function normalizeComboActivityBase(
   return {
     id: activity.id,
     type: activity.type,
-    wallet: activity.user_address,
+    wallet: activity.proxy_wallet,
     conditionId: activity.combo_condition_id,
-    moduleId: activity.module_id,
-    amount: activity.amount_usdc,
+    positionId: activity.combo_position_id,
+    amount: activity.amount_usdc ?? null,
     timestamp: activity.timestamp,
-    transactionAt: activity.tx_dttm,
-    transactionHash: activity.tx_hash,
-    logIndex: activity.log_index,
+    transactionHash: activity.transaction_hash,
     blockNumber: activity.block_number,
     legs: activity.legs,
   };
@@ -563,12 +527,12 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        conditionId: expectPresent(activity.conditionId, 'conditionId'),
-        amount: inferAmount(activity),
+        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        amount: activity.usdc_size,
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
+        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
       };
     case ActivityType.MIGRATION:
     case ActivityType.REWARD:
@@ -581,7 +545,7 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        amount: inferAmount(activity),
+        amount: activity.usdc_size,
       };
   }
 }
@@ -594,56 +558,52 @@ function normalizeTradeActivity(
     ...base,
     type: ActivityType.TRADE as ActivityType.TRADE,
     side: expectPresent(activity.side, 'side'),
-    shares: expectPresent(activity.size, 'size'),
-    amount: inferAmount(activity),
-    price: expectPresent(activity.price, 'price'),
+    shares: activity.size,
+    amount: activity.usdc_size,
+    price: activity.price,
     title: expectPresent(activity.title, 'title'),
     icon: activity.icon ?? null,
   };
 
-  if (activity.isCombo === true) {
+  if (activity.is_combo === true) {
     return {
       ...trade,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        expectPresent(activity.conditionId, 'conditionId'),
+        expectPresent(activity.condition_id, 'condition_id'),
       ),
       positionId: PositionIdSchema.parse(
-        expectPresent(activity.asset, 'asset'),
+        expectPresent(activity.token_id, 'token_id'),
       ),
     };
   }
 
-  const assetId = expectPresent(activity.asset, 'asset');
+  const assetId = expectPresent(activity.token_id, 'token_id');
 
   return {
     ...trade,
     isCombo: false,
-    conditionId: expectPresent(activity.conditionId, 'conditionId'),
+    conditionId: expectPresent(activity.condition_id, 'condition_id'),
     assetId,
     tokenId: assetId,
     outcome: expectPresent(activity.outcome, 'outcome'),
-    outcomeIndex: expectPresent(activity.outcomeIndex, 'outcomeIndex'),
+    outcomeIndex: expectPresent(activity.outcome_index, 'outcome_index'),
     slug: expectPresent(activity.slug, 'slug'),
-    eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
+    eventSlug: expectPresent(activity.event_slug, 'event_slug'),
   };
 }
 
 function normalizeActivityBase(activity: RawActivity): ActivityBase {
   return {
-    wallet: expectPresent(activity.proxyWallet, 'proxyWallet'),
-    timestamp: expectPresent(activity.timestamp, 'timestamp'),
-    transactionHash: expectPresent(activity.transactionHash, 'transactionHash'),
+    wallet: activity.proxy_wallet,
+    timestamp: activity.timestamp,
+    transactionHash: activity.transaction_hash,
     name: activity.name ?? null,
     pseudonym: activity.pseudonym ?? null,
     bio: activity.bio ?? null,
-    profileImage: activity.profileImage ?? null,
-    profileImageOptimized: activity.profileImageOptimized ?? null,
+    profileImage: activity.profile_image ?? null,
+    profileImageOptimized: activity.profile_image_optimized ?? null,
   };
-}
-
-function inferAmount(activity: RawActivity): DecimalString {
-  return expectPresent(activity.usdcSize ?? activity.size, 'usdcSize');
 }
 
 function expectPresent<T>(value: T | null | undefined, field: string): T {

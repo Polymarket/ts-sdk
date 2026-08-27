@@ -44,7 +44,7 @@ describe('Positions', () => {
           const positions = await secureClient
             .listPositions({
               user: secureClient.account.wallet,
-              market: [conditionId],
+              conditionId: [conditionId],
             })
             .firstPage();
           expect(positions.items).toHaveLength(2);
@@ -70,7 +70,7 @@ describe('Positions', () => {
       const { items: positions } = await secureClient
         .listPositions({
           user: secureClient.account.wallet,
-          market: [conditionId],
+          conditionId: [conditionId],
         })
         .firstPage();
 
@@ -92,7 +92,7 @@ describe('Positions', () => {
           const positions = await secureClient
             .listPositions({
               user: secureClient.account.wallet,
-              market: [conditionId],
+              conditionId: [conditionId],
             })
             .firstPage();
           expect(positions.items.length).toBeLessThan(initialPositionCount);
@@ -171,7 +171,7 @@ async function fetchComboShares(client: SecureClient): Promise<number> {
     return 0;
   }
 
-  const shares = Number(combo.shares);
+  const shares = combo.currentSize;
 
   expect(Number.isFinite(shares)).toBe(true);
 
