@@ -28,4 +28,4 @@ for await (const page of positions) {
 }
 
 console.log(`Found ${rows.length} open positions for ${wallet}`);
-console.log(rows);
+console.table(rows);

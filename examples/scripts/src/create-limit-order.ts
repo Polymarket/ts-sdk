@@ -30,7 +30,7 @@ const order = await secureClient.createLimitOrder({
   size: minimumOrderSize,
 });
 
-console.log({
+console.table({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
   minimumTickSize,
   minimumOrderSize,

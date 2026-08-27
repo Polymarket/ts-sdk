@@ -22,7 +22,7 @@ const [orderBook, buyPrice, midpoint, spread, lastTrade] = await Promise.all([
   client.fetchLastTradePrice({ tokenId }),
 ]);
 
-console.log({
+console.table({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
   tokenId,
   bids: orderBook.bids.length,
