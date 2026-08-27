@@ -96,7 +96,7 @@ describe('MarketInfoSchema', () => {
       feeInfo: { rate: 0.02, exponent: 1 },
       negRisk: false,
       tickSize: 0.01,
-      tokens: [{ tokenId: TOKEN_ID, outcome: 'Yes' }],
+      tokens: [{ assetId: TOKEN_ID, tokenId: TOKEN_ID, outcome: 'Yes' }],
     });
   });
 

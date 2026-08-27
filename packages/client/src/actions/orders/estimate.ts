@@ -21,6 +21,7 @@ import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
 import {
   type OrderAsset,
+  type OrderAssetId,
   PositionOrderAssetSchema,
   TokenOrderAssetSchema,
 } from './asset';
@@ -160,14 +161,14 @@ export async function estimateMarketPrice(
 export async function resolveEstimatedMarketPrice(
   client: BaseClient,
   params: {
-    assetId: string;
+    assetId: OrderAssetId;
     amount: number;
     orderType: OrderType;
     side: OrderSide;
   },
 ): Promise<number> {
   const orderBook = await fetchOrderBook(client, {
-    tokenId: params.assetId,
+    assetId: params.assetId,
   });
 
   return resolveMarketPriceFromOrderBook({
