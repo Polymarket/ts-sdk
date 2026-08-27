@@ -246,7 +246,7 @@ async function ensureOrderApproval(
   client: BaseSecureClient,
   order: SignedOrder,
 ): Promise<boolean> {
-  const assetId = order.tokenId;
+  const { assetId } = order;
   const metadata = await resolveOrderMarketMetadata(client, assetId);
   const exchangeAddress = resolveOrderExchangeAddress(
     client,

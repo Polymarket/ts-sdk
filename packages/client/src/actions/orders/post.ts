@@ -168,7 +168,7 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       signer: order.signer,
       takerAmount: order.takerAmount,
       timestamp: order.timestamp,
-      tokenId: order.tokenId,
+      tokenId: order.assetId,
     },
     orderType: order.orderType,
     owner: client.credentials.key,

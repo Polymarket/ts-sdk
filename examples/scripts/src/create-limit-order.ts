@@ -34,7 +34,7 @@ console.log({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
   minimumTickSize,
   minimumOrderSize,
-  assetId: order.tokenId,
+  assetId: order.assetId,
   side: order.side,
   orderType: order.orderType,
   maker: order.maker,

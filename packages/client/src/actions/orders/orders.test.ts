@@ -6,12 +6,12 @@ import {
 } from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
-import type { EvmAddress } from '@polymarket/types';
+import { type EvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { SignerType } from '../../wallet';
 import type { OrderAssetId } from './asset';
-import { createUnsignedOrder } from './orders';
+import { createSignedOrder, createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
 const SIGNER = '0x0000000000000000000000000000000000000001' as EvmAddress;
@@ -117,6 +117,30 @@ describe('createUnsignedOrder', () => {
 
     expect(order.tokenId).toBe(positionId);
     expect(order.protocolVersion).toBe(ExchangeOrderProtocolVersion.V3);
+  });
+});
+
+describe('createSignedOrder', () => {
+  it('exposes the normalized asset ID and its deprecated compatibility alias', () => {
+    const positionId = toPositionId('2');
+    const unsignedOrder = createUnsignedOrder(
+      createOrderDraft({
+        assetId: positionId,
+        wallet: DEPOSIT_WALLET,
+      }),
+      {
+        signer: SIGNER,
+        signerType: SignerType.OWNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
+    const signature = expectEvmSignature(`0x${'00'.repeat(65)}`);
+
+    const order = createSignedOrder(unsignedOrder, signature);
+
+    expect(order.assetId).toBe(positionId);
+    expect(order.tokenId).toBe(order.assetId);
   });
 });
 
