@@ -1,18 +1,26 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
   ComboConditionIdSchema,
+  type ConditionId,
   ConditionIdSchema,
   DecimalishSchema,
+  type DecimalString,
+  type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
+  EvmAddressSchema,
   emptyStringToNull,
+  type IsoCalendarDateString,
   IsoCalendarDateStringSchema,
   IsoDateTimeStringSchema,
+  type MixedDateTimeString,
   MixedDateTimeStringSchema,
   PaginationCursorSchema,
+  type PositionId,
   PositionIdSchema,
-  TokenIdSchema,
+  type TokenId,
 } from '../shared';
-import { AddressSchema } from './common';
 
 export enum ComboPositionStatus {
   Open = 'OPEN',
@@ -31,10 +39,45 @@ export enum ComboPositionOutcome {
 
 export const ComboPositionOutcomeSchema = z.enum(ComboPositionOutcome);
 
+export type Position = {
+  wallet: EvmAddress | null | undefined;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId | null | undefined;
+  conditionId: ConditionId;
+  size?: DecimalString | null;
+  avgPrice?: DecimalString | null;
+  initialValue?: DecimalString | null;
+  currentValue?: DecimalString | null;
+  cashPnl?: DecimalString | null;
+  percentPnl?: number | null;
+  totalBought?: DecimalString | null;
+  realizedPnl?: DecimalString | null;
+  percentRealizedPnl?: number | null;
+  curPrice?: DecimalString | null;
+  redeemable?: boolean | null;
+  mergeable?: boolean | null;
+  title?: string | null;
+  slug?: string | null;
+  icon?: string | null;
+  eventId?: string | null;
+  eventSlug?: string | null;
+  outcome?: string | null;
+  outcomeIndex?: number | null;
+  oppositeOutcome?: string | null;
+  /** Opposite outcome identifier for a CTF token or Polymarket V2 position. */
+  oppositeAssetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `oppositeAssetId`. */
+  oppositeTokenId: TokenId | PositionId | null | undefined;
+  endDate?: IsoCalendarDateString | null;
+  negativeRisk?: boolean | null;
+};
+
 export const PositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
-    asset: TokenIdSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
+    asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema,
     size: DecimalishSchema.nullish(),
     avgPrice: DecimalishSchema.nullish(),
@@ -56,21 +99,49 @@ export const PositionSchema = z
     outcome: z.string().nullish(),
     outcomeIndex: z.number().int().nullish(),
     oppositeOutcome: z.string().nullish(),
-    oppositeAsset: TokenIdSchema.nullish(),
+    oppositeAsset: ClobAssetIdSchema.nullish(),
     endDate: IsoCalendarDateStringSchema.nullish(),
     negativeRisk: z.boolean().nullish(),
   })
   .transform(({ asset, oppositeAsset, proxyWallet, ...rest }) => ({
     ...rest,
     wallet: proxyWallet,
+    assetId: asset,
     tokenId: asset,
+    oppositeAssetId: oppositeAsset,
     oppositeTokenId: oppositeAsset,
-  }));
+  })) satisfies z.ZodType<Position>;
+
+export type ClosedPosition = {
+  wallet: EvmAddress | null | undefined;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId | null | undefined;
+  conditionId?: ConditionId | null;
+  avgPrice?: DecimalString | null;
+  totalBought?: DecimalString | null;
+  realizedPnl?: DecimalString | null;
+  curPrice?: DecimalString | null;
+  timestamp?: EpochMilliseconds | null;
+  title?: string | null;
+  slug?: string | null;
+  icon?: string | null;
+  eventSlug?: string | null;
+  outcome?: string | null;
+  outcomeIndex?: number | null;
+  oppositeOutcome?: string | null;
+  /** Opposite outcome identifier for a CTF token or Polymarket V2 position. */
+  oppositeAssetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `oppositeAssetId`. */
+  oppositeTokenId: TokenId | PositionId | null | undefined;
+  endDate?: MixedDateTimeString | null;
+};
 
 export const ClosedPositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
-    asset: TokenIdSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
+    asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema.nullish(),
     avgPrice: DecimalishSchema.nullish(),
     totalBought: DecimalishSchema.nullish(),
@@ -84,28 +155,52 @@ export const ClosedPositionSchema = z
     outcome: z.string().nullish(),
     outcomeIndex: z.number().int().nullish(),
     oppositeOutcome: z.string().nullish(),
-    oppositeAsset: TokenIdSchema.nullish(),
+    oppositeAsset: ClobAssetIdSchema.nullish(),
     endDate: MixedDateTimeStringSchema.nullish(),
   })
   .transform(({ asset, oppositeAsset, proxyWallet, ...rest }) => ({
     ...rest,
     wallet: proxyWallet,
+    assetId: asset,
     tokenId: asset,
+    oppositeAssetId: oppositeAsset,
     oppositeTokenId: oppositeAsset,
-  }));
+  })) satisfies z.ZodType<ClosedPosition>;
 
 export const ValueSchema = z.object({
-  user: AddressSchema.nullish(),
+  user: EvmAddressSchema.nullish(),
   value: DecimalishSchema.nullish(),
 });
 
+export type MarketPosition = {
+  wallet: EvmAddress | null | undefined;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId | null | undefined;
+  name?: string | null;
+  profileImage?: string | null;
+  verified?: boolean | null;
+  conditionId?: ConditionId | null;
+  avgPrice?: DecimalString | null;
+  size?: DecimalString | null;
+  currPrice?: DecimalString | null;
+  currentValue?: DecimalString | null;
+  cashPnl?: DecimalString | null;
+  totalBought?: DecimalString | null;
+  realizedPnl?: DecimalString | null;
+  totalPnl?: DecimalString | null;
+  outcome?: string | null;
+  outcomeIndex?: number | null;
+};
+
 export const MarketPositionSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     name: z.string().nullish(),
     profileImage: z.string().nullish(),
     verified: z.boolean().nullish(),
-    asset: TokenIdSchema.nullish(),
+    asset: ClobAssetIdSchema.nullish(),
     conditionId: ConditionIdSchema.nullish(),
     avgPrice: DecimalishSchema.nullish(),
     size: DecimalishSchema.nullish(),
@@ -121,13 +216,28 @@ export const MarketPositionSchema = z
   .transform(({ asset, proxyWallet, ...rest }) => ({
     ...rest,
     wallet: proxyWallet,
+    assetId: asset,
     tokenId: asset,
-  }));
+  })) satisfies z.ZodType<MarketPosition>;
 
-export const MetaMarketPositionSchema = z.object({
-  token: z.string().nullish(),
-  positions: z.array(MarketPositionSchema).nullish(),
-});
+export type MetaMarketPosition = {
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  token: TokenId | PositionId | null | undefined;
+  positions?: MarketPosition[] | null;
+};
+
+export const MetaMarketPositionSchema = z
+  .object({
+    token: ClobAssetIdSchema.nullish(),
+    positions: z.array(MarketPositionSchema).nullish(),
+  })
+  .transform(({ token, ...rest }) => ({
+    ...rest,
+    assetId: token,
+    token,
+  })) satisfies z.ZodType<MetaMarketPosition>;
 
 export const ComboPositionMarketEventSchema = z
   .object({
@@ -207,7 +317,7 @@ export const ComboPositionSchema = z
     combo_position_id: PositionIdSchema,
     side: ComboPositionOutcomeSchema,
     module_id: z.number().int(),
-    user_address: AddressSchema,
+    user_address: EvmAddressSchema,
     shares_balance: DecimalishSchema,
     entry_avg_price_usdc: DecimalishSchema.nullish(),
     entry_cost_usdc: DecimalishSchema.nullish(),
@@ -290,11 +400,7 @@ export const ListMarketPositionsResponseSchema = z.array(
   MetaMarketPositionSchema,
 );
 
-export type Position = z.infer<typeof PositionSchema>;
-export type ClosedPosition = z.infer<typeof ClosedPositionSchema>;
 export type Value = z.infer<typeof ValueSchema>;
-export type MarketPosition = z.infer<typeof MarketPositionSchema>;
-export type MetaMarketPosition = z.infer<typeof MetaMarketPositionSchema>;
 export type ComboPositionMarketEvent = z.infer<
   typeof ComboPositionMarketEventSchema
 >;

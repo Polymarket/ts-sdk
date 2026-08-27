@@ -84,17 +84,31 @@ export type PerpsStreamingCandleInterval = Exclude<
 type PerpsInstrumentIdInput = number;
 
 // Subscription specs.
-export type MarketSubscription = {
-  topic: 'market';
-  /** Token IDs whose market events should be delivered. */
-  tokenIds: readonly string[];
+export type MarketSubscription =
+  | {
+      topic: 'market';
+      /** Asset identifiers whose market events should be delivered. */
+      assetIds: readonly string[];
+      tokenIds?: never;
 
-  /**
-   * When `true`, the server additionally emits `MarketBestBidAskEvent`,
-   * `NewMarketEvent`, and `MarketResolvedEvent`.
-   */
-  customFeatureEnabled?: boolean;
-};
+      /**
+       * When `true`, the server additionally emits `MarketBestBidAskEvent`,
+       * `NewMarketEvent`, and `MarketResolvedEvent`.
+       */
+      customFeatureEnabled?: boolean;
+    }
+  | {
+      topic: 'market';
+      assetIds?: never;
+      /** @deprecated Use `assetIds`. */
+      tokenIds: readonly string[];
+
+      /**
+       * When `true`, the server additionally emits `MarketBestBidAskEvent`,
+       * `NewMarketEvent`, and `MarketResolvedEvent`.
+       */
+      customFeatureEnabled?: boolean;
+    };
 
 export type UserSubscription = {
   topic: 'user';
@@ -287,6 +301,21 @@ const CryptoPricesChainlinkTwapSubscriptionSchema = z.object({
   symbols: z.array(z.string()).optional(),
 });
 
+const MarketSubscriptionSchema = z.union([
+  z.object({
+    topic: z.literal('market'),
+    assetIds: z.array(z.string()),
+    tokenIds: z.never().optional(),
+    customFeatureEnabled: z.boolean().optional(),
+  }),
+  z.object({
+    topic: z.literal('market'),
+    assetIds: z.never().optional(),
+    tokenIds: z.array(z.string()),
+    customFeatureEnabled: z.boolean().optional(),
+  }),
+]);
+
 /**
  * Starts one or more realtime subscriptions on this client.
  *
@@ -299,7 +328,7 @@ const CryptoPricesChainlinkTwapSubscriptionSchema = z.object({
  * @example
  * ```ts
  * const handle = await client.subscribe([
- *   { topic: 'market', tokenIds: ['123'] },
+ *   { topic: 'market', assetIds: ['123'] },
  * ]);
  *
  * for await (const event of handle) {
@@ -324,8 +353,16 @@ export async function subscribe(
   subscriptions: readonly SecureSubscriptionSpec[],
 ): Promise<SubscriptionHandle<unknown>> {
   for (const subscription of subscriptions) {
-    if (subscription.topic === 'prices.crypto.chainlink.twap') {
-      parseUserInput(subscription, CryptoPricesChainlinkTwapSubscriptionSchema);
+    switch (subscription.topic) {
+      case 'market':
+        parseUserInput(subscription, MarketSubscriptionSchema);
+        break;
+      case 'prices.crypto.chainlink.twap':
+        parseUserInput(
+          subscription,
+          CryptoPricesChainlinkTwapSubscriptionSchema,
+        );
+        break;
     }
   }
 

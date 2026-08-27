@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
@@ -9,18 +10,21 @@ import {
   type IsoDateTimeString,
   type OrderSide,
   OrderSideSchema,
+  type PositionId,
   type TokenId,
-  TokenIdSchema,
 } from '../shared';
 
 export type BuilderTrade = {
   id: string;
+  /** Exchange asset identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
   tradeType: string;
   takerOrderHash: string;
   builder: string;
   /** Condition ID for the market associated with this trade. */
   conditionId: ConditionId;
-  tokenId: TokenId;
   side: OrderSide;
   size: DecimalString;
   sizeUsdc: DecimalString;
@@ -47,7 +51,7 @@ export const BuilderTradeSchema = z
     takerOrderHash: z.string(),
     builder: z.string(),
     market: ConditionIdSchema,
-    assetId: TokenIdSchema,
+    assetId: ClobAssetIdSchema,
     side: OrderSideSchema,
     size: DecimalStringSchema,
     sizeUsdc: DecimalStringSchema,
@@ -69,6 +73,7 @@ export const BuilderTradeSchema = z
   .transform(({ err_msg, assetId, market, matchTime, ...rest }) => ({
     ...rest,
     conditionId: market,
+    assetId,
     tokenId: assetId,
     errMsg: err_msg,
     matchedAt: matchTime,

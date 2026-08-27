@@ -1,4 +1,11 @@
-import type { DecimalString, OrderSide, TokenId } from '@polymarket/bindings';
+import {
+  type DecimalString,
+  type OrderSide,
+  type PositionId,
+  type TokenId,
+  toPositionId,
+  toTokenId,
+} from '@polymarket/bindings';
 import type {
   LastTradePrice,
   Midpoints,
@@ -8,6 +15,7 @@ import type {
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
 import type {
+  FetchOrderBookRequest,
   fetchLastTradePrice,
   fetchMidpoint,
   fetchMidpoints,
@@ -18,12 +26,39 @@ import type {
 } from './index';
 
 describe('public CLOB price read types', () => {
-  it('models batch price reads as token ID keyed decimal records', () => {
-    expectTypeOf<Midpoints>().toEqualTypeOf<Record<TokenId, DecimalString>>();
-    expectTypeOf<Prices>().toEqualTypeOf<
-      Record<TokenId, Partial<Record<OrderSide, DecimalString>>>
+  it('accepts assetId and the tokenId compatibility input', () => {
+    const assetRequest: FetchOrderBookRequest = { assetId: toTokenId('123') };
+    const positionRequest: FetchOrderBookRequest = {
+      assetId: toPositionId('456'),
+    };
+    const tokenRequest: FetchOrderBookRequest = { tokenId: '123' };
+    const rawAssetRequest: FetchOrderBookRequest = { assetId: '123' };
+    // @ts-expect-error Provide exactly one exchange asset identifier.
+    const both: FetchOrderBookRequest = {
+      assetId: toTokenId('123'),
+      tokenId: '123',
+    };
+    // @ts-expect-error An exchange asset identifier is required.
+    const neither: FetchOrderBookRequest = {};
+
+    expectTypeOf(assetRequest).toMatchTypeOf<FetchOrderBookRequest>();
+    expectTypeOf(positionRequest).toMatchTypeOf<FetchOrderBookRequest>();
+    expectTypeOf(tokenRequest).toMatchTypeOf<FetchOrderBookRequest>();
+    expectTypeOf(rawAssetRequest).toMatchTypeOf<FetchOrderBookRequest>();
+    void both;
+    void neither;
+  });
+
+  it('models batch price reads as asset ID keyed decimal records', () => {
+    expectTypeOf<Midpoints>().toEqualTypeOf<
+      Record<TokenId | PositionId, DecimalString>
     >();
-    expectTypeOf<Spreads>().toEqualTypeOf<Record<TokenId, DecimalString>>();
+    expectTypeOf<Prices>().toEqualTypeOf<
+      Record<TokenId | PositionId, Partial<Record<OrderSide, DecimalString>>>
+    >();
+    expectTypeOf<Spreads>().toEqualTypeOf<
+      Record<TokenId | PositionId, DecimalString>
+    >();
   });
 
   it('preserves branded decimal action return types', () => {

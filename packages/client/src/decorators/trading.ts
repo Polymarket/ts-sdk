@@ -281,7 +281,7 @@ export type SecureTradingActions = {
    */
   cancelAll(): Promise<CancelOrdersResponse>;
   /**
-   * Cancels all open orders for the authenticated account that match the market or token filter.
+   * Cancels all open orders for the authenticated account that match the market or asset filter.
    *
    * @throws {@link CancelMarketOrdersError}
    * Thrown on failure.

@@ -1,24 +1,34 @@
+import type { TxHash } from '@polymarket/types';
 import { z } from 'zod';
 import { CommentProfileSchema } from '../gamma/comment';
 import {
   ApiKeySchema,
+  ClobAssetIdSchema,
   ComboConditionIdSchema,
   CommentIdSchema,
   CommentParentEntityTypeSchema,
+  type ConditionId,
   ConditionIdSchema,
   DateLikeToIsoDateTimeStringSchema,
   DecimalishSchema,
+  type DecimalString,
   DecimalStringSchema,
   EpochMillisecondsSchema,
   EvmAddressSchema,
+  type IsoDateTimeString,
   IsoDateTimeStringSchema,
   NotificationIdSchema,
+  type OrderId,
   OrderIdSchema,
+  type OrderSide,
   OrderSideSchema,
+  type OrderType,
   OrderTypeSchema,
+  type PositionId,
   PositionIdSchema,
+  type QuestionId,
   QuestionIdSchema,
-  TokenIdSchema,
+  type TokenId,
   TxHashSchema,
 } from '../shared';
 
@@ -62,7 +72,7 @@ function emptyStringToUndefined(value: unknown): unknown {
  */
 export const OrderNotificationPayloadSchema = z
   .object({
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     eventSlug: z.string().optional(),
     icon: z.string().optional(),
     image: z.string().optional(),
@@ -102,6 +112,7 @@ export const OrderNotificationPayloadSchema = z
     }) => ({
       ...rest,
       conditionId: market,
+      assetId: asset_id,
       tokenId: asset_id,
       marketSlug: market_slug,
       matchedSize: matched_size,
@@ -113,11 +124,31 @@ export const OrderNotificationPayloadSchema = z
       tradeId: trade_id,
       transactionHash: transaction_hash,
     }),
-  );
+  ) satisfies z.ZodType<OrderNotificationPayload>;
 
-export type OrderNotificationPayload = z.infer<
-  typeof OrderNotificationPayloadSchema
->;
+export type OrderNotificationPayload = {
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  conditionId: ConditionId;
+  eventSlug?: string;
+  icon?: string;
+  image?: string;
+  marketSlug: string | undefined;
+  matchedSize: DecimalString;
+  orderId: OrderId;
+  orderType: OrderType | undefined;
+  originalSize: DecimalString;
+  outcome: string;
+  outcomeIndex: number;
+  price: DecimalString;
+  question?: string;
+  remainingSize: DecimalString;
+  seriesSlug?: string;
+  side: OrderSide;
+  tradeId: string | undefined;
+  transactionHash: TxHash | undefined;
+};
 
 /**
  * One outcome token inside a market lifecycle notification payload. On a
@@ -127,17 +158,23 @@ export const MarketNotificationTokenSchema = z
   .object({
     outcome: z.string(),
     price: DecimalishSchema.optional(),
-    token_id: TokenIdSchema,
+    token_id: ClobAssetIdSchema,
     winner: z.boolean(),
   })
   .transform(({ token_id, ...rest }) => ({
     ...rest,
+    assetId: token_id,
     tokenId: token_id,
-  }));
+  })) satisfies z.ZodType<MarketNotificationToken>;
 
-export type MarketNotificationToken = z.infer<
-  typeof MarketNotificationTokenSchema
->;
+export type MarketNotificationToken = {
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  outcome: string;
+  price?: DecimalString;
+  winner: boolean;
+};
 
 /** Liquidity-rewards parameters carried on a market lifecycle notification. */
 export const MarketNotificationRewardsSchema = z
@@ -250,11 +287,40 @@ export const MarketNotificationPayloadSchema = z
       secondsDelay: seconds_delay,
       takerBaseFee: taker_base_fee,
     }),
-  );
+  ) satisfies z.ZodType<MarketNotificationPayload>;
 
-export type MarketNotificationPayload = z.infer<
-  typeof MarketNotificationPayloadSchema
->;
+export type MarketNotificationPayload = {
+  acceptingOrders: boolean;
+  acceptingOrdersTimestamp: IsoDateTimeString | null | undefined;
+  active: boolean;
+  archived?: boolean;
+  closed: boolean;
+  conditionId: ConditionId;
+  description: string;
+  enableOrderBook: boolean | undefined;
+  endDate: IsoDateTimeString | null | undefined;
+  eventSlug?: string;
+  fpmm: string;
+  gameStartTime: IsoDateTimeString | null | undefined;
+  icon: string;
+  image: string;
+  is5050Outcome: boolean | undefined;
+  makerBaseFee: number | null;
+  marketSlug: string;
+  minimumOrderSize: DecimalString;
+  minimumTickSize: DecimalString;
+  negRisk: boolean | undefined;
+  negRiskMarketId: string | undefined;
+  negRiskRequestId: string | undefined;
+  notificationsEnabled: boolean | undefined;
+  question: string;
+  questionId: QuestionId;
+  rewards?: MarketNotificationRewards;
+  secondsDelay: number;
+  tags?: string[] | null;
+  takerBaseFee: number | null;
+  tokens: MarketNotificationToken[];
+};
 
 /** Payload of a liquidity-reward payout notification. */
 export const RewardPayoutNotificationPayloadSchema = z

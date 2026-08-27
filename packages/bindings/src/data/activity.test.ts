@@ -3,6 +3,34 @@ import { ActivitySchema, TradeSchema } from './activity';
 import { ActivityType } from './common';
 
 describe('ActivitySchema', () => {
+  it('normalizes ordinary trade assets without assuming the protocol', () => {
+    const assetId = '456';
+    const activity = ActivitySchema.parse({
+      proxyWallet: `0x${'1'.repeat(40)}`,
+      timestamp: 1_700_000_000,
+      type: ActivityType.TRADE,
+      side: 'BUY',
+      size: 10,
+      usdcSize: 5,
+      price: 0.5,
+      asset: assetId,
+      conditionId: `0x${'a'.repeat(64)}`,
+      outcome: 'Yes',
+      outcomeIndex: 0,
+      title: 'Will this normalize?',
+      slug: 'will-this-normalize',
+      eventSlug: 'normalization-event',
+      transactionHash: `0x${'b'.repeat(64)}`,
+    });
+
+    expect(activity).toMatchObject({
+      type: ActivityType.TRADE,
+      isCombo: false,
+      assetId,
+      tokenId: assetId,
+    });
+  });
+
   it.each([
     ActivityType.DEPOSIT,
     ActivityType.WITHDRAWAL,
@@ -48,6 +76,7 @@ describe('TradeSchema', () => {
     });
 
     expect(trade.wallet).toBe(`0x${'1'.repeat(40)}`);
+    expect(trade.assetId).toBe('123');
     expect(trade.tokenId).toBe('123');
     expect(trade.conditionId).toBe(`0x${'c'.repeat(64)}`);
     expect(trade.timestamp).toBe(1_700_000_000_000);

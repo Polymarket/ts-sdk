@@ -30,7 +30,7 @@ export type PublicSubscriptionsActions = {
    * @example
    * ```ts
    * const handle = await client.subscribe([
-   *   { topic: 'market', tokenIds: ['123'] },
+   *   { topic: 'market', assetIds: ['123'] },
    * ]);
    *
    * for await (const event of handle) {
@@ -54,7 +54,7 @@ export type SecureSubscriptionsActions = {
    * ```ts
    * const handle = await client.subscribe([
    *   { topic: 'user' },
-   *   { topic: 'market', tokenIds: ['123'] },
+   *   { topic: 'market', assetIds: ['123'] },
    * ]);
    *
    * for await (const event of handle) {

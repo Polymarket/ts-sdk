@@ -1,5 +1,33 @@
 # @polymarket/client
 
+## 0.7.0
+
+### Minor Changes
+
+- dda4398: Support filtering combo positions by one or multiple statuses.
+- d754986: Type notification payloads: `Notification` is now a discriminated union on the new `NotificationType` enum, `owner` is the branded `ApiKey`, and each notification kind carries a typed `payload` instead of `unknown`.
+
+  At runtime, notification kinds unknown to this SDK version are omitted from `fetchNotifications`, while recognized kinds whose payloads do not match their schemas reject the entire response.
+
+  Malformed combo condition IDs, question IDs, EVM addresses, and transaction hashes now report schema validation failures instead of escaping parsing as raw errors.
+
+- 6e4f59b: RateLimitError now exposes the Poly-RateLimit-\* state reported with a rejection, and clients accept an onRateLimitUpdate listener that receives per-signer rate-limit state (bucket, remaining, reset, tier, warning) whenever a response reports it.
+- e3d2fba: Accept position IDs when estimating, preparing, creating, and placing market and limit orders, routing position-backed orders through Exchange V3 signing and trading approvals while preserving token-ID order compatibility.
+- 0db340d: Add scoped Deposit Wallet session-key authorization, active-key fetching, revocation, and ordinary SecureClient support for authorized session signers. Known scopes have enum members, while newer scope strings remain accepted and preserved for forward compatibility. Authorizations default to `ALL` when scopes are omitted.
+
+### Patch Changes
+
+- aae2882: RequestRejectedError now exposes a typed restriction distinguishing matching-engine restarts (HTTP 425) from post-only mode (HTTP 503), its retryAfter value falls back to the retry_after_seconds response field when the Retry-After header is absent, and batch post-only rejections map to the post_only_mode order error code instead of unknown. The SDK still does not retry automatically.
+- f02c309: Keep unrestricted RFQ salt generation local and reject CLOB order salts that
+  cannot be serialized exactly as JavaScript numbers.
+- 625fc27: Accept order prices with insignificant floating-point drift from a valid tick-grid value, while continuing to reject materially off-grid prices. Calculate limit and market order amounts with exact fixed-point arithmetic to avoid unintended rounding caused by floating-point noise.
+- Updated dependencies [aae2882]
+- Updated dependencies [d754986]
+- Updated dependencies [ccd6ef4]
+- Updated dependencies [0db340d]
+  - @polymarket/bindings@0.7.0
+  - @polymarket/types@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes

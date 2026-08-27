@@ -3,10 +3,12 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
+  type OrderSide,
   OrderSideSchema,
   PaginationCursorSchema,
+  type PositionId,
   type TickSizeValue,
-  TokenIdSchema,
+  type TokenId,
   toPaginationCursor,
 } from '@polymarket/bindings';
 import {
@@ -19,7 +21,7 @@ import {
   FetchOrderBookResponseSchema,
   FetchTickSizeResponseSchema,
   type LastTradePrice,
-  type LastTradePriceForToken,
+  type LastTradePriceForAsset,
   LastTradePriceSchema,
   LastTradePricesSchema,
   type MarketInfo,
@@ -31,6 +33,7 @@ import {
   OrderBooksSchema,
   PaginatedCurrentRewardsSchema,
   PaginatedMarketRewardsSchema,
+  type PriceHistoryInterval,
   PriceHistoryIntervalSchema,
   type PriceHistoryPoint,
   PriceHistorySchema,
@@ -56,13 +59,22 @@ import {
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
 import { validateWith } from '../response';
+import { exchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
-const FetchMidpointRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchMidpointRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchMidpointRequest = z.input<typeof FetchMidpointRequestSchema>;
+export type FetchMidpointRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchMidpointError =
   | RateLimitError
@@ -79,7 +91,7 @@ export const FetchMidpointError = makeErrorGuard(
 );
 
 /**
- * Fetches the midpoint price for a token as a decimal string.
+ * Fetches the midpoint price for an exchange asset as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -90,8 +102,7 @@ export const FetchMidpointError = makeErrorGuard(
  * @example
  * ```ts
  * const midpoint = await fetchMidpoint(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // midpoint === '0.53'
@@ -106,7 +117,7 @@ export async function fetchMidpoint(
   const response = await unwrap(
     client.clob
       .get('/midpoint', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(MidpointSchema)),
   );
@@ -115,14 +126,21 @@ export async function fetchMidpoint(
 }
 
 const FetchMidpointsRequestSchema = z
-  .array(
-    z.object({
-      tokenId: z.string(),
-    }),
-  )
+  .array(exchangeAssetRequestSchema({}))
   .min(1);
 
-export type FetchMidpointsRequest = z.input<typeof FetchMidpointsRequestSchema>;
+export type FetchMidpointsRequest = Array<
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    }
+>;
 
 export type FetchMidpointsError =
   | RateLimitError
@@ -139,7 +157,7 @@ export const FetchMidpointsError = makeErrorGuard(
 );
 
 /**
- * Fetches midpoint prices for multiple tokens as a token ID keyed lookup.
+ * Fetches midpoint prices for multiple exchange assets as an asset ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -151,12 +169,11 @@ export const FetchMidpointsError = makeErrorGuard(
  * ```ts
  * const midpoints = await fetchMidpoints(client, [
  *   {
- *     tokenId:
- *       '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *     assetId: '123',
  *   },
  * ]);
  *
- * // midpoints[tokenId] === '0.53'
+ * // midpoints['123'] === '0.53'
  * ```
  *
  */
@@ -175,11 +192,19 @@ export async function fetchMidpoints(
   );
 }
 
-const FetchTickSizeRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchTickSizeRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchTickSizeRequest = z.input<typeof FetchTickSizeRequestSchema>;
+export type FetchTickSizeRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchTickSizeError =
   | RateLimitError
@@ -196,7 +221,7 @@ export const FetchTickSizeError = makeErrorGuard(
 );
 
 /**
- * Fetches the minimum price tick size for a token's order book.
+ * Fetches the minimum price tick size for an exchange asset's order book.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -207,8 +232,7 @@ export const FetchTickSizeError = makeErrorGuard(
  * @example
  * ```ts
  * const tickSize = await fetchTickSize(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // tickSize === 0.01
@@ -222,7 +246,7 @@ export async function fetchTickSize(
   const response = await unwrap(
     client.clob
       .get('/tick-size', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(FetchTickSizeResponseSchema)),
   );
@@ -230,11 +254,19 @@ export async function fetchTickSize(
   return response.minimumTickSize;
 }
 
-const FetchNegRiskRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchNegRiskRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchNegRiskRequest = z.input<typeof FetchNegRiskRequestSchema>;
+export type FetchNegRiskRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchNegRiskError =
   | RateLimitError
@@ -251,7 +283,7 @@ export const FetchNegRiskError = makeErrorGuard(
 );
 
 /**
- * Fetches whether a token is in a negative-risk market.
+ * Fetches whether an exchange asset is in a negative-risk market.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -262,8 +294,7 @@ export const FetchNegRiskError = makeErrorGuard(
  * @example
  * ```ts
  * const negRisk = await fetchNegRisk(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // negRisk === false
@@ -277,7 +308,7 @@ export async function fetchNegRisk(
   const response = await unwrap(
     client.clob
       .get('/neg-risk', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(FetchNegRiskResponseSchema)),
   );
@@ -285,13 +316,19 @@ export async function fetchNegRisk(
   return response.negRisk;
 }
 
-const ResolveConditionByTokenRequestSchema = z.object({
-  tokenId: TokenIdSchema,
-});
+const ResolveConditionByTokenRequestSchema = exchangeAssetRequestSchema({});
 
-export type ResolveConditionByTokenRequest = z.input<
-  typeof ResolveConditionByTokenRequestSchema
->;
+export type ResolveConditionByTokenRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type ResolveConditionByTokenError =
   | RateLimitError
@@ -308,7 +345,7 @@ export const ResolveConditionByTokenError = makeErrorGuard(
 );
 
 /**
- * Resolves the condition ID for a token.
+ * Resolves the condition ID for an exchange asset.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -324,7 +361,7 @@ export async function resolveConditionByToken(
 
   return unwrap(
     client.clob
-      .get(`/markets-by-token/${params.tokenId}`)
+      .get(`/markets-by-token/${params.assetId ?? params.tokenId}`)
       .andThen(validateWith(ResolveConditionByTokenResponseSchema)),
   );
 }
@@ -427,12 +464,23 @@ export async function fetchBuilderFeeRates(
   );
 }
 
-const FetchPriceRequestSchema = z.object({
-  tokenId: z.string(),
+const FetchPriceRequestSchema = exchangeAssetRequestSchema({
   side: OrderSideSchema,
 });
 
-export type FetchPriceRequest = z.input<typeof FetchPriceRequestSchema>;
+export type FetchPriceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      side: OrderSide;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      side: OrderSide;
+    };
 
 export type FetchPriceError =
   | RateLimitError
@@ -449,7 +497,7 @@ export const FetchPriceError = makeErrorGuard(
 );
 
 /**
- * Fetches the current quoted price for a token and side as a decimal string.
+ * Fetches the current quoted price for an exchange asset and side as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -460,8 +508,7 @@ export const FetchPriceError = makeErrorGuard(
  * @example
  * ```ts
  * const price = await fetchPrice(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  *   side: OrderSide.BUY,
  * });
  *
@@ -477,7 +524,7 @@ export async function fetchPrice(
   const response = await unwrap(
     client.clob
       .get('/price', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(PriceSchema)),
   );
@@ -486,15 +533,23 @@ export async function fetchPrice(
 }
 
 const FetchPricesRequestSchema = z
-  .array(
-    z.object({
-      tokenId: z.string(),
-      side: OrderSideSchema,
-    }),
-  )
+  .array(exchangeAssetRequestSchema({ side: OrderSideSchema }))
   .min(1);
 
-export type FetchPricesRequest = z.input<typeof FetchPricesRequestSchema>;
+export type FetchPricesRequest = Array<
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      side: OrderSide;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      side: OrderSide;
+    }
+>;
 
 export type FetchPricesError =
   | RateLimitError
@@ -511,7 +566,7 @@ export const FetchPricesError = makeErrorGuard(
 );
 
 /**
- * Fetches quoted prices for multiple tokens as a token ID keyed lookup.
+ * Fetches quoted prices for multiple exchange assets as an asset ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -523,13 +578,12 @@ export const FetchPricesError = makeErrorGuard(
  * ```ts
  * const prices = await fetchPrices(client, [
  *   {
- *     tokenId:
- *       '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *     assetId: '123',
  *     side: OrderSide.BUY,
  *   },
  * ]);
  *
- * // prices[tokenId]?.BUY === '0.52'
+ * // prices['123']?.BUY === '0.52'
  * ```
  *
  */
@@ -548,11 +602,19 @@ export async function fetchPrices(
   );
 }
 
-const FetchOrderBookRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchOrderBookRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchOrderBookRequest = z.input<typeof FetchOrderBookRequestSchema>;
+export type FetchOrderBookRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchOrderBookError =
   | RateLimitError
@@ -569,7 +631,7 @@ export const FetchOrderBookError = makeErrorGuard(
 );
 
 /**
- * Fetches the current order book for a token.
+ * Fetches the current order book for an exchange asset.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -580,8 +642,7 @@ export const FetchOrderBookError = makeErrorGuard(
  * @example
  * ```ts
  * const orderBook = await fetchOrderBook(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // orderBook.bids / orderBook.asks
@@ -596,22 +657,27 @@ export async function fetchOrderBook(
   return unwrap(
     client.clob
       .get('/book', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(FetchOrderBookResponseSchema)),
   );
 }
 
 const FetchOrderBooksRequestSchema = z
-  .array(
-    z.object({
-      tokenId: z.string(),
-    }),
-  )
+  .array(exchangeAssetRequestSchema({}))
   .min(1);
 
-export type FetchOrderBooksRequest = z.input<
-  typeof FetchOrderBooksRequestSchema
+export type FetchOrderBooksRequest = Array<
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    }
 >;
 
 export type FetchOrderBooksError =
@@ -629,7 +695,7 @@ export const FetchOrderBooksError = makeErrorGuard(
 );
 
 /**
- * Fetches order books for multiple tokens.
+ * Fetches order books for multiple exchange assets.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -641,8 +707,7 @@ export const FetchOrderBooksError = makeErrorGuard(
  * ```ts
  * const books = await fetchOrderBooks(client, [
  *   {
- *     tokenId:
- *       '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *     assetId: '123',
  *   },
  * ])
  *
@@ -664,11 +729,19 @@ export async function fetchOrderBooks(
   );
 }
 
-const FetchSpreadRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchSpreadRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchSpreadRequest = z.input<typeof FetchSpreadRequestSchema>;
+export type FetchSpreadRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchSpreadError =
   | RateLimitError
@@ -685,7 +758,7 @@ export const FetchSpreadError = makeErrorGuard(
 );
 
 /**
- * Fetches the spread for a token as a decimal string.
+ * Fetches the spread for an exchange asset as a decimal string.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -696,8 +769,7 @@ export const FetchSpreadError = makeErrorGuard(
  * @example
  * ```ts
  * const spread = await fetchSpread(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // spread === '0.02'
@@ -712,7 +784,7 @@ export async function fetchSpread(
   const response = await unwrap(
     client.clob
       .get('/spread', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(SpreadSchema)),
   );
@@ -721,14 +793,21 @@ export async function fetchSpread(
 }
 
 const FetchSpreadsRequestSchema = z
-  .array(
-    z.object({
-      tokenId: z.string(),
-    }),
-  )
+  .array(exchangeAssetRequestSchema({}))
   .min(1);
 
-export type FetchSpreadsRequest = z.input<typeof FetchSpreadsRequestSchema>;
+export type FetchSpreadsRequest = Array<
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    }
+>;
 
 export type FetchSpreadsError =
   | RateLimitError
@@ -745,7 +824,7 @@ export const FetchSpreadsError = makeErrorGuard(
 );
 
 /**
- * Fetches spreads for multiple tokens as a token ID keyed lookup.
+ * Fetches spreads for multiple exchange assets as an asset ID keyed lookup.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -757,12 +836,11 @@ export const FetchSpreadsError = makeErrorGuard(
  * ```ts
  * const spreads = await fetchSpreads(client, [
  *   {
- *     tokenId:
- *       '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *     assetId: '123',
  *   },
  * ]);
  *
- * // spreads[tokenId] === '0.02'
+ * // spreads['123'] === '0.02'
  * ```
  *
  */
@@ -781,13 +859,19 @@ export async function fetchSpreads(
   );
 }
 
-const FetchLastTradePriceRequestSchema = z.object({
-  tokenId: z.string(),
-});
+const FetchLastTradePriceRequestSchema = exchangeAssetRequestSchema({});
 
-export type FetchLastTradePriceRequest = z.input<
-  typeof FetchLastTradePriceRequestSchema
->;
+export type FetchLastTradePriceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    };
 
 export type FetchLastTradePriceError =
   | RateLimitError
@@ -804,9 +888,9 @@ export const FetchLastTradePriceError = makeErrorGuard(
 );
 
 /**
- * Fetches the last traded price for a token.
+ * Fetches the last traded price for an exchange asset.
  *
- * Returns `null` when the token has not traded.
+ * Returns `null` when the asset has not traded.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -817,8 +901,7 @@ export const FetchLastTradePriceError = makeErrorGuard(
  * @example
  * ```ts
  * const trade = await fetchLastTradePrice(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  * });
  *
  * // trade === LastTradePrice | null
@@ -834,22 +917,27 @@ export async function fetchLastTradePrice(
   return unwrap(
     client.clob
       .get('/last-trade-price', {
-        params: toSearchParams(params, snakeCase()),
+        params: toAssetSearchParams(params),
       })
       .andThen(validateWith(LastTradePriceSchema)),
   );
 }
 
 const FetchLastTradePricesRequestSchema = z
-  .array(
-    z.object({
-      tokenId: z.string(),
-    }),
-  )
+  .array(exchangeAssetRequestSchema({}))
   .min(1);
 
-export type FetchLastTradePricesRequest = z.input<
-  typeof FetchLastTradePricesRequestSchema
+export type FetchLastTradePricesRequest = Array<
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+    }
 >;
 
 export type FetchLastTradePricesError =
@@ -867,10 +955,10 @@ export const FetchLastTradePricesError = makeErrorGuard(
 );
 
 /**
- * Fetches last traded prices for multiple tokens.
+ * Fetches last traded prices for multiple exchange assets.
  *
- * Tokens without trades are omitted from the response. Match returned rows by
- * `tokenId`; the array is not positionally aligned with the request.
+ * Assets without trades are omitted from the response. Match returned rows by
+ * `assetId`; the array is not positionally aligned with the request.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -880,18 +968,16 @@ export const FetchLastTradePricesError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const tokenId =
- *   '8501497159083948713316135768103773293754490207922884688769443031624417212426';
- * const trades = await fetchLastTradePrices(client, [{ tokenId }]);
+ * const trades = await fetchLastTradePrices(client, [{ assetId: '123' }]);
  *
- * const trade = trades.find((candidate) => candidate.tokenId === tokenId);
+ * const trade = trades.find((candidate) => candidate.assetId === '123');
  * ```
  *
  */
 export async function fetchLastTradePrices(
   client: BaseClient,
   request: FetchLastTradePricesRequest,
-): Promise<LastTradePriceForToken[]> {
+): Promise<LastTradePriceForAsset[]> {
   const params = parseUserInput(request, FetchLastTradePricesRequestSchema);
 
   return unwrap(
@@ -903,17 +989,32 @@ export async function fetchLastTradePrices(
   );
 }
 
-const ListPriceHistoryRequestSchema = z.object({
-  tokenId: z.string(),
+const ListPriceHistoryRequestSchema = exchangeAssetRequestSchema({
   startTs: z.number().int().optional(),
   endTs: z.number().int().optional(),
   fidelity: z.number().int().positive().optional(),
   interval: PriceHistoryIntervalSchema.optional(),
 });
 
-export type FetchPriceHistoryRequest = z.input<
-  typeof ListPriceHistoryRequestSchema
->;
+export type FetchPriceHistoryRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      startTs?: number;
+      endTs?: number;
+      fidelity?: number;
+      interval?: PriceHistoryInterval;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      startTs?: number;
+      endTs?: number;
+      fidelity?: number;
+      interval?: PriceHistoryInterval;
+    };
 
 export type FetchPriceHistoryError =
   | RateLimitError
@@ -930,7 +1031,7 @@ export const FetchPriceHistoryError = makeErrorGuard(
 );
 
 /**
- * Fetches historical price points for a token.
+ * Fetches historical price points for an exchange asset.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -941,8 +1042,7 @@ export const FetchPriceHistoryError = makeErrorGuard(
  * @example
  * ```ts
  * const history = await fetchPriceHistory(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '123',
  *   interval: PriceHistoryInterval.ONE_DAY,
  *   fidelity: 60,
  * });
@@ -959,13 +1059,22 @@ export async function fetchPriceHistory(
   const response = await unwrap(
     client.clob
       .get('/prices-history', {
-        params: toSearchParams(params, {
-          tokenId: 'market',
-          startTs: 'startTs',
-          endTs: 'endTs',
-          fidelity: 'fidelity',
-          interval: 'interval',
-        }),
+        params: toSearchParams(
+          {
+            market: params.assetId ?? params.tokenId,
+            startTs: params.startTs,
+            endTs: params.endTs,
+            fidelity: params.fidelity,
+            interval: params.interval,
+          },
+          {
+            market: 'market',
+            startTs: 'startTs',
+            endTs: 'endTs',
+            fidelity: 'fidelity',
+            interval: 'interval',
+          },
+        ),
       })
       .andThen(validateWith(PriceHistorySchema)),
   );
@@ -1160,24 +1269,32 @@ export function listMarketRewards(
   );
 }
 
-function toTokenRequestPayload(
-  params: Array<{
-    tokenId: string;
-  }>,
-) {
-  return params.map(({ tokenId }) => ({
-    token_id: tokenId,
+type ExchangeAssetParams = {
+  assetId?: TokenId | PositionId;
+  tokenId?: string;
+};
+
+function toTokenRequestPayload(params: ExchangeAssetParams[]) {
+  return params.map((request) => ({
+    token_id: request.assetId ?? request.tokenId,
   }));
 }
 
 function toTokenWithSideRequestPayload(
-  params: Array<{
-    tokenId: string;
-    side: z.infer<typeof OrderSideSchema>;
-  }>,
+  params: Array<ExchangeAssetParams & { side: OrderSide }>,
 ) {
-  return params.map(({ tokenId, side }) => ({
-    token_id: tokenId,
-    side,
+  return params.map((request) => ({
+    token_id: request.assetId ?? request.tokenId,
+    side: request.side,
   }));
+}
+
+function toAssetSearchParams(
+  params: ExchangeAssetParams & Record<string, unknown>,
+): URLSearchParams {
+  const { assetId: _, tokenId: __, ...rest } = params;
+  return toSearchParams(
+    { ...rest, tokenId: params.assetId ?? params.tokenId },
+    snakeCase(),
+  );
 }

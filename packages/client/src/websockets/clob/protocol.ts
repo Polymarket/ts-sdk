@@ -98,7 +98,9 @@ export function deriveMarketServerSubscription(
   const assets = new Set<string>();
   let customFeatureEnabled = false;
   for (const { subscription } of entries) {
-    for (const tokenId of subscription.tokenIds) assets.add(tokenId);
+    for (const assetId of subscription.assetIds ?? subscription.tokenIds) {
+      assets.add(assetId);
+    }
     customFeatureEnabled ||= subscription.customFeatureEnabled === true;
   }
   return { assetsIds: Array.from(assets), customFeatureEnabled };
@@ -189,28 +191,29 @@ function buildUserUnsubscribeUpdate(markets: readonly string[]): unknown {
 export function marketMatcherFor(
   subscription: MarketSubscription,
 ): (event: MarketEvent) => boolean {
+  const assetIds = subscription.assetIds ?? subscription.tokenIds;
   return (event) => {
     switch (event.type) {
       case 'price_change':
         return event.payload.priceChanges.some((change) =>
-          subscription.tokenIds.includes(change.tokenId),
+          assetIds.includes(change.assetId),
         );
       case 'new_market':
         return subscription.customFeatureEnabled === true;
       case 'market_resolved':
         return (
           subscription.customFeatureEnabled === true &&
-          (event.payload.tokenIds ?? []).some((tokenId) =>
-            subscription.tokenIds.includes(tokenId),
+          (event.payload.assetIds ?? []).some((assetId) =>
+            assetIds.includes(assetId),
           )
         );
       case 'best_bid_ask':
         return (
           subscription.customFeatureEnabled === true &&
-          subscription.tokenIds.includes(event.payload.tokenId)
+          assetIds.includes(event.payload.assetId)
         );
       default:
-        return subscription.tokenIds.includes(event.payload.tokenId);
+        return assetIds.includes(event.payload.assetId);
     }
   };
 }

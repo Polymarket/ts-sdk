@@ -1,3 +1,4 @@
+import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
 import type {
   CryptoPricesBinanceEvent,
   CryptoPricesChainlinkEvent,
@@ -21,9 +22,12 @@ import {
 import type {
   EquityPricesEvent,
   EventForSubscriptionSpecs,
+  MarketSubscription,
   SubscribeError,
   SubscriptionHandle,
 } from './subscriptions';
+
+const ASSET_ID = toTokenId('123');
 
 describe('EventForSubscriptionSpecs', () => {
   it('exports the TWAP public surface from the package root', () => {
@@ -39,7 +43,12 @@ describe('EventForSubscriptionSpecs', () => {
 
   it('narrows a standard market spec to standard market events', () => {
     type MarketOnly = EventForSubscriptionSpecs<
-      readonly [{ topic: 'market'; tokenIds: readonly string[] }]
+      readonly [
+        {
+          topic: 'market';
+          assetIds: readonly (TokenId | PositionId)[];
+        },
+      ]
     >;
     expectTypeOf<MarketOnly>().toEqualTypeOf<StandardMarketEvent>();
     expectTypeOf<
@@ -53,7 +62,7 @@ describe('EventForSubscriptionSpecs', () => {
         {
           customFeatureEnabled: true;
           topic: 'market';
-          tokenIds: readonly string[];
+          assetIds: readonly (TokenId | PositionId)[];
         },
       ]
     >;
@@ -66,7 +75,7 @@ describe('EventForSubscriptionSpecs', () => {
         {
           customFeatureEnabled: false;
           topic: 'market';
-          tokenIds: readonly string[];
+          assetIds: readonly (TokenId | PositionId)[];
         },
       ]
     >;
@@ -79,7 +88,7 @@ describe('EventForSubscriptionSpecs', () => {
         {
           customFeatureEnabled: boolean;
           topic: 'market';
-          tokenIds: readonly string[];
+          assetIds: readonly (TokenId | PositionId)[];
         },
       ]
     >;
@@ -161,11 +170,22 @@ describe('EventForSubscriptionSpecs', () => {
   it('unions the event types of a multi-topic spec', () => {
     type Mixed = EventForSubscriptionSpecs<
       readonly [
-        { topic: 'market'; tokenIds: readonly string[] },
+        {
+          topic: 'market';
+          assetIds: readonly (TokenId | PositionId)[];
+        },
         { topic: 'sports' },
       ]
     >;
     expectTypeOf<Mixed>().toEqualTypeOf<StandardMarketEvent | SportsEvent>();
+  });
+
+  it('preserves event narrowing for a broad market spec in a mixed list', () => {
+    type Mixed = EventForSubscriptionSpecs<
+      readonly [MarketSubscription, { topic: 'sports' }]
+    >;
+
+    expectTypeOf<Mixed>().toEqualTypeOf<MarketEvent | SportsEvent>();
   });
 });
 
@@ -182,6 +202,17 @@ describe('PublicClient.subscribe', () => {
     const client = createPublicClient();
 
     // Intentionally not awaited; we only care about the static type.
+    const pending = client.subscribe([
+      { topic: 'market', assetIds: [ASSET_ID] },
+    ]);
+    expectTypeOf(pending).resolves.toEqualTypeOf<
+      SubscriptionHandle<StandardMarketEvent>
+    >();
+  });
+
+  it('retains tokenIds as a compatibility subscription input', async () => {
+    const client = createPublicClient();
+
     const pending = client.subscribe([{ topic: 'market', tokenIds: ['123'] }]);
     expectTypeOf(pending).resolves.toEqualTypeOf<
       SubscriptionHandle<StandardMarketEvent>
@@ -193,7 +224,7 @@ describe('PublicClient.subscribe', () => {
 
     // Intentionally not awaited; we only care about the static type.
     const pending = client.subscribe([
-      { customFeatureEnabled: true, topic: 'market', tokenIds: ['123'] },
+      { customFeatureEnabled: true, topic: 'market', assetIds: [ASSET_ID] },
     ]);
     expectTypeOf(pending).resolves.toEqualTypeOf<
       SubscriptionHandle<MarketEvent>
@@ -231,7 +262,9 @@ describe('PublicClient.subscribe', () => {
 
   it('excludes secure-only events from a public subscription', async () => {
     const client = createPublicClient();
-    const pending = client.subscribe([{ topic: 'market', tokenIds: ['123'] }]);
+    const pending = client.subscribe([
+      { topic: 'market', assetIds: [ASSET_ID] },
+    ]);
     const handle = await pending;
 
     for await (const event of handle) {

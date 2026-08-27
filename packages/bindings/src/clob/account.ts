@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   BaseUnitsSchema,
+  ClobAssetIdSchema,
   type ConditionId,
   ConditionIdSchema,
   DecimalishSchema,
@@ -12,8 +13,8 @@ import {
   emptyStringToNull,
   type IsoDateTimeString,
   OptionalEpochLikeToIsoDateTimeStringSchema,
+  type PositionId,
   type TokenId,
-  TokenIdSchema,
   TradeStatusSchema,
 } from '../shared';
 
@@ -43,9 +44,12 @@ export type ClosedOnlyMode = z.infer<typeof ClosedOnlyModeSchema>;
 
 export type OpenOrder = {
   id: string;
+  /** Exchange asset identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
   /** Condition ID for the market associated with this order. */
   conditionId: ConditionId;
-  tokenId: TokenId;
   owner: string;
   makerAddress: string;
   side: string;
@@ -62,7 +66,7 @@ export type OpenOrder = {
 
 export const OpenOrderSchema = z
   .object({
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     associate_trades: z.array(z.string()),
     created_at: EpochLikeToIsoDateTimeStringSchema,
     expiration: OptionalEpochLikeToIsoDateTimeStringSchema,
@@ -94,6 +98,7 @@ export const OpenOrderSchema = z
       const transformed = {
         ...rest,
         conditionId: market,
+        assetId: asset_id,
         tokenId: asset_id,
         associateTrades: associate_trades,
         createdAt: created_at,
@@ -113,9 +118,23 @@ export const OpenOrdersPageSchema = createCursorPageSchema(OpenOrderSchema);
 
 export type OpenOrdersPage = z.infer<typeof OpenOrdersPageSchema>;
 
-export const MakerOrderSchema = z
+export type MakerOrder = {
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  feeRateBps: DecimalString | null;
+  makerAddress: string;
+  matchedAmount: DecimalString;
+  orderId: string;
+  outcome: string;
+  owner: string;
+  price: DecimalString;
+  side: string;
+};
+
+const MakerOrderSchema = z
   .object({
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     // The API serializes a missing maker fee rate as an empty string.
     // Normalize to null so consumers never see '' as a DecimalString. This
     // matches py-sdk, where MakerOrder.fee_rate_bps is nullable.
@@ -141,21 +160,23 @@ export const MakerOrderSchema = z
       ...rest
     }) => ({
       ...rest,
+      assetId: asset_id,
       tokenId: asset_id,
       feeRateBps: fee_rate_bps,
       makerAddress: maker_address,
       matchedAmount: matched_amount,
       orderId: order_id,
     }),
-  );
-
-type MakerOrder = z.output<typeof MakerOrderSchema>;
+  ) satisfies z.ZodType<MakerOrder>;
 
 export type ClobTrade = {
   id: string;
+  /** Exchange asset identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
   /** Condition ID for the market associated with this trade. */
   conditionId: ConditionId;
-  tokenId: TokenId;
   owner: string;
   makerAddress: string;
   takerOrderId: string;
@@ -175,7 +196,7 @@ export type ClobTrade = {
 
 export const ClobTradeSchema = z
   .object({
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     bucket_index: z.number(),
     fee_rate_bps: DecimalStringSchema,
     id: z.string(),
@@ -211,6 +232,7 @@ export const ClobTradeSchema = z
     }) => ({
       ...rest,
       conditionId: market,
+      assetId: asset_id,
       tokenId: asset_id,
       bucketIndex: bucket_index,
       feeRateBps: fee_rate_bps,
@@ -310,12 +332,21 @@ export const TokenSchema = z
   .object({
     outcome: z.string(),
     price: DecimalishSchema,
-    token_id: TokenIdSchema,
+    token_id: ClobAssetIdSchema,
   })
   .transform(({ token_id, ...rest }) => ({
     ...rest,
+    assetId: token_id,
     tokenId: token_id,
-  }));
+  })) satisfies z.ZodType<RewardMarketToken>;
+
+type RewardMarketToken = {
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  outcome: string;
+  price: DecimalString;
+};
 
 export const RewardsConfigSchema = z
   .object({
@@ -387,9 +418,33 @@ export const UserRewardsEarningSchema = z
       rewardsMaxSpread: rewards_max_spread,
       rewardsMinSize: rewards_min_size,
     }),
-  );
+  ) satisfies z.ZodType<UserRewardsEarning>;
 
-export type UserRewardsEarning = z.infer<typeof UserRewardsEarningSchema>;
+export type UserRewardsEarning = {
+  conditionId: ConditionId;
+  earningPercentage: number;
+  earnings: Array<{
+    assetAddress: string;
+    assetRate: DecimalString;
+    earnings: DecimalString;
+  }>;
+  eventSlug: string;
+  image: string;
+  makerAddress: string;
+  marketCompetitiveness: number;
+  marketSlug: string;
+  question: string;
+  rewardsConfig: Array<{
+    assetAddress: string;
+    endDate: IsoDateTimeString;
+    ratePerDay: DecimalString;
+    startDate: IsoDateTimeString;
+    totalRewards: DecimalString;
+  }>;
+  rewardsMaxSpread: number;
+  rewardsMinSize: DecimalString;
+  tokens: RewardMarketToken[];
+};
 
 export const UserRewardsEarningsPageSchema = createCursorPageSchema(
   UserRewardsEarningSchema,

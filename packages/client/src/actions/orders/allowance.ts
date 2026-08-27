@@ -28,7 +28,7 @@ export async function resolveCurrentAllowance(
         }
       : {
           assetType,
-          tokenId: params.assetId,
+          assetId: params.assetId,
         },
   );
 
