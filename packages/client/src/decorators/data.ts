@@ -274,7 +274,15 @@ export type DataActions = {
    */
   listMarketHolders(request: ListMarketHoldersRequest): Promise<MetaHolder[]>;
   /**
-   * Lists trades for a wallet, market, or event.
+   * Lists trades for a wallet, market, or event — or the global recent-trades
+   * feed when no filter is given.
+   *
+   * Only the taker side of each match is returned by default
+   * (`takerOnly: false` includes maker rows), and a dust filter of 0.01
+   * shares applies unless `filterType`/`filterAmount` say otherwise (either
+   * may be sent alone). `conditionId` accepts at most 20 distinct ids. `pageSize`
+   * defaults to 100 (max 1000). `start`/`end` are Unix seconds. Transient
+   * rate limits are retried automatically.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.

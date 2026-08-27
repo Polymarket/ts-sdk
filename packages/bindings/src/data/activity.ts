@@ -13,7 +13,6 @@ import {
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
-  emptyStringToNull,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
@@ -29,6 +28,7 @@ import {
   type Side,
   SideSchema,
 } from './common';
+import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
 
 export enum ComboActivityType {
@@ -343,58 +343,89 @@ const OptionalTextSchema = z.preprocess(
   z.string().optional(),
 );
 
+const UnknownOutcomeIndexToUndefinedSchema = z.preprocess(
+  (value) => (value === 999 ? undefined : value),
+  z.number().int().optional(),
+);
+
 export type Trade = {
-  wallet: EvmAddress | null | undefined;
+  wallet: EvmAddress;
+  side: Side;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
-  assetId: TokenId | PositionId | null | undefined;
+  assetId: TokenId | PositionId;
   /** @deprecated Use `assetId`. */
-  tokenId: TokenId | PositionId | null | undefined;
-  side?: Side | null;
-  conditionId?: ConditionId | null;
-  size?: DecimalString | null;
-  price?: DecimalString | null;
-  timestamp?: EpochMilliseconds | null;
-  title?: string | null;
-  slug?: string | null;
-  icon?: string | null;
-  eventSlug?: string | null;
-  outcome?: string | null;
-  outcomeIndex?: number | null;
-  name?: string | null;
-  pseudonym?: string | null;
-  bio?: string | null;
-  profileImage?: string | null;
-  profileImageOptimized?: string | null;
-  transactionHash?: string | null;
+  tokenId: TokenId | PositionId;
+  conditionId: ConditionId;
+  size: number;
+  price: number;
+  timestamp: EpochMilliseconds;
+  title?: string;
+  slug?: string;
+  icon?: string;
+  eventSlug?: string;
+  outcome?: string;
+  outcomeIndex?: number;
+  name?: string;
+  pseudonym?: string;
+  bio?: string;
+  profileImage?: string;
+  profileImageOptimized?: string;
+  transactionHash: TxHash;
 };
 
+/**
+ * A trades-feed row, normalized to the SDK vocabulary.
+ *
+ * The wire is strict snake_case with every field present: absence arrives
+ * as an empty string (normalized to `undefined` here) and an unknown outcome
+ * index arrives as the sentinel `999` (also normalized to `undefined` —
+ * missing is never `0`). Timestamps arrive as epoch seconds and normalize to
+ * epoch milliseconds. `size` is a share count and `price` is USD per share.
+ * The asset is a CTF token id or a Polymarket V2 position id.
+ */
 export const TradeSchema = z
   .object({
-    proxyWallet: EvmAddressSchema.nullish(),
-    side: SideSchema.nullish(),
-    asset: ClobAssetIdSchema.nullish(),
-    conditionId: ConditionIdSchema.nullish(),
-    size: DecimalishSchema.nullish(),
-    price: DecimalishSchema.nullish(),
-    timestamp: EpochSecondsToMillisecondsSchema.nullish(),
-    title: z.string().nullish(),
-    slug: z.string().nullish(),
-    icon: z.preprocess(emptyStringToNull, z.string().nullish()),
-    eventSlug: z.string().nullish(),
-    outcome: z.string().nullish(),
-    outcomeIndex: z.number().int().nullish(),
-    name: z.string().nullish(),
-    pseudonym: z.string().nullish(),
-    bio: z.string().nullish(),
-    profileImage: z.string().nullish(),
-    profileImageOptimized: z.string().nullish(),
-    transactionHash: z.string().nullish(),
+    proxy_wallet: EvmAddressSchema,
+    side: SideSchema,
+    token_id: ClobAssetIdSchema,
+    condition_id: ConditionIdSchema,
+    size: z.number(),
+    price: z.number(),
+    timestamp: EpochSecondsToMillisecondsSchema,
+    title: OptionalTextSchema,
+    slug: OptionalTextSchema,
+    icon: OptionalTextSchema,
+    event_slug: OptionalTextSchema,
+    outcome: OptionalTextSchema,
+    outcome_index: UnknownOutcomeIndexToUndefinedSchema,
+    name: OptionalTextSchema,
+    pseudonym: OptionalTextSchema,
+    bio: OptionalTextSchema,
+    profile_image: OptionalTextSchema,
+    profile_image_optimized: OptionalTextSchema,
+    transaction_hash: TxHashSchema,
   })
-  .transform(({ asset, proxyWallet, ...rest }) => ({
-    ...rest,
-    wallet: proxyWallet,
-    assetId: asset,
-    tokenId: asset,
+  .transform((trade) => ({
+    wallet: trade.proxy_wallet,
+    side: trade.side,
+    assetId: trade.token_id,
+    tokenId: trade.token_id,
+    conditionId: trade.condition_id,
+    size: trade.size,
+    price: trade.price,
+    timestamp: trade.timestamp,
+    title: trade.title,
+    slug: trade.slug,
+    icon: trade.icon,
+    eventSlug: trade.event_slug,
+    outcome: trade.outcome,
+    outcomeIndex: trade.outcome_index,
+    name: trade.name,
+    pseudonym: trade.pseudonym,
+    bio: trade.bio,
+    profileImage: trade.profile_image,
+    profileImageOptimized: trade.profile_image_optimized,
+    transactionHash: trade.transaction_hash,
   })) satisfies z.ZodType<Trade>;
 
 const RawActivitySchema = z.object({
@@ -442,7 +473,7 @@ export const TradedSchema = z.object({
   traded: z.number().int().nullish(),
 });
 
-export const ListTradesResponseSchema = z.array(TradeSchema);
+export const ListTradesResponseSchema = dataPageSchema(TradeSchema);
 export const ListActivityResponseSchema = z.array(ActivitySchema);
 export const ListComboActivityResponseSchema = z
   .object({

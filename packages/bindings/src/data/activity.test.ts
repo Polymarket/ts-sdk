@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ActivitySchema } from './activity';
+import { ActivitySchema, TradeSchema } from './activity';
 import { ActivityType } from './common';
 
 describe('ActivitySchema', () => {
@@ -46,5 +46,71 @@ describe('ActivitySchema', () => {
 
     expect(activity.type).toBe(type);
     expect(activity).toHaveProperty('amount', '12.5');
+  });
+});
+
+describe('TradeSchema', () => {
+  it('normalizes the strict wire row to the SDK vocabulary', () => {
+    const trade = TradeSchema.parse({
+      proxy_wallet: `0x${'1'.repeat(40)}`,
+      side: 'BUY',
+      token_id: '123',
+      condition_id: `0x${'c'.repeat(64)}`,
+      size: 11,
+      price: 0.999,
+      timestamp: 1_700_000_000,
+      title: 'Will it happen?',
+      slug: 'will-it-happen',
+      icon: 'https://example.invalid/icon.png',
+      // The wire encodes absence as an empty string and an unknown outcome
+      // index as the 999 sentinel; both must come out as `undefined`.
+      event_slug: '',
+      outcome: 'No',
+      outcome_index: 999,
+      name: '',
+      pseudonym: 'Unkempt-Embassy',
+      bio: '',
+      profile_image: '',
+      profile_image_optimized: '',
+      transaction_hash: `0x${'a'.repeat(64)}`,
+    });
+
+    expect(trade.wallet).toBe(`0x${'1'.repeat(40)}`);
+    expect(trade.assetId).toBe('123');
+    expect(trade.tokenId).toBe('123');
+    expect(trade.conditionId).toBe(`0x${'c'.repeat(64)}`);
+    expect(trade.timestamp).toBe(1_700_000_000_000);
+    expect(trade.eventSlug).toBeUndefined();
+    expect(trade.outcomeIndex).toBeUndefined();
+    expect(trade.name).toBeUndefined();
+    expect(trade.pseudonym).toBe('Unkempt-Embassy');
+    expect(trade.transactionHash).toBe(`0x${'a'.repeat(64)}`);
+    expect(trade).not.toHaveProperty('proxy_wallet');
+  });
+
+  it('keeps a known outcome index, including zero', () => {
+    const row = {
+      proxy_wallet: `0x${'1'.repeat(40)}`,
+      side: 'SELL',
+      token_id: '123',
+      condition_id: `0x${'c'.repeat(64)}`,
+      size: 1,
+      price: 0.5,
+      timestamp: 1_700_000_000,
+      title: 't',
+      slug: 's',
+      icon: '',
+      event_slug: '',
+      outcome: 'Yes',
+      outcome_index: 0,
+      name: '',
+      pseudonym: '',
+      bio: '',
+      profile_image: '',
+      profile_image_optimized: '',
+      transaction_hash: `0x${'a'.repeat(64)}`,
+    };
+
+    expect(TradeSchema.parse(row).outcomeIndex).toBe(0);
   });
 });

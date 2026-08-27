@@ -1,5 +1,8 @@
 import {
   ComboConditionIdSchema,
+  ConditionIdSchema,
+  EventIdSchema,
+  EvmAddressSchema,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
 import {
@@ -31,7 +34,13 @@ import {
   paginate,
 } from '../pagination';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  snakeCase,
+  toDataSearchParams,
+  toLegacyDataSearchParams,
+  toSearchParams,
+} from './params';
 
 export { ComboActivityType } from '@polymarket/bindings/data';
 
@@ -40,30 +49,48 @@ const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 const ListTradesRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    // Matches the upstream per-request limit cap.
-    pageSize: PageSizeSchema.max(10_000).default(20),
+    // The service default; anything past 1000 is rejected, not clamped.
+    pageSize: PageSizeSchema.max(1000).default(100),
+    // Branded input schemas double as the guard against silent widening: the
+    // service reads a malformed/empty `user` as absent and keys routing on
+    // `condition`/`event_id` presence, so a bad filter forwarded raw would
+    // quietly serve the global feed. The empty-array min(1)s exist for the
+    // same reason.
+    user: EvmAddressSchema.optional(),
     takerOnly: z.boolean().optional(),
+    // Unlike v1, either filter field may be sent alone (verified 200 live):
+    // the service always applies the dust filter, defaulting the missing half
+    // (TOKENS / 0.01) — so a both-or-neither rule here would reject requests
+    // the service answers.
     filterType: TradeFilterTypeSchema.optional(),
-    filterAmount: z.number().optional(),
-    market: z.array(z.string()).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    user: z.string().optional(),
+    filterAmount: z.number().min(0).optional(),
+    // Encodes to `condition_id`, an accepted alias of the canonical
+    // `condition` key. The service dedupes and then caps the selector at 20
+    // DISTINCT ids (DENG-588) — mirror both halves here so a duplicate-heavy
+    // list is neither rejected early nor sent redundantly, and the cap error
+    // stays typed.
+    conditionId: z
+      .array(ConditionIdSchema)
+      .min(1)
+      .transform((ids) => [
+        ...new Map(ids.map((id) => [id.toLowerCase(), id])).values(),
+      ])
+      .refine((ids) => ids.length <= 20, 'At most 20 distinct condition ids')
+      .optional(),
+    eventId: z.array(EventIdSchema).min(1).optional(),
     side: SideSchema.optional(),
     start: z.number().int().min(0).optional(),
     end: z.number().int().min(0).optional(),
   })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
+  .refine((value) => !(value.conditionId && value.eventId), {
+    message: 'Provide conditionId or eventId, not both',
     path: ['eventId'],
   })
-  .refine(
-    (value) =>
-      (value.filterType === undefined) === (value.filterAmount === undefined),
-    {
-      message: 'Provide filterType and filterAmount together',
-      path: ['filterAmount'],
-    },
-  );
+  // A zero `end` means unbounded, mirroring the service.
+  .refine((value) => !value.end || value.end >= (value.start ?? 0), {
+    message: 'end must not precede start',
+    path: ['end'],
+  });
 
 export type ListTradesRequest = z.input<typeof ListTradesRequestSchema>;
 export type ListTradesError =
@@ -81,7 +108,15 @@ export const ListTradesError = makeErrorGuard(
 );
 
 /**
- * Lists trades for a wallet, market, or event.
+ * Lists trades for a wallet, market, or event — or the global recent-trades
+ * feed when no filter is given.
+ *
+ * Only the taker side of each match is returned by default
+ * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
+ * applies unless `filterType`/`filterAmount` say otherwise — either may be
+ * sent alone. `conditionId` accepts at most 20 distinct ids. `pageSize` defaults to
+ * 100 (max 1000). `start`/`end` are Unix seconds. Transient rate limits are
+ * retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -127,33 +162,18 @@ export function listTrades(
     ListTradesRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/trades', {
-        params: toDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/trades', {
+          // The full original filter set rides along with every cursor: the
+          // cursor binds only its paging anchor, and a filter dropped on a
+          // follow-up page would silently widen the result set.
+          params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
         }),
-      })
-      .andThen(validateWith(ListTradesResponseSchema))
-      .map((trades) => {
-        const hasMore = trades.length >= decoded.pageSize;
-
-        return {
-          items: trades,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
+      ).andThen(validateWith(ListTradesResponseSchema)),
+    cursor,
+  );
 }
 
 const ActivitySortBySchema = z.enum(['TIMESTAMP', 'TOKENS', 'CASH']);
@@ -249,7 +269,7 @@ export function listActivity(
 
     return client.data
       .get('/activity', {
-        params: toDataSearchParams({
+        params: toLegacyDataSearchParams({
           ...params,
           // The endpoint defaults excludeDepositsWithdrawals=true and drops
           // DEPOSIT and WITHDRAWAL from the type filter even when requested

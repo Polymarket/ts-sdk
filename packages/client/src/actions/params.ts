@@ -58,9 +58,11 @@ export function snakeCase<TParams extends SearchParamsInput>(
 }
 
 /**
- * Data endpoints use camelCase query keys and comma-separated arrays.
+ * Legacy data endpoints use camelCase query keys and comma-separated arrays.
+ * Dies with the last legacy data action; new data actions use
+ * {@link toDataSearchParams}.
  */
-export function toDataSearchParams<TParams extends SearchParamsInput>(
+export function toLegacyDataSearchParams<TParams extends SearchParamsInput>(
   params: TParams,
 ): URLSearchParams {
   const searchParams = new URLSearchParams();
@@ -76,6 +78,35 @@ export function toDataSearchParams<TParams extends SearchParamsInput>(
     }
 
     searchParams.append(key, toSearchParamValue(value as SearchParamPrimitive));
+  }
+
+  return searchParams;
+}
+
+/**
+ * Data endpoints use snake_case query keys and comma-separated arrays.
+ */
+export function toDataSearchParams<TParams extends SearchParamsInput>(
+  params: TParams,
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    const searchParamKey = toSnakeCase(key);
+
+    if (isSearchParamArray(value)) {
+      searchParams.append(
+        searchParamKey,
+        value.map(toSearchParamValue).join(','),
+      );
+      continue;
+    }
+
+    searchParams.append(searchParamKey, toSearchParamValue(value));
   }
 
   return searchParams;
