@@ -285,9 +285,9 @@ export type DataActions = {
    * of each match is returned by default (`takerOnly: false` includes maker
    * rows), and a dust filter of 0.01 shares applies unless
    * `filterType`/`filterAmount` say otherwise (either may be sent alone —
-   * the service fills the other half in). `start`/`end` are Unix
-   * seconds. Transient rate limits are absorbed by retrying after the
-   * server-requested delay.
+   * the service fills the other half in). `conditionId` accepts at most 20
+   * ids. `start`/`end` are Unix seconds. Transient rate limits are absorbed
+   * by retrying after the server-requested delay.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.

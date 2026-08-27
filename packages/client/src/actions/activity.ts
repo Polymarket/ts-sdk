@@ -60,8 +60,9 @@ const ListTradesRequestSchema = z
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
     // Encodes to `condition_id`, an accepted alias of the canonical
-    // `condition` key.
-    conditionId: z.array(z.string().min(1)).min(1).optional(),
+    // `condition` key. At most 20 distinct ids — the service caps the
+    // selector (DENG-588), and enforcing it here keeps the error typed.
+    conditionId: z.array(z.string().min(1)).min(1).max(20).optional(),
     eventId: z.array(z.number().int()).min(1).optional(),
     side: SideSchema.optional(),
     start: z.number().int().min(0).optional(),
@@ -106,9 +107,10 @@ export const ListTradesError = makeErrorGuard(
  * are rejected, not clamped), only the taker side of each match is returned
  * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
  * applies unless `filterType`/`filterAmount` say otherwise — either may be
- * sent alone, and the service fills the other half in. An omitted window
- * serves the recent feed; `start`/`end` are Unix seconds. Transient rate
- * limits are absorbed by retrying after the server-requested delay.
+ * sent alone, and the service fills the other half in. `conditionId` accepts
+ * at most 20 ids. An omitted window serves the recent feed; `start`/`end` are
+ * Unix seconds. Transient rate limits are absorbed by retrying after the
+ * server-requested delay.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
