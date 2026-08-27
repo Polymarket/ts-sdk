@@ -1,6 +1,9 @@
 import { z } from 'zod';
-import { DecimalishSchema, IsoDateTimeStringSchema } from '../shared';
-import { AddressSchema } from './common';
+import {
+  DecimalishSchema,
+  EvmAddressSchema,
+  IsoDateTimeStringSchema,
+} from '../shared';
 
 export const LeaderboardEntrySchema = z.object({
   rank: z.string().nullish(),
@@ -29,7 +32,7 @@ export const BuilderVolumeEntrySchema = z
 export const TraderLeaderboardEntrySchema = z
   .object({
     rank: z.string().nullish(),
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     userName: z.string().nullish(),
     vol: DecimalishSchema.nullish(),
     pnl: DecimalishSchema.nullish(),

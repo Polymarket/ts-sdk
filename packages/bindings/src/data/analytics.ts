@@ -1,12 +1,37 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
-import { DecimalishSchema, TokenIdSchema } from '../shared';
-import { AddressSchema, Hash64Schema } from './common';
+import {
+  ClobAssetIdSchema,
+  type ConditionId,
+  ConditionIdSchema,
+  DecimalishSchema,
+  type DecimalString,
+  EvmAddressSchema,
+  type PositionId,
+  type TokenId,
+} from '../shared';
+
+export type Holder = {
+  wallet: EvmAddress | null | undefined;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId | null | undefined;
+  bio?: string | null;
+  pseudonym?: string | null;
+  amount?: DecimalString | null;
+  displayUsernamePublic?: boolean | null;
+  outcomeIndex?: number | null;
+  name?: string | null;
+  profileImage?: string | null;
+  profileImageOptimized?: string | null;
+};
 
 export const HolderSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
+    proxyWallet: EvmAddressSchema.nullish(),
     bio: z.string().nullish(),
-    asset: TokenIdSchema.nullish(),
+    asset: ClobAssetIdSchema.nullish(),
     pseudonym: z.string().nullish(),
     amount: DecimalishSchema.nullish(),
     displayUsernamePublic: z.boolean().nullish(),
@@ -18,23 +43,66 @@ export const HolderSchema = z
   .transform(({ asset, proxyWallet, ...rest }) => ({
     ...rest,
     wallet: proxyWallet,
+    assetId: asset,
     tokenId: asset,
-  }));
+  })) satisfies z.ZodType<Holder>;
 
-export const MetaHolderSchema = z.object({
-  token: z.string().nullish(),
-  holders: z.array(HolderSchema).nullish(),
-});
+export type MetaHolder = {
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId | null | undefined;
+  /** @deprecated Use `assetId`. */
+  token: TokenId | PositionId | null | undefined;
+  holders?: Holder[] | null;
+};
 
-export const OpenInterestSchema = z.object({
-  market: Hash64Schema.nullish(),
-  value: DecimalishSchema.nullish(),
-});
+export const MetaHolderSchema = z
+  .object({
+    token: ClobAssetIdSchema.nullish(),
+    holders: z.array(HolderSchema).nullish(),
+  })
+  .transform(({ token, ...rest }) => ({
+    ...rest,
+    assetId: token,
+    token,
+  })) satisfies z.ZodType<MetaHolder>;
 
-export const MarketVolumeSchema = z.object({
-  market: Hash64Schema.nullish(),
-  value: DecimalishSchema.nullish(),
-});
+export type OpenInterest = {
+  /** Condition ID of the market whose open interest is reported. */
+  conditionId: ConditionId | null | undefined;
+  /** @deprecated Use `conditionId`. */
+  market: ConditionId | null | undefined;
+  value?: DecimalString | null;
+};
+
+export const OpenInterestSchema = z
+  .object({
+    market: ConditionIdSchema.nullish(),
+    value: DecimalishSchema.nullish(),
+  })
+  .transform(({ market, ...rest }) => ({
+    ...rest,
+    conditionId: market,
+    market,
+  })) satisfies z.ZodType<OpenInterest>;
+
+export type MarketVolume = {
+  /** Condition ID of the market whose live volume is reported. */
+  conditionId: ConditionId | null | undefined;
+  /** @deprecated Use `conditionId`. */
+  market: ConditionId | null | undefined;
+  value?: DecimalString | null;
+};
+
+export const MarketVolumeSchema = z
+  .object({
+    market: ConditionIdSchema.nullish(),
+    value: DecimalishSchema.nullish(),
+  })
+  .transform(({ market, ...rest }) => ({
+    ...rest,
+    conditionId: market,
+    market,
+  })) satisfies z.ZodType<MarketVolume>;
 
 export const LiveVolumeSchema = z.object({
   total: DecimalishSchema.nullish(),
@@ -45,10 +113,6 @@ export const ListMarketHoldersResponseSchema = z.array(MetaHolderSchema);
 export const ListOpenInterestResponseSchema = z.array(OpenInterestSchema);
 export const FetchEventLiveVolumeResponseSchema = z.array(LiveVolumeSchema);
 
-export type Holder = z.infer<typeof HolderSchema>;
-export type MetaHolder = z.infer<typeof MetaHolderSchema>;
-export type OpenInterest = z.infer<typeof OpenInterestSchema>;
-export type MarketVolume = z.infer<typeof MarketVolumeSchema>;
 export type LiveVolume = z.infer<typeof LiveVolumeSchema>;
 export type ListMarketHoldersResponse = z.infer<
   typeof ListMarketHoldersResponseSchema

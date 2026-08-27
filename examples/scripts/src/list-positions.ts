@@ -22,7 +22,7 @@ for await (const page of positions) {
       curPrice: position.curPrice ?? '',
       redeemable: position.redeemable ?? false,
       mergeable: position.mergeable ?? false,
-      tokenId: position.tokenId ?? '',
+      assetId: position.assetId ?? '',
     })),
   );
 }
