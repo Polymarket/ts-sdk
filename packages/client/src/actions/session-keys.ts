@@ -121,8 +121,12 @@ export type AuthorizeSessionKeyRequest = {
   idempotencyKey?: string;
   /** Requested scopes. Defaults to `ALL`, which must appear alone. */
   scopes?: SessionKeyScope[];
-  /** Absolute expiry as whole future Unix seconds. */
-  validUntil: number;
+  /**
+   * Absolute expiry as whole future Unix seconds.
+   *
+   * Defaults to 4,315 hours from the current time.
+   */
+  validUntil?: number;
 };
 
 type ParsedAuthorizeSessionKeyRequest = {
@@ -135,6 +139,7 @@ type ParsedAuthorizeSessionKeyRequest = {
 const DEFAULT_SESSION_KEY_SCOPES = [
   SessionKeyKnownScope.ALL,
 ] satisfies SessionKeyScope[];
+const DEFAULT_SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
 
 const AuthorizeSessionKeyRequestSchema = z
   .object({
@@ -144,7 +149,15 @@ const AuthorizeSessionKeyRequestSchema = z
       .array(SessionSignerScopeSchema)
       .min(1)
       .default(DEFAULT_SESSION_KEY_SCOPES),
-    validUntil: z.number().int(),
+    validUntil: z
+      .number()
+      .int()
+      .optional()
+      .transform(
+        (validUntil) =>
+          validUntil ??
+          Math.floor(Date.now() / 1_000) + DEFAULT_SESSION_KEY_LIFETIME_SECONDS,
+      ),
   })
   .superRefine((value, context) => {
     if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
@@ -220,6 +233,8 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * The SDK receives only the public address. The application remains
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
+ * When `validUntil` is omitted, the authorization expires 4,315 hours from
+ * the current time.
  * Requires builder API-key authentication.
  *
  * @remarks
@@ -232,7 +247,6 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
  * });
  * ```
  *
