@@ -65,9 +65,18 @@ const ListTradesRequestSchema = z
     filterType: TradeFilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
     // Encodes to `condition_id`, an accepted alias of the canonical
-    // `condition` key. At most 20 distinct ids — the service caps the
-    // selector (DENG-588), and enforcing it here keeps the error typed.
-    conditionId: z.array(ConditionIdSchema).min(1).max(20).optional(),
+    // `condition` key. The service dedupes and then caps the selector at 20
+    // DISTINCT ids (DENG-588) — mirror both halves here so a duplicate-heavy
+    // list is neither rejected early nor sent redundantly, and the cap error
+    // stays typed.
+    conditionId: z
+      .array(ConditionIdSchema)
+      .min(1)
+      .transform((ids) => [
+        ...new Map(ids.map((id) => [id.toLowerCase(), id])).values(),
+      ])
+      .refine((ids) => ids.length <= 20, 'At most 20 distinct condition ids')
+      .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     side: SideSchema.optional(),
     start: z.number().int().min(0).optional(),
@@ -105,7 +114,7 @@ export const ListTradesError = makeErrorGuard(
  * Only the taker side of each match is returned by default
  * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
  * applies unless `filterType`/`filterAmount` say otherwise — either may be
- * sent alone. `conditionId` accepts at most 20 ids. `pageSize` defaults to
+ * sent alone. `conditionId` accepts at most 20 distinct ids. `pageSize` defaults to
  * 100 (max 1000). `start`/`end` are Unix seconds. Transient rate limits are
  * retried automatically.
  *

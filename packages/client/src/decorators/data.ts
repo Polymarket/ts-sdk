@@ -281,7 +281,7 @@ export type DataActions = {
    * Only the taker side of each match is returned by default
    * (`takerOnly: false` includes maker rows), and a dust filter of 0.01
    * shares applies unless `filterType`/`filterAmount` say otherwise (either
-   * may be sent alone). `conditionId` accepts at most 20 ids. `pageSize`
+   * may be sent alone). `conditionId` accepts at most 20 distinct ids. `pageSize`
    * defaults to 100 (max 1000). `start`/`end` are Unix seconds. Transient
    * rate limits are retried automatically.
    *
