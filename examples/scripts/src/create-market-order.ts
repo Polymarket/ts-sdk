@@ -35,7 +35,7 @@ const order = await secureClient.createMarketOrder({
   orderType: OrderType.FAK,
 });
 
-console.table({
+console.log({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
   minimumOrderSize,
   assetId: order.tokenId,
