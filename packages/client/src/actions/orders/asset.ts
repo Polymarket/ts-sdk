@@ -1,12 +1,5 @@
-import {
-  ClobAssetIdSchema,
-  type PositionId,
-  type TokenId,
-} from '@polymarket/bindings';
+import { ClobAssetIdSchema } from '@polymarket/bindings';
 import { z } from 'zod';
-
-/** @internal */
-export type OrderAssetId = PositionId | TokenId;
 
 /** @internal */
 export const OrderAssetInputSchema = z.union([

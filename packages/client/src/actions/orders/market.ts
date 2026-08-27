@@ -1,6 +1,7 @@
 import {
   type BuilderCode,
   BuilderCodeSchema,
+  type ClobAssetId,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -12,7 +13,7 @@ import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
 import { computeMarketOrderAmounts } from './amounts';
-import { type OrderAssetId, OrderAssetInputSchema } from './asset';
+import { OrderAssetInputSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -116,7 +117,7 @@ type MarketOrderContext = {
 async function resolveMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
   return hasProtectedPrice(params)
     ? resolveProtectedMarketOrderContext(client, params, assetId)
@@ -126,7 +127,7 @@ async function resolveMarketOrderContext(
 async function resolveProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
@@ -202,7 +203,7 @@ async function resolveProtectedMarketOrderContext(
 function buildProtectedBuyMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
   amount: number,
   builderTakerFeeRate: number,
   maxSpend: number,
@@ -235,7 +236,7 @@ function buildProtectedBuyMarketOrderContext(
 function buildProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
   amount: number,
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
@@ -258,7 +259,7 @@ function buildProtectedMarketOrderContext(
 async function resolveUnprotectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
   const feeInputs =
@@ -385,7 +386,7 @@ type FeeInputs = {
 
 async function resolveFeeInputs(
   client: BaseSecureClient,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
   builderCode: BuilderCode | undefined,
 ): Promise<FeeInputs> {
   const [market, builderTakerFeeRate] = await Promise.all([

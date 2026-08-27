@@ -1,5 +1,6 @@
 import type {
   BuilderCode,
+  ClobAssetId,
   OrderSide,
   OrderType,
   PositionId,
@@ -16,7 +17,6 @@ import type {
 import type { ExchangeOrderProtocolVersion } from '../../exchange';
 import type { TypedDataPayload } from '../../types';
 import type { SignOrderRequest } from '../../workflow';
-import type { OrderAssetId } from './asset';
 
 export type PrepareMarketBuyOrderRequest =
   | {
@@ -165,7 +165,7 @@ type BaseOrderDraft = {
 
 /** @internal */
 export type OrderDraft = BaseOrderDraft & {
-  assetId: OrderAssetId;
+  assetId: ClobAssetId;
 };
 
 /**

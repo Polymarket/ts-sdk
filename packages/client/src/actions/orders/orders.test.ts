@@ -1,4 +1,5 @@
 import {
+  type ClobAssetId,
   OrderSide,
   OrderType,
   toPositionId,
@@ -10,7 +11,6 @@ import { type EvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { SignerType } from '../../wallet';
-import type { OrderAssetId } from './asset';
 import { createSignedOrder, createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -145,7 +145,7 @@ describe('createSignedOrder', () => {
 });
 
 type CreateOrderDraftParams = {
-  assetId?: OrderAssetId;
+  assetId?: ClobAssetId;
   wallet: EvmAddress;
 };
 

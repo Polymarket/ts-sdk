@@ -1,4 +1,5 @@
 import {
+  type ClobAssetId,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -19,7 +20,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
-import { type OrderAssetId, OrderAssetInputSchema } from './asset';
+import { OrderAssetInputSchema } from './asset';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
   orderType: z
@@ -97,13 +98,13 @@ export type EstimateMarketPriceRequest =
 
 type EstimateMarketPriceParams =
   | {
-      assetId: OrderAssetId;
+      assetId: ClobAssetId;
       side: OrderSide.BUY;
       amount: number;
       orderType: OrderType.FAK | OrderType.FOK;
     }
   | {
-      assetId: OrderAssetId;
+      assetId: ClobAssetId;
       side: OrderSide.SELL;
       shares: number;
       orderType: OrderType.FAK | OrderType.FOK;
@@ -203,7 +204,7 @@ export async function estimateMarketPrice(
 export async function resolveEstimatedMarketPrice(
   client: BaseClient,
   params: {
-    assetId: OrderAssetId;
+    assetId: ClobAssetId;
     amount: number;
     orderType: OrderType;
     side: OrderSide;

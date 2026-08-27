@@ -1,5 +1,6 @@
 import {
   BuilderCodeSchema,
+  type ClobAssetId,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -10,7 +11,7 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
 import { computeLimitOrderAmounts } from './amounts';
-import { type OrderAssetId, OrderAssetInputSchema } from './asset';
+import { OrderAssetInputSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -69,7 +70,7 @@ export const PrepareLimitOrderParamsSchema =
   >;
 
 type ResolveLimitOrderContextParams = {
-  assetId: OrderAssetId;
+  assetId: ClobAssetId;
   price: number;
 };
 
