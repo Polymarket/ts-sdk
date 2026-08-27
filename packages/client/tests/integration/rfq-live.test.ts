@@ -14,6 +14,19 @@ describe('RFQ live quoting integration', () => {
     'quotes live RFQ requests until one executes',
     { timeout: 180_000 },
     async ({ secureClientWithDepositWallet, annotate }) => {
+      const pendingMarketPositionIds = new Set<string>();
+
+      for await (const page of secureClientWithDepositWallet.listComboMarkets({
+        pageSize: 100,
+      })) {
+        for (const market of page.items) {
+          if (!market.pending) continue;
+
+          pendingMarketPositionIds.add(market.outcomes.yes.positionId);
+          pendingMarketPositionIds.add(market.outcomes.no.positionId);
+        }
+      }
+
       const session = await secureClientWithDepositWallet.openRfqSession();
       const inFlightQuotes = new Set<Promise<void>>();
       let acknowledgedQuoteCount = 0;
@@ -22,6 +35,14 @@ describe('RFQ live quoting integration', () => {
       try {
         for await (const event of session) {
           if (event.type === 'quote_request') {
+            if (
+              event.legPositionIds.some((positionId) =>
+                pendingMarketPositionIds.has(positionId),
+              )
+            ) {
+              continue;
+            }
+
             const deadlineInMs = event.submissionDeadline - Date.now();
 
             if (deadlineInMs <= STALE_RFQ_BUFFER_MS) {
