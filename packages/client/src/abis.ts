@@ -291,11 +291,8 @@ export function perpsDepositCall(
   };
 }
 
-export type CtfRedeemPositionsCallError = UserInputError;
-export const CtfRedeemPositionsCallError = makeErrorGuard(UserInputError);
-
-export type SplitPositionCallError = UserInputError;
-export const SplitPositionCallError = makeErrorGuard(UserInputError);
+export type CtfSplitPositionCallError = UserInputError;
+export const CtfSplitPositionCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for `splitPosition(address,bytes32,bytes32,uint256[],uint256)`.
@@ -304,10 +301,10 @@ export const SplitPositionCallError = makeErrorGuard(UserInputError);
  * @remarks
  * This is a low-level transaction builder that most SDK consumers will not need.
  *
- * @throws {@link SplitPositionCallError}
+ * @throws {@link CtfSplitPositionCallError}
  * Thrown when the amount is invalid.
  */
-export function splitPositionCall(
+export function ctfSplitPositionCall(
   targetAddress: EvmAddress,
   collateralTokenAddress: EvmAddress,
   conditionId: ConditionId,
@@ -319,8 +316,8 @@ export function splitPositionCall(
   };
 }
 
-export type MergePositionsCallError = UserInputError;
-export const MergePositionsCallError = makeErrorGuard(UserInputError);
+export type CtfMergePositionsCallError = UserInputError;
+export const CtfMergePositionsCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for `mergePositions(address,bytes32,bytes32,uint256[],uint256)`.
@@ -329,10 +326,10 @@ export const MergePositionsCallError = makeErrorGuard(UserInputError);
  * @remarks
  * This is a low-level transaction builder that most SDK consumers will not need.
  *
- * @throws {@link MergePositionsCallError}
+ * @throws {@link CtfMergePositionsCallError}
  * Thrown when the amount is invalid.
  */
-export function mergePositionsCall(
+export function ctfMergePositionsCall(
   targetAddress: EvmAddress,
   collateralTokenAddress: EvmAddress,
   conditionId: ConditionId,
@@ -343,6 +340,9 @@ export function mergePositionsCall(
     to: targetAddress,
   };
 }
+
+export type CtfRedeemPositionsCallError = UserInputError;
+export const CtfRedeemPositionsCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for `redeemPositions(address,bytes32,bytes32,uint256[])`
@@ -365,18 +365,18 @@ export function ctfRedeemPositionsCall(
   };
 }
 
-export type SplitV2CallError = UserInputError;
-export const SplitV2CallError = makeErrorGuard(UserInputError);
+export type RouterSplitCallError = UserInputError;
+export const RouterSplitCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for protocol v2 Router `split(bytes31,uint256)`.
  *
- * @throws {@link SplitV2CallError}
+ * @throws {@link RouterSplitCallError}
  * Thrown when the condition ID or amount is invalid.
  */
-export function splitV2Call(
+export function routerSplitCall(
   routerAddress: EvmAddress,
-  conditionId: ComboConditionId,
+  conditionId: ConditionId | ComboConditionId,
   amount: bigint,
 ): TransactionCall {
   return {
@@ -388,18 +388,18 @@ export function splitV2Call(
   };
 }
 
-export type MergeV2CallError = UserInputError;
-export const MergeV2CallError = makeErrorGuard(UserInputError);
+export type RouterMergeCallError = UserInputError;
+export const RouterMergeCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for protocol v2 Router `merge(bytes31,uint256)`.
  *
- * @throws {@link MergeV2CallError}
+ * @throws {@link RouterMergeCallError}
  * Thrown when the condition ID or amount is invalid.
  */
-export function mergeV2Call(
+export function routerMergeCall(
   routerAddress: EvmAddress,
-  conditionId: ComboConditionId,
+  conditionId: ConditionId | ComboConditionId,
   amount: bigint,
 ): TransactionCall {
   return {
@@ -411,18 +411,18 @@ export function mergeV2Call(
   };
 }
 
-export type RedeemV2CallError = UserInputError;
-export const RedeemV2CallError = makeErrorGuard(UserInputError);
+export type RouterRedeemCallError = UserInputError;
+export const RouterRedeemCallError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a transaction call for protocol v2 Router `redeem(bytes31,uint256,uint256)`.
  *
- * @throws {@link RedeemV2CallError}
+ * @throws {@link RouterRedeemCallError}
  * Thrown when the condition ID, outcome index, or amount is invalid.
  */
-export function redeemV2Call(
+export function routerRedeemCall(
   routerAddress: EvmAddress,
-  conditionId: ComboConditionId,
+  conditionId: ConditionId | ComboConditionId,
   outcomeIndex: 0 | 1,
   amount: bigint,
 ): TransactionCall {
@@ -538,7 +538,7 @@ function expectUint256(value: bigint, label: string): bigint {
 }
 
 function normalizeProtocolV2ConditionId(
-  conditionId: ComboConditionId,
+  conditionId: ConditionId | ComboConditionId,
 ): HexString {
   if (PROTOCOL_V2_CONDITION_ID_BYTES31_PATTERN.test(conditionId)) {
     return conditionId.toLowerCase() as HexString;

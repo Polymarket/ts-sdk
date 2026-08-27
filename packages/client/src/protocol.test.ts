@@ -2,13 +2,14 @@ import {
   type ComboConditionId,
   type PositionId,
   toComboConditionId,
+  toConditionId,
   toPositionId,
 } from '@polymarket/bindings';
 import { describe, expect, it } from 'vitest';
 import {
   type CanonicalComboLegs,
   canonicalizeComboLegs,
-  decodeComboOutcomePositionId,
+  decodeV2OutcomePositionId,
   deriveComboPositionContext,
 } from './protocol';
 
@@ -60,33 +61,52 @@ describe('Protocol helpers', () => {
     });
   });
 
-  describe('decodeComboPositionId', () => {
-    it('decodes a combo position ID into a condition ID and outcome index', () => {
-      const positionId = comboPosition(CONDITION_ID, 1);
+  describe('decodeV2OutcomePositionId', () => {
+    it.each([
+      1, 2, 3,
+    ])('decodes a module %s position ID into a condition ID and outcome index', (moduleId) => {
+      const positionId = v2Position(moduleId, 7, 1);
 
-      expect(decodeComboOutcomePositionId(positionId)).toEqual({
-        conditionId: CONDITION_ID,
+      expect(decodeV2OutcomePositionId(positionId)).toEqual({
+        conditionId: toConditionId(positionConditionId(positionId)),
         outcomeIndex: 1,
       });
     });
 
-    it('rejects non-combo position IDs', () => {
-      expect(() => decodeComboOutcomePositionId(legPosition(1, 0))).toThrow(
-        /combinatorial module/,
+    it('decodes a combo position ID without narrowing the condition type', () => {
+      const positionId = comboPosition(CONDITION_ID, 1);
+
+      expect(decodeV2OutcomePositionId(positionId)).toEqual({
+        conditionId: toConditionId(CONDITION_ID),
+        outcomeIndex: 1,
+      });
+    });
+
+    it('rejects unsupported protocol modules', () => {
+      expect(() => decodeV2OutcomePositionId(v2Position(4, 1, 0))).toThrow(
+        /supported protocol v2 module/,
       );
     });
 
-    it('rejects combo position IDs with non-binary outcomes', () => {
+    it('rejects position IDs with non-binary outcomes', () => {
       expect(() =>
-        decodeComboOutcomePositionId(comboPosition(CONDITION_ID, 2)),
+        decodeV2OutcomePositionId(comboPosition(CONDITION_ID, 2)),
       ).toThrow(/YES\/NO/);
     });
   });
 });
 
 function legPosition(marker: number, outcome: number): PositionId {
+  return v2Position(1, marker, outcome);
+}
+
+function v2Position(
+  moduleId: number,
+  marker: number,
+  outcome: number,
+): PositionId {
   const bytes = new Uint8Array(32);
-  bytes[0] = 1;
+  bytes[0] = moduleId;
   bytes[30] = marker;
   bytes[31] = outcome;
 
@@ -95,6 +115,10 @@ function legPosition(marker: number, outcome: number): PositionId {
       `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
     ).toString(),
   );
+}
+
+function positionConditionId(positionId: PositionId): string {
+  return `0x${BigInt(positionId).toString(16).padStart(64, '0').slice(0, -2)}`;
 }
 
 function comboPosition(
