@@ -1,5 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { RfqKnownErrorCode, RfqQuoterInboundMessageSchema } from './rfq';
+import {
+  ListComboMarketsResponseSchema,
+  RfqKnownErrorCode,
+  RfqQuoterInboundMessageSchema,
+} from './rfq';
+
+describe('Combo market responses', () => {
+  it('preserves pending Combo enablement', () => {
+    const response = ListComboMarketsResponseSchema.parse({
+      markets: [
+        {
+          id: '123',
+          condition_id:
+            '0x032def24bfb0c5c57fb236fac08b94236a0000000000000000000000000000',
+          position_ids: ['1', '2'],
+          pending: true,
+          slug: 'pending-market',
+          title: 'Pending market',
+          outcomes: ['Yes', 'No'],
+          outcome_prices: ['0.4', '0.6'],
+          image: '',
+          volume: 100,
+          tags: [],
+        },
+      ],
+      next_cursor: null,
+    });
+
+    expect(response.markets[0]).toMatchObject({ pending: true });
+  });
+});
 
 describe('RFQ quoter inbound messages', () => {
   it('parses confirmed trade broadcasts without maker identity', () => {
