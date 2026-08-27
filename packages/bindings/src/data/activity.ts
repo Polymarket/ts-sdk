@@ -231,7 +231,7 @@ export type TakerRebateActivity = ActivityBase & {
 };
 
 export type TipActivity = ActivityBase & {
-  /** A user-to-user tip. Served only when the `type` filter names TIP. */
+  /** A user-to-user tip. */
   type: 'TIP';
   /** The tipped amount in USD. */
   amount: number;
