@@ -230,6 +230,13 @@ export type TakerRebateActivity = ActivityBase & {
   amount: number;
 };
 
+export type TipActivity = ActivityBase & {
+  /** A user-to-user tip. Served only when the `type` filter names TIP. */
+  type: 'TIP';
+  /** The tipped amount in USD. */
+  amount: number;
+};
+
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -243,7 +250,8 @@ export type Activity =
   | YieldActivity
   | DepositActivity
   | WithdrawalActivity
-  | TakerRebateActivity;
+  | TakerRebateActivity
+  | TipActivity;
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -542,6 +550,7 @@ function normalizeActivity(activity: RawActivity): Activity {
     case ActivityType.DEPOSIT:
     case ActivityType.WITHDRAWAL:
     case ActivityType.TAKER_REBATE:
+    case ActivityType.TIP:
       return {
         ...base,
         type: activity.type,

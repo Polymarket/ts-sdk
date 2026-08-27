@@ -14,6 +14,11 @@ export enum ActivityType {
   DEPOSIT = 'DEPOSIT',
   WITHDRAWAL = 'WITHDRAWAL',
   TAKER_REBATE = 'TAKER_REBATE',
+  /**
+   * A user-to-user tip. Opt-in: never part of the default set — rows are
+   * served only when the `type` filter names TIP explicitly.
+   */
+  TIP = 'TIP',
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);

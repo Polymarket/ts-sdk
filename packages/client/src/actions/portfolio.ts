@@ -261,6 +261,18 @@ const ListComboPositionsRequestSchema = z.object({
   updatedBefore: EpochSecondsLikeSchema.optional(),
 });
 
+const ListComboPositionsRequestSchemaChecked =
+  ListComboPositionsRequestSchema.refine(
+    (value) =>
+      value.updatedBefore === undefined ||
+      value.updatedAfter === undefined ||
+      value.updatedBefore >= value.updatedAfter,
+    {
+      message: 'updatedBefore must not precede updatedAfter',
+      path: ['updatedBefore'],
+    },
+  );
+
 export type ListComboPositionsRequest = Omit<
   z.input<typeof ListComboPositionsRequestSchema>,
   'status'
@@ -354,7 +366,7 @@ export function listComboPositions(
 ): Paginated<ComboPosition[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
-    ListComboPositionsRequestSchema,
+    ListComboPositionsRequestSchemaChecked,
   );
 
   return paginate(
