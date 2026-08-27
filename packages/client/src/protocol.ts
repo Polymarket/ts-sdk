@@ -7,10 +7,9 @@ import {
   toConditionId,
   toPositionId,
 } from '@polymarket/bindings';
+import type { Tagged } from '@polymarket/types';
 import { AbiParameters, Hash } from 'ox';
 import { UserInputError } from './errors';
-
-type Tagged<T, Tag extends string> = T & { readonly __tag: Tag };
 
 const UINT256_BYTE_LENGTH = 32;
 const BINARY_MODULE_ID = 1n;
