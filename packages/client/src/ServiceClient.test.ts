@@ -54,6 +54,67 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('uses stable non-400 JSON error identifiers as fallback codes', async () => {
+    server.use(
+      http.get(`${root}/json-error-identifier`, () =>
+        HttpResponse.json(
+          { error: 'signer_does_not_match_account' },
+          { status: 422 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/json-error-identifier')),
+    ).rejects.toMatchObject({
+      code: 'signer_does_not_match_account',
+      message: `signer_does_not_match_account (${root}/json-error-identifier)`,
+      name: 'RequestRejectedError',
+      status: 422,
+    });
+  });
+
+  it('does not promote 400 validation details into fallback codes', async () => {
+    server.use(
+      http.get(`${root}/json-400-error-identifier`, () =>
+        HttpResponse.json({ error: 'invalid_request' }, { status: 400 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/json-400-error-identifier')),
+    ).rejects.toMatchObject({
+      code: undefined,
+      name: 'RequestRejectedError',
+      status: 400,
+    });
+  });
+
+  it('keeps explicit JSON error codes authoritative', async () => {
+    server.use(
+      http.get(`${root}/json-explicit-error-code`, () =>
+        HttpResponse.json(
+          {
+            error: 'signer_does_not_match_account',
+            code: 'EXPLICIT_CODE',
+          },
+          { status: 422 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      unwrap(client.get('/json-explicit-error-code')),
+    ).rejects.toMatchObject({
+      code: 'EXPLICIT_CODE',
+      name: 'RequestRejectedError',
+      status: 422,
+    });
+  });
+
   it('prefers JSON error fields over Cloudflare response detection', async () => {
     server.use(
       http.get(`${root}/cloudflare-json-error`, () =>

@@ -239,6 +239,32 @@ export enum PerpsKnownWithdrawalStatus {
 export type PerpsWithdrawalStatus = PerpsKnownWithdrawalStatus | (string & {});
 
 /**
+ * Known internal-transfer classifications.
+ *
+ * The service evolves this set independently of released clients, so
+ * transfer parsing accepts unknown classifications as plain strings; see
+ * {@link PerpsInternalTransferType}.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownInternalTransferType {
+  Transfer = 'transfer',
+  ReferralPayout = 'referral_payout',
+}
+
+/**
+ * An internal-transfer classification. Known values are enumerated in
+ * {@link PerpsKnownInternalTransferType}; newly introduced values flow through
+ * as plain strings so they can be handled before a client release that
+ * enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsInternalTransferType =
+  | PerpsKnownInternalTransferType
+  | (string & {});
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export enum PerpsInternalTransferDirection {
@@ -312,6 +338,13 @@ export const PerpsDepositStatusSchema = z.enum(PerpsDepositStatus);
 export const PerpsWithdrawalStatusSchema = z
   .string()
   .transform((value): PerpsWithdrawalStatus => value);
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsInternalTransferTypeSchema = z
+  .string()
+  .min(1)
+  .transform((value): PerpsInternalTransferType => value);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
