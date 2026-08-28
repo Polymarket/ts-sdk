@@ -34,6 +34,36 @@ export enum PositionStatus {
 
 export const PositionStatusSchema = z.enum(PositionStatus);
 
+/** Sort key for position listings. */
+export enum PositionSortBy {
+  CurrentValue = 'CURRENT_VALUE',
+  Tokens = 'TOKENS',
+  UnrealizedPnl = 'UNREALIZED_PNL',
+  RealizedPnl = 'REALIZED_PNL',
+  TotalPnl = 'TOTAL_PNL',
+  Timestamp = 'TIMESTAMP',
+}
+
+export const PositionSortBySchema = z.enum(PositionSortBy);
+
+/** Unit the positions dust filter applies to. */
+export enum PositionFilterType {
+  Cash = 'CASH',
+  Tokens = 'TOKENS',
+}
+
+export const PositionFilterTypeSchema = z.enum(PositionFilterType);
+
+/** Sort key for combo position listings. */
+export enum ComboPositionSortBy {
+  FirstEntry = 'FIRST_ENTRY',
+  EntryCost = 'ENTRY_COST',
+  CurrentValue = 'CURRENT_VALUE',
+  Updated = 'UPDATED',
+}
+
+export const ComboPositionSortBySchema = z.enum(ComboPositionSortBy);
+
 const OptionalTextSchema = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().optional(),

@@ -51,17 +51,8 @@ type DefaultAccountWallet<TRequest extends { user?: string }> = Prettify<
   }
 >;
 
-export type SecureListPositionsRequest = Prettify<
-  Omit<ListPositionsRequest, 'user'> & {
-    /**
-     * Wallet address to use. Pass `null` to anchor on a market's holders
-     * (single `conditionId`, no wallet) instead of a wallet's positions.
-     *
-     * @defaultValue `client.account.wallet`
-     */
-    user?: string | null;
-  }
->;
+export type SecureListPositionsRequest =
+  DefaultAccountWallet<ListPositionsRequest>;
 export type SecureListComboPositionsRequest =
   DefaultAccountWallet<ListComboPositionsRequest>;
 export type SecureFetchPortfolioValueRequest =
@@ -256,6 +247,8 @@ export type SecureAccountActions = Prettify<{
    * Lists current positions for a wallet.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
+   * To list a market's holders (a `conditionId` anchor with no wallet), use
+   * a public client's `listPositions` instead.
    *
    * @throws {@link ListPositionsError}
    * Thrown on failure.
@@ -445,21 +438,6 @@ function withAccountWallet<TRequest extends { user?: string }>(
   };
 }
 
-// `user: null` explicitly opts out of the wallet default — the request
-// anchors on a market's holders instead of a wallet's positions.
-function withOptionalAccountWallet(
-  client: BaseSecureClient,
-  request: SecureListPositionsRequest = {},
-): ListPositionsRequest {
-  const { user, ...rest } = request;
-
-  if (user === null) {
-    return rest;
-  }
-
-  return { ...rest, user: user ?? client.account.wallet };
-}
-
 export function accountActions(client: BasePublicClient): PublicAccountActions;
 export function accountActions(client: BaseSecureClient): SecureAccountActions;
 export function accountActions(
@@ -474,7 +452,7 @@ export function accountActions(
   return {
     ...actions,
     listPositions: (request?: SecureListPositionsRequest) =>
-      listPositions(client, withOptionalAccountWallet(client, request)),
+      listPositions(client, withAccountWallet(client, request)),
     listComboPositions: (request?: SecureListComboPositionsRequest) =>
       listComboPositions(client, withAccountWallet(client, request)),
     fetchPortfolioValue: (request?: SecureFetchPortfolioValueRequest) =>
@@ -511,9 +489,17 @@ export {
   ListComboPositionsError,
   ListPositionsError,
 } from '../actions';
-export { ComboActivityType } from '../actions/activity';
+export {
+  ComboActivityType,
+  SortDirection,
+  TipSide,
+  TradeFilterType,
+} from '../actions/activity';
 export type { ComboPositionStatusFilter } from '../actions/portfolio';
 export {
+  ComboPositionSortBy,
   ComboPositionStatus,
+  PositionFilterType,
+  PositionSortBy,
   PositionStatus,
 } from '../actions/portfolio';

@@ -1,4 +1,5 @@
 import {
+  ComboPositionSortBy,
   ComboPositionStatus,
   PositionStatus,
   UserInputError,
@@ -72,7 +73,7 @@ describe('Portfolio', () => {
       const paginator = publicClient.listComboPositions({
         user: TEST_USER,
         pageSize: 1,
-        sortBy: 'FIRST_ENTRY',
+        sortBy: ComboPositionSortBy.FirstEntry,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 

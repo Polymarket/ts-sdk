@@ -11,6 +11,8 @@ import {
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
+  type OrderSide,
+  OrderSideSchema,
   type PositionId,
   PositionIdSchema,
   type TokenId,
@@ -20,8 +22,6 @@ import {
 import {
   ActivityType,
   ActivityTypeSchema,
-  type Side,
-  SideSchema,
   type TipSide,
   TipSideSchema,
 } from './common';
@@ -65,7 +65,7 @@ type TradeActivityBase = ActivityBase & {
   /** Whether this trade is for a Combo position instead of an ordinary market. */
   isCombo: boolean;
   /** Direction of the wallet's trade. */
-  side: Side;
+  side: OrderSide;
   /** Number of shares traded by the wallet. */
   shares: number;
   /** The notional value of the traded shares in USD. */
@@ -351,7 +351,7 @@ const UnknownOutcomeIndexToUndefinedSchema = z.preprocess(
 
 export type Trade = {
   wallet: EvmAddress;
-  side: Side;
+  side: OrderSide;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
   assetId: TokenId | PositionId;
   /** @deprecated Use `assetId`. */
@@ -387,7 +387,7 @@ export type Trade = {
 export const TradeSchema = z
   .object({
     proxy_wallet: EvmAddressSchema,
-    side: SideSchema,
+    side: OrderSideSchema,
     token_id: ClobAssetIdSchema,
     condition_id: ConditionIdSchema,
     size: z.number(),
@@ -449,7 +449,7 @@ const RawActivitySchema = z.object({
   // normalizers narrow to the vocabulary their type allows.
   side: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.union([SideSchema, TipSideSchema]).optional(),
+    z.union([OrderSideSchema, TipSideSchema]).optional(),
   ),
   // Flag only, present on V2/V3 combo trade rows and omitted otherwise.
   is_combo: z.boolean().optional(),
@@ -584,7 +584,7 @@ function normalizeTradeActivity(
   const trade = {
     ...base,
     type: ActivityType.TRADE as ActivityType.TRADE,
-    side: SideSchema.parse(expectPresent(activity.side, 'side')),
+    side: OrderSideSchema.parse(expectPresent(activity.side, 'side')),
     shares: activity.size,
     amount: activity.usdc_size,
     price: activity.price,

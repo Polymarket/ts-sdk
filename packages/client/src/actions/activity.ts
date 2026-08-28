@@ -3,6 +3,7 @@ import {
   ConditionIdSchema,
   EventIdSchema,
   EvmAddressSchema,
+  OrderSideSchema,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
 import {
@@ -12,8 +13,9 @@ import {
   ListActivityResponseSchema,
   ListComboActivityResponseSchema,
   ListTradesResponseSchema,
-  SideSchema,
+  SortDirectionSchema,
   type Trade,
+  TradeFilterTypeSchema,
 } from '@polymarket/bindings/data';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
@@ -31,9 +33,12 @@ import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import { distinctIdList, TimeWindowSchema, toDataSearchParams } from './params';
 
-export { ComboActivityType } from '@polymarket/bindings/data';
-
-const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
+export {
+  ComboActivityType,
+  SortDirection,
+  TipSide,
+  TradeFilterType,
+} from '@polymarket/bindings/data';
 
 const ListTradesRequestSchema = z
   .object({
@@ -61,7 +66,7 @@ const ListTradesRequestSchema = z
       .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
       .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
-    side: SideSchema.optional(),
+    side: OrderSideSchema.optional(),
     window: TimeWindowSchema.optional(),
   })
   .refine((value) => !(value.conditionId && value.eventId), {
@@ -159,8 +164,6 @@ export function listTrades(
   );
 }
 
-const SortDirectionSchema = z.enum(['ASC', 'DESC']);
-
 const ListActivityRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
@@ -176,7 +179,7 @@ const ListActivityRequestSchema = z
       .optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     type: z.array(ActivityTypeSchema).min(1).optional(),
-    side: SideSchema.optional(),
+    side: OrderSideSchema.optional(),
     /** `DESC` (default) walks newest-first; `ASC` oldest-first. */
     sortDirection: SortDirectionSchema.optional(),
     window: TimeWindowSchema.optional(),

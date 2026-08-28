@@ -7,13 +7,17 @@ import {
 } from '@polymarket/bindings';
 import {
   type ComboPosition,
+  ComboPositionSortBySchema,
   type ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
   ListComboPositionsResponseSchema,
   ListPositionsResponseSchema,
   type Position,
+  PositionFilterTypeSchema,
+  PositionSortBySchema,
   PositionStatusSchema,
+  SortDirectionSchema,
   type Traded,
   TradedSchema,
   type Value,
@@ -42,22 +46,12 @@ import {
 } from './params';
 
 export {
+  ComboPositionSortBy,
   ComboPositionStatus,
+  PositionFilterType,
+  PositionSortBy,
   PositionStatus,
 } from '@polymarket/bindings/data';
-
-const PositionsSortBySchema = z.enum([
-  'CURRENT_VALUE',
-  'TOKENS',
-  'UNREALIZED_PNL',
-  'REALIZED_PNL',
-  'TOTAL_PNL',
-  'TIMESTAMP',
-]);
-
-const SortDirectionSchema = z.enum(['ASC', 'DESC']);
-
-const PositionFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
 
 const ListPositionsRequestSchema = z
   .object({
@@ -82,7 +76,7 @@ const ListPositionsRequestSchema = z
     filterAmount: z.number().min(0).optional(),
     includeArchived: z.boolean().optional(),
     /** Defaults by status: CURRENT_VALUE for OPEN/REDEEMABLE, REALIZED_PNL for CLOSED. */
-    sortBy: PositionsSortBySchema.optional(),
+    sortBy: PositionSortBySchema.optional(),
     sortDirection: SortDirectionSchema.optional(),
     /** Bounds the rows' last economics event. */
     window: TimeWindowSchema.optional(),
@@ -209,13 +203,6 @@ export function listPositions(
   );
 }
 
-const ComboPositionsSortBySchema = z.enum([
-  'FIRST_ENTRY',
-  'ENTRY_COST',
-  'CURRENT_VALUE',
-  'UPDATED',
-]);
-
 /**
  * One status, a non-empty ordered list of statuses, or `'REDEEMABLE'` —
  * which must be the sole value and narrows to rows whose `redeemable` flag
@@ -248,7 +235,7 @@ const ListComboPositionsRequestSchema = z.object({
    * FIRST_ENTRY (default; REDEEMABLE defaults to ENTRY_COST so the largest
    * claims lead) | ENTRY_COST | CURRENT_VALUE | UPDATED.
    */
-  sortBy: ComboPositionsSortBySchema.optional(),
+  sortBy: ComboPositionSortBySchema.optional(),
   sortDirection: SortDirectionSchema.optional(),
   // A change-watermark on the row's `updatedAt`, not a history window —
   // deliberately separate from the `window` option.
