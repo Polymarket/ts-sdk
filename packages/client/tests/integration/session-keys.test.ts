@@ -13,7 +13,7 @@ import { describe, expect, it, publicClient } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
 
-const DEFAULT_SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
+const SESSION_KEY_LIFETIME_SECONDS = 180 * 24 * 60 * 60;
 
 const market = await findHighVolumeLowPriceMarket(publicClient, {
   sportsOnly: false,
@@ -29,7 +29,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
     await expect(
       secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
-        validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
       }),
     ).rejects.toThrow(
       'Session-key authorization requires builder API-key authentication.',
@@ -73,14 +72,14 @@ describe('Session keys', { timeout: 600_000 }, () => {
       transport: http(environment.rpc),
     });
     const sessionAddress = await sessionSigner.getAddress();
-    const earliestDefaultExpiry =
-      Math.floor(Date.now() / 1_000) + DEFAULT_SESSION_KEY_LIFETIME_SECONDS;
+    const earliestExpiry =
+      Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
     const authorization =
       await secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
       });
-    const latestDefaultExpiry =
-      Math.floor(Date.now() / 1_000) + DEFAULT_SESSION_KEY_LIFETIME_SECONDS;
+    const latestExpiry =
+      Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
 
     annotate(`Session address: ${sessionAddress}`);
     annotate(
@@ -91,8 +90,8 @@ describe('Session keys', { timeout: 600_000 }, () => {
     );
     expect(authorization.transaction.transactionId).not.toBeNull();
     const { validUntil } = authorization.sessionKey;
-    expect(validUntil).toBeGreaterThanOrEqual(earliestDefaultExpiry);
-    expect(validUntil).toBeLessThanOrEqual(latestDefaultExpiry);
+    expect(validUntil).toBeGreaterThanOrEqual(earliestExpiry);
+    expect(validUntil).toBeLessThanOrEqual(latestExpiry);
     expect(authorization.sessionKey).toEqual({
       address: sessionAddress.toLowerCase(),
       scopes: [SessionKeyKnownScope.ALL],

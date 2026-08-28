@@ -17,8 +17,7 @@ export type SessionKeyActions = {
    * The SDK receives only the public address. The application remains
    * responsible for generating, storing, and protecting the private key.
    * When scopes are omitted, authorization defaults to `ALL`.
-   * When `validUntil` is omitted, the authorization expires 4,315 hours from
-   * the current time.
+   * The authorization expires 180 days after it is created.
    * Requires builder API-key authentication.
    *
    * @remarks

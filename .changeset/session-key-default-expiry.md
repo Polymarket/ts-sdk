@@ -2,4 +2,4 @@
 '@polymarket/client': patch
 ---
 
-Default session-key authorization expiry to 4,315 hours when `validUntil` is omitted.
+Fix session-key authorization expiry at 180 days and remove `validUntil` from the public request.
