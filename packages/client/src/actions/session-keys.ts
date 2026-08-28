@@ -132,7 +132,7 @@ type ParsedAuthorizeSessionKeyRequest = {
 const DEFAULT_SESSION_KEY_SCOPES = [
   SessionKeyKnownScope.ALL,
 ] satisfies SessionKeyScope[];
-const SESSION_KEY_LIFETIME_SECONDS = 180 * 24 * 60 * 60;
+const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
 
 const AuthorizeSessionKeyRequestSchema = z
   .object({
