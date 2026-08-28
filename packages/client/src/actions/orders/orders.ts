@@ -1,4 +1,6 @@
 import type { HexString } from '@polymarket/types';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
+import { isV2PositionId } from '../../protocol';
 import type { AccountIdentity } from '../../wallet';
 import { resolveOrderIdentity } from '../../wallet';
 import type {
@@ -26,7 +28,9 @@ export function createUnsignedOrder(
     makerAmount: order.offeredAmount.toString(),
     metadata: BYTES32_ZERO,
     orderType: order.orderType,
-    protocolVersion: order.exchangeVersion,
+    protocolVersion: isV2PositionId(order.assetId)
+      ? ExchangeOrderProtocolVersion.V3
+      : ExchangeOrderProtocolVersion.V2,
     salt: generateOrderSalt().toString(),
     side: order.side,
     signatureType: identity.signatureType,

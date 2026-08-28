@@ -1,4 +1,5 @@
 import {
+  type ClobAssetId,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -19,12 +20,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { fetchOrderBook } from '../clob';
-import {
-  type OrderAsset,
-  type OrderAssetId,
-  PositionOrderAssetSchema,
-  TokenOrderAssetSchema,
-} from './asset';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 
 const BaseEstimateMarketPriceRequestSchema = z.object({
   orderType: z
@@ -32,39 +28,87 @@ const BaseEstimateMarketPriceRequestSchema = z.object({
     .default(OrderType.FOK),
 });
 
-export type EstimateMarketBuyPriceRequest = OrderAsset & {
-  /** Buy side of the estimate. */
-  side: OrderSide.BUY;
+export type EstimateMarketBuyPriceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      /** Buy side of the estimate. */
+      side: OrderSide.BUY;
+      /** Desired USD buy notional to match against current ask depth. */
+      amount: number | string;
+      /**
+       * Market order execution type to model.
+       *
+       * @defaultValue OrderType.FOK
+       */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      /** Buy side of the estimate. */
+      side: OrderSide.BUY;
+      /** Desired USD buy notional to match against current ask depth. */
+      amount: number | string;
+      /**
+       * Market order execution type to model.
+       *
+       * @defaultValue OrderType.FOK
+       */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    };
 
-  /** Desired USD buy notional to match against current ask depth. */
-  amount: number | string;
-
-  /**
-   * Market order execution type to model.
-   *
-   * @defaultValue OrderType.FOK
-   */
-  orderType?: OrderType.FAK | OrderType.FOK;
-};
-
-export type EstimateMarketSellPriceRequest = OrderAsset & {
-  /** Sell side of the estimate. */
-  side: OrderSide.SELL;
-
-  /** Number of conditional-token shares to match against current bid depth. */
-  shares: number | string;
-
-  /**
-   * Market order execution type to model.
-   *
-   * @defaultValue OrderType.FOK
-   */
-  orderType?: OrderType.FAK | OrderType.FOK;
-};
+export type EstimateMarketSellPriceRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId: string;
+      tokenId?: never;
+      /** Sell side of the estimate. */
+      side: OrderSide.SELL;
+      /** Number of outcome shares to match against current bid depth. */
+      shares: number | string;
+      /**
+       * Market order execution type to model.
+       *
+       * @defaultValue OrderType.FOK
+       */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId: string;
+      /** Sell side of the estimate. */
+      side: OrderSide.SELL;
+      /** Number of outcome shares to match against current bid depth. */
+      shares: number | string;
+      /**
+       * Market order execution type to model.
+       *
+       * @defaultValue OrderType.FOK
+       */
+      orderType?: OrderType.FAK | OrderType.FOK;
+    };
 
 export type EstimateMarketPriceRequest =
   | EstimateMarketBuyPriceRequest
   | EstimateMarketSellPriceRequest;
+
+type EstimateMarketPriceParams =
+  | {
+      assetId: ClobAssetId;
+      side: OrderSide.BUY;
+      amount: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+    }
+  | {
+      assetId: ClobAssetId;
+      side: OrderSide.SELL;
+      shares: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+    };
 
 const EstimateMarketBuyPriceRequestSchema =
   BaseEstimateMarketPriceRequestSchema.extend({
@@ -78,12 +122,20 @@ const EstimateMarketSellPriceRequestSchema =
     shares: PositiveDecimalNumberSchema,
   });
 
-const EstimateMarketPriceRequestSchema = z.union([
-  EstimateMarketBuyPriceRequestSchema.extend(TokenOrderAssetSchema.shape),
-  EstimateMarketBuyPriceRequestSchema.extend(PositionOrderAssetSchema.shape),
-  EstimateMarketSellPriceRequestSchema.extend(TokenOrderAssetSchema.shape),
-  EstimateMarketSellPriceRequestSchema.extend(PositionOrderAssetSchema.shape),
-]) satisfies z.ZodType<EstimateMarketPriceRequest>;
+const EstimateMarketPriceRequestSchema = z
+  .union([
+    EstimateMarketBuyPriceRequestSchema.extend(AssetIdOrderAssetSchema.shape),
+    EstimateMarketBuyPriceRequestSchema.extend(TokenIdOrderAssetSchema.shape),
+    EstimateMarketSellPriceRequestSchema.extend(AssetIdOrderAssetSchema.shape),
+    EstimateMarketSellPriceRequestSchema.extend(TokenIdOrderAssetSchema.shape),
+  ])
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  })) satisfies z.ZodType<
+  EstimateMarketPriceParams,
+  EstimateMarketPriceRequest
+>;
 
 export type EstimateMarketPriceError =
   | InsufficientLiquidityError
@@ -120,22 +172,12 @@ export const EstimateMarketPriceError = makeErrorGuard(
  * @example
  * ```ts
  * const price = await estimateMarketPrice(client, {
- *   tokenId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '0x0122…0000',
  *   side: OrderSide.BUY,
  *   amount: 10,
  * });
  *
  * // price === 0.53
- * ```
- *
- * @example Position-backed outcome
- * ```ts
- * const price = await estimateMarketPrice(client, {
- *   positionId: '456',
- *   side: OrderSide.SELL,
- *   shares: 10,
- * });
  * ```
  *
  * @throws {@link EstimateMarketPriceError}
@@ -147,11 +189,10 @@ export async function estimateMarketPrice(
 ): Promise<number> {
   const params = parseUserInput(request, EstimateMarketPriceRequestSchema);
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
-  const assetId = params.positionId ?? params.tokenId;
 
   return resolveEstimatedMarketPrice(client, {
     amount,
-    assetId,
+    assetId: params.assetId,
     orderType: params.orderType,
     side: params.side,
   });
@@ -161,7 +202,7 @@ export async function estimateMarketPrice(
 export async function resolveEstimatedMarketPrice(
   client: BaseClient,
   params: {
-    assetId: OrderAssetId;
+    assetId: ClobAssetId;
     amount: number;
     orderType: OrderType;
     side: OrderSide;
