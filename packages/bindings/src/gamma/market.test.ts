@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ComboStatus,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
@@ -29,8 +30,12 @@ const rawMultiOutcomeMarket = {
 
 describe('MarketSchema', () => {
   it('normalizes binary outcomes', () => {
-    const market = MarketSchema.parse(rawBinaryMarket);
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'enabled',
+    });
 
+    expect(market.state.comboStatus).toBe(ComboStatus.Enabled);
     expect(market.outcomes).toEqual({
       yes: {
         label: 'Yes',

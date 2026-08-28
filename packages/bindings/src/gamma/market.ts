@@ -62,6 +62,14 @@ const PositionIdArraySchema = z
   .preprocess(parseJsonString, z.array(PositionIdSchema).nullish())
   .transform((value) => value ?? []);
 
+export enum ComboStatus {
+  Pending = 'pending',
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
+const ComboStatusSchema = z.enum(ComboStatus);
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -76,6 +84,8 @@ export type MarketState = {
   active?: boolean | null;
   closed?: boolean | null;
   archived?: boolean | null;
+  /** Whether the market is available for combo bets. */
+  comboStatus?: ComboStatus | null;
   acceptingOrders?: boolean | null;
   enableOrderBook?: boolean | null;
   negRisk?: boolean | null;
@@ -282,6 +292,7 @@ export const GammaMarketSchema = z.object({
   gameStartTime: IsoDateTimeStringSchema.nullish(),
   secondsDelay: z.number().int().nullish(),
   clobTokenIds: TokenIdArraySchema,
+  comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
   disqusThread: z.string().nullish(),
   shortOutcomes: z.string().nullish(),
@@ -440,6 +451,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       active: market.active,
       closed: market.closed,
       archived: market.archived,
+      comboStatus: market.comboStatus,
       acceptingOrders: market.acceptingOrders,
       enableOrderBook: market.enableOrderBook,
       negRisk: market.negRisk,
