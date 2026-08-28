@@ -102,7 +102,7 @@ export const FetchMidpointError = makeErrorGuard(
  * @example
  * ```ts
  * const midpoint = await fetchMidpoint(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // midpoint === '0.53'
@@ -169,11 +169,11 @@ export const FetchMidpointsError = makeErrorGuard(
  * ```ts
  * const midpoints = await fetchMidpoints(client, [
  *   {
- *     assetId: '123',
+ *     assetId: '0x0122…0000',
  *   },
  * ]);
  *
- * // midpoints['123'] === '0.53'
+ * // midpoints['0x0122…0000'] === '0.53'
  * ```
  *
  */
@@ -232,7 +232,7 @@ export const FetchTickSizeError = makeErrorGuard(
  * @example
  * ```ts
  * const tickSize = await fetchTickSize(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // tickSize === 0.01
@@ -294,7 +294,7 @@ export const FetchNegRiskError = makeErrorGuard(
  * @example
  * ```ts
  * const negRisk = await fetchNegRisk(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // negRisk === false
@@ -508,7 +508,7 @@ export const FetchPriceError = makeErrorGuard(
  * @example
  * ```ts
  * const price = await fetchPrice(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  *   side: OrderSide.BUY,
  * });
  *
@@ -578,12 +578,12 @@ export const FetchPricesError = makeErrorGuard(
  * ```ts
  * const prices = await fetchPrices(client, [
  *   {
- *     assetId: '123',
+ *     assetId: '0x0122…0000',
  *     side: OrderSide.BUY,
  *   },
  * ]);
  *
- * // prices['123']?.BUY === '0.52'
+ * // prices['0x0122…0000']?.BUY === '0.52'
  * ```
  *
  */
@@ -642,7 +642,7 @@ export const FetchOrderBookError = makeErrorGuard(
  * @example
  * ```ts
  * const orderBook = await fetchOrderBook(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // orderBook.bids / orderBook.asks
@@ -707,7 +707,7 @@ export const FetchOrderBooksError = makeErrorGuard(
  * ```ts
  * const books = await fetchOrderBooks(client, [
  *   {
- *     assetId: '123',
+ *     assetId: '0x0122…0000',
  *   },
  * ])
  *
@@ -769,7 +769,7 @@ export const FetchSpreadError = makeErrorGuard(
  * @example
  * ```ts
  * const spread = await fetchSpread(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // spread === '0.02'
@@ -836,11 +836,11 @@ export const FetchSpreadsError = makeErrorGuard(
  * ```ts
  * const spreads = await fetchSpreads(client, [
  *   {
- *     assetId: '123',
+ *     assetId: '0x0122…0000',
  *   },
  * ]);
  *
- * // spreads['123'] === '0.02'
+ * // spreads['0x0122…0000'] === '0.02'
  * ```
  *
  */
@@ -901,7 +901,7 @@ export const FetchLastTradePriceError = makeErrorGuard(
  * @example
  * ```ts
  * const trade = await fetchLastTradePrice(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  * });
  *
  * // trade === LastTradePrice | null
@@ -968,9 +968,9 @@ export const FetchLastTradePricesError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const trades = await fetchLastTradePrices(client, [{ assetId: '123' }]);
+ * const trades = await fetchLastTradePrices(client, [{ assetId: '0x0122…0000' }]);
  *
- * const trade = trades.find((candidate) => candidate.assetId === '123');
+ * const trade = trades.find((candidate) => candidate.assetId === '0x0122…0000');
  * ```
  *
  */
@@ -1042,7 +1042,7 @@ export const FetchPriceHistoryError = makeErrorGuard(
  * @example
  * ```ts
  * const history = await fetchPriceHistory(client, {
- *   assetId: '123',
+ *   assetId: '0x0122…0000',
  *   interval: PriceHistoryInterval.ONE_DAY,
  *   fidelity: 60,
  * });

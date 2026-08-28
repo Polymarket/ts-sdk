@@ -49,15 +49,12 @@ export function createSignedOrder(
     chainId: _chainId,
     exchangeAddress: _exchangeAddress,
     protocolVersion: _protocolVersion,
-    tokenId,
     ...signedFields
   } = order;
 
   return {
     ...signedFields,
-    assetId: tokenId,
     signature,
-    tokenId,
   };
 }
 

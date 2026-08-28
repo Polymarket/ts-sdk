@@ -172,8 +172,7 @@ export const EstimateMarketPriceError = makeErrorGuard(
  * @example
  * ```ts
  * const price = await estimateMarketPrice(client, {
- *   assetId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '0x0122…0000',
  *   side: OrderSide.BUY,
  *   amount: 10,
  * });

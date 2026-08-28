@@ -196,8 +196,6 @@ export type OrderSignature =
   | SessionSignerSignature;
 
 export type SignedOrder = {
-  /** Identifier for the CTF token or Polymarket V2 position being traded. */
-  assetId: PositionId | TokenId;
   builder: HexString;
   expiration: number;
   maker: EvmAddress;
@@ -211,10 +209,8 @@ export type SignedOrder = {
   takerAmount: string;
   timestamp: string;
   /**
-   * @deprecated Use `assetId`.
-   *
-   * Compatibility alias equal to `assetId`. The exchange wire payload retains
-   * its protocol-defined `tokenId` field.
+   * Asset identifier encoded in the exchange order. The protocol field is
+   * named `tokenId` for both CTF token IDs and Polymarket V2 position IDs.
    */
   tokenId: PositionId | TokenId;
   signature: OrderSignature;

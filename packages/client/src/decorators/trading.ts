@@ -46,8 +46,7 @@ export type SecureTradingActions = {
    * @example Basic market buy
    * ```ts
    * const order = await client.createMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   side: OrderSide.BUY,
    * });
@@ -56,8 +55,7 @@ export type SecureTradingActions = {
    * @example Protected market buy
    * ```ts
    * const order = await client.createMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   maxPrice: '0.55',
    *   side: OrderSide.BUY,
@@ -67,8 +65,7 @@ export type SecureTradingActions = {
    * @example Polymarket V2 market buy
    * ```ts
    * const order = await client.createMarketOrder({
-   *   assetId:
-   *     '512621228394368573489767381548878758725236764214074924933294838260328038400',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   side: OrderSide.BUY,
    * });
@@ -89,8 +86,7 @@ export type SecureTradingActions = {
    * @example Basic market buy
    * ```ts
    * const response = await client.placeMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   side: OrderSide.BUY,
    * });
@@ -101,8 +97,7 @@ export type SecureTradingActions = {
    * @example Protected market sell
    * ```ts
    * const response = await client.placeMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   minPrice: '0.54',
    *   shares: 10,
    *   side: OrderSide.SELL,
@@ -114,8 +109,7 @@ export type SecureTradingActions = {
    * @example Market buy followed to settlement
    * ```ts
    * const response = await client.placeMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   side: OrderSide.BUY,
    * });
@@ -141,8 +135,7 @@ export type SecureTradingActions = {
    * @example CTF limit order
    * ```ts
    * const order = await client.createLimitOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   postOnly: true,
    *   price: 0.52,
    *   side: OrderSide.BUY,
@@ -153,8 +146,7 @@ export type SecureTradingActions = {
    * @example Polymarket V2 limit order
    * ```ts
    * const order = await client.createLimitOrder({
-   *   assetId:
-   *     '512621228394368573489767381548878758725236764214074924933294838260328038400',
+   *   assetId: '0x0122…0000',
    *   postOnly: true,
    *   price: 0.52,
    *   side: OrderSide.BUY,
@@ -177,8 +169,7 @@ export type SecureTradingActions = {
    * @example
    * ```ts
    * const response = await client.placeLimitOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   postOnly: true,
    *   price: 0.52,
    *   side: OrderSide.BUY,
@@ -232,8 +223,7 @@ export type SecureTradingActions = {
    * @example
    * ```ts
    * const response = await client.placeMarketOrder({
-   *   assetId:
-   *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+   *   assetId: '0x0122…0000',
    *   amount: 10,
    *   side: OrderSide.BUY,
    * });

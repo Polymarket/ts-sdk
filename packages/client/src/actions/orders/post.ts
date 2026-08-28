@@ -75,8 +75,7 @@ export const PostOrdersError = makeErrorGuard(
  * @example
  * ```ts
  * const order = await client.createMarketOrder({
- *   assetId:
- *     '8501497159083948713316135768103773293754490207922884688769443031624417212426',
+ *   assetId: '0x0122…0000',
  *   amount: 10,
  *   side: OrderSide.BUY,
  * });
@@ -168,7 +167,7 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       signer: order.signer,
       takerAmount: order.takerAmount,
       timestamp: order.timestamp,
-      tokenId: order.assetId,
+      tokenId: order.tokenId,
     },
     orderType: order.orderType,
     owner: client.credentials.key,
