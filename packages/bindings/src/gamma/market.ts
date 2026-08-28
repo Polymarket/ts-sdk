@@ -62,13 +62,26 @@ const PositionIdArraySchema = z
   .preprocess(parseJsonString, z.array(PositionIdSchema).nullish())
   .transform((value) => value ?? []);
 
-export enum ComboStatus {
+/**
+ * Known Combo eligibility statuses.
+ *
+ * The service evolves this set independently of released clients, so market
+ * parsing accepts unknown statuses as plain strings; see {@link ComboStatus}.
+ */
+export enum ComboKnownStatus {
   Pending = 'pending',
   Enabled = 'enabled',
   Disabled = 'disabled',
 }
 
-const ComboStatusSchema = z.enum(ComboStatus);
+/**
+ * A Combo eligibility status. Known statuses are enumerated in
+ * {@link ComboKnownStatus}; newly introduced statuses flow through as plain
+ * strings so they can be handled before a client release enumerates them.
+ */
+export type ComboStatus = ComboKnownStatus | (string & {});
+
+const ComboStatusSchema = z.string().transform((value): ComboStatus => value);
 
 export enum UmaResolutionStatus {
   Disputed = 'disputed',

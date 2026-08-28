@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ComboStatus,
+  ComboKnownStatus,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
@@ -35,7 +35,7 @@ describe('MarketSchema', () => {
       comboStatus: 'enabled',
     });
 
-    expect(market.state.comboStatus).toBe(ComboStatus.Enabled);
+    expect(market.state.comboStatus).toBe(ComboKnownStatus.Enabled);
     expect(market.outcomes).toEqual({
       yes: {
         label: 'Yes',
@@ -50,6 +50,15 @@ describe('MarketSchema', () => {
         price: '0.6',
       },
     });
+  });
+
+  it('passes unknown Combo statuses through as strings', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'not-a-status-yet',
+    });
+
+    expect(market.state.comboStatus).toBe('not-a-status-yet');
   });
 
   it.each([
