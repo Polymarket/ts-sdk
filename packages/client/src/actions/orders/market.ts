@@ -30,7 +30,13 @@ import {
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
-import { fromScaledPrice, type ScaledPrice, toScaledPrice } from './fixed';
+import { adjustBuyAmountForFees } from './fees';
+import {
+  type ScaledAmount,
+  type ScaledPrice,
+  toScaledAmount,
+  toScaledPrice,
+} from './fixed';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -99,7 +105,7 @@ type MarketOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
   price: ScaledPrice;
-  resolvedAmount: number;
+  resolvedAmount: ScaledAmount;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
 };
@@ -201,7 +207,6 @@ function buildProtectedBuyMarketOrderContext(
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
   const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
-  const priceNumber = fromScaledPrice(price);
 
   return {
     exchangeAddress: resolveOrderExchangeAddress(
@@ -217,7 +222,7 @@ function buildProtectedBuyMarketOrderContext(
       maxSpend,
       platformFeeExponent: metadata.feeInfo.exponent,
       platformFeeRate: metadata.feeInfo.rate,
-      price: priceNumber,
+      price,
     }),
     signerAddress: client.account.signer,
     tickSize: metadata.tickSize,
@@ -241,7 +246,7 @@ function buildProtectedMarketOrderContext(
     ),
     funderAddress: client.account.wallet,
     price,
-    resolvedAmount: amount,
+    resolvedAmount: toScaledAmount(amount),
     signerAddress: client.account.signer,
     tickSize: metadata.tickSize,
   };
@@ -289,7 +294,7 @@ async function resolveUnprotectedMarketOrderContext(
     resolvedAmount: resolveUnprotectedMarketOrderAmount(
       params,
       amount,
-      fromScaledPrice(price),
+      price,
       resolvedFeeInputs,
     ),
     signerAddress: client.account.signer,
@@ -300,15 +305,15 @@ async function resolveUnprotectedMarketOrderContext(
 function resolveUnprotectedMarketOrderAmount(
   params: PrepareMarketOrderDraftParams,
   amount: number,
-  price: number,
+  price: ScaledPrice,
   feeInputs: FeeInputs | undefined,
-): number {
+): ScaledAmount {
   if (
     params.side !== OrderSide.BUY ||
     params.maxSpend === undefined ||
     feeInputs === undefined
   ) {
-    return amount;
+    return toScaledAmount(amount);
   }
 
   return adjustBuyAmountForFees({
@@ -387,29 +392,4 @@ async function resolveFeeInputs(
   ]);
 
   return { builderTakerFeeRate, market };
-}
-
-export function adjustBuyAmountForFees(params: {
-  amount: number;
-  price: number;
-  maxSpend: number;
-  platformFeeRate: number;
-  platformFeeExponent: number;
-  builderTakerFeeRate: number;
-}): number {
-  const platformFeeRate =
-    params.platformFeeRate *
-    (params.price * (1 - params.price)) ** params.platformFeeExponent;
-  const platformFee = (params.amount / params.price) * platformFeeRate;
-  const totalCost =
-    params.amount + platformFee + params.amount * params.builderTakerFeeRate;
-
-  if (params.maxSpend <= totalCost) {
-    return (
-      params.maxSpend /
-      (1 + platformFeeRate / params.price + params.builderTakerFeeRate)
-    );
-  }
-
-  return params.amount;
 }
