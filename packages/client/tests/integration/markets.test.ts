@@ -79,6 +79,7 @@ describe('Markets', () => {
         expect.objectContaining({
           conditionId: expect.any(String),
           id: expect.any(String),
+          pending: expect.any(Boolean),
           outcomes: {
             yes: expect.any(Object),
             no: expect.any(Object),

@@ -1,6 +1,7 @@
 import {
   type BuilderCode,
   BuilderCodeSchema,
+  type ClobAssetId,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -12,13 +13,7 @@ import type { BaseSecureClient } from '../../clients';
 import { UnexpectedResponseError, UserInputError } from '../../errors';
 import { fetchOrderBook } from '../clob';
 import { computeMarketOrderAmounts } from './amounts';
-import {
-  createOrderRouting,
-  type OrderAssetId,
-  type OrderRouting,
-  PositionOrderAssetSchema,
-  TokenOrderAssetSchema,
-} from './asset';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -55,23 +50,49 @@ const PrepareMarketSellOrderParamsSchema =
     minPrice: PositiveDecimalNumberSchema.optional(),
   });
 
-export const PrepareMarketOrderParamsSchema = z.union([
-  PrepareMarketBuyOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-  PrepareMarketBuyOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
-  PrepareMarketSellOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-  PrepareMarketSellOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
-]) satisfies z.ZodType<PrepareMarketOrderRequest>;
+export type PrepareMarketOrderDraftParams =
+  | {
+      assetId: ClobAssetId;
+      amount: number;
+      builderCode?: BuilderCode;
+      maxPrice?: number;
+      maxSpend?: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+      side: OrderSide.BUY;
+    }
+  | {
+      assetId: ClobAssetId;
+      builderCode?: BuilderCode;
+      minPrice?: number;
+      orderType: OrderType.FAK | OrderType.FOK;
+      shares: number;
+      side: OrderSide.SELL;
+    };
 
-export type PrepareMarketOrderDraftParams = z.output<
-  typeof PrepareMarketOrderParamsSchema
+export const PrepareMarketOrderParamsSchema = z
+  .union([
+    PrepareMarketBuyOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    PrepareMarketBuyOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
+    PrepareMarketSellOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    PrepareMarketSellOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
+  ])
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  })) satisfies z.ZodType<
+  PrepareMarketOrderDraftParams,
+  PrepareMarketOrderRequest
 >;
 
 export async function prepareMarketOrderDraft(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
 ): Promise<OrderDraft> {
-  const routing = createOrderRouting(params);
-  const context = await resolveMarketOrderContext(client, params, routing);
+  const context = await resolveMarketOrderContext(
+    client,
+    params,
+    params.assetId,
+  );
   const amounts = computeMarketOrderAmounts({
     amount: context.resolvedAmount,
     price: context.price,
@@ -81,7 +102,7 @@ export async function prepareMarketOrderDraft(
   });
 
   return {
-    ...routing,
+    assetId: params.assetId,
     builderCode: params.builderCode,
     chainId: client.environment.chainId,
     exchangeAddress: context.exchangeAddress,
@@ -107,19 +128,18 @@ type MarketOrderContext = {
 async function resolveMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
   return hasProtectedPrice(params)
-    ? resolveProtectedMarketOrderContext(client, params, routing)
-    : resolveUnprotectedMarketOrderContext(client, params, routing);
+    ? resolveProtectedMarketOrderContext(client, params, assetId)
+    : resolveUnprotectedMarketOrderContext(client, params, assetId);
 }
 
 async function resolveProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
-  const { assetId } = routing;
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
   if (params.side === OrderSide.BUY && params.maxSpend !== undefined) {
@@ -133,7 +153,7 @@ async function resolveProtectedMarketOrderContext(
       return buildProtectedBuyMarketOrderContext(
         client,
         params,
-        routing,
+        assetId,
         amount,
         builderTakerFeeRate,
         params.maxSpend,
@@ -152,7 +172,7 @@ async function resolveProtectedMarketOrderContext(
       return buildProtectedBuyMarketOrderContext(
         client,
         params,
-        routing,
+        assetId,
         amount,
         builderTakerFeeRate,
         params.maxSpend,
@@ -167,7 +187,7 @@ async function resolveProtectedMarketOrderContext(
     return buildProtectedMarketOrderContext(
       client,
       params,
-      routing,
+      assetId,
       amount,
       metadata,
     );
@@ -184,7 +204,7 @@ async function resolveProtectedMarketOrderContext(
     return buildProtectedMarketOrderContext(
       client,
       params,
-      routing,
+      assetId,
       amount,
       currentMetadata,
     );
@@ -194,7 +214,7 @@ async function resolveProtectedMarketOrderContext(
 function buildProtectedBuyMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
   amount: number,
   builderTakerFeeRate: number,
   maxSpend: number,
@@ -206,7 +226,7 @@ function buildProtectedBuyMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       metadata.negRisk,
     ),
     funderAddress: client.account.wallet,
@@ -227,7 +247,7 @@ function buildProtectedBuyMarketOrderContext(
 function buildProtectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
   amount: number,
   metadata: OrderMarketMetadata,
 ): MarketOrderContext {
@@ -236,7 +256,7 @@ function buildProtectedMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       metadata.negRisk,
     ),
     funderAddress: client.account.wallet,
@@ -250,22 +270,21 @@ function buildProtectedMarketOrderContext(
 async function resolveUnprotectedMarketOrderContext(
   client: BaseSecureClient,
   params: PrepareMarketOrderDraftParams,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
-  const { assetId } = routing;
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
   const feeInputs =
     params.side === OrderSide.BUY && params.maxSpend !== undefined
       ? resolveFeeInputs(client, assetId, params.builderCode)
       : undefined;
   const [orderBook, resolvedFeeInputs] = await Promise.all([
-    fetchOrderBook(client, { tokenId: assetId }),
+    fetchOrderBook(client, { assetId }),
     feeInputs,
   ]);
 
-  if (orderBook.tokenId !== assetId) {
+  if (orderBook.assetId !== assetId) {
     throw new UnexpectedResponseError(
-      `Order book returned asset ${orderBook.tokenId} for requested asset ${assetId}.`,
+      `Order book returned asset ${orderBook.assetId} for requested asset ${assetId}.`,
     );
   }
 
@@ -281,7 +300,7 @@ async function resolveUnprotectedMarketOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      routing,
+      assetId,
       orderBook.negRisk,
     ),
     funderAddress: client.account.wallet,
@@ -378,7 +397,7 @@ type FeeInputs = {
 
 async function resolveFeeInputs(
   client: BaseSecureClient,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
   builderCode: BuilderCode | undefined,
 ): Promise<FeeInputs> {
   const [market, builderTakerFeeRate] = await Promise.all([

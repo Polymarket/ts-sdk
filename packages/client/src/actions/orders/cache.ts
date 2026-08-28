@@ -1,5 +1,6 @@
 import type {
   BuilderCode,
+  ClobAssetId,
   ConditionId,
   TickSizeValue,
 } from '@polymarket/bindings';
@@ -11,7 +12,6 @@ import {
   fetchMarketInfo,
   resolveConditionByToken,
 } from '../clob';
-import type { OrderAssetId } from './asset';
 
 const METADATA_TTL_MS = 10 * 60 * 1000;
 const IMMUTABLE_TTL_MS = Number.POSITIVE_INFINITY;
@@ -27,11 +27,11 @@ export type OrderMarketMetadata = {
 export type OrderMetadataCacheDeps = {
   fetchBuilderTakerFeeRate(builderCode: BuilderCode): Promise<number>;
   fetchMarket(conditionId: ConditionId): Promise<MarketInfo>;
-  resolveCondition(assetId: OrderAssetId): Promise<ConditionId>;
+  resolveCondition(assetId: ClobAssetId): Promise<ConditionId>;
 };
 
 type MarketRecord = OrderMarketMetadata & {
-  assetIds: ReadonlySet<OrderAssetId>;
+  assetIds: ReadonlySet<ClobAssetId>;
 };
 
 type CacheEntry<TValue> = {
@@ -43,14 +43,14 @@ type CacheEntry<TValue> = {
 export class OrderMetadataCache {
   readonly #deps: OrderMetadataCacheDeps;
   readonly #builderTakerFeeRates = new Map<BuilderCode, CacheEntry<number>>();
-  readonly #conditions = new Map<OrderAssetId, CacheEntry<ConditionId>>();
+  readonly #conditions = new Map<ClobAssetId, CacheEntry<ConditionId>>();
   readonly #markets = new Map<ConditionId, CacheEntry<MarketRecord>>();
 
   constructor(deps: OrderMetadataCacheDeps) {
     this.#deps = deps;
   }
 
-  async resolveMarket(assetId: OrderAssetId): Promise<OrderMarketMetadata> {
+  async resolveMarket(assetId: ClobAssetId): Promise<OrderMarketMetadata> {
     const market = await this.#resolveMarket(assetId);
 
     return {
@@ -75,9 +75,7 @@ export class OrderMetadataCache {
     );
   }
 
-  async fetchCurrentMarket(
-    assetId: OrderAssetId,
-  ): Promise<OrderMarketMetadata> {
+  async fetchCurrentMarket(assetId: ClobAssetId): Promise<OrderMarketMetadata> {
     const conditionId = await readThrough(
       this.#conditions,
       assetId,
@@ -96,7 +94,7 @@ export class OrderMetadataCache {
     };
   }
 
-  async #resolveMarket(assetId: OrderAssetId): Promise<MarketRecord> {
+  async #resolveMarket(assetId: ClobAssetId): Promise<MarketRecord> {
     const conditionId = await readThrough(
       this.#conditions,
       assetId,
@@ -116,7 +114,7 @@ export class OrderMetadataCache {
   }
 
   #assertMarketContainsAsset(
-    assetId: OrderAssetId,
+    assetId: ClobAssetId,
     conditionId: ConditionId,
     market: MarketRecord,
   ): void {
@@ -133,7 +131,7 @@ export class OrderMetadataCache {
 
   async #fetchMarket(conditionId: ConditionId): Promise<MarketRecord> {
     const market = await this.#deps.fetchMarket(conditionId);
-    const assetIds = new Set(market.tokens.map(({ tokenId }) => tokenId));
+    const assetIds = new Set(market.tokens.map(({ assetId }) => assetId));
 
     for (const assetId of assetIds) {
       this.#conditions.set(assetId, resolvedEntry(conditionId));
@@ -194,7 +192,7 @@ const cachesByClient = new WeakMap<BaseClient, OrderMetadataCache>();
 /** @internal */
 export function resolveOrderMarketMetadata(
   client: BaseClient,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
 ): Promise<OrderMarketMetadata> {
   return resolveCache(client).resolveMarket(assetId);
 }
@@ -202,7 +200,7 @@ export function resolveOrderMarketMetadata(
 /** @internal */
 export function fetchCurrentOrderMarketMetadata(
   client: BaseClient,
-  assetId: OrderAssetId,
+  assetId: ClobAssetId,
 ): Promise<OrderMarketMetadata> {
   return resolveCache(client).fetchCurrentMarket(assetId);
 }
@@ -226,8 +224,7 @@ function resolveCache(client: BaseClient): OrderMetadataCache {
     fetchBuilderTakerFeeRate: async (builderCode) =>
       (await fetchBuilderFeeRates(client, { builderCode })).taker,
     fetchMarket: (conditionId) => fetchMarketInfo(client, { conditionId }),
-    resolveCondition: (assetId) =>
-      resolveConditionByToken(client, { tokenId: assetId }),
+    resolveCondition: (assetId) => resolveConditionByToken(client, { assetId }),
   });
   cachesByClient.set(client, created);
 

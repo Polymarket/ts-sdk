@@ -15,12 +15,11 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
-import { ExchangeOrderProtocolVersion } from '../../exchange';
+import { isV2PositionId } from '../../protocol';
 import { completeWith } from '../../workflow';
 import { updateBalanceAllowance } from '../account';
 import { approveErc20, approveErc1155ForAll } from '../approvals';
 import { resolveCurrentAllowance } from './allowance';
-import { createOrderRouting, type OrderRouting } from './asset';
 import { resolveOrderMarketMetadata } from './cache';
 import { resolveOrderExchangeAddress } from './context';
 import { type PostOrderError, postOrder } from './post';
@@ -62,10 +61,10 @@ export const CreateMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const order = await createMarketOrder(client, {
+ *   assetId: '0x0122…0000',
  *   amount: '100',
  *   maxPrice: '0.55',
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -106,10 +105,10 @@ export const PlaceMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const response = await placeMarketOrder(client, {
+ *   assetId: '0x0122…0000',
  *   minPrice: '0.54',
  *   shares: '180',
  *   side: OrderSide.SELL,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -118,7 +117,7 @@ export function placeMarketOrder(
   request: PrepareMarketOrderRequest,
 ): Promise<OrderResponse> {
   return createMarketOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order, createOrderRouting(request)),
+    postOrderWithAllowanceRecovery(client, order),
   );
 }
 
@@ -190,14 +189,13 @@ export function placeLimitOrder(
   request: PrepareLimitOrderRequest,
 ): Promise<OrderResponse> {
   return createLimitOrder(client, request).then((order) =>
-    postOrderWithAllowanceRecovery(client, order, createOrderRouting(request)),
+    postOrderWithAllowanceRecovery(client, order),
   );
 }
 
 async function postOrderWithAllowanceRecovery(
   client: BaseSecureClient,
   order: SignedOrder,
-  routing: OrderRouting,
 ): Promise<OrderResponse> {
   const postSignedOrder = postOrder(client);
 
@@ -211,7 +209,6 @@ async function postOrderWithAllowanceRecovery(
     const retryResponse = await approveOrderAndRetry(
       client,
       order,
-      routing,
       postSignedOrder,
     );
 
@@ -226,10 +223,9 @@ async function postOrderWithAllowanceRecovery(
 async function approveOrderAndRetry(
   client: BaseSecureClient,
   order: SignedOrder,
-  routing: OrderRouting,
   postSignedOrder: (order: SignedOrder) => Promise<OrderResponse>,
 ): Promise<OrderResponse | undefined> {
-  const approved = await ensureOrderApproval(client, order, routing);
+  const approved = await ensureOrderApproval(client, order);
 
   return approved ? postSignedOrder(order) : undefined;
 }
@@ -247,13 +243,12 @@ function isBalanceOrAllowanceRequestRejection(
 async function ensureOrderApproval(
   client: BaseSecureClient,
   order: SignedOrder,
-  routing: OrderRouting,
 ): Promise<boolean> {
-  const { assetId } = routing;
+  const assetId = order.tokenId;
   const metadata = await resolveOrderMarketMetadata(client, assetId);
   const exchangeAddress = resolveOrderExchangeAddress(
     client,
-    routing,
+    assetId,
     metadata.negRisk,
   );
   const requiredAllowance = BigInt(order.makerAmount);
@@ -276,10 +271,9 @@ async function ensureOrderApproval(
         })
       : await approveErc1155ForAll(client, {
           operatorAddress: exchangeAddress,
-          tokenAddress:
-            routing.exchangeVersion === ExchangeOrderProtocolVersion.V3
-              ? client.environment.contracts.positionManager
-              : client.environment.contracts.conditionalTokens,
+          tokenAddress: isV2PositionId(assetId)
+            ? client.environment.contracts.positionManager
+            : client.environment.contracts.conditionalTokens,
         });
 
   await handle.wait();
