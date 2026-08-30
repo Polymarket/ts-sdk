@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "analytics:builders": "tsx src/builder-analytics.ts",
     "fetch:market": "tsx src/fetch-market.ts",
     "list:markets": "tsx src/list-markets.ts",
     "market:prices": "tsx src/market-prices.ts",

@@ -1,33 +1,116 @@
 import { z } from 'zod';
 import {
+  type BuilderCode,
+  BuilderCodeSchema,
   DecimalishSchema,
+  type DecimalString,
   EvmAddressSchema,
-  IsoDateTimeStringSchema,
+  type IsoCalendarDateString,
+  IsoCalendarDateStringSchema,
 } from '../shared';
+import { dataEnvelopeSchema, dataPageSchema } from './envelope';
 
-export const LeaderboardEntrySchema = z.object({
-  rank: z.string().nullish(),
-  builder: z.string().nullish(),
-  volume: DecimalishSchema.nullish(),
-  activeUsers: z.number().int().nullish(),
-  verified: z.boolean().nullish(),
-  builderLogo: z.string().nullish(),
-});
+/** Window used to rank builders on the builder leaderboard. */
+export enum LeaderboardWindow {
+  Day = 'day',
+  Week = 'week',
+  Month = 'month',
+  All = 'all',
+}
 
-export const BuilderVolumeEntrySchema = z
+export const LeaderboardWindowSchema = z.enum(LeaderboardWindow);
+
+/** Bucket width used by the builder volume time series. */
+export enum BuilderVolumeInterval {
+  Day = 'day',
+  Week = 'week',
+  Month = 'month',
+  /** Groups the series by calendar year. */
+  All = 'all',
+}
+
+export const BuilderVolumeIntervalSchema = z.enum(BuilderVolumeInterval);
+
+export type BuilderStanding = {
+  /** Rank in the selected leaderboard window. */
+  rank: number;
+  /** Display name; use `builderCode` as the stable identifier. */
+  builderName: string;
+  /** Stable builder identifier. */
+  builderCode: BuilderCode;
+  profileImage?: string;
+  verified: boolean;
+  /** Builder-attributed volume in shares. */
+  volume: DecimalString;
+  /** Distinct active users attributed to the builder. */
+  activeUsers: number;
+};
+
+export const BuilderStandingSchema = z
   .object({
-    dt: IsoDateTimeStringSchema.nullish(),
-    builder: z.string().nullish(),
-    builderLogo: z.string().nullish(),
-    verified: z.boolean().nullish(),
-    volume: DecimalishSchema.nullish(),
-    activeUsers: z.number().int().nullish(),
-    rank: z.string().nullish(),
+    rank: z.number().int().min(0),
+    builder_name: z.string(),
+    builder_code: BuilderCodeSchema,
+    profile_image: z.string(),
+    verified: z.boolean(),
+    volume: DecimalishSchema,
+    active_users: z.number().int().min(0),
   })
-  .transform(({ dt, ...rest }) => ({
-    ...rest,
-    bucketAt: dt,
-  }));
+  .transform(
+    ({ active_users, builder_code, builder_name, profile_image, ...rest }) => ({
+      ...rest,
+      activeUsers: active_users,
+      builderCode: builder_code,
+      builderName: builder_name,
+      ...(profile_image === '' ? {} : { profileImage: profile_image }),
+    }),
+  ) satisfies z.ZodType<BuilderStanding>;
+
+export type BuilderVolumePoint = {
+  /** UTC start date of the volume bucket. */
+  bucketDate: IsoCalendarDateString;
+  /** Builder rank within this bucket. */
+  rank: number;
+  /** Display name; use `builderCode` as the stable identifier. */
+  builderName: string;
+  /** Stable builder identifier. */
+  builderCode: BuilderCode;
+  profileImage?: string;
+  verified: boolean;
+  /** Builder-attributed volume in shares for this bucket. */
+  volume: DecimalString;
+  /** Distinct active users attributed within this bucket. */
+  activeUsers: number;
+};
+
+export const BuilderVolumePointSchema = z
+  .object({
+    date: IsoCalendarDateStringSchema,
+    rank: z.number().int().min(0),
+    builder_name: z.string(),
+    builder_code: BuilderCodeSchema,
+    profile_image: z.string(),
+    verified: z.boolean(),
+    volume: DecimalishSchema,
+    active_users: z.number().int().min(0),
+  })
+  .transform(
+    ({
+      active_users,
+      builder_code,
+      builder_name,
+      date,
+      profile_image,
+      ...rest
+    }) => ({
+      ...rest,
+      activeUsers: active_users,
+      bucketDate: date,
+      builderCode: builder_code,
+      builderName: builder_name,
+      ...(profile_image === '' ? {} : { profileImage: profile_image }),
+    }),
+  ) satisfies z.ZodType<BuilderVolumePoint>;
 
 export const TraderLeaderboardEntrySchema = z
   .object({
@@ -45,26 +128,24 @@ export const TraderLeaderboardEntrySchema = z
     wallet: proxyWallet,
   }));
 
-export const ListBuilderLeaderboardResponseSchema = z.array(
-  LeaderboardEntrySchema,
+export const ListBuilderLeaderboardResponseSchema = dataPageSchema(
+  BuilderStandingSchema,
 );
-export const ListBuilderVolumeResponseSchema = z.array(
-  BuilderVolumeEntrySchema,
+export const FetchBuilderVolumeResponseSchema = dataEnvelopeSchema(
+  z.array(BuilderVolumePointSchema),
 );
 export const ListTraderLeaderboardResponseSchema = z.array(
   TraderLeaderboardEntrySchema,
 );
 
-export type LeaderboardEntry = z.infer<typeof LeaderboardEntrySchema>;
-export type BuilderVolumeEntry = z.infer<typeof BuilderVolumeEntrySchema>;
 export type TraderLeaderboardEntry = z.infer<
   typeof TraderLeaderboardEntrySchema
 >;
 export type ListBuilderLeaderboardResponse = z.infer<
   typeof ListBuilderLeaderboardResponseSchema
 >;
-export type ListBuilderVolumeResponse = z.infer<
-  typeof ListBuilderVolumeResponseSchema
+export type FetchBuilderVolumeResponse = z.infer<
+  typeof FetchBuilderVolumeResponseSchema
 >;
 export type ListTraderLeaderboardResponse = z.infer<
   typeof ListTraderLeaderboardResponseSchema

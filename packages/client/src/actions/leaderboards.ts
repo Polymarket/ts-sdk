@@ -1,11 +1,13 @@
 import { PaginationCursorSchema } from '@polymarket/bindings';
 import {
-  type BuilderVolumeEntry,
+  type BuilderStanding,
+  BuilderVolumeIntervalSchema,
+  type BuilderVolumePoint,
+  FetchBuilderVolumeResponseSchema,
   LeaderboardCategorySchema,
-  type LeaderboardEntry,
   LeaderboardOrderBySchema,
+  LeaderboardWindowSchema,
   ListBuilderLeaderboardResponseSchema,
-  ListBuilderVolumeResponseSchema,
   ListTraderLeaderboardResponseSchema,
   TimePeriodSchema,
   type TraderLeaderboardEntry,
@@ -30,38 +32,23 @@ import {
   paginate,
 } from '../pagination';
 import { validateWith } from '../response';
-import { toLegacyDataSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import { toDataSearchParams, toLegacyDataSearchParams } from './params';
+
+export {
+  BuilderVolumeInterval,
+  LeaderboardWindow,
+} from '@polymarket/bindings/data';
 
 const ListBuilderLeaderboardRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
-  // Matches the upstream per-request limit cap.
-  pageSize: PageSizeSchema.max(50).default(20),
-  timePeriod: TimePeriodSchema.optional(),
-});
-
-const ListBuilderVolumeRequestSchema = z.object({
-  timePeriod: TimePeriodSchema.optional(),
-});
-
-const ListTraderLeaderboardRequestSchema = z.object({
-  category: LeaderboardCategorySchema.optional(),
-  cursor: PaginationCursorSchema.optional(),
-  // Matches the upstream per-request limit cap.
-  pageSize: PageSizeSchema.max(50).default(20),
-  timePeriod: TimePeriodSchema.optional(),
-  orderBy: LeaderboardOrderBySchema.optional(),
-  user: z.string().optional(),
-  userName: z.string().optional(),
+  // The first-page default and cap; continuation cursors retain their page size.
+  pageSize: PageSizeSchema.max(1000).default(100),
+  window: LeaderboardWindowSchema.optional(),
 });
 
 export type ListBuilderLeaderboardRequest = z.input<
   typeof ListBuilderLeaderboardRequestSchema
->;
-export type ListBuilderVolumeRequest = z.input<
-  typeof ListBuilderVolumeRequestSchema
->;
-export type ListTraderLeaderboardRequest = z.input<
-  typeof ListTraderLeaderboardRequestSchema
 >;
 
 export type ListBuilderLeaderboardError =
@@ -81,6 +68,11 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
 /**
  * Lists builder leaderboard rankings.
  *
+ * Builders are ranked by attributed share volume within `window`, which
+ * defaults to one day. `builderCode` is the stable identifier; names and
+ * profile images are display metadata. `pageSize` defaults to 100 (max 1000).
+ * Transient rate limits are retried automatically.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
@@ -92,14 +84,14 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
  * ```ts
  * const result = listBuilderLeaderboard(client, {
  *   pageSize: 10,
- *   timePeriod: 'DAY',
+ *   window: LeaderboardWindow.Day,
  * });
  *
  * const firstPage = await result.firstPage();
  *
  * // Optionally, fetch additional pages:
  * for await (const page of result.from(firstPage.nextCursor)) {
- *   // page.items: LeaderboardEntry[]
+ *   // page.items: BuilderStanding[]
  * }
  * ```
  *
@@ -108,59 +100,57 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
  * ```ts
  * const result = listBuilderLeaderboard(client, {
  *   pageSize: 10,
- *   timePeriod: 'DAY',
+ *   window: LeaderboardWindow.Day,
  * });
  *
  * for await (const page of result) {
- *   // page.items: LeaderboardEntry[]
+ *   // page.items: BuilderStanding[]
  * }
  * ```
  */
 export function listBuilderLeaderboard(
   client: BaseClient,
   request: ListBuilderLeaderboardRequest = {},
-): Paginated<LeaderboardEntry[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+): Paginated<BuilderStanding[]> {
+  const { cursor, pageSize, window } = parseUserInput(
     request,
     ListBuilderLeaderboardRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/v1/builders/leaderboard', {
-        params: toLegacyDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/builders/leaderboard', {
+          // Retain the original window across the cursor walk. The cursor pins
+          // it, while the server rejects a contradictory window explicitly.
+          params: toDataSearchParams({
+            timePeriod: window,
+            limit: pageSize,
+            cursor,
+          }),
         }),
-      })
-      .andThen(validateWith(ListBuilderLeaderboardResponseSchema))
-      .map((builders) => {
-        const hasMore = builders.length >= decoded.pageSize;
-
-        return {
-          items: builders,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
+      ).andThen(validateWith(ListBuilderLeaderboardResponseSchema)),
+    cursor,
+  );
 }
 
-export type ListBuilderVolumeError =
+const FetchBuilderVolumeRequestSchema = z.object({
+  interval: BuilderVolumeIntervalSchema.optional(),
+  // This bounds complete time buckets, not individual builder rows.
+  bucketLimit: z.number().int().positive().max(90).optional(),
+});
+
+export type FetchBuilderVolumeRequest = z.input<
+  typeof FetchBuilderVolumeRequestSchema
+>;
+
+export type FetchBuilderVolumeError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const ListBuilderVolumeError = makeErrorGuard(
+export const FetchBuilderVolumeError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -169,37 +159,62 @@ export const ListBuilderVolumeError = makeErrorGuard(
 );
 
 /**
- * Lists daily builder volume entries.
+ * Fetches the per-builder volume time series.
+ *
+ * `interval` controls bucket width and defaults to daily; `all` means one
+ * bucket per calendar year. `bucketLimit` returns that many complete recent
+ * buckets (default 30, max 90), not that many builder rows. Results are newest
+ * bucket first, and volume is measured in shares. Transient rate limits are
+ * retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link ListBuilderVolumeError}
+ * @throws {@link FetchBuilderVolumeError}
  * Thrown on failure.
  *
  * @example
  * ```ts
  * const volume = await fetchBuilderVolume(client, {
- *   timePeriod: 'DAY',
+ *   interval: BuilderVolumeInterval.Day,
+ *   bucketLimit: 7,
  * });
  *
- * // volume: BuilderVolumeEntry[]
+ * // volume: BuilderVolumePoint[]
  * ```
  */
 export async function fetchBuilderVolume(
   client: BaseClient,
-  request: ListBuilderVolumeRequest = {},
-): Promise<BuilderVolumeEntry[]> {
-  const params = parseUserInput(request, ListBuilderVolumeRequestSchema);
+  request: FetchBuilderVolumeRequest = {},
+): Promise<BuilderVolumePoint[]> {
+  const { interval, bucketLimit } = parseUserInput(
+    request,
+    FetchBuilderVolumeRequestSchema,
+  );
 
   return unwrap(
-    client.data
-      .get('/v1/builders/volume', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(validateWith(ListBuilderVolumeResponseSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/builders/volume', {
+        params: toDataSearchParams({ interval, limit: bucketLimit }),
+      }),
+    ).andThen(validateWith(FetchBuilderVolumeResponseSchema)),
   );
 }
+
+const ListTraderLeaderboardRequestSchema = z.object({
+  category: LeaderboardCategorySchema.optional(),
+  cursor: PaginationCursorSchema.optional(),
+  // Matches the upstream per-request limit cap.
+  pageSize: PageSizeSchema.max(50).default(20),
+  timePeriod: TimePeriodSchema.optional(),
+  orderBy: LeaderboardOrderBySchema.optional(),
+  user: z.string().optional(),
+  userName: z.string().optional(),
+});
+
+export type ListTraderLeaderboardRequest = z.input<
+  typeof ListTraderLeaderboardRequestSchema
+>;
 
 export type ListTraderLeaderboardError =
   | RateLimitError
