@@ -4,7 +4,6 @@ import {
   authorizeSessionKey,
   fetchSessionKeys,
   type RevokeSessionKeyRequest,
-  type RevokeSessionKeyResult,
   revokeSessionKey,
   type SessionKey,
 } from '../actions';
@@ -68,9 +67,7 @@ export type SessionKeyActions = {
    * @throws {@link RevokeSessionKeyError}
    * Thrown on failure.
    */
-  revokeSessionKey(
-    request: RevokeSessionKeyRequest,
-  ): Promise<RevokeSessionKeyResult>;
+  revokeSessionKey(request: RevokeSessionKeyRequest): Promise<void>;
 };
 
 export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
@@ -85,7 +82,6 @@ export type {
   AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
   RevokeSessionKeyRequest,
-  RevokeSessionKeyResult,
   SessionKey,
   SessionKeyScope,
 } from '../actions';

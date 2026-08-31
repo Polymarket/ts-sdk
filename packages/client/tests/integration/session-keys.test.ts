@@ -140,16 +140,10 @@ describe('Session keys', { timeout: 600_000 }, () => {
       expect(cancellation.canceled).toContain(orderId);
       orderId = undefined;
 
-      const revocation = await secureClientWithDepositWallet.revokeSessionKey({
+      await secureClientWithDepositWallet.revokeSessionKey({
         address: sessionAddress,
       });
       revoked = true;
-
-      annotate(
-        `Revocation transaction ID: ${revocation.transaction.transactionId}`,
-      );
-      expect(revocation.transaction.transactionHash).toBeNull();
-      expect(revocation.transaction.transactionId).not.toBeNull();
 
       const remainingSessionKeys =
         await secureClientWithDepositWallet.fetchSessionKeys();

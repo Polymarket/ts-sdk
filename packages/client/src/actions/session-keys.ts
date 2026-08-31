@@ -35,7 +35,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
-import type { TransactionHandle, TransactionOutcome } from '../types';
+import type { TransactionOutcome } from '../types';
 import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
 import {
@@ -334,12 +334,6 @@ const RevokeSessionKeyRequestSchema = z
     }),
   ) satisfies z.ZodType<ParsedRevokeSessionKeyRequest, RevokeSessionKeyRequest>;
 
-/** Result of a session-key revocation. */
-export type RevokeSessionKeyResult = {
-  /** Submitted transaction. Call `wait()` to await on-chain confirmation. */
-  transaction: TransactionHandle;
-};
-
 export type RevokeSessionKeyError =
   | CancelledSigningError
   | RateLimitError
@@ -383,7 +377,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
 export async function revokeSessionKey(
   client: BaseSecureClient,
   request: RevokeSessionKeyRequest,
-): Promise<RevokeSessionKeyResult> {
+): Promise<void> {
   assertOwnerDepositWallet(client);
 
   if (!client.supportsGasless) {
@@ -421,16 +415,7 @@ export async function revokeSessionKey(
     kind: 'revocation',
     status: response.status,
   });
-  const transaction = new GaslessTransactionHandle(client, {
-    transactionHash: null,
-    transactionId: response.transactionId,
-  });
-
   await waitForRevokedSessionKey(client, parsedRequest.address);
-
-  return {
-    transaction,
-  };
 }
 
 async function waitForRevokedSessionKey(
