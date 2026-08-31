@@ -2,32 +2,60 @@ import { describe, expect, it } from 'vitest';
 import { ActivitySchema, TradeSchema } from './activity';
 import { ActivityType } from './common';
 
+function activityRow(overrides: Record<string, unknown>) {
+  return {
+    proxy_wallet: `0x${'1'.repeat(40)}`,
+    timestamp: 1_700_000_000,
+    condition_id: '',
+    size: 0,
+    usdc_size: 0,
+    transaction_hash: `0x${'b'.repeat(64)}`,
+    price: 0,
+    token_id: '',
+    side: '',
+    outcome_index: 999,
+    title: '',
+    slug: '',
+    icon: '',
+    event_slug: '',
+    outcome: '',
+    name: '',
+    pseudonym: '',
+    bio: '',
+    profile_image: '',
+    profile_image_optimized: '',
+    ...overrides,
+  };
+}
+
 describe('ActivitySchema', () => {
   it('normalizes ordinary trade assets without assuming the protocol', () => {
     const assetId = '456';
-    const activity = ActivitySchema.parse({
-      proxyWallet: `0x${'1'.repeat(40)}`,
-      timestamp: 1_700_000_000,
-      type: ActivityType.TRADE,
-      side: 'BUY',
-      size: 10,
-      usdcSize: 5,
-      price: 0.5,
-      asset: assetId,
-      conditionId: `0x${'a'.repeat(64)}`,
-      outcome: 'Yes',
-      outcomeIndex: 0,
-      title: 'Will this normalize?',
-      slug: 'will-this-normalize',
-      eventSlug: 'normalization-event',
-      transactionHash: `0x${'b'.repeat(64)}`,
-    });
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.TRADE,
+        side: 'BUY',
+        size: 10,
+        usdc_size: 5,
+        price: 0.5,
+        token_id: assetId,
+        condition_id: `0x${'a'.repeat(64)}`,
+        outcome: 'Yes',
+        outcome_index: 0,
+        title: 'Will this normalize?',
+        slug: 'will-this-normalize',
+        event_slug: 'normalization-event',
+      }),
+    );
 
     expect(activity).toMatchObject({
       type: ActivityType.TRADE,
       isCombo: false,
       assetId,
       tokenId: assetId,
+      shares: '10',
+      amount: '5',
+      timestamp: 1_700_000_000_000,
     });
   });
 
@@ -36,13 +64,9 @@ describe('ActivitySchema', () => {
     ActivityType.WITHDRAWAL,
     ActivityType.TAKER_REBATE,
   ])('parses %s rows as account-level credits', (type) => {
-    const activity = ActivitySchema.parse({
-      proxyWallet: `0x${'1'.repeat(40)}`,
-      timestamp: 1_700_000_000,
-      type,
-      usdcSize: 12.5,
-      transactionHash: `0x${'a'.repeat(64)}`,
-    });
+    const activity = ActivitySchema.parse(
+      activityRow({ type, usdc_size: 12.5 }),
+    );
 
     expect(activity.type).toBe(type);
     expect(activity).toHaveProperty('amount', '12.5');
@@ -112,5 +136,23 @@ describe('TradeSchema', () => {
     };
 
     expect(TradeSchema.parse(row).outcomeIndex).toBe(0);
+  });
+});
+
+describe('TipActivity', () => {
+  it('normalizes the IN/OUT direction the wire serves on tip rows', () => {
+    const tip = ActivitySchema.parse(
+      activityRow({ type: ActivityType.TIP, usdc_size: 2.5, side: 'IN' }),
+    );
+
+    expect(tip).toMatchObject({ type: 'TIP', amount: '2.5', side: 'IN' });
+  });
+
+  it('serves side as null on tip rows predating the direction field', () => {
+    const tip = ActivitySchema.parse(
+      activityRow({ type: ActivityType.TIP, usdc_size: 1, side: '' }),
+    );
+
+    expect(tip).toMatchObject({ type: 'TIP', amount: '1', side: null });
   });
 });
