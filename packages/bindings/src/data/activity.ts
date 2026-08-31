@@ -8,6 +8,8 @@ import {
   ComboConditionIdSchema,
   type ConditionId,
   ConditionIdSchema,
+  DecimalishSchema,
+  type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
@@ -67,11 +69,11 @@ type TradeActivityBase = ActivityBase & {
   /** Direction of the wallet's trade. */
   side: OrderSide;
   /** Number of shares traded by the wallet. */
-  shares: number;
+  shares: DecimalString;
   /** The notional value of the traded shares in USD. */
-  amount: number;
+  amount: DecimalString;
   /** The execution price per share in USD. */
-  price: number;
+  price: DecimalString;
   /** Human-readable title of the traded market or Combo. */
   title: string;
   /** Icon URL for the traded market or Combo, when available. */
@@ -114,7 +116,7 @@ export type SplitActivity = ActivityBase & {
   /** Condition id of the market whose complete set was created. */
   conditionId: ConditionId;
   /** The collateral amount split into the complete set in USD. */
-  amount: number;
+  amount: DecimalString;
   /** Human-readable title of the market whose complete set was created. */
   title: string;
   /** URL slug of the market whose complete set was created. */
@@ -131,7 +133,7 @@ export type MergeActivity = ActivityBase & {
   /** Condition id of the market whose complete set was merged. */
   conditionId: ConditionId;
   /** The collateral amount received from merging the complete set in USD. */
-  amount: number;
+  amount: DecimalString;
   /** Human-readable title of the market whose complete set was merged. */
   title: string;
   /** URL slug of the market whose complete set was merged. */
@@ -148,7 +150,7 @@ export type RedeemActivity = ActivityBase & {
   /** Condition id of the market redeemed by the wallet. */
   conditionId: ConditionId;
   /** The proceeds redeemed from the resolved market in USD. */
-  amount: number;
+  amount: DecimalString;
   /** Human-readable title of the market redeemed by the wallet. */
   title: string;
   /** URL slug of the market redeemed by the wallet. */
@@ -165,7 +167,7 @@ export type ConversionActivity = ActivityBase & {
   /** Condition id of the market involved in the conversion. */
   conditionId: ConditionId;
   /** The amount converted or migrated for the market in USD. */
-  amount: number;
+  amount: DecimalString;
   /** Human-readable title of the market involved in the conversion. */
   title: string;
   /** URL slug of the market involved in the conversion. */
@@ -180,63 +182,63 @@ export type MigrationActivity = ActivityBase & {
   /** A position migrated from the legacy protocol to protocol v2. */
   type: 'MIGRATION';
   /** The migrated position value in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type RewardActivity = ActivityBase & {
   /** An account-level reward credit. */
   type: 'REWARD';
   /** The reward amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type MakerRebateActivity = ActivityBase & {
   /** An account-level maker rebate credit. */
   type: 'MAKER_REBATE';
   /** The maker rebate amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type ReferralRewardActivity = ActivityBase & {
   /** An account-level referral reward credit. */
   type: 'REFERRAL_REWARD';
   /** The referral reward amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type YieldActivity = ActivityBase & {
   /** An account-level yield credit. */
   type: 'YIELD';
   /** The yield amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type DepositActivity = ActivityBase & {
   /** An account-level deposit credit. */
   type: 'DEPOSIT';
   /** The deposit amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type WithdrawalActivity = ActivityBase & {
   /** An account-level withdrawal debit. */
   type: 'WITHDRAWAL';
   /** The withdrawal amount debited from the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type TakerRebateActivity = ActivityBase & {
   /** An account-level taker rebate credit. */
   type: 'TAKER_REBATE';
   /** The taker rebate amount credited to the wallet in USD. */
-  amount: number;
+  amount: DecimalString;
 };
 
 export type TipActivity = ActivityBase & {
   /** A user-to-user tip. */
   type: 'TIP';
   /** The tipped amount in USD. */
-  amount: number;
+  amount: DecimalString;
   /**
    * Direction from this wallet's perspective: `IN` received, `OUT` sent.
    * `null` on rows served before the wire carried a direction.
@@ -272,7 +274,7 @@ type ComboActivityBase = {
   /** Combo position id involved in this activity. */
   positionId: PositionId;
   /** Amount associated with the lifecycle event in USD. */
-  amount: number | null;
+  amount: DecimalString | null;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Polygon transaction hash that produced this activity. */
@@ -310,7 +312,7 @@ export type ComboUnwrapActivity = ComboActivityBase & {
 export type ComboRedeemActivity = ComboActivityBase & {
   type: ComboActivityType.Redeem;
   /** Payout from the redemption in USD. Only redeem rows carry payout semantics. */
-  payout: number | null;
+  payout: DecimalString | null;
 };
 
 export type ComboActivity =
@@ -328,8 +330,8 @@ const RawComboActivitySchema = z.object({
   proxy_wallet: EvmAddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
-  amount_usdc: z.number().nullish(),
-  payout_usdc: z.number().nullish(),
+  amount_usdc: DecimalishSchema.nullish(),
+  payout_usdc: DecimalishSchema.nullish(),
   timestamp: EpochSecondsToMillisecondsSchema,
   transaction_hash: TxHashSchema,
   block_number: z.number().int(),
@@ -357,8 +359,8 @@ export type Trade = {
   /** @deprecated Use `assetId`. */
   tokenId: TokenId | PositionId;
   conditionId: ConditionId;
-  size: number;
-  price: number;
+  size: DecimalString;
+  price: DecimalString;
   timestamp: EpochMilliseconds;
   title?: string;
   slug?: string;
@@ -390,8 +392,8 @@ export const TradeSchema = z
     side: OrderSideSchema,
     token_id: ClobAssetIdSchema,
     condition_id: ConditionIdSchema,
-    size: z.number(),
-    price: z.number(),
+    size: DecimalishSchema,
+    price: DecimalishSchema,
     timestamp: EpochSecondsToMillisecondsSchema,
     title: OptionalTextSchema,
     slug: OptionalTextSchema,
@@ -437,10 +439,10 @@ const RawActivitySchema = z.object({
     ConditionIdSchema.optional(),
   ),
   type: ActivityTypeSchema,
-  size: z.number(),
-  usdc_size: z.number(),
+  size: DecimalishSchema,
+  usdc_size: DecimalishSchema,
   transaction_hash: TxHashSchema,
-  price: z.number(),
+  price: DecimalishSchema,
   token_id: z.preprocess(
     (value) => (value === '' ? undefined : value),
     ClobAssetIdSchema.optional(),

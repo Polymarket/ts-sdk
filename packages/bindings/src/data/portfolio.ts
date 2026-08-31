@@ -6,9 +6,12 @@ import {
   type ConditionId,
   ConditionIdSchema,
   DecimalishSchema,
+  type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
+  type IsoCalendarDateString,
+  IsoCalendarDateStringSchema,
   IsoDateTimeStringSchema,
   type PositionId,
   PositionIdSchema,
@@ -18,6 +21,7 @@ import { dataPageSchema } from './envelope';
 
 export enum ComboPositionStatus {
   Open = 'OPEN',
+  Redeemable = 'REDEEMABLE',
   Partial = 'PARTIAL',
   ResolvedPartial = 'RESOLVED_PARTIAL',
   ResolvedWin = 'RESOLVED_WIN',
@@ -82,31 +86,31 @@ export type Position = {
   tokenId: TokenId | PositionId;
   conditionId: ConditionId;
   /** The current holding, in shares (a ~0 residual on CLOSED rows). */
-  currentSize: number;
-  avgPrice: number;
+  currentSize: DecimalString;
+  avgPrice: DecimalString;
   /** The fee-exclusive entry basis in USD. */
-  entryCostUsdc: number;
+  entryCostUsdc: DecimalString;
   /**
    * Attributed BUY-fee total in USD. Disclosure only — `entryCostUsdc` is
    * already fee-exclusive, so never re-deduct this from a PnL figure.
    */
-  entryFeesUsdc: number;
+  entryFeesUsdc: DecimalString;
   /** Gross (fee-inclusive) basis: always `entryCostUsdc + entryFeesUsdc`. */
-  totalCostUsdc: number;
-  currentPrice: number;
-  currentValue: number;
+  totalCostUsdc: DecimalString;
+  currentPrice: DecimalString;
+  currentValue: DecimalString;
   /**
    * Lifetime bought shares (the average-cost denominator) — never the
    * current balance, which is `currentSize`.
    */
-  totalSize: number;
-  realizedPnl: number;
+  totalSize: DecimalString;
+  realizedPnl: DecimalString;
   /** Mark-to-market PnL: `currentValue - entryCostUsdc`. */
-  unrealizedPnl: number;
+  unrealizedPnl: DecimalString;
   /** Always `realizedPnl + unrealizedPnl`. */
-  totalPnl: number;
-  percentPnl: number;
-  percentRealizedPnl: number;
+  totalPnl: DecimalString;
+  percentPnl: DecimalString;
+  percentRealizedPnl: DecimalString;
   /**
    * The row's actual state — can be narrower than the requested status,
    * since an OPEN request also returns REDEEMABLE rows.
@@ -129,7 +133,7 @@ export type Position = {
   oppositeAssetId?: TokenId | PositionId;
   /** @deprecated Use `oppositeAssetId`. */
   oppositeTokenId?: TokenId | PositionId;
-  endDate?: string;
+  endDate?: IsoCalendarDateString;
   /**
    * The row's last economics event as Unix epoch milliseconds; absent on
    * positions with no native economics.
@@ -153,19 +157,19 @@ export const PositionSchema = z
     proxy_wallet: EvmAddressSchema,
     token_id: ClobAssetIdSchema,
     condition_id: ConditionIdSchema,
-    current_size: z.number(),
-    avg_price: z.number(),
-    entry_cost_usdc: z.number(),
-    entry_fees_usdc: z.number(),
-    total_cost_usdc: z.number(),
-    current_price: z.number(),
-    current_value: z.number(),
-    total_size: z.number(),
-    realized_pnl: z.number(),
-    unrealized_pnl: z.number(),
-    total_pnl: z.number(),
-    percent_pnl: z.number(),
-    percent_realized_pnl: z.number(),
+    current_size: DecimalishSchema,
+    avg_price: DecimalishSchema,
+    entry_cost_usdc: DecimalishSchema,
+    entry_fees_usdc: DecimalishSchema,
+    total_cost_usdc: DecimalishSchema,
+    current_price: DecimalishSchema,
+    current_value: DecimalishSchema,
+    total_size: DecimalishSchema,
+    realized_pnl: DecimalishSchema,
+    unrealized_pnl: DecimalishSchema,
+    total_pnl: DecimalishSchema,
+    percent_pnl: DecimalishSchema,
+    percent_realized_pnl: DecimalishSchema,
     status: PositionStatusSchema,
     redeemable: z.boolean(),
     mergeable: z.boolean(),
@@ -183,7 +187,10 @@ export const PositionSchema = z
       (value) => (value === '' ? undefined : value),
       ClobAssetIdSchema.optional(),
     ),
-    end_date: OptionalTextSchema,
+    end_date: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      IsoCalendarDateStringSchema.optional(),
+    ),
     last_event_at: z.preprocess(
       (value) => (value === 0 ? undefined : value),
       EpochSecondsToMillisecondsSchema.optional(),
@@ -316,15 +323,15 @@ export const ComboPositionSchema = z
     outcome_label: z.string(),
     combo_position_id: PositionIdSchema,
     proxy_wallet: EvmAddressSchema,
-    current_size: z.number(),
-    entry_avg_price_usdc: z.number(),
-    entry_cost_usdc: z.number(),
-    // Exact 6-dp decimal strings — never reconstruct one from the others:
+    current_size: DecimalishSchema,
+    entry_avg_price_usdc: DecimalishSchema,
+    entry_cost_usdc: DecimalishSchema,
+    // Exact 6-dp basis pair — never reconstruct one from the others:
     // `entry_cost_usdc` is rounded weighted-average cost, while the
     // fee-exclusive basis is `gross_entry_cost_usdc − entry_fees_usdc`.
     gross_entry_cost_usdc: DecimalishSchema,
     entry_fees_usdc: DecimalishSchema,
-    realized_payout_usdc: z.number(),
+    realized_payout_usdc: DecimalishSchema,
     status: ComboPositionStatusSchema,
     redeemable: z.boolean(),
     first_entry_at: IsoDateTimeStringSchema,

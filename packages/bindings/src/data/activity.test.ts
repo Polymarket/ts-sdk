@@ -53,8 +53,8 @@ describe('ActivitySchema', () => {
       isCombo: false,
       assetId,
       tokenId: assetId,
-      shares: 10,
-      amount: 5,
+      shares: '10',
+      amount: '5',
       timestamp: 1_700_000_000_000,
     });
   });
@@ -69,7 +69,7 @@ describe('ActivitySchema', () => {
     );
 
     expect(activity.type).toBe(type);
-    expect(activity).toHaveProperty('amount', 12.5);
+    expect(activity).toHaveProperty('amount', '12.5');
   });
 });
 
@@ -145,7 +145,7 @@ describe('TipActivity', () => {
       activityRow({ type: ActivityType.TIP, usdc_size: 2.5, side: 'IN' }),
     );
 
-    expect(tip).toMatchObject({ type: 'TIP', amount: 2.5, side: 'IN' });
+    expect(tip).toMatchObject({ type: 'TIP', amount: '2.5', side: 'IN' });
   });
 
   it('serves side as null on tip rows predating the direction field', () => {
@@ -153,6 +153,6 @@ describe('TipActivity', () => {
       activityRow({ type: ActivityType.TIP, usdc_size: 1, side: '' }),
     );
 
-    expect(tip).toMatchObject({ type: 'TIP', amount: 1, side: null });
+    expect(tip).toMatchObject({ type: 'TIP', amount: '1', side: null });
   });
 });

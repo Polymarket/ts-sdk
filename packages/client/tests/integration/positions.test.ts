@@ -171,7 +171,7 @@ async function fetchComboShares(client: SecureClient): Promise<number> {
     return 0;
   }
 
-  const shares = combo.currentSize;
+  const shares = Number(combo.currentSize);
 
   expect(Number.isFinite(shares)).toBe(true);
 

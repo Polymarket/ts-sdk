@@ -8,7 +8,7 @@ import {
 import {
   type ComboPosition,
   ComboPositionSortBySchema,
-  type ComboPositionStatus,
+  ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
   ListComboPositionsResponseSchema,
@@ -204,20 +204,22 @@ export function listPositions(
 }
 
 /**
- * One status, a non-empty ordered list of statuses, or `'REDEEMABLE'` —
- * which must be the sole value and narrows to rows whose `redeemable` flag
- * is set. Pass multiple statuses as an array rather than a comma-separated
- * string.
+ * One status or a non-empty ordered list of statuses. Pass multiple statuses
+ * as an array rather than a comma-separated string.
+ * `ComboPositionStatus.Redeemable` must be the sole value — it narrows to
+ * rows whose `redeemable` flag is set and cannot ride a multi-status list.
  */
 export type ComboPositionStatusFilter =
-  | 'REDEEMABLE'
   | ComboPositionStatus
   | readonly [ComboPositionStatus, ...ComboPositionStatus[]];
 
 const ComboPositionStatusFilterSchema = z.union([
-  z.literal('REDEEMABLE'),
   ComboPositionStatusSchema,
-  z.tuple([ComboPositionStatusSchema], ComboPositionStatusSchema),
+  z
+    .tuple([ComboPositionStatusSchema], ComboPositionStatusSchema)
+    .refine((statuses) => !statuses.includes(ComboPositionStatus.Redeemable), {
+      message: 'REDEEMABLE must be the sole status value',
+    }),
 ]) satisfies z.ZodType<ComboPositionStatusFilter>;
 
 const ListComboPositionsRequestSchema = z.object({

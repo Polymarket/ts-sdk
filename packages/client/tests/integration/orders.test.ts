@@ -121,7 +121,8 @@ describe('Orders', { timeout: 60_000 }, () => {
           .firstPage();
         const existingPosition = positions.items.find(
           (candidate) =>
-            candidate.assetId === yesTokenId && candidate.currentSize > 0,
+            candidate.assetId === yesTokenId &&
+            Number(candidate.currentSize) > 0,
         );
 
         if (existingPosition !== undefined) {
