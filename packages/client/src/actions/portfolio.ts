@@ -206,8 +206,9 @@ export function listPositions(
 /**
  * One status or a non-empty ordered list of statuses. Pass multiple statuses
  * as an array rather than a comma-separated string.
- * `ComboPositionStatus.Redeemable` must be the sole value — it narrows to
- * rows whose `redeemable` flag is set and cannot ride a multi-status list.
+ * `ComboPositionStatus.Redeemable` must be the sole value (scalar or a
+ * one-element array — both serialize identically) — it narrows to rows whose
+ * `redeemable` flag is set and cannot ride a multi-status list.
  */
 export type ComboPositionStatusFilter =
   | ComboPositionStatus
@@ -217,9 +218,12 @@ const ComboPositionStatusFilterSchema = z.union([
   ComboPositionStatusSchema,
   z
     .tuple([ComboPositionStatusSchema], ComboPositionStatusSchema)
-    .refine((statuses) => !statuses.includes(ComboPositionStatus.Redeemable), {
-      message: 'REDEEMABLE must be the sole status value',
-    }),
+    .refine(
+      (statuses) =>
+        statuses.length === 1 ||
+        !statuses.includes(ComboPositionStatus.Redeemable),
+      { message: 'REDEEMABLE must be the sole status value' },
+    ),
 ]) satisfies z.ZodType<ComboPositionStatusFilter>;
 
 const ListComboPositionsRequestSchema = z.object({
