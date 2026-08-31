@@ -54,8 +54,8 @@ export type SessionKeyActions = {
   /**
    * Revokes a session key authorized for the Deposit Wallet.
    *
-   * Revocation may take several minutes while existing activity is canceled and
-   * the on-chain revocation is confirmed.
+   * Returns once the session key is removed from the active-key registry and can
+   * no longer be used. The on-chain transaction may still be pending.
    * Requires API-key authentication that supports gasless transactions.
    *
    * @example

@@ -35,7 +35,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
-import type { TransactionOutcome } from '../types';
+import type { TransactionHandle, TransactionOutcome } from '../types';
 import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
 import {
@@ -334,10 +334,10 @@ const RevokeSessionKeyRequestSchema = z
     }),
   ) satisfies z.ZodType<ParsedRevokeSessionKeyRequest, RevokeSessionKeyRequest>;
 
-/** Result of a confirmed session-key revocation. */
+/** Result of a session-key revocation. */
 export type RevokeSessionKeyResult = {
-  /** Confirmed transaction that applied the revocation. */
-  transaction: TransactionOutcome;
+  /** Submitted transaction. Call `wait()` to await on-chain confirmation. */
+  transaction: TransactionHandle;
 };
 
 export type RevokeSessionKeyError =
@@ -346,7 +346,6 @@ export type RevokeSessionKeyError =
   | RequestRejectedError
   | SigningError
   | TimeoutError
-  | TransactionFailedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
@@ -356,7 +355,6 @@ export const RevokeSessionKeyError = makeErrorGuard(
   RequestRejectedError,
   SigningError,
   TimeoutError,
-  TransactionFailedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -365,8 +363,8 @@ export const RevokeSessionKeyError = makeErrorGuard(
 /**
  * Revokes a session key authorized for the Deposit Wallet.
  *
- * Revocation may take several minutes while existing activity is canceled and
- * the on-chain revocation is confirmed.
+ * Returns once the session key is removed from the active-key registry and can
+ * no longer be used. The on-chain transaction may still be pending.
  * Requires API-key authentication that supports gasless transactions.
  *
  * @remarks
@@ -423,14 +421,41 @@ export async function revokeSessionKey(
     kind: 'revocation',
     status: response.status,
   });
-  const transaction = await new GaslessTransactionHandle(client, {
+  const transaction = new GaslessTransactionHandle(client, {
     transactionHash: null,
     transactionId: response.transactionId,
-  }).wait();
+  });
+
+  await waitForRevokedSessionKey(client, parsedRequest.address);
 
   return {
     transaction,
   };
+}
+
+async function waitForRevokedSessionKey(
+  client: BaseSecureClient,
+  address: EvmAddress,
+): Promise<void> {
+  for (
+    let pollCount = 0;
+    pollCount < client.environment.relayerMaxPolls;
+    pollCount += 1
+  ) {
+    const isActive = (await fetchSessionKeys(client)).some((sessionKey) =>
+      isSameEvmAddress(sessionKey.address, address),
+    );
+
+    if (!isActive) {
+      return;
+    }
+
+    await delay(client.environment.relayerPollFrequencyMs);
+  }
+
+  throw new TimeoutError(
+    `Timed out waiting for session key ${address} to be revoked`,
+  );
 }
 
 async function waitForAuthorizedSessionKey(

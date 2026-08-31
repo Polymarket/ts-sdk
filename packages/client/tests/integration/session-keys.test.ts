@@ -146,11 +146,9 @@ describe('Session keys', { timeout: 600_000 }, () => {
       revoked = true;
 
       annotate(
-        `Revocation transaction: ${revocation.transaction.transactionHash}`,
+        `Revocation transaction ID: ${revocation.transaction.transactionId}`,
       );
-      expect(revocation.transaction.transactionHash).toMatch(
-        /^0x[0-9a-f]{64}$/i,
-      );
+      expect(revocation.transaction.transactionHash).toBeNull();
       expect(revocation.transaction.transactionId).not.toBeNull();
 
       const remainingSessionKeys =
