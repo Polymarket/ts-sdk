@@ -57,4 +57,22 @@ describe('RFQ quoter inbound messages', () => {
       type: 'rfq_error',
     });
   });
+
+  it('preserves exact execution failure details', () => {
+    const message = RfqQuoterInboundMessageSchema.parse({
+      type: 'RFQ_EXECUTION_UPDATE',
+      rfq_id: 'rfq-1',
+      status: 'FAILED',
+      code: 'MAKER_BALANCE_VALIDATION_FAILED',
+      error: 'maker balance validation failed',
+    });
+
+    expect(message).toMatchObject({
+      type: 'execution_update',
+      rfqId: 'rfq-1',
+      status: 'FAILED',
+      code: RfqKnownErrorCode.MakerBalanceValidationFailed,
+      error: 'maker balance validation failed',
+    });
+  });
 });
