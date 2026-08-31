@@ -103,4 +103,40 @@ describe('Events', () => {
       );
     });
   });
+
+  describe('fetchResolutions', () => {
+    it('fetches matching lifecycle rows by event and condition', async ({
+      publicClient,
+    }) => {
+      const byEvent = await publicClient.fetchResolutions({
+        eventIds: ['106884'],
+      });
+      const eventResolution = expectPresent(byEvent[0]);
+      const conditionId = expectPresent(eventResolution.conditionId);
+
+      const byCondition = await publicClient.fetchResolutions({
+        conditionIds: [conditionId],
+      });
+
+      expect(byCondition).toContainEqual(eventResolution);
+    });
+
+    it('accepts a Gamma-compatible 31-byte condition ID', async ({
+      publicClient,
+    }) => {
+      await expect(
+        publicClient.fetchResolutions({
+          conditionIds: [
+            '0x0115903402acad794c9e221e72a37c4cd00000000000000000000000000000',
+          ],
+        }),
+      ).resolves.toEqual([]);
+    });
+
+    it('rejects an empty selector', async ({ publicClient }) => {
+      await expect(
+        publicClient.fetchResolutions({ eventIds: [] }),
+      ).rejects.toThrow(UserInputError);
+    });
+  });
 });
