@@ -18,7 +18,7 @@ describe('PrepareLimitOrderParamsSchema', () => {
         price: 0.52,
         side: OrderSide.BUY,
         size: 10,
-        tokenId: '123',
+        assetId: '123',
       }).success,
     ).toBe(true);
   });
@@ -33,7 +33,7 @@ describe('PrepareLimitOrderParamsSchema', () => {
         price: 0.52,
         side: OrderSide.BUY,
         size: 10,
-        tokenId: '123',
+        assetId: '123',
       }).success,
     ).toBe(false);
   });
@@ -56,5 +56,22 @@ describe('PrepareLimitOrderParamsSchema', () => {
     });
 
     expect(validatePriceOnTickGrid(params.price, tickSize)).toBe(expected);
+  });
+
+  it('normalizes the deprecated token ID input to an asset ID', () => {
+    expect(
+      PrepareLimitOrderParamsSchema.parse({
+        price: 0.52,
+        side: OrderSide.BUY,
+        size: 10,
+        tokenId: '123',
+      }),
+    ).toEqual({
+      assetId: '123',
+      postOnly: false,
+      price: 0.52,
+      side: OrderSide.BUY,
+      size: 10,
+    });
   });
 });

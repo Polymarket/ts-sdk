@@ -56,7 +56,6 @@ const ListMarketsRequestSchema = z.object({
   liquidityNumMax: z.number().optional(),
   liquidityNumMin: z.number().optional(),
   locale: z.string().optional(),
-  marketMakerAddresses: z.array(z.string()).optional(),
   order: z.string().optional(),
   positionIds: z.array(PositionIdSchema).optional(),
   questionIds: z.array(z.string()).optional(),
@@ -501,7 +500,6 @@ function toMarketsSearchParams(params: ListMarketsParams): URLSearchParams {
     snakeCase<ListMarketsParams>({
       cursor: 'after_cursor',
       ids: 'id',
-      marketMakerAddresses: 'market_maker_address',
       pageSize: 'limit',
     }),
   );
