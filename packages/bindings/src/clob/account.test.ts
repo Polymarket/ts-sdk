@@ -40,7 +40,10 @@ describe('ClobTradeSchema', () => {
       last_update: '1777996840',
     });
 
-    expect(trade.makerOrders[0]?.tokenId).toBe('1');
+    expect(trade.assetId).toBe('1');
+    expect(trade.tokenId).toBe(trade.assetId);
+    expect(trade.makerOrders[0]?.assetId).toBe('1');
+    expect(trade.makerOrders[0]?.tokenId).toBe(trade.makerOrders[0]?.assetId);
     expect(trade.conditionId).toBe(baseTrade.market);
     expect(trade).not.toHaveProperty('market');
     expect(trade.matchedAt).toBe('2026-05-05T16:00:29.000Z');
@@ -89,6 +92,8 @@ describe('OpenOrderSchema', () => {
     });
 
     expect(order.createdAt).toBe('2023-11-14T22:13:20.000Z');
+    expect(order.assetId).toBe(baseOpenOrder.asset_id);
+    expect(order.tokenId).toBe(order.assetId);
     expect(order.expiresAt).toBe('2025-01-01T00:00:00.000Z');
   });
 

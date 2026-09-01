@@ -62,6 +62,27 @@ const PositionIdArraySchema = z
   .preprocess(parseJsonString, z.array(PositionIdSchema).nullish())
   .transform((value) => value ?? []);
 
+/**
+ * Known Combo eligibility statuses.
+ *
+ * The service evolves this set independently of released clients, so market
+ * parsing accepts unknown statuses as plain strings; see {@link ComboStatus}.
+ */
+export enum ComboKnownStatus {
+  Pending = 'pending',
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
+/**
+ * A Combo eligibility status. Known statuses are enumerated in
+ * {@link ComboKnownStatus}; newly introduced statuses flow through as plain
+ * strings so they can be handled before a client release enumerates them.
+ */
+export type ComboStatus = ComboKnownStatus | (string & {});
+
+const ComboStatusSchema = z.string().transform((value): ComboStatus => value);
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -76,6 +97,8 @@ export type MarketState = {
   active?: boolean | null;
   closed?: boolean | null;
   archived?: boolean | null;
+  /** Whether the market is available for combo bets. */
+  comboStatus?: ComboStatus | null;
   acceptingOrders?: boolean | null;
   enableOrderBook?: boolean | null;
   negRisk?: boolean | null;
@@ -111,7 +134,6 @@ export type MarketMetrics = {
   volume1wk?: DecimalString | null;
   volume1mo?: DecimalString | null;
   volume1yr?: DecimalString | null;
-  volumeAmm?: DecimalString | null;
   volumeClob?: DecimalString | null;
   liquidity?: DecimalString | null;
   liquidityNum?: DecimalString | null;
@@ -208,7 +230,6 @@ export const GammaMarketSchema = z.object({
   resolutionSource: z.string().nullish(),
   endDate: IsoDateTimeStringSchema.nullish(),
   category: z.string().nullish(),
-  ammType: z.string().nullish(),
   liquidity: DecimalStringSchema.nullish(),
   sponsorName: z.string().nullish(),
   sponsorImage: z.string().nullish(),
@@ -231,7 +252,6 @@ export const GammaMarketSchema = z.object({
   lowerBoundDate: IsoCalendarDateStringSchema.nullish(),
   upperBoundDate: IsoCalendarDateStringSchema.nullish(),
   closed: z.boolean().nullish(),
-  marketMakerAddress: z.string(),
   createdBy: z.number().int().nullish(),
   updatedBy: z.number().int().nullish(),
   createdAt: IsoDateTimeStringSchema.nullish(),
@@ -282,6 +302,7 @@ export const GammaMarketSchema = z.object({
   gameStartTime: IsoDateTimeStringSchema.nullish(),
   secondsDelay: z.number().int().nullish(),
   clobTokenIds: TokenIdArraySchema,
+  comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
   disqusThread: z.string().nullish(),
   shortOutcomes: z.string().nullish(),
@@ -289,18 +310,11 @@ export const GammaMarketSchema = z.object({
   teamBID: z.string().nullish(),
   umaBond: DecimalStringSchema.nullish(),
   umaReward: DecimalStringSchema.nullish(),
-  fpmmLive: z.boolean().nullish(),
-  volume24hrAmm: DecimalishSchema.nullish(),
-  volume1wkAmm: DecimalishSchema.nullish(),
-  volume1moAmm: DecimalishSchema.nullish(),
-  volume1yrAmm: DecimalishSchema.nullish(),
   volume24hrClob: DecimalishSchema.nullish(),
   volume1wkClob: DecimalishSchema.nullish(),
   volume1moClob: DecimalishSchema.nullish(),
   volume1yrClob: DecimalishSchema.nullish(),
-  volumeAmm: DecimalishSchema.nullish(),
   volumeClob: DecimalishSchema.nullish(),
-  liquidityAmm: DecimalishSchema.nullish(),
   liquidityClob: DecimalishSchema.nullish(),
   makerBaseFee: z.number().nullish(),
   takerBaseFee: z.number().nullish(),
@@ -329,7 +343,6 @@ export const GammaMarketSchema = z.object({
   tags: z.array(TagReferenceSchema).nullish(),
   cyom: z.boolean().nullish(),
   competitive: z.number().nullish(),
-  pagerDutyNotificationEnabled: z.boolean().nullish(),
   approved: z.boolean().nullish(),
   clobRewards: z.array(ClobRewardsSchema).nullish(),
   rewardsMinSize: DecimalishSchema.nullish(),
@@ -366,7 +379,6 @@ export const GammaMarketSchema = z.object({
   internalUsers: z.array(InternalUserSchema).nullish(),
   holdingRewardsEnabled: z.boolean().nullish(),
   feesEnabled: z.boolean().nullish(),
-  requiresTranslation: z.boolean().nullish(),
   makerRebatesFeeShareBps: z.number().nullish(),
   // Legacy raw fee fields are superseded by feeSchedule in normalized output.
   // feeRate: DecimalishSchema.nullish(),
@@ -440,6 +452,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       active: market.active,
       closed: market.closed,
       archived: market.archived,
+      comboStatus: market.comboStatus,
       acceptingOrders: market.acceptingOrders,
       enableOrderBook: market.enableOrderBook,
       negRisk: market.negRisk,
@@ -455,7 +468,6 @@ export function normalizeMarket(market: GammaMarket): Market {
       volume1wk: market.volume1wk,
       volume1mo: market.volume1mo,
       volume1yr: market.volume1yr,
-      volumeAmm: market.volumeAmm,
       volumeClob: market.volumeClob,
       liquidity: market.liquidity,
       liquidityNum: market.liquidityNum,

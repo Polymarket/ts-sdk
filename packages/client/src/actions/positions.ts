@@ -20,16 +20,16 @@ import {
 import { z } from 'zod';
 import {
   combinatorialPrepareConditionCall,
+  ctfMergePositionsCall,
   ctfRedeemPositionsCall,
+  ctfSplitPositionCall,
   decodeErc1155BalanceOfBatchResult,
   decodeErc1155BalanceOfResult,
   erc1155BalanceOfBatchCall,
   erc1155BalanceOfCall,
-  mergePositionsCall,
-  mergeV2Call,
-  redeemV2Call,
-  splitPositionCall,
-  splitV2Call,
+  routerMergeCall,
+  routerRedeemCall,
+  routerSplitCall,
 } from '../abis';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -46,14 +46,14 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import {
-  type CanonicalComboLegs,
   canonicalizeComboLegs,
-  decodeComboOutcomePositionId,
+  decodeV2OutcomePositionId,
   deriveComboPositionContext,
 } from '../protocol';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
+  type TransactionCall,
   type TransactionHandle,
 } from '../types';
 import {
@@ -70,108 +70,17 @@ import {
 } from './gasless';
 import { listMarkets } from './markets';
 
-/**
- * Parameters for preparing a market position split.
- */
-export type PrepareSplitMarketPositionRequest = {
-  /** Amount of collateral to convert into market positions. */
-  amount: bigint;
-  /** Existing market condition ID that identifies the positions to mint. */
-  conditionId: string | ConditionId;
-  /** Optional transaction metadata for workflows that support metadata. */
-  metadata?: string;
-};
-
-/**
- * Parameters for preparing a combo position split.
- */
-export type PrepareSplitComboPositionRequest = {
-  /** Amount of collateral to convert into combo positions. */
-  amount: bigint;
-  /** Protocol v2 leg position IDs that define the combo condition. */
-  legs: string[] | PositionId[];
-  /** Optional transaction metadata for workflows that support metadata. */
-  metadata?: string;
-};
-
-/**
- * Parameters for preparing either supported position split workflow.
- *
- * @remarks
- * Provide either a market `conditionId` or combo `legs`.
- */
-export type PrepareSplitPositionRequest =
-  | PrepareSplitMarketPositionRequest
-  | PrepareSplitComboPositionRequest;
-
-const PrepareSplitMarketPositionRequestSchema = z.object({
-  amount: z.bigint().min(0n),
-  conditionId: ConditionIdSchema,
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<PrepareSplitMarketPositionRequest>;
-
-const PrepareSplitComboPositionInputSchema = z.object({
-  amount: z.bigint().positive(),
-  legs: z.array(PositionIdSchema).min(1).max(50),
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<PrepareSplitComboPositionRequest>;
-
-type ParsedSplitComboPositionRequest = {
-  amount: bigint;
-  legs: CanonicalComboLegs;
-  metadata?: string;
-};
-
-const CanonicalComboLegsSchema = z
-  .array(PositionIdSchema)
-  .min(1)
-  .max(50)
-  .transform(canonicalizeComboLegs);
-
-const PrepareSplitComboPositionRequestSchema = z.object({
-  amount: z.bigint().positive(),
-  legs: CanonicalComboLegsSchema,
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<
-  ParsedSplitComboPositionRequest,
-  PrepareSplitComboPositionRequest
->;
-
-const PrepareSplitPositionRequestSchema = z.union([
-  PrepareSplitMarketPositionRequestSchema.extend({
-    legs: z.never().optional(),
-  }),
-  PrepareSplitComboPositionInputSchema.extend({
-    conditionId: z.never().optional(),
-  }),
-]) satisfies z.ZodType<PrepareSplitPositionRequest>;
+enum PositionProtocol {
+  CTF = 'ctf',
+  V2 = 'v2',
+}
 
 export type SplitPositionWorkflowRequest =
   | GaslessWorkflowRequest
   | SendSplitPositionTransactionRequest;
 
-export type MergePositionsWorkflowRequest =
-  | GaslessWorkflowRequest
-  | SendMergePositionsTransactionRequest;
-
-export type RedeemPositionsWorkflowRequest =
-  | GaslessWorkflowRequest
-  | SendRedeemPositionsTransactionRequest;
-
 export type SplitPositionWorkflow = AsyncGenerator<
   SplitPositionWorkflowRequest,
-  TransactionHandle,
-  EvmAddress | EvmSignature | TransactionHandle
->;
-
-export type MergePositionsWorkflow = AsyncGenerator<
-  MergePositionsWorkflowRequest,
-  TransactionHandle,
-  EvmAddress | EvmSignature | TransactionHandle
->;
-
-export type RedeemPositionsWorkflow = AsyncGenerator<
-  RedeemPositionsWorkflowRequest,
   TransactionHandle,
   EvmAddress | EvmSignature | TransactionHandle
 >;
@@ -189,44 +98,33 @@ export const PrepareSplitPositionError = makeErrorGuard(
   UnexpectedResponseError,
   UserInputError,
 );
+
+/**
+ * Parameters for preparing a market position split.
+ *
+ * @remarks
+ * The condition ID may identify either a CTF or Polymarket V2 market. The SDK
+ * resolves the protocol internally.
+ */
+export type PrepareSplitMarketPositionRequest = {
+  /** Amount of collateral to convert into market positions. */
+  amount: bigint;
+  /** Existing market condition ID that identifies the positions to mint. */
+  conditionId: string | ConditionId;
+  /** Optional transaction metadata for workflows that support metadata. */
+  metadata?: string;
+};
+
+const PrepareSplitMarketPositionRequestSchema = z.object({
+  amount: z.bigint().min(0n),
+  conditionId: ConditionIdSchema,
+  metadata: GaslessTransactionMetadataSchema.optional(),
+}) satisfies z.ZodType<PrepareSplitMarketPositionRequest>;
+
+/** @deprecated Use {@link PrepareSplitPositionError}. */
 export type PrepareSplitMarketPositionError = PrepareSplitPositionError;
+/** @deprecated Use {@link PrepareSplitPositionError}. */
 export const PrepareSplitMarketPositionError = PrepareSplitPositionError;
-export type PrepareSplitComboPositionError = PrepareSplitPositionError;
-export const PrepareSplitComboPositionError = PrepareSplitPositionError;
-export type PrepareMergePositionsError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const PrepareMergePositionsError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-export type PrepareMergeMarketPositionError = PrepareMergePositionsError;
-export const PrepareMergeMarketPositionError = PrepareMergePositionsError;
-export type PrepareMergeComboPositionError = PrepareMergePositionsError;
-export const PrepareMergeComboPositionError = PrepareMergePositionsError;
-export type PrepareRedeemPositionsError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const PrepareRedeemPositionsError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-export type PrepareRedeemMarketPositionsError = PrepareRedeemPositionsError;
-export const PrepareRedeemMarketPositionsError = PrepareRedeemPositionsError;
-export type PrepareRedeemComboPositionError = PrepareRedeemPositionsError;
-export const PrepareRedeemComboPositionError = PrepareRedeemPositionsError;
 
 /**
  * Starts a split workflow for a market condition.
@@ -243,7 +141,7 @@ export const PrepareRedeemComboPositionError = PrepareRedeemPositionsError;
  * });
  * ```
  *
- * @throws {@link PrepareSplitMarketPositionError}
+ * @throws {@link PrepareSplitPositionError}
  * Thrown on failure.
  */
 export async function prepareSplitMarketPosition(
@@ -254,15 +152,22 @@ export async function prepareSplitMarketPosition(
     request,
     PrepareSplitMarketPositionRequestSchema,
   );
-  const context = await resolveMarketClobContext(client, {
+  const context = await resolveMarketPositionContext(client, {
     conditionId: params.conditionId,
   });
-  const call = splitPositionCall(
-    context.adapterAddress,
-    client.environment.contracts.collateralToken,
-    context.conditionId,
-    params.amount,
-  );
+  const call =
+    context.protocol === PositionProtocol.CTF
+      ? ctfSplitPositionCall(
+          context.adapterAddress,
+          client.environment.contracts.collateralToken,
+          context.conditionId,
+          params.amount,
+        )
+      : routerSplitCall(
+          client.environment.contracts.protocolV2Router,
+          context.conditionId,
+          params.amount,
+        );
 
   return async function* (): SplitPositionWorkflow {
     if (client.account.walletType === WalletType.EOA) {
@@ -283,6 +188,29 @@ export async function prepareSplitMarketPosition(
 }
 
 /**
+ * Parameters for preparing a combo position split.
+ */
+export type PrepareSplitComboPositionRequest = {
+  /** Amount of collateral to convert into combo positions. */
+  amount: bigint;
+  /** Protocol v2 leg position IDs that define the combo condition. */
+  legs: string[] | PositionId[];
+  /** Optional transaction metadata for workflows that support metadata. */
+  metadata?: string;
+};
+
+const PrepareSplitComboPositionRequestSchema = z.object({
+  amount: z.bigint().positive(),
+  legs: z.array(PositionIdSchema).min(1).max(50),
+  metadata: GaslessTransactionMetadataSchema.optional(),
+}) satisfies z.ZodType<PrepareSplitComboPositionRequest>;
+
+/** @deprecated Use {@link PrepareSplitPositionError}. */
+export type PrepareSplitComboPositionError = PrepareSplitPositionError;
+/** @deprecated Use {@link PrepareSplitPositionError}. */
+export const PrepareSplitComboPositionError = PrepareSplitPositionError;
+
+/**
  * Starts a split workflow for a combo position from leg position IDs.
  *
  * @remarks
@@ -296,7 +224,7 @@ export async function prepareSplitMarketPosition(
  * });
  * ```
  *
- * @throws {@link PrepareSplitComboPositionError}
+ * @throws {@link PrepareSplitPositionError}
  * Thrown on failure.
  */
 export async function prepareSplitComboPosition(
@@ -307,12 +235,13 @@ export async function prepareSplitComboPosition(
     request,
     PrepareSplitComboPositionRequestSchema,
   );
+  const legs = canonicalizeComboLegs(params.legs);
   const prepareConditionCall = combinatorialPrepareConditionCall(
     client.environment.contracts.combinatorialModule,
-    params.legs,
+    legs,
   );
-  const combo = deriveComboPositionContext(params.legs);
-  const splitCall = splitV2Call(
+  const combo = deriveComboPositionContext(legs);
+  const splitCall = routerSplitCall(
     client.environment.contracts.protocolV2Router,
     combo.conditionId,
     params.amount,
@@ -347,7 +276,27 @@ export async function prepareSplitComboPosition(
 }
 
 /**
- * Starts a split workflow for market or combo positions.
+ * Parameters for preparing a position split.
+ *
+ * @remarks
+ * Provide `conditionId` for an existing market condition or `legs` to derive a
+ * Combo condition.
+ */
+export type PrepareSplitPositionRequest =
+  | PrepareSplitMarketPositionRequest
+  | PrepareSplitComboPositionRequest;
+
+const PrepareSplitPositionRequestSchema = z.union([
+  PrepareSplitMarketPositionRequestSchema.extend({
+    legs: z.never().optional(),
+  }),
+  PrepareSplitComboPositionRequestSchema.extend({
+    conditionId: z.never().optional(),
+  }),
+]) satisfies z.ZodType<PrepareSplitPositionRequest>;
+
+/**
+ * Starts a position split workflow.
  *
  * @throws {@link PrepareSplitPositionError}
  * Thrown on failure.
@@ -386,10 +335,10 @@ export const SplitPositionError = makeErrorGuard(
   UnexpectedResponseError,
   UserInputError,
 );
+/** @deprecated Use {@link SplitPositionError}. */
 export type SplitMarketPositionError = SplitPositionError;
+/** @deprecated Use {@link SplitPositionError}. */
 export const SplitMarketPositionError = SplitPositionError;
-export type SplitComboPositionError = SplitPositionError;
-export const SplitComboPositionError = SplitPositionError;
 
 /**
  * Splits collateral into market positions.
@@ -397,7 +346,7 @@ export const SplitComboPositionError = SplitPositionError;
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link SplitMarketPositionError}
+ * @throws {@link SplitPositionError}
  * Thrown on failure.
  */
 export function splitMarketPosition(
@@ -409,13 +358,18 @@ export function splitMarketPosition(
   );
 }
 
+/** @deprecated Use {@link SplitPositionError}. */
+export type SplitComboPositionError = SplitPositionError;
+/** @deprecated Use {@link SplitPositionError}. */
+export const SplitComboPositionError = SplitPositionError;
+
 /**
  * Splits collateral into combo positions from leg position IDs.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link SplitComboPositionError}
+ * @throws {@link SplitPositionError}
  * Thrown on failure.
  */
 export function splitComboPosition(
@@ -428,7 +382,7 @@ export function splitComboPosition(
 }
 
 /**
- * Splits collateral into market or combo positions.
+ * Splits collateral into positions.
  *
  * @throws {@link SplitPositionError}
  * Thrown on failure.
@@ -442,8 +396,36 @@ export function splitPosition(
   );
 }
 
+export type MergePositionsWorkflowRequest =
+  | GaslessWorkflowRequest
+  | SendMergePositionsTransactionRequest;
+
+export type MergePositionsWorkflow = AsyncGenerator<
+  MergePositionsWorkflowRequest,
+  TransactionHandle,
+  EvmAddress | EvmSignature | TransactionHandle
+>;
+
+export type PrepareMergePositionsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const PrepareMergePositionsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 /**
  * Parameters for preparing a market position merge.
+ *
+ * @remarks
+ * The condition ID may identify either a CTF or Polymarket V2 market. The SDK
+ * resolves the protocol internally.
  */
 export type PrepareMergeMarketPositionRequest = {
   /** Amount per complementary market position to merge. */
@@ -454,63 +436,16 @@ export type PrepareMergeMarketPositionRequest = {
   metadata?: string;
 };
 
-/**
- * Parameters for preparing a combo position merge.
- */
-export type PrepareMergeComboPositionRequest = {
-  /** Amount per complementary combo position to merge. */
-  amount: bigint | 'max';
-  /** Protocol v2 leg position IDs that define the combo condition. */
-  legs: string[] | PositionId[];
-  /** Optional transaction metadata for workflows that support metadata. */
-  metadata?: string;
-};
-
-/**
- * Parameters for preparing either supported position merge workflow.
- *
- * @remarks
- * Provide either a market `conditionId` or combo `legs`.
- */
-export type PrepareMergePositionsRequest =
-  | PrepareMergeMarketPositionRequest
-  | PrepareMergeComboPositionRequest;
-
-type ParsedMergeComboPositionRequest = {
-  amount: bigint | 'max';
-  legs: CanonicalComboLegs;
-  metadata?: string;
-};
-
 const PrepareMergeMarketPositionRequestSchema = z.object({
   amount: z.union([z.bigint().positive(), z.literal('max')]),
   conditionId: ConditionIdSchema,
   metadata: GaslessTransactionMetadataSchema.optional(),
 }) satisfies z.ZodType<PrepareMergeMarketPositionRequest>;
 
-const PrepareMergeComboPositionInputSchema = z.object({
-  amount: z.union([z.bigint().positive(), z.literal('max')]),
-  legs: z.array(PositionIdSchema).min(1).max(50),
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<PrepareMergeComboPositionRequest>;
-
-const PrepareMergeComboPositionRequestSchema = z.object({
-  amount: z.union([z.bigint().positive(), z.literal('max')]),
-  legs: CanonicalComboLegsSchema,
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<
-  ParsedMergeComboPositionRequest,
-  PrepareMergeComboPositionRequest
->;
-
-const PrepareMergePositionsRequestSchema = z.union([
-  PrepareMergeMarketPositionRequestSchema.extend({
-    legs: z.never().optional(),
-  }),
-  PrepareMergeComboPositionInputSchema.extend({
-    conditionId: z.never().optional(),
-  }),
-]) satisfies z.ZodType<PrepareMergePositionsRequest>;
+/** @deprecated Use {@link PrepareMergePositionsError}. */
+export type PrepareMergeMarketPositionError = PrepareMergePositionsError;
+/** @deprecated Use {@link PrepareMergePositionsError}. */
+export const PrepareMergeMarketPositionError = PrepareMergePositionsError;
 
 /**
  * Starts a workflow to merge complementary positions in a market back into collateral.
@@ -527,7 +462,7 @@ const PrepareMergePositionsRequestSchema = z.union([
  * });
  * ```
  *
- * @throws {@link PrepareMergeMarketPositionError}
+ * @throws {@link PrepareMergePositionsError}
  * Thrown on failure.
  */
 export async function prepareMergeMarketPosition(
@@ -538,7 +473,7 @@ export async function prepareMergeMarketPosition(
     request,
     PrepareMergeMarketPositionRequestSchema,
   );
-  const context = await resolveMarketClobContext(client, {
+  const context = await resolveMarketPositionContext(client, {
     conditionId: params.conditionId,
   });
   const balances = decodeErc1155BalanceOfBatchResult(
@@ -546,7 +481,7 @@ export async function prepareMergeMarketPosition(
       erc1155BalanceOfBatchCall(
         context.positionErc1155Address,
         client.account.wallet,
-        context.tokenIds,
+        context.outcomeIds,
       ),
     ),
   );
@@ -555,12 +490,19 @@ export async function prepareMergeMarketPosition(
     balances,
     params.amount,
   );
-  const call = mergePositionsCall(
-    context.adapterAddress,
-    client.environment.contracts.collateralToken,
-    context.conditionId,
-    amount,
-  );
+  const call =
+    context.protocol === PositionProtocol.CTF
+      ? ctfMergePositionsCall(
+          context.adapterAddress,
+          client.environment.contracts.collateralToken,
+          context.conditionId,
+          amount,
+        )
+      : routerMergeCall(
+          client.environment.contracts.protocolV2Router,
+          context.conditionId,
+          amount,
+        );
 
   return async function* (): MergePositionsWorkflow {
     if (client.account.walletType === WalletType.EOA) {
@@ -581,6 +523,29 @@ export async function prepareMergeMarketPosition(
 }
 
 /**
+ * Parameters for preparing a combo position merge.
+ */
+export type PrepareMergeComboPositionRequest = {
+  /** Amount per complementary combo position to merge. */
+  amount: bigint | 'max';
+  /** Protocol v2 leg position IDs that define the combo condition. */
+  legs: string[] | PositionId[];
+  /** Optional transaction metadata for workflows that support metadata. */
+  metadata?: string;
+};
+
+const PrepareMergeComboPositionRequestSchema = z.object({
+  amount: z.union([z.bigint().positive(), z.literal('max')]),
+  legs: z.array(PositionIdSchema).min(1).max(50),
+  metadata: GaslessTransactionMetadataSchema.optional(),
+}) satisfies z.ZodType<PrepareMergeComboPositionRequest>;
+
+/** @deprecated Use {@link PrepareMergePositionsError}. */
+export type PrepareMergeComboPositionError = PrepareMergePositionsError;
+/** @deprecated Use {@link PrepareMergePositionsError}. */
+export const PrepareMergeComboPositionError = PrepareMergePositionsError;
+
+/**
  * Starts a workflow to merge complementary combo positions back into collateral.
  *
  * @remarks
@@ -594,7 +559,7 @@ export async function prepareMergeMarketPosition(
  * });
  * ```
  *
- * @throws {@link PrepareMergeComboPositionError}
+ * @throws {@link PrepareMergePositionsError}
  * Thrown on failure.
  */
 export async function prepareMergeComboPosition(
@@ -605,11 +570,12 @@ export async function prepareMergeComboPosition(
     request,
     PrepareMergeComboPositionRequestSchema,
   );
+  const legs = canonicalizeComboLegs(params.legs);
   const prepareConditionCall = combinatorialPrepareConditionCall(
     client.environment.contracts.combinatorialModule,
-    params.legs,
+    legs,
   );
-  const combo = deriveComboPositionContext(params.legs);
+  const combo = deriveComboPositionContext(legs);
   const balances = decodeErc1155BalanceOfBatchResult(
     await client.rpc.ethCall(
       erc1155BalanceOfBatchCall(
@@ -620,7 +586,7 @@ export async function prepareMergeComboPosition(
     ),
   );
   const amount = resolveMergeAmount(combo.conditionId, balances, params.amount);
-  const mergeCall = mergeV2Call(
+  const mergeCall = routerMergeCall(
     client.environment.contracts.protocolV2Router,
     combo.conditionId,
     amount,
@@ -655,7 +621,27 @@ export async function prepareMergeComboPosition(
 }
 
 /**
- * Starts a merge workflow for market or combo positions.
+ * Parameters for preparing a position merge.
+ *
+ * @remarks
+ * Provide `conditionId` for an existing market condition or `legs` to derive a
+ * Combo condition.
+ */
+export type PrepareMergePositionsRequest =
+  | PrepareMergeMarketPositionRequest
+  | PrepareMergeComboPositionRequest;
+
+const PrepareMergePositionsRequestSchema = z.union([
+  PrepareMergeMarketPositionRequestSchema.extend({
+    legs: z.never().optional(),
+  }),
+  PrepareMergeComboPositionRequestSchema.extend({
+    conditionId: z.never().optional(),
+  }),
+]) satisfies z.ZodType<PrepareMergePositionsRequest>;
+
+/**
+ * Starts a position merge workflow.
  *
  * @throws {@link PrepareMergePositionsError}
  * Thrown on failure.
@@ -694,10 +680,10 @@ export const MergePositionsError = makeErrorGuard(
   UnexpectedResponseError,
   UserInputError,
 );
+/** @deprecated Use {@link MergePositionsError}. */
 export type MergeMarketPositionError = MergePositionsError;
+/** @deprecated Use {@link MergePositionsError}. */
 export const MergeMarketPositionError = MergePositionsError;
-export type MergeComboPositionError = MergePositionsError;
-export const MergeComboPositionError = MergePositionsError;
 
 /**
  * Merges complementary market positions back into collateral.
@@ -705,7 +691,7 @@ export const MergeComboPositionError = MergePositionsError;
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link MergeMarketPositionError}
+ * @throws {@link MergePositionsError}
  * Thrown on failure.
  */
 export function mergeMarketPosition(
@@ -717,13 +703,18 @@ export function mergeMarketPosition(
   );
 }
 
+/** @deprecated Use {@link MergePositionsError}. */
+export type MergeComboPositionError = MergePositionsError;
+/** @deprecated Use {@link MergePositionsError}. */
+export const MergeComboPositionError = MergePositionsError;
+
 /**
  * Merges complementary combo positions back into collateral.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link MergeComboPositionError}
+ * @throws {@link MergePositionsError}
  * Thrown on failure.
  */
 export function mergeComboPosition(
@@ -736,7 +727,7 @@ export function mergeComboPosition(
 }
 
 /**
- * Merges complementary market or combo positions back into collateral.
+ * Merges complementary positions back into collateral.
  *
  * @throws {@link MergePositionsError}
  * Thrown on failure.
@@ -750,8 +741,36 @@ export function mergePositions(
   );
 }
 
+export type RedeemPositionsWorkflowRequest =
+  | GaslessWorkflowRequest
+  | SendRedeemPositionsTransactionRequest;
+
+export type RedeemPositionsWorkflow = AsyncGenerator<
+  RedeemPositionsWorkflowRequest,
+  TransactionHandle,
+  EvmAddress | EvmSignature | TransactionHandle
+>;
+
+export type PrepareRedeemPositionsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const PrepareRedeemPositionsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 /**
  * Parameters for preparing a market position redemption by condition ID.
+ *
+ * @remarks
+ * The condition ID may identify either a CTF or Polymarket V2 market. The SDK
+ * resolves the protocol internally.
  */
 export type PrepareRedeemMarketPositionsByConditionIdRequest = {
   /** Existing market condition ID that identifies the positions to redeem. */
@@ -775,29 +794,6 @@ export type PrepareRedeemMarketPositionsByMarketIdRequest = {
   /** Optional transaction metadata for workflows that support metadata. */
   metadata?: string;
 };
-
-/**
- * Parameters for preparing a combo position redemption.
- */
-export type PrepareRedeemComboPositionRequest = {
-  /** Protocol v2 combo YES/NO position ID to redeem. */
-  positionId: string | PositionId;
-  conditionId?: never;
-  marketId?: never;
-  /** Optional transaction metadata for workflows that support metadata. */
-  metadata?: string;
-};
-
-/**
- * Parameters for preparing either supported position redemption workflow.
- *
- * @remarks
- * Provide either a market `conditionId` or `marketId`, or a combo `positionId`.
- */
-export type PrepareRedeemPositionsRequest =
-  | PrepareRedeemMarketPositionsByConditionIdRequest
-  | PrepareRedeemMarketPositionsByMarketIdRequest
-  | PrepareRedeemComboPositionRequest;
 
 export type PrepareRedeemMarketPositionsRequest =
   | PrepareRedeemMarketPositionsByConditionIdRequest
@@ -824,18 +820,10 @@ const PrepareRedeemMarketPositionsRequestSchema = z.union([
   PrepareRedeemMarketPositionsByMarketIdRequestSchema,
 ]) satisfies z.ZodType<PrepareRedeemMarketPositionsRequest>;
 
-const PrepareRedeemComboPositionRequestSchema = z.object({
-  positionId: PositionIdSchema,
-  conditionId: z.never().optional(),
-  marketId: z.never().optional(),
-  metadata: GaslessTransactionMetadataSchema.optional(),
-}) satisfies z.ZodType<PrepareRedeemComboPositionRequest>;
-
-const PrepareRedeemPositionsRequestSchema = z.union([
-  PrepareRedeemMarketPositionsByConditionIdRequestSchema,
-  PrepareRedeemMarketPositionsByMarketIdRequestSchema,
-  PrepareRedeemComboPositionRequestSchema,
-]) satisfies z.ZodType<PrepareRedeemPositionsRequest>;
+/** @deprecated Use {@link PrepareRedeemPositionsError}. */
+export type PrepareRedeemMarketPositionsError = PrepareRedeemPositionsError;
+/** @deprecated Use {@link PrepareRedeemPositionsError}. */
+export const PrepareRedeemMarketPositionsError = PrepareRedeemPositionsError;
 
 /**
  * Starts a redemption workflow for resolved market positions.
@@ -858,7 +846,7 @@ const PrepareRedeemPositionsRequestSchema = z.union([
  * });
  * ```
  *
- * @throws {@link PrepareRedeemMarketPositionsError}
+ * @throws {@link PrepareRedeemPositionsError}
  * Thrown on failure.
  */
 export async function prepareRedeemMarketPositions(
@@ -869,29 +857,21 @@ export async function prepareRedeemMarketPositions(
     request,
     PrepareRedeemMarketPositionsRequestSchema,
   );
-  const context = await resolveMarketClobContext(
+  const context = await resolveMarketPositionContext(
     client,
     params.conditionId !== undefined
       ? { conditionId: params.conditionId, closed: true }
       : { marketId: params.marketId, closed: true },
   );
-  const call = ctfRedeemPositionsCall(
-    context.adapterAddress,
-    client.environment.contracts.collateralToken,
-    context.conditionId,
-  );
+  const calls = await prepareMarketRedemptionCalls(client, context);
 
   return async function* (): RedeemPositionsWorkflow {
     if (client.account.walletType === WalletType.EOA) {
-      return expectTransactionHandle(
-        yield sendRedeemPositionsTransaction(
-          signerTransactionRequest(client.environment.chainId, call),
-        ),
-      );
+      return yield* sendRedeemPositionCalls(client, calls);
     }
 
     return yield* await prepareGaslessTransaction(client, {
-      calls: [call],
+      calls,
       metadata:
         params.metadata ??
         `Redeem positions for market ${context.marketId} (condition ${context.conditionId})`,
@@ -900,30 +880,46 @@ export async function prepareRedeemMarketPositions(
 }
 
 /**
- * Starts a redemption workflow for a resolved combo position.
+ * Parameters for preparing a Polymarket V2 position redemption.
+ */
+export type PrepareRedeemPositionRequest = {
+  /** Polymarket V2 YES/NO position ID to redeem. */
+  positionId: string | PositionId;
+  conditionId?: never;
+  marketId?: never;
+  /** Optional transaction metadata for workflows that support metadata. */
+  metadata?: string;
+};
+
+const PrepareRedeemPositionRequestSchema = z.object({
+  positionId: PositionIdSchema,
+  conditionId: z.never().optional(),
+  marketId: z.never().optional(),
+  metadata: GaslessTransactionMetadataSchema.optional(),
+}) satisfies z.ZodType<PrepareRedeemPositionRequest>;
+
+/**
+ * Starts a redemption workflow for a resolved Polymarket V2 position.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
  * @example
  * ```ts
- * const workflow = await prepareRedeemComboPosition(client, {
+ * const workflow = await prepareRedeemPosition(client, {
  *   positionId: '123',
  * });
  * ```
  *
- * @throws {@link PrepareRedeemComboPositionError}
+ * @throws {@link PrepareRedeemPositionsError}
  * Thrown on failure.
  */
-export async function prepareRedeemComboPosition(
+export async function prepareRedeemPosition(
   client: BaseSecureClient,
-  request: PrepareRedeemComboPositionRequest,
+  request: PrepareRedeemPositionRequest,
 ): Promise<RedeemPositionsWorkflow> {
-  const params = parseUserInput(
-    request,
-    PrepareRedeemComboPositionRequestSchema,
-  );
-  const decoded = decodeComboOutcomePositionId(params.positionId);
+  const params = parseUserInput(request, PrepareRedeemPositionRequestSchema);
+  const decoded = decodeV2OutcomePositionId(params.positionId);
   const balance = decodeErc1155BalanceOfResult(
     await client.rpc.ethCall(
       erc1155BalanceOfCall(
@@ -935,10 +931,10 @@ export async function prepareRedeemComboPosition(
   );
 
   if (balance === 0n) {
-    throw new UserInputError('Combo position has no balance to redeem');
+    throw new UserInputError('Position has no balance to redeem');
   }
 
-  const call = redeemV2Call(
+  const call = routerRedeemCall(
     client.environment.contracts.protocolV2Router,
     decoded.conditionId,
     decoded.outcomeIndex,
@@ -956,13 +952,56 @@ export async function prepareRedeemComboPosition(
 
     return yield* await prepareGaslessTransaction(client, {
       calls: [call],
-      metadata: params.metadata ?? `Redeem combo position ${params.positionId}`,
+      metadata: params.metadata ?? `Redeem position ${params.positionId}`,
     });
   }.call(null);
 }
 
+/** @deprecated Use {@link PrepareRedeemPositionRequest}. */
+export type PrepareRedeemComboPositionRequest = PrepareRedeemPositionRequest;
+
+/** @deprecated Use {@link PrepareRedeemPositionsError}. */
+export type PrepareRedeemComboPositionError = PrepareRedeemPositionsError;
+/** @deprecated Use {@link PrepareRedeemPositionsError}. */
+export const PrepareRedeemComboPositionError = PrepareRedeemPositionsError;
+
 /**
- * Starts a redemption workflow for resolved market or combo positions.
+ * Starts a redemption workflow for a resolved Polymarket V2 position.
+ *
+ * @deprecated Use {@link prepareRedeemPosition}.
+ *
+ * @throws {@link PrepareRedeemPositionsError}
+ * Thrown on failure.
+ */
+export function prepareRedeemComboPosition(
+  client: BaseSecureClient,
+  request: PrepareRedeemComboPositionRequest,
+): Promise<RedeemPositionsWorkflow> {
+  return prepareRedeemPosition(client, request);
+}
+
+/**
+ * Parameters for preparing position redemption for a market or a specific
+ * position.
+ *
+ * @remarks
+ * Use `marketId` or `conditionId` to redeem held positions for a market. Use
+ * `positionId` to redeem a specific position.
+ */
+export type PrepareRedeemPositionsRequest =
+  | PrepareRedeemMarketPositionsByConditionIdRequest
+  | PrepareRedeemMarketPositionsByMarketIdRequest
+  | PrepareRedeemPositionRequest;
+
+const PrepareRedeemPositionsRequestSchema = z.union([
+  PrepareRedeemMarketPositionsByConditionIdRequestSchema,
+  PrepareRedeemMarketPositionsByMarketIdRequestSchema,
+  PrepareRedeemPositionRequestSchema,
+]) satisfies z.ZodType<PrepareRedeemPositionsRequest>;
+
+/**
+ * Starts a redemption workflow for held positions in a market or a specific
+ * position by ID.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -977,7 +1016,7 @@ export async function prepareRedeemPositions(
   const params = parseUserInput(request, PrepareRedeemPositionsRequestSchema);
 
   if (params.positionId !== undefined) {
-    return prepareRedeemComboPosition(client, params);
+    return prepareRedeemPosition(client, params);
   }
 
   return prepareRedeemMarketPositions(client, params);
@@ -990,19 +1029,23 @@ export type RedeemPositionsError =
   | UnexpectedResponseError
   | UserInputError
   | CancelledSigningError
-  | SigningError;
+  | SigningError
+  | TimeoutError
+  | TransactionFailedError;
 export const RedeemPositionsError = makeErrorGuard(
   CancelledSigningError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
+  TimeoutError,
+  TransactionFailedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 );
 
 /**
- * Redeems resolved market or combo positions.
+ * Redeems held positions for a market or a specific position by ID.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -1046,23 +1089,61 @@ function sendRedeemPositionsTransaction(
   };
 }
 
-type MarketClobContext = {
+async function* sendRedeemPositionCalls(
+  client: BaseSecureClient,
+  calls: readonly TransactionCall[],
+): RedeemPositionsWorkflow {
+  const [firstCall, ...remainingCalls] = calls;
+
+  invariant(firstCall !== undefined, 'Expected at least one redemption call');
+
+  let call = firstCall;
+
+  for (const nextCall of remainingCalls) {
+    const handle = expectTransactionHandle(
+      yield sendRedeemPositionsTransaction(
+        signerTransactionRequest(client.environment.chainId, call),
+      ),
+    );
+    await handle.wait();
+    call = nextCall;
+  }
+
+  return expectTransactionHandle(
+    yield sendRedeemPositionsTransaction(
+      signerTransactionRequest(client.environment.chainId, call),
+    ),
+  );
+}
+
+type MarketPositionContextBase = {
   marketId: MarketId;
   conditionId: ConditionId;
-  negRisk: boolean;
-  adapterAddress: EvmAddress;
-  positionErc1155Address: EvmAddress;
-  tokenIds: [yes: TokenId, no: TokenId];
 };
 
-type ResolveMarketClobContextRequest =
+type CtfMarketPositionContext = MarketPositionContextBase & {
+  protocol: PositionProtocol.CTF;
+  adapterAddress: EvmAddress;
+  positionErc1155Address: EvmAddress;
+  outcomeIds: [yes: TokenId, no: TokenId];
+};
+
+type V2MarketPositionContext = MarketPositionContextBase & {
+  protocol: PositionProtocol.V2;
+  positionErc1155Address: EvmAddress;
+  outcomeIds: [yes: PositionId, no: PositionId];
+};
+
+type MarketPositionContext = CtfMarketPositionContext | V2MarketPositionContext;
+
+type ResolveMarketPositionContextRequest =
   | { conditionId: ConditionId; marketId?: never; closed?: boolean }
   | { marketId: MarketId; conditionId?: never; closed?: boolean };
 
-async function resolveMarketClobContext(
+async function resolveMarketPositionContext(
   client: BaseSecureClient,
-  request: ResolveMarketClobContextRequest,
-): Promise<MarketClobContext> {
+  request: ResolveMarketPositionContextRequest,
+): Promise<MarketPositionContext> {
   const context =
     request.conditionId !== undefined
       ? `condition ${request.conditionId}`
@@ -1083,13 +1164,20 @@ async function resolveMarketClobContext(
   ).firstPage();
   const [market] = page.items;
 
-  // Legacy multi-outcome markets are omitted from market listings, so they
+  // CTF multi-outcome markets are omitted from market listings, so they
   // surface here as not found alongside unknown IDs.
   if (market === undefined) {
     throw new UserInputError(`No market found for ${context}`);
   }
 
-  const marketContext = normalizeMarketClobContext(market, context);
+  const marketContext = normalizeMarketPositionContext(market, context);
+
+  if (marketContext.protocol === PositionProtocol.V2) {
+    return {
+      ...marketContext,
+      positionErc1155Address: client.environment.contracts.positionManager,
+    };
+  }
 
   return {
     ...marketContext,
@@ -1112,35 +1200,136 @@ function parseMarketId(id: MarketId): number {
   return parsed;
 }
 
-function normalizeMarketClobContext(
+type NormalizedCtfMarketPositionContext = MarketPositionContextBase & {
+  protocol: PositionProtocol.CTF;
+  negRisk: boolean;
+  outcomeIds: [yes: TokenId, no: TokenId];
+};
+
+type NormalizedV2MarketPositionContext = MarketPositionContextBase & {
+  protocol: PositionProtocol.V2;
+  outcomeIds: [yes: PositionId, no: PositionId];
+};
+
+function normalizeMarketPositionContext(
   market: Market,
   context: string,
-): Omit<MarketClobContext, 'adapterAddress' | 'positionErc1155Address'> {
+): NormalizedCtfMarketPositionContext | NormalizedV2MarketPositionContext {
   if (!isPresent(market.conditionId)) {
     throw new UnexpectedResponseError(`Missing condition ID for ${context}`);
   }
 
-  if (!isPresent(market.state.negRisk)) {
-    throw new UnexpectedResponseError(
-      `Missing negative-risk flag for ${context}`,
-    );
-  }
-
   const yesTokenId = market.outcomes.yes.tokenId;
   const noTokenId = market.outcomes.no.tokenId;
+  const yesPositionId = market.outcomes.yes.positionId;
+  const noPositionId = market.outcomes.no.positionId;
 
-  if (!isPresent(yesTokenId) || !isPresent(noTokenId)) {
+  if (isPresent(yesTokenId) !== isPresent(noTokenId)) {
     throw new UnexpectedResponseError(
-      `Missing market token IDs for ${context}`,
+      `Incomplete market token IDs for ${context}`,
     );
   }
 
-  return {
-    marketId: market.id,
-    conditionId: market.conditionId,
-    negRisk: market.state.negRisk,
-    tokenIds: [yesTokenId, noTokenId],
-  };
+  if (isPresent(yesTokenId) && isPresent(noTokenId)) {
+    if (!isPresent(market.state.negRisk)) {
+      throw new UnexpectedResponseError(
+        `Missing negative-risk flag for ${context}`,
+      );
+    }
+
+    return {
+      marketId: market.id,
+      conditionId: market.conditionId,
+      protocol: PositionProtocol.CTF,
+      negRisk: market.state.negRisk,
+      outcomeIds: [yesTokenId, noTokenId],
+    };
+  }
+
+  if (isPresent(yesPositionId) !== isPresent(noPositionId)) {
+    throw new UnexpectedResponseError(
+      `Incomplete market position IDs for ${context}`,
+    );
+  }
+
+  if (isPresent(yesPositionId) && isPresent(noPositionId)) {
+    return {
+      marketId: market.id,
+      conditionId: market.conditionId,
+      protocol: PositionProtocol.V2,
+      outcomeIds: [yesPositionId, noPositionId],
+    };
+  }
+
+  throw new UnexpectedResponseError(
+    `Missing tradeable outcome IDs for ${context}`,
+  );
+}
+
+async function prepareMarketRedemptionCalls(
+  client: BaseSecureClient,
+  context: MarketPositionContext,
+): Promise<TransactionCall[]> {
+  if (context.protocol === PositionProtocol.CTF) {
+    return [
+      ctfRedeemPositionsCall(
+        context.adapterAddress,
+        client.environment.contracts.collateralToken,
+        context.conditionId,
+      ),
+    ];
+  }
+
+  const balances = decodeErc1155BalanceOfBatchResult(
+    await client.rpc.ethCall(
+      erc1155BalanceOfBatchCall(
+        context.positionErc1155Address,
+        client.account.wallet,
+        context.outcomeIds,
+      ),
+    ),
+  );
+
+  if (balances.length !== 2) {
+    throw new UnexpectedResponseError('Expected two position balances');
+  }
+
+  const [yesBalance, noBalance] = balances;
+
+  invariant(yesBalance !== undefined, 'Expected YES position balance');
+  invariant(noBalance !== undefined, 'Expected NO position balance');
+
+  const calls: TransactionCall[] = [];
+
+  if (yesBalance > 0n) {
+    calls.push(
+      routerRedeemCall(
+        client.environment.contracts.protocolV2Router,
+        context.conditionId,
+        0,
+        yesBalance,
+      ),
+    );
+  }
+
+  if (noBalance > 0n) {
+    calls.push(
+      routerRedeemCall(
+        client.environment.contracts.protocolV2Router,
+        context.conditionId,
+        1,
+        noBalance,
+      ),
+    );
+  }
+
+  if (calls.length === 0) {
+    throw new UserInputError(
+      `Market positions have no balance to redeem for condition ${context.conditionId}`,
+    );
+  }
+
+  return calls;
 }
 
 function resolveMergeAmount(

@@ -5,6 +5,8 @@ import { expectPresent } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectPageWindow } from './helpers';
 
+const REWARD_PAGE_WINDOW = 10;
+
 let liquidClobTokenIdPromise: Promise<TokenId> | undefined;
 
 describe('CLOB', () => {
@@ -188,7 +190,7 @@ describe('CLOB', () => {
       const paginator = publicClient.listCurrentRewards();
       const firstPage = await paginator.firstPage();
 
-      await expectPageWindow(paginator, firstPage, 99);
+      await expectPageWindow(paginator, firstPage, REWARD_PAGE_WINDOW - 1);
     });
   });
 
@@ -226,7 +228,7 @@ describe('CLOB', () => {
           conditionId: currentReward.conditionId,
         }),
         result,
-        99,
+        REWARD_PAGE_WINDOW - 1,
       );
     });
   });

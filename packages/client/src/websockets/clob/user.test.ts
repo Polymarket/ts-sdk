@@ -19,6 +19,8 @@ import {
 } from '../testing';
 import { ClobUserWebSocketManager } from './user';
 
+const MARKET_A = `0x${'aa'.repeat(32)}`;
+const MARKET_B = `0x${'bb'.repeat(32)}`;
 const clobUser = ws.link(production.clob.user.ws);
 const server = setupServer();
 const credentials = ApiKeyCredsSchema.parse({
@@ -50,7 +52,7 @@ describe('ClobUserWebSocketManager', () => {
   it('sends credentials and market filters in the initial subscribe frame', async () => {
     const frames = collectFrames(server, clobUser);
 
-    await manager.subscribe({ markets: ['market-a'], topic: 'user' });
+    await manager.subscribe({ markets: [MARKET_A], topic: 'user' });
 
     await vi.waitFor(() => {
       expect(frames).toEqual([
@@ -60,7 +62,7 @@ describe('ClobUserWebSocketManager', () => {
             passphrase: 'test-passphrase',
             secret: 'test-secret',
           },
-          markets: ['market-a'],
+          markets: [MARKET_A],
           type: 'user',
         },
       ]);
@@ -89,7 +91,7 @@ describe('ClobUserWebSocketManager', () => {
   it('keeps the shared socket broad while any subscription includes all markets', async () => {
     const frames = collectFrames(server, clobUser);
 
-    await manager.subscribe({ markets: ['market-a'], topic: 'user' });
+    await manager.subscribe({ markets: [MARKET_A], topic: 'user' });
     const broadHandle = await manager.subscribe({ topic: 'user' });
 
     await vi.waitFor(() => {
@@ -100,27 +102,27 @@ describe('ClobUserWebSocketManager', () => {
             passphrase: 'test-passphrase',
             secret: 'test-secret',
           },
-          markets: ['market-a'],
+          markets: [MARKET_A],
           type: 'user',
         },
-        { markets: ['market-a'], operation: 'unsubscribe' },
+        { markets: [MARKET_A], operation: 'unsubscribe' },
       ]);
     });
 
     frames.length = 0;
     await broadHandle.close();
-    expect(frames).toEqual([{ markets: ['market-a'], operation: 'subscribe' }]);
+    expect(frames).toEqual([{ markets: [MARKET_A], operation: 'subscribe' }]);
   });
 
   it('fans out events to matching market subscriptions', async () => {
     const connection = captureConnection(server, clobUser);
 
     const marketAHandle = await manager.subscribe({
-      markets: ['market-a'],
+      markets: [MARKET_A],
       topic: 'user',
     });
     const marketBHandle = await manager.subscribe({
-      markets: ['market-b'],
+      markets: [MARKET_B],
       topic: 'user',
     });
     const marketANext = waitForNextEvent(marketAHandle);
@@ -130,7 +132,7 @@ describe('ClobUserWebSocketManager', () => {
       asset_id: 'token-a',
       event_type: 'order',
       id: 'order-a',
-      market: 'market-a',
+      market: MARKET_A,
       original_size: '1',
       owner: 'test-owner',
       price: '0.5',
@@ -143,7 +145,13 @@ describe('ClobUserWebSocketManager', () => {
     await expect(marketANext).resolves.toMatchObject({
       done: false,
       value: {
-        payload: { market: 'market-a', orderEventType: 'PLACEMENT' },
+        payload: {
+          assetId: 'token-a',
+          conditionId: MARKET_A,
+          market: MARKET_A,
+          orderEventType: 'PLACEMENT',
+          tokenId: 'token-a',
+        },
         topic: 'user',
         type: 'order',
       },
@@ -165,7 +173,7 @@ describe('ClobUserWebSocketManager', () => {
       id: 'trade-a',
       last_update: '1710000000',
       maker_address: '0x0000000000000000000000000000000000000001',
-      market: 'market-a',
+      market: MARKET_A,
       match_time: '1710000000',
       owner: 'test-owner',
       price: '0.5',
@@ -201,7 +209,7 @@ describe('ClobUserWebSocketManager', () => {
         id: 'trade-a',
         last_update: '1710000000',
         maker_address: '0x0000000000000000000000000000000000000001',
-        market: 'market-a',
+        market: MARKET_A,
         match_time: '1710000000',
         owner: 'test-owner',
         price: '0.5',
@@ -247,7 +255,7 @@ describe('ClobUserWebSocketManager', () => {
           url: production.clob.user.ws,
         });
         const events = await observedManager.subscribe({
-          markets: ['market-a'],
+          markets: [MARKET_A],
           topic: 'user',
         });
         return { close: () => observedManager.close(), events };
@@ -257,7 +265,7 @@ describe('ClobUserWebSocketManager', () => {
         asset_id: 'token-a',
         event_type: 'order',
         id: 'order-a',
-        market: 'market-a',
+        market: MARKET_A,
         original_size: '1',
         owner: 'test-owner',
         price: '0.5',
@@ -309,7 +317,7 @@ describe('ClobUserWebSocketManager', () => {
 
     vi.useFakeTimers();
 
-    await manager.subscribe({ markets: ['market-a'], topic: 'user' });
+    await manager.subscribe({ markets: [MARKET_A], topic: 'user' });
 
     await vi.waitFor(() => {
       expect(connectionFrames[0] ?? []).toEqual([
@@ -319,7 +327,7 @@ describe('ClobUserWebSocketManager', () => {
             passphrase: 'test-passphrase',
             secret: 'test-secret',
           },
-          markets: ['market-a'],
+          markets: [MARKET_A],
           type: 'user',
         },
       ]);
@@ -336,7 +344,7 @@ describe('ClobUserWebSocketManager', () => {
             passphrase: 'test-passphrase',
             secret: 'test-secret',
           },
-          markets: ['market-a'],
+          markets: [MARKET_A],
           type: 'user',
         },
       ]);

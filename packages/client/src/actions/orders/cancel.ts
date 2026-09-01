@@ -16,6 +16,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import { optionalExchangeAssetRequestSchema } from '../exchange-asset';
 import { mapTradingRestrictionError } from './restrictions';
 
 const CancelOrderRequestSchema = z.object({
@@ -26,18 +27,22 @@ const CancelOrdersRequestSchema = z.object({
   orderIds: z.array(z.string()).min(1).max(3000),
 });
 
-const CancelMarketOrdersRequestSchema = z
-  .object({
-    tokenId: z.string().optional(),
-    market: z.string().optional(),
-  })
-  .refine(
-    (request) => request.market !== undefined || request.tokenId !== undefined,
-    {
-      message: 'At least one of market or tokenId is required.',
-      path: ['market'],
-    },
-  );
+const CancelMarketOrdersRequestFieldsSchema = z.object({
+  market: z.string().optional(),
+});
+
+const CancelMarketOrdersRequestSchema = optionalExchangeAssetRequestSchema(
+  CancelMarketOrdersRequestFieldsSchema.shape,
+).refine(
+  (request) =>
+    request.market !== undefined ||
+    request.assetId !== undefined ||
+    request.tokenId !== undefined,
+  {
+    message: 'At least one of market or assetId is required.',
+    path: ['market'],
+  },
+);
 
 export type CancelOrderRequest = z.input<typeof CancelOrderRequestSchema>;
 
@@ -166,9 +171,19 @@ export async function cancelAll(
   return cancel(client, '/cancel-all');
 }
 
-export type CancelMarketOrdersRequest = z.input<
-  typeof CancelMarketOrdersRequestSchema
->;
+export type CancelMarketOrdersRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      market?: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      market?: string;
+    };
 export type CancelMarketOrdersError =
   | RequestRejectedError
   | RateLimitError
@@ -187,7 +202,7 @@ export const CancelMarketOrdersError = makeErrorGuard(
 
 /**
  * Cancels all open orders for the authenticated account that match the market
- * or token filter.
+ * or asset filter.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -211,7 +226,7 @@ export async function cancelMarketOrders(
   const params = parseUserInput(request, CancelMarketOrdersRequestSchema);
 
   return cancel(client, '/cancel-market-orders', {
-    asset_id: params.tokenId,
+    asset_id: params.assetId ?? params.tokenId,
     market: params.market,
   });
 }
