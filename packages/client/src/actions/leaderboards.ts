@@ -161,11 +161,11 @@ export const FetchBuilderVolumeError = makeErrorGuard(
 /**
  * Fetches the per-builder volume time series.
  *
- * `interval` controls bucket width and defaults to daily; `all` means one
- * bucket per calendar year. `bucketLimit` returns that many complete recent
- * buckets (default 30, max 90), not that many builder rows. Results are newest
- * bucket first, and volume is measured in shares. Transient rate limits are
- * retried automatically.
+ * `interval` controls bucket width and defaults to daily; use
+ * {@link BuilderVolumeInterval.Year} for one bucket per calendar year.
+ * `bucketLimit` returns that many complete recent buckets (default 30, max 90),
+ * not that many builder rows. Results are newest bucket first, and volume is
+ * measured in shares. Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

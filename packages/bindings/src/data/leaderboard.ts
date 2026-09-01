@@ -26,7 +26,7 @@ export enum BuilderVolumeInterval {
   Week = 'week',
   Month = 'month',
   /** Groups the series by calendar year. */
-  All = 'all',
+  Year = 'all',
 }
 
 export const BuilderVolumeIntervalSchema = z.enum(BuilderVolumeInterval);
