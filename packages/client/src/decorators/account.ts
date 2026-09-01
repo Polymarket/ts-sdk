@@ -139,6 +139,10 @@ export type PublicAccountActions = Prettify<{
   /**
    * Fetches the total value for a wallet's positions.
    *
+   * When `conditionId` is present, only those single-market positions are
+   * included; portfolio-level combo positions are excluded. Accepts at most
+   * 20 distinct condition ids.
+   *
    * @throws {@link FetchPortfolioValueError}
    * Thrown on failure.
    *
@@ -290,6 +294,10 @@ export type SecureAccountActions = Prettify<{
   ): Paginated<ComboPosition[]>;
   /**
    * Fetches the total value for a wallet's positions.
+   *
+   * When `conditionId` is present, only those single-market positions are
+   * included; portfolio-level combo positions are excluded. Accepts at most
+   * 20 distinct condition ids.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *

@@ -7,7 +7,7 @@ import {
 const WALLET = `0x${'1'.repeat(40)}`;
 
 describe('FetchPortfolioValueResponseSchema', () => {
-  it('unwraps a numeric portfolio value', () => {
+  it('normalizes a numeric portfolio value to a decimal string', () => {
     const value = FetchPortfolioValueResponseSchema.parse({
       data: {
         proxy_wallet: WALLET,
@@ -15,18 +15,18 @@ describe('FetchPortfolioValueResponseSchema', () => {
       },
     });
 
-    expect(value).toEqual({ wallet: WALLET, value: 12.3456 });
+    expect(value).toEqual({ wallet: WALLET, value: '12.3456' });
   });
 
-  it('rejects decimal strings', () => {
-    expect(() =>
+  it('accepts an already-string decimal value', () => {
+    expect(
       FetchPortfolioValueResponseSchema.parse({
         data: {
           proxy_wallet: WALLET,
           value: '12.3456',
         },
       }),
-    ).toThrow();
+    ).toEqual({ wallet: WALLET, value: '12.3456' });
   });
 });
 
@@ -46,21 +46,21 @@ describe('FetchUserStatsResponseSchema', () => {
     expect(stats).toMatchObject({
       wallet: WALLET,
       trades: 42,
-      biggestWin: 123.456789,
+      biggestWin: '123.456789',
       views: 7,
       joinDate: 1_700_000_000_000,
       allTimePnl: {
         timestamp: 1_700_000_100_000,
         sourceBlock: 12_345,
-        realizedMarketPnl: 10.123456,
-        realizedLpPnl: 2.5,
-        realizedComboPnl: -1.25,
-        realizedPnl: 11.373456,
+        realizedMarketPnl: '10.123456',
+        realizedLpPnl: '2.5',
+        realizedComboPnl: '-1.25',
+        realizedPnl: '11.373456',
         unrealizedPnl: null,
-        fees: -0.5,
-        feesPaid: -0.25,
-        volume: 1_000.123456,
-        volumeUsdc: 750.654321,
+        fees: '-0.5',
+        feesPaid: '-0.25',
+        volume: '1000.123456',
+        volumeUsdc: '750.654321',
         tradeCount: 99,
       },
     });
@@ -83,7 +83,7 @@ describe('FetchUserStatsResponseSchema', () => {
     ).toEqual({
       wallet: WALLET,
       trades: 0,
-      biggestWin: 0,
+      biggestWin: '0',
       views: 0,
       joinDate: null,
       allTimePnl: null,
@@ -115,7 +115,7 @@ function userPnlPoint() {
     trade_pnl: 10.873456,
     sponsored_income: 1.75,
     fees: -0.5,
-    fees_paid: -0.25,
+    fees_paid: '-0.25',
     cashflow_net: null,
     volume: 1_000.123456,
     volume_usdc: 750.654321,

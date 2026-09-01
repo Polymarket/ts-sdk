@@ -242,13 +242,13 @@ export const PositionSchema = z
 export type PortfolioValue = {
   wallet: EvmAddress;
   /** Total marked portfolio value, in USDC, rounded to four decimals. */
-  value: number;
+  value: DecimalString;
 };
 
 export const PortfolioValueSchema = z
   .object({
     proxy_wallet: EvmAddressSchema,
-    value: z.number(),
+    value: DecimalishSchema,
   })
   .transform(({ proxy_wallet, value }) => ({
     wallet: proxy_wallet,
@@ -256,8 +256,8 @@ export const PortfolioValueSchema = z
   })) satisfies z.ZodType<PortfolioValue>;
 
 /**
- * One cumulative wallet PnL observation. Monetary values are exposed as
- * JavaScript numbers with up to six decimal places.
+ * One cumulative wallet PnL observation. Fractional money and size values
+ * are normalized to decimal strings.
  */
 export type UserPnlPoint = {
   /** Observation time as Unix epoch milliseconds. */
@@ -265,61 +265,60 @@ export type UserPnlPoint = {
   /** Chain block at which the point was observed. */
   sourceBlock: number;
   /** Realized PnL from market positions. */
-  realizedMarketPnl: number;
+  realizedMarketPnl: DecimalString;
   /** Realized PnL from liquidity-provision activity. */
-  realizedLpPnl: number;
+  realizedLpPnl: DecimalString;
   /** Realized PnL from combo positions. */
-  realizedComboPnl: number;
+  realizedComboPnl: DecimalString;
   /** Mark-to-market PnL of open inventory. */
-  unrealizedPnl: number | null;
-  feesRefunded: number | null;
-  makerRebate: number | null;
-  takerRebate: number | null;
-  rewardIncome: number | null;
-  yieldIncome: number | null;
-  referralIncome: number | null;
-  deposits: number | null;
-  withdrawals: number | null;
+  unrealizedPnl: DecimalString | null;
+  feesRefunded: DecimalString | null;
+  makerRebate: DecimalString | null;
+  takerRebate: DecimalString | null;
+  rewardIncome: DecimalString | null;
+  yieldIncome: DecimalString | null;
+  referralIncome: DecimalString | null;
+  deposits: DecimalString | null;
+  withdrawals: DecimalString | null;
   /** Sum of market, liquidity-provision, and combo realized PnL. */
-  realizedPnl: number;
+  realizedPnl: DecimalString;
   /** Rebates plus reward, yield, and referral income. */
-  walletIncome: number | null;
+  walletIncome: DecimalString | null;
   /** Realized plus unrealized position PnL. */
-  positionPnl: number | null;
+  positionPnl: DecimalString | null;
   /** Realized PnL plus wallet income. */
-  settledPnl: number | null;
+  settledPnl: DecimalString | null;
   /** Position PnL plus wallet income. */
-  economicPnl: number | null;
+  economicPnl: DecimalString | null;
   /** Compatibility trading-PnL series. */
-  tradePnl: number | null;
+  tradePnl: DecimalString | null;
   /** Reward, yield, and referral income. */
-  sponsoredIncome: number | null;
+  sponsoredIncome: DecimalString | null;
   /** Cumulative fee charges, represented as a negative amount. */
-  fees: number | null;
+  fees: DecimalString | null;
   /** Fee refunds minus charges. */
-  feesPaid: number | null;
+  feesPaid: DecimalString | null;
   /** Deposits minus withdrawals. */
-  cashflowNet: number | null;
+  cashflowNet: DecimalString | null;
   /** Cumulative maker-attributed fill volume, in shares. */
-  volume: number;
+  volume: DecimalString;
   /** Cumulative maker-attributed fill volume, in USDC. */
-  volumeUsdc: number;
+  volumeUsdc: DecimalString;
   /** Cumulative maker-attributed canonical fill count. */
   tradeCount: number;
 };
 
-const UncoveredAmountSchema = z
-  .number()
-  .nullish()
-  .transform((amount) => amount ?? null);
+const UncoveredAmountSchema = DecimalishSchema.nullish().transform(
+  (amount) => amount ?? null,
+);
 
 export const UserPnlPointSchema = z
   .object({
     timestamp: EpochSecondsToMillisecondsSchema,
     source_block: z.number().int().nonnegative(),
-    realized_market_pnl: z.number(),
-    realized_lp_pnl: z.number(),
-    realized_combo_pnl: z.number(),
+    realized_market_pnl: DecimalishSchema,
+    realized_lp_pnl: DecimalishSchema,
+    realized_combo_pnl: DecimalishSchema,
     unrealized_pnl: UncoveredAmountSchema,
     fees_refunded: UncoveredAmountSchema,
     maker_rebate: UncoveredAmountSchema,
@@ -329,7 +328,7 @@ export const UserPnlPointSchema = z
     referral_income: UncoveredAmountSchema,
     deposits: UncoveredAmountSchema,
     withdrawals: UncoveredAmountSchema,
-    realized_pnl: z.number(),
+    realized_pnl: DecimalishSchema,
     wallet_income: UncoveredAmountSchema,
     position_pnl: UncoveredAmountSchema,
     settled_pnl: UncoveredAmountSchema,
@@ -339,8 +338,8 @@ export const UserPnlPointSchema = z
     fees: UncoveredAmountSchema,
     fees_paid: UncoveredAmountSchema,
     cashflow_net: UncoveredAmountSchema,
-    volume: z.number().nonnegative(),
-    volume_usdc: z.number().nonnegative(),
+    volume: DecimalishSchema,
+    volume_usdc: DecimalishSchema,
     trade_count: z.number().int().nonnegative(),
   })
   .transform(
@@ -400,7 +399,7 @@ export type UserStats = {
   /** Exact number of distinct markets the wallet has traded. */
   trades: number;
   /** Largest resolved position win over $1, in USDC; otherwise zero. */
-  biggestWin: number;
+  biggestWin: DecimalString;
   views: number;
   /** Account join time as Unix epoch milliseconds, when known. */
   joinDate: EpochMilliseconds | null;
@@ -412,7 +411,7 @@ export const UserStatsSchema = z
   .object({
     proxy_wallet: EvmAddressSchema,
     trades: z.number().int().nonnegative(),
-    biggest_win: z.number(),
+    biggest_win: DecimalishSchema,
     views: z.number().int().nonnegative(),
     join_date: EpochSecondsToMillisecondsSchema.nullish(),
     all_time_pnl: UserPnlPointSchema.nullish(),

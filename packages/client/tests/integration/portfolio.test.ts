@@ -198,7 +198,7 @@ describe('Portfolio', () => {
       expect(result).toEqual(
         expect.objectContaining({
           wallet: TEST_USER,
-          value: expect.any(Number),
+          value: expect.any(String),
         }),
       );
     });
@@ -246,7 +246,7 @@ describe('Portfolio', () => {
         expect.objectContaining({
           wallet: TEST_USER,
           trades: expect.any(Number),
-          biggestWin: expect.any(Number),
+          biggestWin: expect.any(String),
           views: expect.any(Number),
           joinDate: expect.any(Number),
         }),
@@ -255,9 +255,9 @@ describe('Portfolio', () => {
         expect.objectContaining({
           timestamp: expect.any(Number),
           sourceBlock: expect.any(Number),
-          realizedPnl: expect.any(Number),
-          volume: expect.any(Number),
-          volumeUsdc: expect.any(Number),
+          realizedPnl: expect.any(String),
+          volume: expect.any(String),
+          volumeUsdc: expect.any(String),
           tradeCount: expect.any(Number),
         }),
       );
