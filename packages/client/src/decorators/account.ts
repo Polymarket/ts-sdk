@@ -6,9 +6,9 @@ import type {
   Activity,
   ComboActivity,
   ComboPosition,
+  PortfolioValue,
   Position,
-  Traded,
-  Value,
+  UserStats,
 } from '@polymarket/bindings/data';
 import type { Prettify } from '@polymarket/types';
 import {
@@ -17,11 +17,11 @@ import {
   downloadAccountingSnapshot,
   dropNotifications,
   type FetchPortfolioValueRequest,
-  type FetchTradedMarketCountRequest,
+  type FetchUserStatsRequest,
   fetchClosedOnlyMode,
   fetchNotifications,
   fetchPortfolioValue,
-  fetchTradedMarketCount,
+  fetchUserStats,
   type ListAccountTradesRequest,
   type ListActivityRequest,
   type ListComboActivityRequest,
@@ -47,7 +47,7 @@ type DefaultAccountWallet<TRequest extends { user?: string }> = Prettify<
      *
      * @defaultValue `client.account.wallet`
      */
-    user?: TRequest['user'];
+    user?: string;
   }
 >;
 
@@ -57,8 +57,8 @@ export type SecureListComboPositionsRequest =
   DefaultAccountWallet<ListComboPositionsRequest>;
 export type SecureFetchPortfolioValueRequest =
   DefaultAccountWallet<FetchPortfolioValueRequest>;
-export type SecureFetchTradedMarketCountRequest =
-  DefaultAccountWallet<FetchTradedMarketCountRequest>;
+export type SecureFetchUserStatsRequest =
+  DefaultAccountWallet<FetchUserStatsRequest>;
 export type SecureDownloadAccountingSnapshotRequest =
   DefaultAccountWallet<DownloadAccountingSnapshotRequest>;
 export type SecureListActivityRequest =
@@ -149,23 +149,25 @@ export type PublicAccountActions = Prettify<{
    * });
    * ```
    */
-  fetchPortfolioValue(request: FetchPortfolioValueRequest): Promise<Value[]>;
+  fetchPortfolioValue(
+    request: FetchPortfolioValueRequest,
+  ): Promise<PortfolioValue>;
   /**
-   * Fetches the total number of markets a wallet has traded.
+   * Fetches profile and lifetime trading statistics for a wallet.
    *
-   * @throws {@link FetchTradedMarketCountError}
+   * Returns `null` when the wallet is not a known user.
+   *
+   * @throws {@link FetchUserStatsError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const traded = await client.fetchTradedMarketCount({
+   * const stats = await client.fetchUserStats({
    *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
    * });
    * ```
    */
-  fetchTradedMarketCount(
-    request: FetchTradedMarketCountRequest,
-  ): Promise<Traded>;
+  fetchUserStats(request: FetchUserStatsRequest): Promise<UserStats | null>;
   /**
    * Downloads an accounting snapshot archive for a wallet.
    *
@@ -296,18 +298,19 @@ export type SecureAccountActions = Prettify<{
    */
   fetchPortfolioValue(
     request?: SecureFetchPortfolioValueRequest,
-  ): Promise<Value[]>;
+  ): Promise<PortfolioValue>;
   /**
-   * Fetches the total number of markets a wallet has traded.
+   * Fetches profile and lifetime trading statistics for a wallet.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
+   * Returns `null` when the wallet is not a known user.
    *
-   * @throws {@link FetchTradedMarketCountError}
+   * @throws {@link FetchUserStatsError}
    * Thrown on failure.
    */
-  fetchTradedMarketCount(
-    request?: SecureFetchTradedMarketCountRequest,
-  ): Promise<Traded>;
+  fetchUserStats(
+    request?: SecureFetchUserStatsRequest,
+  ): Promise<UserStats | null>;
   /**
    * Downloads an accounting snapshot archive for a wallet.
    *
@@ -421,7 +424,7 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
     listPositions: listPositions.bind(null, client),
     listComboPositions: listComboPositions.bind(null, client),
     fetchPortfolioValue: fetchPortfolioValue.bind(null, client),
-    fetchTradedMarketCount: fetchTradedMarketCount.bind(null, client),
+    fetchUserStats: fetchUserStats.bind(null, client),
     downloadAccountingSnapshot: downloadAccountingSnapshot.bind(null, client),
     listActivity: listActivity.bind(null, client),
     listComboActivity: listComboActivity.bind(null, client),
@@ -457,8 +460,8 @@ export function accountActions(
       listComboPositions(client, withAccountWallet(client, request)),
     fetchPortfolioValue: (request?: SecureFetchPortfolioValueRequest) =>
       fetchPortfolioValue(client, withAccountWallet(client, request)),
-    fetchTradedMarketCount: (request?: SecureFetchTradedMarketCountRequest) =>
-      fetchTradedMarketCount(client, withAccountWallet(client, request)),
+    fetchUserStats: (request?: SecureFetchUserStatsRequest) =>
+      fetchUserStats(client, withAccountWallet(client, request)),
     downloadAccountingSnapshot: (
       request?: SecureDownloadAccountingSnapshotRequest,
     ) => downloadAccountingSnapshot(client, withAccountWallet(client, request)),
@@ -482,7 +485,7 @@ export {
   FetchClosedOnlyModeError,
   FetchNotificationsError,
   FetchPortfolioValueError,
-  FetchTradedMarketCountError,
+  FetchUserStatsError,
   ListAccountTradesError,
   ListActivityError,
   ListComboActivityError,

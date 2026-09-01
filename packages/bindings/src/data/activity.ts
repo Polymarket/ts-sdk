@@ -471,17 +471,11 @@ const RawActivitySchema = z.object({
 export const ActivitySchema: z.ZodType<Activity> =
   RawActivitySchema.transform(normalizeActivity);
 
-export const TradedSchema = z.object({
-  user: EvmAddressSchema.nullish(),
-  traded: z.number().int().nullish(),
-});
-
 export const ListTradesResponseSchema = dataPageSchema(TradeSchema);
 export const ListActivityResponseSchema = dataPageSchema(ActivitySchema);
 export const ListComboActivityResponseSchema =
   dataPageSchema(ComboActivitySchema);
 
-export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;
 export type ListComboActivityResponse = z.infer<
