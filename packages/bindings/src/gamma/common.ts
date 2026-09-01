@@ -65,7 +65,6 @@ export const TagReferenceSchema = z.object({
   updatedAt: IsoDateTimeStringSchema.nullish(),
   forceHide: z.boolean().nullish(),
   isCarousel: z.boolean().nullish(),
-  requiresTranslation: z.boolean().nullish(),
   activeEventsCount: z.number().int().nullish(),
 });
 

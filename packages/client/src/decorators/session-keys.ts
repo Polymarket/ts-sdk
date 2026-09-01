@@ -17,6 +17,7 @@ export type SessionKeyActions = {
    * The SDK receives only the public address. The application remains
    * responsible for generating, storing, and protecting the private key.
    * When scopes are omitted, authorization defaults to `ALL`.
+   * The authorization expires 180 days after it is created.
    * Requires builder API-key authentication.
    *
    * @remarks
@@ -27,7 +28,6 @@ export type SessionKeyActions = {
    * ```ts
    * const authorization = await client.authorizeSessionKey({
    *   address: sessionAddress,
-   *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
    * });
    * ```
    *

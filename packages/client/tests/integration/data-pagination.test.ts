@@ -1,3 +1,4 @@
+import { OrderSide } from '@polymarket/bindings';
 import { dataEnvelopeSchema, dataPageSchema } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
@@ -10,7 +11,10 @@ describe('Data pagination', () => {
   it('walks consecutive pages with for await and re-sends filters', async ({
     publicClient,
   }) => {
-    const paginator = publicClient.listTrades({ pageSize: 5, side: 'BUY' });
+    const paginator = publicClient.listTrades({
+      pageSize: 5,
+      side: OrderSide.BUY,
+    });
 
     const pages = [];
     for await (const page of paginator) {

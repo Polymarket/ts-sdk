@@ -120,6 +120,8 @@ export type TeamId = Tagged<number, 'TeamId'>;
 export type TemplateId = Tagged<string, 'TemplateId'>;
 export type TransactionId = Tagged<string, 'TransactionId'>;
 export type TokenId = Tagged<string, 'TokenId'>;
+/** Identifier accepted by CLOB asset fields. */
+export type ClobAssetId = PositionId | TokenId;
 export type DecimalString = Tagged<string, 'DecimalString'>;
 export type BaseUnits = Tagged<string, 'BaseUnits'>;
 
@@ -496,7 +498,7 @@ export const PositionIdSchema = z.string().transform(toPositionId);
  */
 export const ClobAssetIdSchema = z
   .string()
-  .transform((value): PositionId | TokenId => value as PositionId | TokenId);
+  .transform((value): ClobAssetId => value as ClobAssetId);
 export const QuestionIdSchema = z
   .string()
   .refine(

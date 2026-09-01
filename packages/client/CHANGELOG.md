@@ -1,5 +1,30 @@
 # @polymarket/client
 
+## 0.8.1
+
+### Patch Changes
+
+- 4fa74dc: Fix session-key authorization expiry at 180 days and remove `validUntil` from the public request.
+
+## 0.8.0
+
+### Minor Changes
+
+- a8dba73: Expose pending Combo market status and avoid using pending markets when discovering live RFQ legs.
+- a1959b6: Add protocol-neutral `assetId` fields across CLOB reads, filters, and realtime events, and `conditionId` fields across CLOB reads and realtime events, while retaining deprecated `tokenId`, `tokenIds`, and `market` compatibility aliases.
+- 5c18246: Add protocol-neutral `assetId` and `conditionId` fields to Data API responses while retaining deprecated identifier aliases.
+- efbd77b: Support splitting, merging, and redeeming ordinary Polymarket V2 positions through the existing market position lifecycle APIs; allow position-ID redemption for binary, negative-risk, and Combo positions; and consistently name low-level CTF and Router transaction builders.
+- 851bff4: Include the PolyV2 binary and negative-risk modules in the protocol-neutral trading approval workflow.
+
+### Patch Changes
+
+- 2fd5cc5: Normalize empty live-volume market identifiers to null.
+- Updated dependencies [a8dba73]
+- Updated dependencies [a1959b6]
+- Updated dependencies [5c18246]
+- Updated dependencies [2fd5cc5]
+  - @polymarket/bindings@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

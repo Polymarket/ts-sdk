@@ -1,17 +1,23 @@
 import {
   ComboConditionIdSchema,
+  ConditionIdSchema,
+  EventIdSchema,
+  EvmAddressSchema,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
 import {
-  type ClosedPosition,
   type ComboPosition,
-  type ComboPositionStatus,
+  ComboPositionSortBySchema,
+  ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
-  ListClosedPositionsResponseSchema,
   ListComboPositionsResponseSchema,
   ListPositionsResponseSchema,
   type Position,
+  PositionFilterTypeSchema,
+  PositionSortBySchema,
+  PositionStatusSchema,
+  SortDirectionSchema,
   type Traded,
   TradedSchema,
   type Value,
@@ -28,61 +34,81 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import {
-  decodeOffsetCursor,
-  encodeOffsetCursor,
-  PageSizeSchema,
-  type Paginated,
-  paginate,
-} from '../pagination';
+import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { readBlob, validateWith } from '../response';
-import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  distinctIdList,
+  EpochSecondsLikeSchema,
+  TimeWindowSchema,
+  toDataSearchParams,
+  toLegacyDataSearchParams,
+} from './params';
 
 export {
-  ComboPositionOutcome,
+  ComboPositionSortBy,
   ComboPositionStatus,
+  PositionFilterType,
+  PositionSortBy,
+  PositionStatus,
 } from '@polymarket/bindings/data';
-
-export enum ComboPositionSort {
-  CurrentValueDesc = 'current_value_desc',
-  FirstEntryDesc = 'first_entry_desc',
-  EntryCostDesc = 'entry_cost_desc',
-  ResolvedAtDesc = 'resolved_at_desc',
-  UpdatedAsc = 'updated_asc',
-}
-
-const PositionSortBySchema = z.enum([
-  'CURRENT',
-  'INITIAL',
-  'TOKENS',
-  'CASHPNL',
-  'PERCENTPNL',
-  'TITLE',
-  'RESOLVING',
-  'PRICE',
-  'AVGPRICE',
-]);
-
-const PositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
 
 const ListPositionsRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    user: z.string(),
-    market: z.array(z.string()).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    sizeThreshold: z.number().optional(),
-    redeemable: z.boolean().optional(),
-    mergeable: z.boolean().optional(),
-    // Matches the upstream per-request limit cap.
-    pageSize: PageSizeSchema.max(500).default(20),
+    // The service default; anything past 1000 is rejected, not clamped.
+    pageSize: PageSizeSchema.max(1000).default(100),
+    /** The wallet to anchor on. At least one of `user`/`conditionId` is required. */
+    user: EvmAddressSchema.optional(),
+    /**
+     * With `user`, narrows that user's positions (all ids honoured). Without
+     * `user`, anchors on the market's holders — exactly one id there.
+     */
+    // The service dedupes and then caps every condition selector at 20
+    // DISTINCT ids (one shared parser across the surface).
+    conditionId: z
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
+      .optional(),
+    /** OPEN (default, includes REDEEMABLE rows) | REDEEMABLE | CLOSED. */
+    status: PositionStatusSchema.optional(),
+    eventId: z.array(EventIdSchema).min(1).optional(),
+    filterType: PositionFilterTypeSchema.optional(),
+    filterAmount: z.number().min(0).optional(),
+    includeArchived: z.boolean().optional(),
+    /** Defaults by status: CURRENT_VALUE for OPEN/REDEEMABLE, REALIZED_PNL for CLOSED. */
     sortBy: PositionSortBySchema.optional(),
-    sortDirection: PositionSortDirectionSchema.optional(),
-    title: z.string().max(100).optional(),
+    sortDirection: SortDirectionSchema.optional(),
+    /** Bounds the rows' last economics event. */
+    window: TimeWindowSchema.optional(),
   })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
+  .refine((value) => value.user !== undefined || value.conditionId, {
+    message: 'Provide user or conditionId',
+    path: ['user'],
+  })
+  // Without a user the request anchors on the market's holders, and the
+  // service accepts exactly one id there — mirror it so the 400 is
+  // unreachable.
+  .refine(
+    (value) =>
+      value.user !== undefined ||
+      !Array.isArray(value.conditionId) ||
+      value.conditionId.length === 1,
+    {
+      message: 'Without user, provide exactly one conditionId',
+      path: ['conditionId'],
+    },
+  )
+  .refine((value) => !(value.conditionId && value.eventId), {
+    message: 'Provide conditionId or eventId, not both',
     path: ['eventId'],
+  })
+  .refine((value) => value.user !== undefined || value.eventId === undefined, {
+    message: 'eventId requires user',
+    path: ['eventId'],
+  })
+  .refine((value) => !(value.includeArchived && value.status === 'CLOSED'), {
+    message: 'includeArchived does not apply to CLOSED positions',
+    path: ['includeArchived'],
   });
 
 export type ListPositionsRequest = z.input<typeof ListPositionsRequestSchema>;
@@ -102,7 +128,17 @@ export const ListPositionsError = makeErrorGuard(
 );
 
 /**
- * Lists current positions for a wallet.
+ * Lists positions for a wallet, or a market's holders when anchored on a
+ * single `conditionId` without a `user`.
+ *
+ * One method serves the whole lifecycle: `status: 'OPEN'` (the default) is
+ * the superset including settled-but-unredeemed winners, `'REDEEMABLE'`
+ * narrows to exactly those, and `'CLOSED'` lists exited positions. Every row
+ * carries `redeemable`/`mergeable` flags and fee-exclusive entry economics. A
+ * dust floor of 0.1 shares applies on OPEN/REDEEMABLE unless
+ * `filterType`/`filterAmount` say otherwise. `conditionId` accepts at most
+ * 20 distinct ids (with `user`). `pageSize` defaults to 100 (max 1000).
+ * Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -127,11 +163,11 @@ export const ListPositionsError = makeErrorGuard(
  * ```
  *
  * @example
- * Loop through all pages with `for await`:
+ * Loop through a wallet's exited positions with `for await`:
  * ```ts
  * const result = listPositions(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   pageSize: 10,
+ *   status: PositionStatus.Closed,
  * });
  *
  * for await (const page of result) {
@@ -143,169 +179,36 @@ export function listPositions(
   client: BaseClient,
   request: ListPositionsRequest,
 ): Paginated<Position[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+  const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
     ListPositionsRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/positions', {
-        params: toLegacyDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/positions', {
+          // The full original filter set rides along with every cursor: the
+          // cursor binds only its paging anchor, and a filter dropped on a
+          // follow-up page would silently widen the result set.
+          params: toDataSearchParams({
+            ...params,
+            ...window,
+            limit: pageSize,
+            cursor,
+          }),
         }),
-      })
-      .andThen(validateWith(ListPositionsResponseSchema))
-      .map((positions) => {
-        const hasMore = positions.length >= decoded.pageSize;
-
-        return {
-          items: positions,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
-}
-
-const ClosedPositionSortBySchema = z.enum([
-  'REALIZEDPNL',
-  'TITLE',
-  'PRICE',
-  'AVGPRICE',
-  'TIMESTAMP',
-]);
-
-const ListClosedPositionsRequestSchema = z
-  .object({
-    cursor: PaginationCursorSchema.optional(),
-    user: z.string(),
-    market: z.array(z.string()).optional(),
-    title: z.string().max(100).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    // Matches the upstream per-request limit cap.
-    pageSize: PageSizeSchema.max(50).default(20),
-    sortBy: ClosedPositionSortBySchema.optional(),
-    sortDirection: PositionSortDirectionSchema.optional(),
-  })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
-    path: ['eventId'],
-  });
-
-export type ListClosedPositionsRequest = z.input<
-  typeof ListClosedPositionsRequestSchema
->;
-
-export type ListClosedPositionsError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const ListClosedPositionsError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-/**
- * Lists closed positions for a wallet.
- *
- * @remarks
- * This is a low-level function. Most SDK consumers should prefer the client instance API.
- *
- * @throws {@link ListClosedPositionsError}
- * Thrown on failure.
- *
- * @example
- * Fetch the first page of results:
- * ```ts
- * const result = listClosedPositions(client, {
- *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   pageSize: 10,
- * });
- *
- * const firstPage = await result.firstPage();
- *
- * // Optionally, fetch additional pages:
- * for await (const page of result.from(firstPage.nextCursor)) {
- *   // page.items: ClosedPosition[]
- * }
- * ```
- *
- * @example
- * Loop through all pages with `for await`:
- * ```ts
- * const result = listClosedPositions(client, {
- *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   pageSize: 10,
- * });
- *
- * for await (const page of result) {
- *   // page.items: ClosedPosition[]
- * }
- * ```
- */
-export function listClosedPositions(
-  client: BaseClient,
-  request: ListClosedPositionsRequest,
-): Paginated<ClosedPosition[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
-    request,
-    ListClosedPositionsRequestSchema,
+      ).andThen(validateWith(ListPositionsResponseSchema)),
+    cursor,
   );
-
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/closed-positions', {
-        params: toLegacyDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
-        }),
-      })
-      .andThen(validateWith(ListClosedPositionsResponseSchema))
-      .map((positions) => {
-        const hasMore = positions.length >= decoded.pageSize;
-
-        return {
-          items: positions,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
 }
 
-const ComboPositionSortSchema = z.enum(ComboPositionSort);
-
-const ComboConditionIdFilterSchema = z.union([
-  ComboConditionIdSchema,
-  z.array(ComboConditionIdSchema),
-]);
-
 /**
- * One status or a non-empty ordered list of statuses for filtering combo positions.
- * Pass multiple statuses as an array rather than a comma-separated string.
+ * One status or a non-empty ordered list of statuses. Pass multiple statuses
+ * as an array rather than a comma-separated string.
+ * `ComboPositionStatus.Redeemable` must be the sole value (scalar or a
+ * one-element array — both serialize identically) — it narrows to rows whose
+ * `redeemable` flag is set and cannot ride a multi-status list.
  */
 export type ComboPositionStatusFilter =
   | ComboPositionStatus
@@ -313,19 +216,55 @@ export type ComboPositionStatusFilter =
 
 const ComboPositionStatusFilterSchema = z.union([
   ComboPositionStatusSchema,
-  z.tuple([ComboPositionStatusSchema], ComboPositionStatusSchema),
+  z
+    .tuple([ComboPositionStatusSchema], ComboPositionStatusSchema)
+    .refine(
+      (statuses) =>
+        statuses.length === 1 ||
+        !statuses.includes(ComboPositionStatus.Redeemable),
+      { message: 'REDEEMABLE must be the sole status value' },
+    ),
 ]) satisfies z.ZodType<ComboPositionStatusFilter>;
 
 const ListComboPositionsRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
-  user: z.string(),
-  pageSize: PageSizeSchema.default(20),
+  // The service default; anything past 1000 is rejected, not clamped.
+  pageSize: PageSizeSchema.max(1000).default(100),
+  /** The wallet to anchor on. Required — combo positions are wallet-anchored. */
+  user: EvmAddressSchema,
+  // Same shared 20-DISTINCT service cap as the other condition selectors.
+  conditionId: z
+    .union([ComboConditionIdSchema, distinctIdList(ComboConditionIdSchema, 20)])
+    .optional(),
   status: ComboPositionStatusFilterSchema.optional(),
-  sort: ComboPositionSortSchema.optional(),
-  conditionId: ComboConditionIdFilterSchema.optional(),
-  updatedAfter: z.number().int().min(0).optional(),
-  updatedBefore: z.number().int().min(0).optional(),
+  /**
+   * FIRST_ENTRY (default; REDEEMABLE defaults to ENTRY_COST so the largest
+   * claims lead) | ENTRY_COST | CURRENT_VALUE | UPDATED.
+   */
+  sortBy: ComboPositionSortBySchema.optional(),
+  sortDirection: SortDirectionSchema.optional(),
+  // A change-watermark on the row's `updatedAt`, not a history window —
+  // deliberately separate from the `window` option.
+  /**
+   * Inclusive lower bound on the row's `updatedAt` change watermark — epoch
+   * seconds or `Date`. Pairs with `sortBy: 'UPDATED'` for incremental sync.
+   */
+  updatedAfter: EpochSecondsLikeSchema.optional(),
+  /** Inclusive upper bound on the row's `updatedAt` change watermark. */
+  updatedBefore: EpochSecondsLikeSchema.optional(),
 });
+
+const ListComboPositionsRequestSchemaChecked =
+  ListComboPositionsRequestSchema.refine(
+    (value) =>
+      value.updatedBefore === undefined ||
+      value.updatedAfter === undefined ||
+      value.updatedBefore >= value.updatedAfter,
+    {
+      message: 'updatedBefore must not precede updatedAfter',
+      path: ['updatedBefore'],
+    },
+  );
 
 export type ListComboPositionsRequest = Omit<
   z.input<typeof ListComboPositionsRequestSchema>,
@@ -349,7 +288,14 @@ export const ListComboPositionsError = makeErrorGuard(
 );
 
 /**
- * Lists combo positions for a wallet.
+ * Lists Combo positions for a wallet.
+ *
+ * `status: 'OPEN'` is the superset including custody-held redeemable
+ * positions; `'REDEEMABLE'` (sole value) narrows to exactly the rows whose
+ * `redeemable` flag is set. Every row carries its legs enriched with market
+ * metadata and exact entry economics. `updatedAfter`/`updatedBefore` bound
+ * the rows' change watermark for incremental sync. `pageSize` defaults to
+ * 100 (max 1000). Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -374,15 +320,6 @@ export const ListComboPositionsError = makeErrorGuard(
  * ```
  *
  * @example
- * Filter to open combo positions:
- * ```ts
- * const result = listComboPositions(client, {
- *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   status: ComboPositionStatus.Open,
- * });
- * ```
- *
- * @example
  * Filter to any of several resolved statuses. Pass multiple statuses as an
  * array rather than a comma-separated string:
  * ```ts
@@ -397,13 +334,22 @@ export const ListComboPositionsError = makeErrorGuard(
  * ```
  *
  * @example
- * Incrementally sync changed combo positions:
+ * List redeemable Combo positions, largest claims first:
+ * ```ts
+ * const result = listComboPositions(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   status: 'REDEEMABLE',
+ * });
+ * ```
+ *
+ * @example
+ * Incrementally sync changed Combo positions:
  * ```ts
  * const result = listComboPositions(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
  *   updatedAfter: 1_797_360_000,
- *   sort: ComboPositionSort.UpdatedAsc,
- *   pageSize: 1000,
+ *   sortBy: 'UPDATED',
+ *   sortDirection: 'ASC',
  * });
  * ```
  */
@@ -411,69 +357,19 @@ export function listComboPositions(
   client: BaseClient,
   request: ListComboPositionsRequest,
 ): Paginated<ComboPosition[]> {
-  const { cursor, pageSize, conditionId, status, ...params } = parseUserInput(
+  const { cursor, pageSize, ...params } = parseUserInput(
     request,
-    ListComboPositionsRequestSchema,
+    ListComboPositionsRequestSchemaChecked,
   );
 
-  return paginate((cursor) => {
-    const searchParams = toSearchParams(
-      {
-        ...params,
-        limit: pageSize,
-        cursor,
-      },
-      snakeCase({
-        updatedAfter: 'updatedAfter',
-        updatedBefore: 'updatedBefore',
-      }),
-    );
-
-    appendConditionId(searchParams, conditionId);
-    appendStatus(searchParams, status);
-
-    return client.data
-      .get('/v1/positions/combos', {
-        params: searchParams,
-      })
-      .andThen(validateWith(ListComboPositionsResponseSchema))
-      .map((response) => {
-        const nextCursor = response.pagination.nextCursor ?? undefined;
-
-        return {
-          items: response.combos,
-          hasMore: nextCursor !== undefined,
-          nextCursor,
-        };
-      });
-  }, cursor);
-}
-
-function appendConditionId(
-  searchParams: URLSearchParams,
-  conditionId: z.output<typeof ComboConditionIdFilterSchema> | undefined,
-): void {
-  if (conditionId === undefined) {
-    return;
-  }
-
-  searchParams.append(
-    'market_id',
-    Array.isArray(conditionId) ? conditionId.join(',') : conditionId,
-  );
-}
-
-function appendStatus(
-  searchParams: URLSearchParams,
-  status: z.output<typeof ComboPositionStatusFilterSchema> | undefined,
-): void {
-  if (status === undefined) {
-    return;
-  }
-
-  searchParams.append(
-    'status',
-    typeof status === 'string' ? status : status.join(','),
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/positions/combos', {
+          params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
+        }),
+      ).andThen(validateWith(ListComboPositionsResponseSchema)),
+    cursor,
   );
 }
 

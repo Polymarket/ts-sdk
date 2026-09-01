@@ -1,7 +1,7 @@
 import {
-  ComboPositionOutcome,
-  ComboPositionSort,
+  ComboPositionSortBy,
   ComboPositionStatus,
+  PositionStatus,
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
@@ -49,48 +49,22 @@ describe('Portfolio', () => {
     });
   });
 
-  describe('listClosedPositions', () => {
-    it('lists closed positions for a wallet', async ({ publicClient }) => {
-      // 50 is the largest allowed pageSize, matching the upstream limit cap.
-      const paginator = publicClient.listClosedPositions({
-        user: TEST_USER,
-        pageSize: 50,
-      });
-      const result = await paginator.firstPage().then(expectNonEmptyPage);
-
-      expect(result.items.length).toBeGreaterThan(0);
-      await expectPageWindow(paginator, result, 99);
-      expect(result.items[0]).toEqual(
-        expect.objectContaining({
-          conditionId: expect.any(String),
-          wallet: TEST_USER,
-        }),
-      );
-    });
-
-    it('rejects page sizes above the upstream limit cap', ({
-      publicClient,
-    }) => {
-      expect(() =>
-        publicClient.listClosedPositions({
+  describe('listPositions status arms', () => {
+    it('lists closed positions via status', async ({ publicClient }) => {
+      const result = await publicClient
+        .listPositions({
           user: TEST_USER,
-          pageSize: 51,
-        }),
-      ).toThrow(UserInputError);
-    });
-
-    it('defaults secure clients to the authenticated wallet', async ({
-      depositWalletAddress,
-      secureClientWithDepositWallet,
-    }) => {
-      const result = await secureClientWithDepositWallet
-        .listClosedPositions({ pageSize: 1 })
+          status: PositionStatus.Closed,
+          pageSize: 50,
+        })
         .firstPage()
         .then(expectNonEmptyPage);
 
-      expect(result.items[0]?.wallet).toSatisfy((wallet) =>
-        isSameEvmAddress(wallet, depositWalletAddress),
-      );
+      expect(result.items.length).toBeGreaterThan(0);
+      for (const position of result.items) {
+        expect(position.status).toBe(PositionStatus.Closed);
+        expect(position.wallet).toBe(TEST_USER);
+      }
     });
   });
 
@@ -99,22 +73,21 @@ describe('Portfolio', () => {
       const paginator = publicClient.listComboPositions({
         user: TEST_USER,
         pageSize: 1,
-        sort: ComboPositionSort.FirstEntryDesc,
+        sortBy: ComboPositionSortBy.FirstEntry,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 
       await expectPageWindow(paginator, result, 1);
-      expect(Object.values(ComboPositionOutcome)).toContain(
-        result.items[0].outcome,
-      );
       expect(result.items[0]).toEqual(
         expect.objectContaining({
           conditionId: expect.any(String),
           positionId: expect.any(String),
+          outcomeLabel: expect.any(String),
           redeemable: expect.any(Boolean),
           wallet: TEST_USER,
-          realizedPayoutUsdc: expect.any(String),
-          totalCostUsdc: expect.any(String),
+          realizedPayoutUsdc: expect.any(Number),
+          grossEntryCostUsdc: expect.any(String),
+          entryFeesUsdc: expect.any(String),
         }),
       );
 
@@ -300,6 +273,6 @@ function comboPositionRequests(
 ): URLSearchParams[] {
   return fetchSpy.mock.calls
     .map(([input]) => (input instanceof Request ? input.url : String(input)))
-    .filter((url) => new URL(url).pathname === '/v1/positions/combos')
+    .filter((url) => new URL(url).pathname === '/v2/positions/combos')
     .map((url) => new URL(url).searchParams);
 }

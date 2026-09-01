@@ -99,7 +99,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const midpoint = await client.fetchMidpoint({ assetId: '123' });
+   * const midpoint = await client.fetchMidpoint({ assetId: '0x0122…0000' });
    * ```
    */
   fetchMidpoint(request: FetchMidpointRequest): Promise<DecimalString>;
@@ -111,7 +111,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const midpoints = await client.fetchMidpoints([{ assetId: '123' }]);
+   * const midpoints = await client.fetchMidpoints([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchMidpoints(request: FetchMidpointsRequest): Promise<Midpoints>;
@@ -123,7 +123,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const price = await client.fetchPrice({ assetId: '123', side: OrderSide.BUY });
+   * const price = await client.fetchPrice({ assetId: '0x0122…0000', side: OrderSide.BUY });
    * ```
    */
   fetchPrice(request: FetchPriceRequest): Promise<DecimalString>;
@@ -135,7 +135,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const prices = await client.fetchPrices([{ assetId: '123', side: OrderSide.BUY }]);
+   * const prices = await client.fetchPrices([{ assetId: '0x0122…0000', side: OrderSide.BUY }]);
    * ```
    */
   fetchPrices(request: FetchPricesRequest): Promise<Prices>;
@@ -147,7 +147,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const book = await client.fetchOrderBook({ assetId: '123' });
+   * const book = await client.fetchOrderBook({ assetId: '0x0122…0000' });
    * ```
    */
   fetchOrderBook(request: FetchOrderBookRequest): Promise<OrderBook>;
@@ -159,7 +159,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const books = await client.fetchOrderBooks([{ assetId: '123' }]);
+   * const books = await client.fetchOrderBooks([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchOrderBooks(request: FetchOrderBooksRequest): Promise<OrderBook[]>;
@@ -171,7 +171,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const spread = await client.fetchSpread({ assetId: '123' });
+   * const spread = await client.fetchSpread({ assetId: '0x0122…0000' });
    * ```
    */
   fetchSpread(request: FetchSpreadRequest): Promise<DecimalString>;
@@ -183,7 +183,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const spreads = await client.fetchSpreads([{ assetId: '123' }]);
+   * const spreads = await client.fetchSpreads([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchSpreads(request: FetchSpreadsRequest): Promise<Spreads>;
@@ -197,7 +197,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const trade = await client.fetchLastTradePrice({ assetId: '123' });
+   * const trade = await client.fetchLastTradePrice({ assetId: '0x0122…0000' });
    *
    * // trade === LastTradePrice | null
    * ```
@@ -216,8 +216,8 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const trades = await client.fetchLastTradePrices([{ assetId: '123' }]);
-   * const trade = trades.find((candidate) => candidate.assetId === '123');
+   * const trades = await client.fetchLastTradePrices([{ assetId: '0x0122…0000' }]);
+   * const trade = trades.find((candidate) => candidate.assetId === '0x0122…0000');
    * ```
    */
   fetchLastTradePrices(
@@ -231,7 +231,7 @@ export type DataActions = {
    *
    * @example
    * ```ts
-   * const history = await client.fetchPriceHistory({ assetId: '123', interval: '1d' });
+   * const history = await client.fetchPriceHistory({ assetId: '0x0122…0000', interval: '1d' });
    * ```
    */
   fetchPriceHistory(
@@ -249,18 +249,9 @@ export type DataActions = {
    * @example
    * ```ts
    * const price = await client.estimateMarketPrice({
-   *   tokenId: '123',
+   *   assetId: '0x0122…0000',
    *   side: OrderSide.BUY,
    *   amount: 10,
-   * });
-   * ```
-   *
-   * @example Position-backed outcome
-   * ```ts
-   * const price = await client.estimateMarketPrice({
-   *   positionId: '456',
-   *   side: OrderSide.SELL,
-   *   shares: 10,
    * });
    * ```
    */

@@ -521,6 +521,14 @@ function getRequiredTradingApprovals(
         tokenAddress: contracts.conditionalTokens,
       },
       {
+        operatorAddress: contracts.binaryModule,
+        tokenAddress: contracts.conditionalTokens,
+      },
+      {
+        operatorAddress: contracts.negRiskModule,
+        tokenAddress: contracts.conditionalTokens,
+      },
+      {
         operatorAddress: contracts.protocolV2Router,
         tokenAddress: contracts.positionManager,
       },
