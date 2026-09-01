@@ -48,9 +48,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const result = await publicClient.estimateMarketPrice({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         orderType: OrderType.FAK,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(result).toEqual(expect.any(Number));
@@ -101,7 +101,7 @@ describe('Orders', { timeout: 60_000 }, () => {
       await secureClient
         .placeMarketOrder({
           side: OrderSide.SELL,
-          shares: expectPresent(position?.size),
+          shares: expectPresent(position?.currentSize),
           tokenId: expectPresent(market.outcomes.yes.tokenId),
         })
         .then(expectAcceptedOrderResponse);
@@ -121,18 +121,19 @@ describe('Orders', { timeout: 60_000 }, () => {
           .firstPage();
         const existingPosition = positions.items.find(
           (candidate) =>
-            candidate.assetId === yesTokenId && Number(candidate.size ?? 0) > 0,
+            candidate.assetId === yesTokenId &&
+            Number(candidate.currentSize) > 0,
         );
 
         if (existingPosition !== undefined) {
           annotate(
-            `Found existing position for token ${yesTokenId} with size ${existingPosition.size}, closing it with a market sell order...`,
+            `Found existing position for token ${yesTokenId} with size ${existingPosition.currentSize}, closing it with a market sell order...`,
           );
 
           const sellResult = await secureClientWithDepositWallet
             .placeMarketOrder({
               side: OrderSide.SELL,
-              shares: expectPresent(existingPosition.size),
+              shares: existingPosition.currentSize,
               tokenId: yesTokenId,
             })
             .then(expectAcceptedOrderResponse);
@@ -189,9 +190,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const order = await secureClientWithDepositWallet.createMarketOrder({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         builderCode,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(order.builder).toBe(builderCode);
@@ -423,10 +424,10 @@ describe('Orders', { timeout: 60_000 }, () => {
       const minSize = expectPresent(market.trading.minimumOrderSize);
 
       const result = await secureClientWithDepositWallet.placeLimitOrder({
+        assetId: yesTokenId,
         price: minPrice,
         side: OrderSide.BUY,
         size: minSize,
-        tokenId: yesTokenId,
       });
 
       expect(result.ok).toBe(true);

@@ -121,20 +121,20 @@ export type AuthorizeSessionKeyRequest = {
   idempotencyKey?: string;
   /** Requested scopes. Defaults to `ALL`, which must appear alone. */
   scopes?: SessionKeyScope[];
-  /** Absolute expiry as whole future Unix seconds. */
-  validUntil: number;
 };
 
 type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
   scopes: SessionKeyScope[];
-  validUntil: number;
 };
 
 const DEFAULT_SESSION_KEY_SCOPES = [
   SessionKeyKnownScope.ALL,
 ] satisfies SessionKeyScope[];
+const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
+
+const SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 const AuthorizeSessionKeyRequestSchema = z
   .object({
@@ -144,7 +144,6 @@ const AuthorizeSessionKeyRequestSchema = z
       .array(SessionSignerScopeSchema)
       .min(1)
       .default(DEFAULT_SESSION_KEY_SCOPES),
-    validUntil: z.number().int(),
   })
   .superRefine((value, context) => {
     if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
@@ -163,14 +162,6 @@ const AuthorizeSessionKeyRequestSchema = z
         code: 'custom',
         message: 'Session key scope ALL cannot be combined with another scope.',
         path: ['scopes'],
-      });
-    }
-
-    if (value.validUntil <= Math.floor(Date.now() / 1_000)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Session key expiry must be a future Unix timestamp.',
-        path: ['validUntil'],
       });
     }
   })
@@ -220,6 +211,7 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * The SDK receives only the public address. The application remains
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
+ * The authorization expires 180 days after it is created.
  * Requires builder API-key authentication.
  *
  * @remarks
@@ -232,7 +224,6 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
  * });
  * ```
  *
@@ -255,12 +246,14 @@ export async function authorizeSessionKey(
     request,
     AuthorizeSessionKeyRequestSchema,
   );
+  const validUntil =
+    Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
   const signedBatch = await completeWith(client.signer)(
     buildDepositWalletExecuteRequest(client, [
       authorizeSessionSignerCall(
         client.account.wallet,
         parsedRequest.address,
-        BigInt(parsedRequest.validUntil),
+        BigInt(validUntil),
       ),
     ]),
   );
@@ -270,7 +263,7 @@ export async function authorizeSessionKey(
     scopes: parsedRequest.scopes,
     sessionSignerAddress: parsedRequest.address,
     signature: signedBatch.signature,
-    validUntil: `${parsedRequest.validUntil}`,
+    validUntil: `${validUntil}`,
     walletAddress: client.account.wallet,
   };
   const response = await unwrap(
@@ -281,6 +274,7 @@ export async function authorizeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
   );
@@ -297,7 +291,7 @@ export async function authorizeSessionKey(
   const sessionKey = await waitForAuthorizedSessionKey(client, {
     address: parsedRequest.address,
     scopes: parsedRequest.scopes,
-    validUntil: parsedRequest.validUntil,
+    validUntil,
   });
 
   return {
@@ -421,6 +415,7 @@ export async function revokeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerRevokeSessionSignerResponseSchema)),
   );

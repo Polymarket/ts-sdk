@@ -47,6 +47,8 @@ export type EnvironmentContracts = {
   negRiskExchange: EvmAddress;
   exchangeV3: EvmAddress;
   protocolV2Router: EvmAddress;
+  binaryModule: EvmAddress;
+  negRiskModule: EvmAddress;
   combinatorialModule: EvmAddress;
   positionManager: EvmAddress;
   autoRedeemOperator: EvmAddress;
@@ -164,6 +166,12 @@ export const production: EnvironmentConfig = {
     exchangeV3: expectEvmAddress('0xe3333700cA9d93003F00f0F71f8515005F6c00Aa'),
     protocolV2Router: expectEvmAddress(
       '0x12121212006e4CD160D18e3f00711DA5c3372600',
+    ),
+    binaryModule: expectEvmAddress(
+      '0x1000008dD9001B968442c1000017eaE6E0dA00Ba',
+    ),
+    negRiskModule: expectEvmAddress(
+      '0x200000900045e3B6259600682756002200028933',
     ),
     combinatorialModule: expectEvmAddress(
       '0x30000034706c7d8e12009dab006be20000c031a8',

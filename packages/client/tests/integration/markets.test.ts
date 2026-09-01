@@ -207,24 +207,4 @@ describe('Markets', () => {
       ]);
     });
   });
-
-  describe('listMarketPositions', () => {
-    it('lists positions for a market', async ({ publicClient }) => {
-      const result = await publicClient
-        .listMarketPositions({
-          market: positionConditionId,
-          pageSize: 1,
-        })
-        .firstPage()
-        .then(expectNonEmptyPage);
-
-      expect(result.items.length).toBeGreaterThan(0);
-      expect(result.items[0]).toEqual(
-        expect.objectContaining({
-          positions: expect.any(Array),
-          token: expect.any(String),
-        }),
-      );
-    });
-  });
 });

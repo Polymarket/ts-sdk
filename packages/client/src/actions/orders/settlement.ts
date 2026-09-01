@@ -93,9 +93,9 @@ function isFailedTrade(trade: ClobTrade): boolean {
  * @example
  * ```ts
  * const response = await client.placeMarketOrder({
+ *   assetId: '0x0122…0000',
  *   amount: 10,
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  *
  * if (response.ok) {
