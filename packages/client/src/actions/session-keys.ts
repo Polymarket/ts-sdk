@@ -340,6 +340,7 @@ export type RevokeSessionKeyError =
   | RequestRejectedError
   | SigningError
   | TimeoutError
+  | TransactionFailedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
@@ -349,6 +350,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
   RequestRejectedError,
   SigningError,
   TimeoutError,
+  TransactionFailedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
