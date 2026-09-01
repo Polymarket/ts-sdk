@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ComboKnownStatus,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
@@ -27,8 +28,12 @@ const rawMultiOutcomeMarket = {
 
 describe('MarketSchema', () => {
   it('normalizes binary outcomes', () => {
-    const market = MarketSchema.parse(rawBinaryMarket);
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'enabled',
+    });
 
+    expect(market.state.comboStatus).toBe(ComboKnownStatus.Enabled);
     expect(market.outcomes).toEqual({
       yes: {
         label: 'Yes',
@@ -43,6 +48,15 @@ describe('MarketSchema', () => {
         price: '0.6',
       },
     });
+  });
+
+  it('passes unknown Combo statuses through as strings', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'not-a-status-yet',
+    });
+
+    expect(market.state.comboStatus).toBe('not-a-status-yet');
   });
 
   it.each([
