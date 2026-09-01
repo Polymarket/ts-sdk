@@ -34,7 +34,7 @@ describe('Leaderboards', () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const paginator = publicClient.listBuilderLeaderboard({
         pageSize: 1,
-        window: LeaderboardWindow.Day,
+        window: LeaderboardWindow.All,
       });
       const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
       const secondPage = await paginator
@@ -58,12 +58,29 @@ describe('Leaderboards', () => {
       expect(requests).toHaveLength(2);
 
       for (const request of requests) {
-        expect(request.get('time_period')).toBe(LeaderboardWindow.Day);
+        expect(request.get('time_period')).toBe(LeaderboardWindow.All);
         expect(request.get('limit')).toBe('1');
       }
 
       expect(requests[0]?.get('cursor')).toBeNull();
       expect(requests[1]?.get('cursor')).toBe(firstPage.nextCursor);
+    });
+
+    it('forwards the requested leaderboard window', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient
+        .listBuilderLeaderboard({
+          pageSize: 1,
+          window: LeaderboardWindow.Day,
+        })
+        .firstPage();
+
+      const requests = builderLeaderboardRequests(fetchSpy);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.get('time_period')).toBe(LeaderboardWindow.Day);
     });
   });
 
