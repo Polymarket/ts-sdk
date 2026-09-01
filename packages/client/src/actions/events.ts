@@ -337,8 +337,23 @@ function toResolutionConditionId(conditionId: ConditionId): ConditionId {
   return toConditionId(paddedConditionId.toLowerCase());
 }
 
+function isSupportedResolutionConditionId(conditionId: ConditionId): boolean {
+  if (conditionId.length === 66) return true;
+
+  const normalizedConditionId = conditionId.toLowerCase();
+  return (
+    normalizedConditionId.startsWith('0x01') ||
+    normalizedConditionId.startsWith('0x02')
+  );
+}
+
+const ResolutionConditionIdSchema = ConditionIdSchema.refine(
+  isSupportedResolutionConditionId,
+  'Expected a 32-byte condition ID or a 31-byte protocol v2 market condition ID',
+).transform(toResolutionConditionId);
+
 const ResolutionConditionIdsSchema = z
-  .array(ConditionIdSchema.transform(toResolutionConditionId))
+  .array(ResolutionConditionIdSchema)
   .min(1)
   .transform((conditionIds) => [...new Set(conditionIds)])
   .refine(
@@ -418,8 +433,9 @@ export const FetchResolutionsError = makeErrorGuard(
  *
  * Provide exactly one selector. Condition and event lookups accept at most 20
  * distinct IDs and return one row per matching condition. Missing resolutions
- * return an empty array. A 31-byte condition ID is right-padded to its
- * canonical 32-byte form.
+ * return an empty array. A 31-byte protocol v2 market condition ID is
+ * right-padded to its canonical 32-byte form. A 31-byte combo condition ID is
+ * rejected.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

@@ -1,7 +1,13 @@
 import { createPublicClient, UserInputError } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
+
+const STRUCTURAL_MARKET_CONDITION_ID =
+  '0x0115903402acad794c9e221e72a37c4cd00000000000000000000000000000';
+const COMBO_CONDITION_ID =
+  '0x0315903402acad794c9e221e72a37c4cd00000000000000000000000000000';
 
 const {
   items: [event],
@@ -14,6 +20,10 @@ const {
   .then(expectNonEmptyPage);
 
 describe('Events', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listEvents', () => {
     it('fetches events', async ({ publicClient }) => {
       const paginator = publicClient.listEvents({
@@ -121,16 +131,32 @@ describe('Events', () => {
       expect(byCondition).toContainEqual(eventResolution);
     });
 
-    it('accepts a Gamma-compatible 31-byte condition ID', async ({
+    it('pads a 31-byte protocol v2 market condition ID', async ({
       publicClient,
     }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.fetchResolutions({
+        conditionIds: [STRUCTURAL_MARKET_CONDITION_ID],
+      });
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/resolutions');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('condition'),
+      ).toBe(`${STRUCTURAL_MARKET_CONDITION_ID}00`);
+    });
+
+    it('rejects a 31-byte combo condition ID', async ({ publicClient }) => {
       await expect(
         publicClient.fetchResolutions({
-          conditionIds: [
-            '0x0115903402acad794c9e221e72a37c4cd00000000000000000000000000000',
-          ],
+          conditionIds: [COMBO_CONDITION_ID],
         }),
-      ).resolves.toEqual([]);
+      ).rejects.toThrow(UserInputError);
     });
 
     it('rejects an empty selector', async ({ publicClient }) => {

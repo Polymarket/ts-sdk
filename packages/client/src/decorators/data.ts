@@ -78,7 +78,9 @@ export type DataActions = {
    *
    * Provide exactly one selector. Condition and event lookups accept at most
    * 20 distinct IDs and return one row per matching condition. Missing
-   * resolutions return an empty array.
+   * resolutions return an empty array. A 31-byte protocol v2 market condition
+   * ID is right-padded to its canonical 32-byte form. A 31-byte combo condition
+   * ID is rejected.
    *
    * @throws {@link FetchResolutionsError}
    * Thrown on failure.

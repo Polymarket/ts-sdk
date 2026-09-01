@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   type ConditionId,
   ConditionIdSchema,
+  type DecimalString,
+  DecimalStringSchema,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
   type MixedDateTimeString,
@@ -65,11 +67,11 @@ export type Resolution = {
   /** Whether the question rules were updated after the question was posed. */
   questionRulesUpdated: boolean;
   /** First proposed oracle price, omitted until set. */
-  proposedPrice?: string;
+  proposedPrice?: DecimalString;
   /** Second proposed oracle price, omitted until set. */
-  reproposedPrice?: string;
+  reproposedPrice?: DecimalString;
   /** Final oracle settlement price, omitted until set. */
-  price?: string;
+  price?: DecimalString;
   /** Transaction for the latest lifecycle event, when available. */
   transactionHash?: string;
   /** Log index for `transactionHash`, when available. */
@@ -97,9 +99,9 @@ export const ResolutionSchema = z
     extended_review: z.boolean(),
     was_disputed: z.boolean(),
     new_version_q: z.boolean(),
-    proposed_price: z.string().optional(),
-    reproposed_price: z.string().optional(),
-    price: z.string().optional(),
+    proposed_price: DecimalStringSchema.optional(),
+    reproposed_price: DecimalStringSchema.optional(),
+    price: DecimalStringSchema.optional(),
     transaction_hash: z.string(),
     log_index: z.string(),
     last_update_timestamp: MixedDateTimeStringSchema,
