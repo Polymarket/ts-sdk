@@ -62,6 +62,27 @@ const PositionIdArraySchema = z
   .preprocess(parseJsonString, z.array(PositionIdSchema).nullish())
   .transform((value) => value ?? []);
 
+/**
+ * Known Combo eligibility statuses.
+ *
+ * The service evolves this set independently of released clients, so market
+ * parsing accepts unknown statuses as plain strings; see {@link ComboStatus}.
+ */
+export enum ComboKnownStatus {
+  Pending = 'pending',
+  Enabled = 'enabled',
+  Disabled = 'disabled',
+}
+
+/**
+ * A Combo eligibility status. Known statuses are enumerated in
+ * {@link ComboKnownStatus}; newly introduced statuses flow through as plain
+ * strings so they can be handled before a client release enumerates them.
+ */
+export type ComboStatus = ComboKnownStatus | (string & {});
+
+const ComboStatusSchema = z.string().transform((value): ComboStatus => value);
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -76,6 +97,8 @@ export type MarketState = {
   active?: boolean | null;
   closed?: boolean | null;
   archived?: boolean | null;
+  /** Whether the market is available for combo bets. */
+  comboStatus?: ComboStatus | null;
   acceptingOrders?: boolean | null;
   enableOrderBook?: boolean | null;
   negRisk?: boolean | null;
@@ -279,6 +302,7 @@ export const GammaMarketSchema = z.object({
   gameStartTime: IsoDateTimeStringSchema.nullish(),
   secondsDelay: z.number().int().nullish(),
   clobTokenIds: TokenIdArraySchema,
+  comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
   disqusThread: z.string().nullish(),
   shortOutcomes: z.string().nullish(),
@@ -428,6 +452,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       active: market.active,
       closed: market.closed,
       archived: market.archived,
+      comboStatus: market.comboStatus,
       acceptingOrders: market.acceptingOrders,
       enableOrderBook: market.enableOrderBook,
       negRisk: market.negRisk,
