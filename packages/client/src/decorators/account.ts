@@ -8,7 +8,9 @@ import type {
   ComboPosition,
   PortfolioValue,
   Position,
+  UserPnlSeries,
   UserStats,
+  UserVolume,
 } from '@polymarket/bindings/data';
 import type { Prettify } from '@polymarket/types';
 import {
@@ -17,11 +19,15 @@ import {
   downloadAccountingSnapshot,
   dropNotifications,
   type FetchPortfolioValueRequest,
+  type FetchUserPnlRequest,
   type FetchUserStatsRequest,
+  type FetchUserVolumeRequest,
   fetchClosedOnlyMode,
   fetchNotifications,
   fetchPortfolioValue,
+  fetchUserPnl,
   fetchUserStats,
+  fetchUserVolume,
   type ListAccountTradesRequest,
   type ListActivityRequest,
   type ListComboActivityRequest,
@@ -57,8 +63,12 @@ export type SecureListComboPositionsRequest =
   DefaultAccountWallet<ListComboPositionsRequest>;
 export type SecureFetchPortfolioValueRequest =
   DefaultAccountWallet<FetchPortfolioValueRequest>;
+export type SecureFetchUserPnlRequest =
+  DefaultAccountWallet<FetchUserPnlRequest>;
 export type SecureFetchUserStatsRequest =
   DefaultAccountWallet<FetchUserStatsRequest>;
+export type SecureFetchUserVolumeRequest =
+  DefaultAccountWallet<FetchUserVolumeRequest>;
 export type SecureDownloadAccountingSnapshotRequest =
   DefaultAccountWallet<DownloadAccountingSnapshotRequest>;
 export type SecureListActivityRequest =
@@ -172,6 +182,44 @@ export type PublicAccountActions = Prettify<{
    * ```
    */
   fetchUserStats(request: FetchUserStatsRequest): Promise<UserStats | null>;
+  /**
+   * Fetches a wallet's cumulative PnL series.
+   *
+   * `interval` defaults to one day and `fidelity` defaults to one hour. Each
+   * point is cumulative through its timestamp; nullable amounts mean the
+   * source was unavailable and are never coerced to zero.
+   *
+   * @throws {@link FetchUserPnlError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const pnl = await client.fetchUserPnl({
+   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+   *   interval: UserPnlInterval.OneWeek,
+   *   fidelity: UserPnlFidelity.ThreeHours,
+   * });
+   * ```
+   */
+  fetchUserPnl(request: FetchUserPnlRequest): Promise<UserPnlSeries>;
+  /**
+   * Fetches a wallet's trading volume for a time window.
+   *
+   * Volume is returned in shares and USD. Window bounds accept epoch seconds
+   * or `Date` values and are widened to whole UTC days.
+   *
+   * @throws {@link FetchUserVolumeError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const volume = await client.fetchUserVolume({
+   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+   *   window: { start: new Date('2026-08-01T00:00:00Z') },
+   * });
+   * ```
+   */
+  fetchUserVolume(request: FetchUserVolumeRequest): Promise<UserVolume>;
   /**
    * Downloads an accounting snapshot archive for a wallet.
    *
@@ -320,6 +368,27 @@ export type SecureAccountActions = Prettify<{
     request?: SecureFetchUserStatsRequest,
   ): Promise<UserStats | null>;
   /**
+   * Fetches the cumulative PnL series for a wallet.
+   *
+   * Defaults to the authenticated account's wallet when `user` is omitted.
+   * `interval` defaults to one day and `fidelity` defaults to one hour.
+   *
+   * @throws {@link FetchUserPnlError}
+   * Thrown on failure.
+   */
+  fetchUserPnl(request?: SecureFetchUserPnlRequest): Promise<UserPnlSeries>;
+  /**
+   * Fetches trading volume for a wallet over a time window.
+   *
+   * Defaults to the authenticated account's wallet when `user` is omitted.
+   * Window bounds accept epoch seconds or `Date` values and are widened to
+   * whole UTC days.
+   *
+   * @throws {@link FetchUserVolumeError}
+   * Thrown on failure.
+   */
+  fetchUserVolume(request?: SecureFetchUserVolumeRequest): Promise<UserVolume>;
+  /**
    * Downloads an accounting snapshot archive for a wallet.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
@@ -433,6 +502,8 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
     listComboPositions: listComboPositions.bind(null, client),
     fetchPortfolioValue: fetchPortfolioValue.bind(null, client),
     fetchUserStats: fetchUserStats.bind(null, client),
+    fetchUserPnl: fetchUserPnl.bind(null, client),
+    fetchUserVolume: fetchUserVolume.bind(null, client),
     downloadAccountingSnapshot: downloadAccountingSnapshot.bind(null, client),
     listActivity: listActivity.bind(null, client),
     listComboActivity: listComboActivity.bind(null, client),
@@ -470,6 +541,10 @@ export function accountActions(
       fetchPortfolioValue(client, withAccountWallet(client, request)),
     fetchUserStats: (request?: SecureFetchUserStatsRequest) =>
       fetchUserStats(client, withAccountWallet(client, request)),
+    fetchUserPnl: (request?: SecureFetchUserPnlRequest) =>
+      fetchUserPnl(client, withAccountWallet(client, request)),
+    fetchUserVolume: (request?: SecureFetchUserVolumeRequest) =>
+      fetchUserVolume(client, withAccountWallet(client, request)),
     downloadAccountingSnapshot: (
       request?: SecureDownloadAccountingSnapshotRequest,
     ) => downloadAccountingSnapshot(client, withAccountWallet(client, request)),
@@ -493,7 +568,9 @@ export {
   FetchClosedOnlyModeError,
   FetchNotificationsError,
   FetchPortfolioValueError,
+  FetchUserPnlError,
   FetchUserStatsError,
+  FetchUserVolumeError,
   ListAccountTradesError,
   ListActivityError,
   ListComboActivityError,
@@ -513,4 +590,6 @@ export {
   PositionFilterType,
   PositionSortBy,
   PositionStatus,
+  UserPnlFidelity,
+  UserPnlInterval,
 } from '../actions/portfolio';

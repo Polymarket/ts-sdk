@@ -3,6 +3,8 @@ import {
   ComboPositionStatus,
   PositionStatus,
   UserInputError,
+  UserPnlFidelity,
+  UserPnlInterval,
 } from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
 import { afterEach, type MockInstance, vi } from 'vitest';
@@ -87,7 +89,7 @@ describe('Portfolio', () => {
           outcomeLabel: expect.any(String),
           redeemable: expect.any(Boolean),
           wallet: TEST_USER,
-          realizedPayoutUsdc: expect.any(Number),
+          realizedPayoutUsdc: expect.any(String),
           grossEntryCostUsdc: expect.any(String),
           entryFeesUsdc: expect.any(String),
         }),
@@ -272,6 +274,87 @@ describe('Portfolio', () => {
       await secureClientWithDepositWallet.fetchUserStats();
 
       const [request] = dataRequests(fetchSpy, '/v2/user-stats');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
+      );
+    });
+  });
+
+  describe('fetchUserPnl', () => {
+    it('fetches a cumulative PnL series', async ({ publicClient }) => {
+      const result = await publicClient.fetchUserPnl({
+        user: TEST_USER,
+        interval: UserPnlInterval.OneWeek,
+        fidelity: UserPnlFidelity.ThreeHours,
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          wallet: TEST_USER,
+          interval: UserPnlInterval.OneWeek,
+          fidelity: UserPnlFidelity.ThreeHours,
+          sourceFidelity: expect.any(String),
+          points: expect.any(Array),
+        }),
+      );
+      expect(result.points.length).toBeGreaterThan(0);
+      expect(result.points[0]).toEqual(
+        expect.objectContaining({
+          timestamp: expect.any(Number),
+          realizedPnl: expect.any(String),
+          volume: expect.any(String),
+          tradeCount: expect.any(Number),
+        }),
+      );
+    });
+
+    it('defaults secure clients to the authenticated wallet', async ({
+      depositWalletAddress,
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await secureClientWithDepositWallet.fetchUserPnl({
+        interval: UserPnlInterval.OneDay,
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-pnl');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
+      );
+    });
+  });
+
+  describe('fetchUserVolume', () => {
+    it('fetches volume for a window using canonical query keys', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const result = await publicClient.fetchUserVolume({
+        user: TEST_USER,
+        window: { start: 1_788_134_400, end: 1_788_220_800 },
+      });
+
+      expect(result).toEqual({
+        volume: expect.any(String),
+        volumeUsdc: expect.any(String),
+        tradeCount: expect.any(Number),
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
+      expect(request?.get('start')).toBe('1788134400');
+      expect(request?.get('end')).toBe('1788220800');
+    });
+
+    it('defaults secure clients to the authenticated wallet', async ({
+      depositWalletAddress,
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await secureClientWithDepositWallet.fetchUserVolume();
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
       expect(request?.get('user')).toSatisfy(
         (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );

@@ -255,6 +255,30 @@ export const PortfolioValueSchema = z
     value,
   })) satisfies z.ZodType<PortfolioValue>;
 
+/** Window served by a user PnL series. */
+export enum UserPnlInterval {
+  Max = 'max',
+  All = 'all',
+  OneMonth = '1m',
+  OneWeek = '1w',
+  OneDay = '1d',
+  TwelveHours = '12h',
+  SixHours = '6h',
+}
+
+export const UserPnlIntervalSchema = z.enum(UserPnlInterval);
+
+/** Time step between points in a user PnL series. */
+export enum UserPnlFidelity {
+  OneDay = '1d',
+  EighteenHours = '18h',
+  TwelveHours = '12h',
+  ThreeHours = '3h',
+  OneHour = '1h',
+}
+
+export const UserPnlFidelitySchema = z.enum(UserPnlFidelity);
+
 /**
  * One cumulative wallet PnL observation. Fractional money and size values
  * are normalized to decimal strings.
@@ -393,6 +417,51 @@ export const UserPnlPointSchema = z
       tradeCount: trade_count,
     }),
   ) satisfies z.ZodType<UserPnlPoint>;
+
+export type UserPnlSeries = {
+  wallet: EvmAddress;
+  interval: UserPnlInterval;
+  fidelity: UserPnlFidelity;
+  /** Fidelity of the underlying observations before grid synthesis. */
+  sourceFidelity: UserPnlFidelity;
+  /** Dense cumulative points, oldest first. */
+  points: UserPnlPoint[];
+};
+
+export const UserPnlSeriesSchema = z
+  .object({
+    proxy_wallet: EvmAddressSchema,
+    interval: UserPnlIntervalSchema,
+    fidelity: UserPnlFidelitySchema,
+    source_fidelity: UserPnlFidelitySchema,
+    points: z.array(UserPnlPointSchema),
+  })
+  .transform(({ proxy_wallet, source_fidelity, ...series }) => ({
+    ...series,
+    wallet: proxy_wallet,
+    sourceFidelity: source_fidelity,
+  })) satisfies z.ZodType<UserPnlSeries>;
+
+export type UserVolume = {
+  /** Both-sides traded volume in shares. */
+  volume: DecimalString;
+  /** Both-sides traded volume in USD. */
+  volumeUsdc: DecimalString;
+  /** Number of fills in the served window. */
+  tradeCount: number;
+};
+
+export const UserVolumeSchema = z
+  .object({
+    volume: DecimalishSchema,
+    volume_usdc: DecimalishSchema,
+    trade_count: z.number().int().nonnegative(),
+  })
+  .transform(({ volume_usdc, trade_count, ...volume }) => ({
+    ...volume,
+    volumeUsdc: volume_usdc,
+    tradeCount: trade_count,
+  })) satisfies z.ZodType<UserVolume>;
 
 export type UserStats = {
   wallet: EvmAddress;
@@ -572,6 +641,10 @@ export const FetchPortfolioValueResponseSchema =
 export const FetchUserStatsResponseSchema = dataEnvelopeSchema(
   UserStatsSchema.nullable(),
 );
+export const FetchUserPnlResponseSchema =
+  dataEnvelopeSchema(UserPnlSeriesSchema);
+export const FetchUserVolumeResponseSchema =
+  dataEnvelopeSchema(UserVolumeSchema);
 export const ListComboPositionsResponseSchema =
   dataPageSchema(ComboPositionSchema);
 
@@ -587,6 +660,10 @@ export type FetchPortfolioValueResponse = z.infer<
 >;
 export type FetchUserStatsResponse = z.infer<
   typeof FetchUserStatsResponseSchema
+>;
+export type FetchUserPnlResponse = z.infer<typeof FetchUserPnlResponseSchema>;
+export type FetchUserVolumeResponse = z.infer<
+  typeof FetchUserVolumeResponseSchema
 >;
 export type ListComboPositionsResponse = z.infer<
   typeof ListComboPositionsResponseSchema

@@ -11,7 +11,9 @@ import {
   ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
+  FetchUserPnlResponseSchema,
   FetchUserStatsResponseSchema,
+  FetchUserVolumeResponseSchema,
   ListComboPositionsResponseSchema,
   ListPositionsResponseSchema,
   type PortfolioValue,
@@ -20,7 +22,11 @@ import {
   PositionSortBySchema,
   PositionStatusSchema,
   SortDirectionSchema,
+  UserPnlFidelitySchema,
+  UserPnlIntervalSchema,
+  type UserPnlSeries,
   type UserStats,
+  type UserVolume,
 } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
@@ -51,6 +57,8 @@ export {
   PositionFilterType,
   PositionSortBy,
   PositionStatus,
+  UserPnlFidelity,
+  UserPnlInterval,
 } from '@polymarket/bindings/data';
 
 const ListPositionsRequestSchema = z
@@ -496,6 +504,126 @@ export async function fetchUserStats(
         params: toDataSearchParams(params),
       }),
     ).andThen(validateWith(FetchUserStatsResponseSchema)),
+  );
+}
+
+const FetchUserPnlRequestSchema = z.object({
+  user: EvmAddressSchema,
+  interval: UserPnlIntervalSchema.optional(),
+  fidelity: UserPnlFidelitySchema.optional(),
+});
+
+export type FetchUserPnlRequest = z.input<typeof FetchUserPnlRequestSchema>;
+
+export type FetchUserPnlError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchUserPnlError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches a wallet's cumulative PnL series.
+ *
+ * `interval` defaults to one day and `fidelity` defaults to one hour. Each
+ * point is cumulative through its timestamp; nullable amounts mean the source
+ * was unavailable and are never coerced to zero.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchUserPnlError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const pnl = await fetchUserPnl(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   interval: UserPnlInterval.OneWeek,
+ *   fidelity: UserPnlFidelity.ThreeHours,
+ * });
+ * ```
+ */
+export async function fetchUserPnl(
+  client: BaseClient,
+  request: FetchUserPnlRequest,
+): Promise<UserPnlSeries> {
+  const params = parseUserInput(request, FetchUserPnlRequestSchema);
+
+  return unwrap(
+    withRateLimitRetry(() =>
+      client.data.get('/v2/user-pnl', {
+        params: toDataSearchParams(params),
+      }),
+    ).andThen(validateWith(FetchUserPnlResponseSchema)),
+  );
+}
+
+const FetchUserVolumeRequestSchema = z.object({
+  user: EvmAddressSchema,
+  window: TimeWindowSchema.optional(),
+});
+
+export type FetchUserVolumeRequest = z.input<
+  typeof FetchUserVolumeRequestSchema
+>;
+
+export type FetchUserVolumeError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchUserVolumeError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches a wallet's trading volume for a time window.
+ *
+ * Volume is returned in shares and USD. Window bounds accept epoch seconds or
+ * `Date` values and are widened to whole UTC days.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchUserVolumeError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const volume = await fetchUserVolume(client, {
+ *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   window: { start: new Date('2026-08-01T00:00:00Z') },
+ * });
+ * ```
+ */
+export async function fetchUserVolume(
+  client: BaseClient,
+  request: FetchUserVolumeRequest,
+): Promise<UserVolume> {
+  const { window, ...params } = parseUserInput(
+    request,
+    FetchUserVolumeRequestSchema,
+  );
+
+  return unwrap(
+    withRateLimitRetry(() =>
+      client.data.get('/v2/user-volume', {
+        params: toDataSearchParams({ ...params, ...window }),
+      }),
+    ).andThen(validateWith(FetchUserVolumeResponseSchema)),
   );
 }
 
