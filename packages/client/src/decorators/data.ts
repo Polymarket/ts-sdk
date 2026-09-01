@@ -23,6 +23,7 @@ import {
   type FetchLastTradePricesRequest,
   type FetchMidpointRequest,
   type FetchMidpointsRequest,
+  type FetchOpenInterestRequest,
   type FetchOrderBookRequest,
   type FetchOrderBooksRequest,
   type FetchPriceHistoryRequest,
@@ -36,6 +37,7 @@ import {
   fetchLastTradePrices,
   fetchMidpoint,
   fetchMidpoints,
+  fetchOpenInterest,
   fetchOrderBook,
   fetchOrderBooks,
   fetchPrice,
@@ -45,10 +47,8 @@ import {
   fetchSpread,
   fetchSpreads,
   type ListMarketHoldersRequest,
-  type ListOpenInterestRequest,
   type ListTradesRequest,
   listMarketHolders,
-  listOpenInterest,
   listTrades,
 } from '../actions';
 import type {
@@ -60,19 +60,26 @@ import type { Paginated } from '../pagination';
 
 export type DataActions = {
   /**
-   * Fetches live volume for an event.
+   * Fetches cumulative taker volume for one or more events.
+   *
+   * Results contain one row per market, ordered by taker volume descending, and
+   * a total across all returned markets. Volume is measured in shares. Event
+   * IDs must be positive 32-bit integers. Transient rate limits are retried
+   * automatically.
    *
    * @throws {@link FetchEventLiveVolumeError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const volume = await client.fetchEventLiveVolume({ id: '123' });
+   * const volume = await client.fetchEventLiveVolume({
+   *   eventIds: ['160707'],
+   * });
    * ```
    */
   fetchEventLiveVolume(
     request: FetchEventLiveVolumeRequest,
-  ): Promise<LiveVolume[]>;
+  ): Promise<LiveVolume>;
   /**
    * Fetches resolution lifecycle rows by question, condition, or event.
    *
@@ -259,19 +266,26 @@ export type DataActions = {
    */
   estimateMarketPrice(request: EstimateMarketPriceRequest): Promise<number>;
   /**
-   * Lists open interest for one or more markets.
+   * Fetches priced gross open interest for selected markets or globally.
    *
-   * @throws {@link ListOpenInterestError}
+   * `conditionId` accepts one or up to 20 distinct market condition IDs. Omit
+   * it for the global aggregate. A requested servable market with no holdings
+   * has a zero value; an absent row means the market is not servable. Values
+   * are in USDC. Transient rate limits are retried automatically.
+   *
+   * @throws {@link FetchOpenInterestError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const openInterest = await client.listOpenInterest({
-   *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+   * const openInterest = await client.fetchOpenInterest({
+   *   conditionId: '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093',
    * });
    * ```
    */
-  listOpenInterest(request?: ListOpenInterestRequest): Promise<OpenInterest[]>;
+  fetchOpenInterest(
+    request?: FetchOpenInterestRequest,
+  ): Promise<OpenInterest[]>;
   /**
    * Lists the top holders for one or more markets.
    *
@@ -351,7 +365,7 @@ export function dataActions(client: BaseClient): DataActions {
     fetchLastTradePrices: fetchLastTradePrices.bind(null, client),
     fetchPriceHistory: fetchPriceHistory.bind(null, client),
     estimateMarketPrice: estimateMarketPrice.bind(null, client),
-    listOpenInterest: listOpenInterest.bind(null, client),
+    fetchOpenInterest: fetchOpenInterest.bind(null, client),
     listMarketHolders: listMarketHolders.bind(null, client),
     listTrades: listTrades.bind(null, client),
   };
@@ -367,6 +381,7 @@ export {
   FetchLastTradePricesError,
   FetchMidpointError,
   FetchMidpointsError,
+  FetchOpenInterestError,
   FetchOrderBookError,
   FetchOrderBooksError,
   FetchPriceError,
@@ -376,7 +391,6 @@ export {
   FetchSpreadError,
   FetchSpreadsError,
   ListMarketHoldersError,
-  ListOpenInterestError,
   ListTradesError,
   ResolutionMarketType,
   ResolutionReporter,

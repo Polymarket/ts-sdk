@@ -4,6 +4,7 @@ import {
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
@@ -33,6 +34,10 @@ const {
 const positionConditionId = expectPresent(position.conditionId);
 
 describe('Markets', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listMarkets', () => {
     it('fetches markets', async ({ publicClient }) => {
       const paginator = publicClient.listMarkets({
@@ -193,18 +198,35 @@ describe('Markets', () => {
     });
   });
 
-  describe('listOpenInterest', () => {
-    it('lists open interest for a market', async ({ publicClient }) => {
-      const result = await publicClient.listOpenInterest({
-        market: [positionConditionId],
+  describe('fetchOpenInterest', () => {
+    it('fetches open interest from the v2 route', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const result = await publicClient.fetchOpenInterest({
+        conditionId: positionConditionId,
       });
 
       expect(result).toEqual([
         expect.objectContaining({
-          market: positionConditionId,
+          conditionId: positionConditionId,
           value: expect.any(String),
         }),
       ]);
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/oi');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('condition'),
+      ).toBe(positionConditionId);
+    });
+
+    it('rejects an invalid condition ID', async ({ publicClient }) => {
+      await expect(
+        publicClient.fetchOpenInterest({ conditionId: 'not-a-condition' }),
+      ).rejects.toThrow(UserInputError);
     });
   });
 });
