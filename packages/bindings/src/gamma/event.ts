@@ -194,6 +194,11 @@ export const BestLineSchema = z.object({
   line: z.number().nullish(),
 });
 
+export enum TeamOrdering {
+  Home = 'home',
+  Away = 'away',
+}
+
 export const TeamSchema = z.object({
   id: TeamIdSchema,
   name: z.string().nullish(),
@@ -206,6 +211,7 @@ export const TeamSchema = z.object({
   updatedAt: IsoDateTimeStringSchema.nullish(),
   providerId: z.number().int().nullish(),
   color: z.string().nullish(),
+  ordering: z.enum(TeamOrdering).nullish(),
 });
 
 export const SportsMetadataSchema = z.object({
