@@ -1,11 +1,18 @@
 import {
+  type ConditionId,
+  ConditionIdSchema,
+  EventIdSchema,
   IsoCalendarDateStringSchema,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
+  QuestionIdSchema,
+  toConditionId,
 } from '@polymarket/bindings';
 import {
   FetchEventLiveVolumeResponseSchema,
+  FetchResolutionsResponseSchema,
   type LiveVolume,
+  type Resolution,
 } from '@polymarket/bindings/data';
 import {
   type Event,
@@ -29,7 +36,20 @@ import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  snakeCase,
+  toDataSearchParams,
+  toLegacyDataSearchParams,
+  toSearchParams,
+} from './params';
+
+export {
+  ResolutionMarketType,
+  ResolutionReporter,
+  ResolutionSource,
+  ResolutionStatus,
+} from '@polymarket/bindings/data';
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
@@ -307,6 +327,150 @@ export async function fetchEventTags(
     client.gamma
       .get(`events/${params.id}/tags`)
       .andThen(validateWith(FetchEventTagsResponseSchema)),
+  );
+}
+
+function toResolutionConditionId(conditionId: ConditionId): ConditionId {
+  const paddedConditionId =
+    conditionId.length === 64 ? `${conditionId}00` : conditionId;
+
+  return toConditionId(paddedConditionId.toLowerCase());
+}
+
+function isSupportedResolutionConditionId(conditionId: ConditionId): boolean {
+  if (conditionId.length === 66) return true;
+
+  const normalizedConditionId = conditionId.toLowerCase();
+  return (
+    normalizedConditionId.startsWith('0x01') ||
+    normalizedConditionId.startsWith('0x02')
+  );
+}
+
+const ResolutionConditionIdSchema = ConditionIdSchema.refine(
+  isSupportedResolutionConditionId,
+  'Expected a 32-byte condition ID or a 31-byte protocol v2 market condition ID',
+).transform(toResolutionConditionId);
+
+const ResolutionConditionIdsSchema = z
+  .array(ResolutionConditionIdSchema)
+  .min(1)
+  .transform((conditionIds) => [...new Set(conditionIds)])
+  .refine(
+    (conditionIds) => conditionIds.length <= 20,
+    'At most 20 distinct condition ids',
+  );
+
+const ResolutionEventIdsSchema = z
+  .array(
+    EventIdSchema.refine(
+      (eventId) =>
+        /^[1-9]\d*$/.test(eventId) && BigInt(eventId) <= 2_147_483_647n,
+      'Expected a positive 32-bit event ID',
+    ),
+  )
+  .min(1)
+  .transform((eventIds) => [...new Set(eventIds)])
+  .refine((eventIds) => eventIds.length <= 20, 'At most 20 distinct event ids');
+
+const FetchResolutionsRequestSchema = z.union([
+  z.object({
+    questionId: QuestionIdSchema,
+    conditionIds: z.never().optional(),
+    eventIds: z.never().optional(),
+  }),
+  z.object({
+    questionId: z.never().optional(),
+    conditionIds: ResolutionConditionIdsSchema,
+    eventIds: z.never().optional(),
+  }),
+  z.object({
+    questionId: z.never().optional(),
+    conditionIds: z.never().optional(),
+    eventIds: ResolutionEventIdsSchema,
+  }),
+]);
+
+export type FetchResolutionsByQuestionRequest = {
+  questionId: string;
+  conditionIds?: never;
+  eventIds?: never;
+};
+
+export type FetchResolutionsByConditionRequest = {
+  questionId?: never;
+  conditionIds: string[];
+  eventIds?: never;
+};
+
+export type FetchResolutionsByEventRequest = {
+  questionId?: never;
+  conditionIds?: never;
+  eventIds: Array<number | string>;
+};
+
+export type FetchResolutionsRequest =
+  | FetchResolutionsByQuestionRequest
+  | FetchResolutionsByConditionRequest
+  | FetchResolutionsByEventRequest;
+
+export type FetchResolutionsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchResolutionsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches resolution lifecycle rows by question, condition, or event.
+ *
+ * Provide exactly one selector. Condition and event lookups accept at most 20
+ * distinct IDs and return one row per matching condition. Missing resolutions
+ * return an empty array. A 31-byte protocol v2 market condition ID is
+ * right-padded to its canonical 32-byte form. A 31-byte combo condition ID is
+ * rejected.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchResolutionsError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const resolutions = await fetchResolutions(client, {
+ *   eventIds: ['903193'],
+ * });
+ *
+ * // resolutions: Resolution[]
+ * ```
+ */
+export async function fetchResolutions(
+  client: BaseClient,
+  request: FetchResolutionsRequest,
+): Promise<Resolution[]> {
+  const { conditionIds, eventIds, questionId } = parseUserInput(
+    request,
+    FetchResolutionsRequestSchema,
+  );
+
+  return unwrap(
+    withRateLimitRetry(() =>
+      client.data.get('/v2/resolutions', {
+        params: toDataSearchParams({
+          questionId,
+          condition: conditionIds,
+          eventId: eventIds,
+        }),
+      }),
+    ).andThen(validateWith(FetchResolutionsResponseSchema)),
   );
 }
 

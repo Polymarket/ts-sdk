@@ -12,6 +12,7 @@ import type {
   LiveVolume,
   MetaHolder,
   OpenInterest,
+  Resolution,
   Trade,
 } from '@polymarket/bindings/data';
 import {
@@ -27,6 +28,7 @@ import {
   type FetchPriceHistoryRequest,
   type FetchPriceRequest,
   type FetchPricesRequest,
+  type FetchResolutionsRequest,
   type FetchSpreadRequest,
   type FetchSpreadsRequest,
   fetchEventLiveVolume,
@@ -39,6 +41,7 @@ import {
   fetchPrice,
   fetchPriceHistory,
   fetchPrices,
+  fetchResolutions,
   fetchSpread,
   fetchSpreads,
   type ListMarketHoldersRequest,
@@ -70,6 +73,26 @@ export type DataActions = {
   fetchEventLiveVolume(
     request: FetchEventLiveVolumeRequest,
   ): Promise<LiveVolume[]>;
+  /**
+   * Fetches resolution lifecycle rows by question, condition, or event.
+   *
+   * Provide exactly one selector. Condition and event lookups accept at most
+   * 20 distinct IDs and return one row per matching condition. Missing
+   * resolutions return an empty array. A 31-byte protocol v2 market condition
+   * ID is right-padded to its canonical 32-byte form. A 31-byte combo condition
+   * ID is rejected.
+   *
+   * @throws {@link FetchResolutionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const resolutions = await client.fetchResolutions({
+   *   eventIds: ['903193'],
+   * });
+   * ```
+   */
+  fetchResolutions(request: FetchResolutionsRequest): Promise<Resolution[]>;
   /**
    * Fetches the midpoint price for an exchange asset as a decimal string.
    *
@@ -315,6 +338,7 @@ export function dataActions(client: BaseSecureClient): DataActions;
 export function dataActions(client: BaseClient): DataActions {
   return {
     fetchEventLiveVolume: fetchEventLiveVolume.bind(null, client),
+    fetchResolutions: fetchResolutions.bind(null, client),
     fetchMidpoint: fetchMidpoint.bind(null, client),
     fetchMidpoints: fetchMidpoints.bind(null, client),
     fetchPrice: fetchPrice.bind(null, client),
@@ -348,9 +372,14 @@ export {
   FetchPriceError,
   FetchPriceHistoryError,
   FetchPricesError,
+  FetchResolutionsError,
   FetchSpreadError,
   FetchSpreadsError,
   ListMarketHoldersError,
   ListOpenInterestError,
   ListTradesError,
+  ResolutionMarketType,
+  ResolutionReporter,
+  ResolutionSource,
+  ResolutionStatus,
 } from '../actions';
