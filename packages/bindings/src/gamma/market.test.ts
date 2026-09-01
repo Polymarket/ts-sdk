@@ -127,6 +127,15 @@ describe('MarketSchema', () => {
     expect(market.version).toBe('v3');
   });
 
+  it('accepts a null protocol version', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      version: null,
+    });
+
+    expect(market.version).toBeNull();
+  });
+
   it.each([
     CTF_CONDITION_ID,
     POLYV2_CONDITION_ID,

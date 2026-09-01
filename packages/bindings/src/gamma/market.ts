@@ -209,7 +209,7 @@ export type MarketTag = {
 export type Market = {
   id: MarketId;
   /** Protocol version used to trade this market. */
-  version?: MarketProtocolVersion;
+  version?: MarketProtocolVersion | null;
   slug?: string | null;
   conditionId: ConditionId | null;
   question?: string | null;
@@ -234,7 +234,7 @@ export type Market = {
 
 export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
-  version: ProtocolVersionSchema.optional(),
+  version: ProtocolVersionSchema.nullish(),
   question: z.string().nullish(),
   conditionId: z
     .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())
