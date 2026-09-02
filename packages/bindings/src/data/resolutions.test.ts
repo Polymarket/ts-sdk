@@ -47,7 +47,7 @@ describe('FetchResolutionsResponseSchema', () => {
     ]);
   });
 
-  it('normalizes condition lifecycle fields and removes unset sentinels', () => {
+  it('normalizes condition lifecycle fields and absent transaction metadata', () => {
     const resolutions = FetchResolutionsResponseSchema.parse({
       data: [
         {
@@ -80,6 +80,8 @@ describe('FetchResolutionsResponseSchema', () => {
         extendedReview: false,
         wasDisputed: false,
         questionRulesUpdated: false,
+        transactionHash: null,
+        logIndex: null,
         lastUpdatedAt: '2026-08-02T03:04:05Z',
         marketType: ResolutionMarketType.Binary,
         payouts: ['0.5', '0.5'],
