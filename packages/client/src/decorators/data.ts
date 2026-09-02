@@ -268,10 +268,11 @@ export type DataActions = {
   /**
    * Fetches priced gross open interest for selected markets or globally.
    *
-   * `conditionId` accepts one or up to 20 distinct market condition IDs. Omit
-   * it for the global aggregate. A requested servable market with no holdings
-   * has a zero value; an absent row means the market is not servable. Values
-   * are in USDC. Transient rate limits are retried automatically.
+   * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
+   * the global aggregate, whose `conditionId` is `null`. A requested servable
+   * market with no holdings has a zero value; an absent row means the market
+   * is not servable. Values are in USDC. Transient rate limits are retried
+   * automatically.
    *
    * @throws {@link FetchOpenInterestError}
    * Thrown on failure.
@@ -279,7 +280,7 @@ export type DataActions = {
    * @example
    * ```ts
    * const openInterest = await client.fetchOpenInterest({
-   *   conditionId: '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093',
+   *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
    * });
    * ```
    */

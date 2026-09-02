@@ -202,7 +202,7 @@ describe('Markets', () => {
     it('fetches open interest from the v2 route', async ({ publicClient }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const result = await publicClient.fetchOpenInterest({
-        conditionId: positionConditionId,
+        conditionIds: [positionConditionId],
       });
 
       expect(result).toEqual([
@@ -225,8 +225,19 @@ describe('Markets', () => {
 
     it('rejects an invalid condition ID', async ({ publicClient }) => {
       await expect(
-        publicClient.fetchOpenInterest({ conditionId: 'not-a-condition' }),
+        publicClient.fetchOpenInterest({ conditionIds: ['not-a-condition'] }),
       ).rejects.toThrow(UserInputError);
+    });
+
+    it('normalizes the global aggregate', async ({ publicClient }) => {
+      const result = await publicClient.fetchOpenInterest();
+
+      expect(result).toEqual([
+        expect.objectContaining({
+          conditionId: null,
+          value: expect.any(String),
+        }),
+      ]);
     });
   });
 });

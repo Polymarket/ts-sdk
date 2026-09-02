@@ -69,26 +69,20 @@ export const MetaHolderSchema = z
   })) satisfies z.ZodType<MetaHolder>;
 
 export type OpenInterest = {
-  /** Condition ID of the market, or `GLOBAL` for the global aggregate. */
-  conditionId: ConditionId | 'GLOBAL';
+  /** Condition ID of the market, or `null` for the global aggregate. */
+  conditionId: ConditionId | null;
   /** Priced gross open interest in USDC. */
   value: DecimalString;
 };
 
 export const OpenInterestSchema = z
   .object({
-    condition_id: z.union([
-      ConditionIdSchema.refine(
-        (conditionId) => conditionId.length === 66,
-        'Expected a 32-byte condition ID',
-      ),
-      z.literal('GLOBAL'),
-    ]),
+    condition_id: z.union([ConditionIdSchema, z.literal('GLOBAL')]),
     value: DecimalishSchema,
   })
-  .transform(({ condition_id, ...rest }) => ({
-    ...rest,
-    conditionId: condition_id,
+  .transform(({ condition_id, value }) => ({
+    conditionId: condition_id === 'GLOBAL' ? null : condition_id,
+    value,
   })) satisfies z.ZodType<OpenInterest>;
 
 export type MarketLiveVolume = {
@@ -100,13 +94,7 @@ export type MarketLiveVolume = {
 
 export const MarketLiveVolumeSchema = z
   .object({
-    condition_id: z.preprocess(
-      emptyStringToNull,
-      ConditionIdSchema.refine(
-        (conditionId) => conditionId.length === 66,
-        'Expected a 32-byte condition ID',
-      ).nullable(),
-    ),
+    condition_id: z.preprocess(emptyStringToNull, ConditionIdSchema.nullable()),
     taker_volume: DecimalishSchema,
   })
   .transform(({ condition_id, taker_volume }) => ({

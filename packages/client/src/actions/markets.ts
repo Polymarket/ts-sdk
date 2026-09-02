@@ -449,12 +449,7 @@ export async function listMarketHolders(
 }
 
 const FetchOpenInterestRequestSchema = z.object({
-  conditionId: z
-    .union([
-      CanonicalMarketConditionIdSchema,
-      distinctIdList(CanonicalMarketConditionIdSchema, 20),
-    ])
-    .optional(),
+  conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20).optional(),
 });
 
 export type FetchOpenInterestRequest = z.input<
@@ -478,10 +473,11 @@ export const FetchOpenInterestError = makeErrorGuard(
 /**
  * Fetches priced gross open interest for selected markets or globally.
  *
- * `conditionId` accepts one or up to 20 distinct market condition IDs. Omit it
- * for the global aggregate. A requested servable market with no holdings has a
- * zero value; an absent row means the market is not servable. Values are in
- * USDC. Transient rate limits are retried automatically.
+ * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
+ * the global aggregate, whose `conditionId` is `null`. A requested servable
+ * market with no holdings has a zero value; an absent row means the market is
+ * not servable. Values are in USDC. Transient rate limits are retried
+ * automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -492,7 +488,7 @@ export const FetchOpenInterestError = makeErrorGuard(
  * @example
  * ```ts
  * const openInterest = await fetchOpenInterest(client, {
- *   conditionId: '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093',
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
  * });
  *
  * // openInterest: OpenInterest[]
@@ -502,7 +498,7 @@ export async function fetchOpenInterest(
   client: BaseClient,
   request: FetchOpenInterestRequest = {},
 ): Promise<OpenInterest[]> {
-  const { conditionId } = parseUserInput(
+  const { conditionIds } = parseUserInput(
     request,
     FetchOpenInterestRequestSchema,
   );
@@ -510,7 +506,7 @@ export async function fetchOpenInterest(
   return unwrap(
     withRateLimitRetry(() =>
       client.data.get('/v2/oi', {
-        params: toDataSearchParams({ condition: conditionId }),
+        params: toDataSearchParams({ condition: conditionIds }),
       }),
     ).andThen(validateWith(FetchOpenInterestResponseSchema)),
   );
