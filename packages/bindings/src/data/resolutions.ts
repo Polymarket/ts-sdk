@@ -4,12 +4,14 @@ import {
   ConditionIdSchema,
   type DecimalString,
   DecimalStringSchema,
+  E6BigIntStringToDecimalStringSchema,
+  EpochLikeToIsoDateTimeStringSchema,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
-  type MixedDateTimeString,
-  MixedDateTimeStringSchema,
   type QuestionId,
   QuestionIdSchema,
+  type TxHash,
+  TxHashSchema,
 } from '../shared';
 import { dataEnvelopeSchema } from './envelope';
 
@@ -73,20 +75,27 @@ export type Resolution = {
   /** Final oracle settlement price, omitted until set. */
   price?: DecimalString;
   /** Transaction for the latest lifecycle event, when available. */
-  transactionHash?: string;
+  transactionHash?: TxHash;
   /** Log index for `transactionHash`, when available. */
-  logIndex?: string;
-  /** Latest lifecycle change, represented as epoch seconds or RFC3339 UTC. */
-  lastUpdatedAt: MixedDateTimeString;
+  logIndex?: number;
+  /** Latest lifecycle change as an ISO 8601 datetime. */
+  lastUpdatedAt: IsoDateTimeString;
   marketType?: ResolutionMarketType;
-  /** Per-outcome payout in micro collateral units per share. */
-  payouts?: number[];
+  /** Per-outcome payout in collateral units per share. */
+  payouts?: [outcome0: DecimalString, outcome1: DecimalString];
   resolutionSource?: ResolutionSource;
   reporter?: ResolutionReporter;
   wasArbitrated?: boolean;
   resolvedBlock?: number;
   resolvedAt?: IsoDateTimeString;
 };
+
+const PayoutSchema = z
+  .number()
+  .int()
+  .min(0)
+  .transform(String)
+  .pipe(E6BigIntStringToDecimalStringSchema);
 
 export const ResolutionSchema = z
   .object({
@@ -102,11 +111,14 @@ export const ResolutionSchema = z
     proposed_price: DecimalStringSchema.optional(),
     reproposed_price: DecimalStringSchema.optional(),
     price: DecimalStringSchema.optional(),
-    transaction_hash: z.string(),
-    log_index: z.string(),
-    last_update_timestamp: MixedDateTimeStringSchema,
+    transaction_hash: z.union([z.literal(''), TxHashSchema]),
+    log_index: z.union([
+      z.literal(''),
+      z.string().regex(/^\d+$/).transform(Number),
+    ]),
+    last_update_timestamp: EpochLikeToIsoDateTimeStringSchema,
     market_type: ResolutionMarketTypeSchema.optional(),
-    payouts: z.array(z.number().int()).optional(),
+    payouts: z.tuple([PayoutSchema, PayoutSchema]).optional(),
     resolution_source: ResolutionSourceSchema.optional(),
     reporter: ResolutionReporterSchema.optional(),
     was_arbitrated: z.boolean().optional(),
