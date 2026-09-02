@@ -1,7 +1,6 @@
 import {
   createSecureClient,
   SigningError,
-  UserInputError,
   WalletType,
 } from '@polymarket/client';
 import { ZERO_ADDRESS } from '@polymarket/types';
@@ -50,7 +49,7 @@ describe('Approvals', () => {
   });
 
   describe('SecureClient.fetchTradingApprovalsState', () => {
-    it('defaults to the authenticated account wallet', async ({
+    it('reads the authenticated account wallet', async ({
       secureClientWithDepositWallet,
     }) => {
       const ethCallBatchSpy = vi.spyOn(
@@ -73,31 +72,6 @@ describe('Approvals', () => {
         ).toBe(true);
       } finally {
         ethCallBatchSpy.mockRestore();
-      }
-    });
-
-    it('rejects invalid input before reading approval state', async ({
-      secureClientWithDepositWallet,
-    }) => {
-      const fetchSpy = vi.spyOn(globalThis, 'fetch');
-
-      try {
-        for (const request of [
-          null,
-          [],
-          { user: null },
-          { user: 'not-an-address' },
-        ]) {
-          await expect(
-            secureClientWithDepositWallet.fetchTradingApprovalsState(
-              request as never,
-            ),
-          ).rejects.toBeInstanceOf(UserInputError);
-        }
-
-        expect(fetchSpy).not.toHaveBeenCalled();
-      } finally {
-        fetchSpy.mockRestore();
       }
     });
   });

@@ -1,4 +1,3 @@
-import type { Prettify } from '@polymarket/types';
 import {
   approveErc20,
   approveErc1155ForAll,
@@ -50,24 +49,12 @@ export type PublicWalletActions = {
   ): Promise<TradingApprovalsState>;
 };
 
-/** Parameters for reading trading approvals with a secure client. */
-export type SecureFetchTradingApprovalsStateRequest = Prettify<
-  Omit<FetchTradingApprovalsStateRequest, 'user'> & {
-    /**
-     * Wallet address whose trading approval state should be inspected.
-     *
-     * @defaultValue `client.account.wallet`
-     */
-    user?: string;
-  }
->;
-
 export type SecureWalletActions = {
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
-   * Defaults to the authenticated account's wallet when `user` is omitted.
-   * This method only reads on-chain state and does not submit transactions.
+   * This method reads the authenticated account's wallet state. It only reads
+   * on-chain state and does not submit transactions.
    *
    * @throws {@link FetchTradingApprovalsStateError}
    * Thrown on failure.
@@ -77,9 +64,7 @@ export type SecureWalletActions = {
    * const state = await client.fetchTradingApprovalsState();
    * ```
    */
-  fetchTradingApprovalsState(
-    request?: SecureFetchTradingApprovalsStateRequest,
-  ): Promise<TradingApprovalsState>;
+  fetchTradingApprovalsState(): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -331,24 +316,6 @@ function publicWalletActions(client: BaseClient): PublicWalletActions {
   };
 }
 
-function withAccountWallet(
-  client: BaseSecureClient,
-  request: SecureFetchTradingApprovalsStateRequest = {},
-): FetchTradingApprovalsStateRequest {
-  if (
-    request === null ||
-    typeof request !== 'object' ||
-    Array.isArray(request)
-  ) {
-    return request as FetchTradingApprovalsStateRequest;
-  }
-
-  return {
-    ...request,
-    user: request.user === undefined ? client.account.wallet : request.user,
-  };
-}
-
 export function walletActions(client: BasePublicClient): PublicWalletActions;
 export function walletActions(client: BaseSecureClient): SecureWalletActions;
 export function walletActions(
@@ -362,9 +329,8 @@ export function walletActions(
 
   return {
     ...actions,
-    fetchTradingApprovalsState: (
-      request?: SecureFetchTradingApprovalsStateRequest,
-    ) => fetchTradingApprovalsState(client, withAccountWallet(client, request)),
+    fetchTradingApprovalsState: () =>
+      fetchTradingApprovalsState(client, { user: client.account.wallet }),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
