@@ -1,15 +1,21 @@
 import type { BuilderTrade } from '@polymarket/bindings/clob';
 import type {
+  BiggestWinner,
   BuilderStanding,
   BuilderVolumePoint,
   TraderLeaderboardEntry,
+  TraderLeaderboardStanding,
 } from '@polymarket/bindings/data';
 import {
   type FetchBuilderVolumeRequest,
+  type FetchTraderLeaderboardStandingRequest,
   fetchBuilderVolume,
+  fetchTraderLeaderboardStanding,
+  type ListBiggestWinnersRequest,
   type ListBuilderLeaderboardRequest,
   type ListBuilderTradesRequest,
   type ListTraderLeaderboardRequest,
+  listBiggestWinners,
   listBuilderLeaderboard,
   listBuilderTrades,
   listTraderLeaderboard,
@@ -130,6 +136,11 @@ export type AnalyticsActions = {
   /**
    * Lists trader leaderboard rankings.
    *
+   * `window` defaults to one day, `category` to overall, and `sortBy` to PnL.
+   * Finite-window PnL is marked equity change net of flows, while all-time PnL
+   * is realized only. Volume is measured in shares. Tied traders share a rank
+   * and the next rank skips. `pageSize` defaults to 100 (max 1000).
+   *
    * @throws {@link ListTraderLeaderboardError}
    * Thrown on failure.
    *
@@ -137,9 +148,9 @@ export type AnalyticsActions = {
    * Fetch the first page of results:
    * ```ts
    * const paginator = client.listTraderLeaderboard({
-   *   orderBy: 'PNL',
    *   pageSize: 10,
-   *   timePeriod: 'DAY',
+   *   sortBy: TraderLeaderboardSort.Pnl,
+   *   window: LeaderboardWindow.Week,
    * });
    *
    * const firstPage = await paginator.firstPage();
@@ -154,9 +165,9 @@ export type AnalyticsActions = {
    * Loop through all pages with `for await`:
    * ```ts
    * const paginator = client.listTraderLeaderboard({
-   *   orderBy: 'PNL',
    *   pageSize: 10,
-   *   timePeriod: 'DAY',
+   *   sortBy: TraderLeaderboardSort.Pnl,
+   *   window: LeaderboardWindow.Week,
    * });
    *
    * for await (const page of paginator) {
@@ -167,6 +178,56 @@ export type AnalyticsActions = {
   listTraderLeaderboard(
     request?: ListTraderLeaderboardRequest,
   ): Paginated<TraderLeaderboardEntry[]>;
+
+  /**
+   * Fetches one trader's standing on both the PnL and volume boards.
+   *
+   * `window` defaults to one day and `category` to overall. A `null` rank means
+   * the trader is unranked on that board. Returns `null` for an unknown wallet.
+   *
+   * @throws {@link FetchTraderLeaderboardStandingError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const standing = await client.fetchTraderLeaderboardStanding({
+   *   user: '0xa71093cafc0c099b4ccab24c3cb8018d817923c4',
+   *   window: LeaderboardWindow.All,
+   * });
+   * ```
+   */
+  fetchTraderLeaderboardStanding(
+    request: FetchTraderLeaderboardStandingRequest,
+  ): Promise<TraderLeaderboardStanding | null>;
+
+  /**
+   * Lists the largest individual winning positions.
+   *
+   * The board has one row per position, ranked by its resolution profit.
+   * `window` applies to resolution time and defaults to one day; `category`
+   * defaults to overall. Equal profits retain distinct row ordinals. Combo rows
+   * have no parent event, so branch on `kind` before using event metadata.
+   * `pageSize` defaults to 100 (max 1000).
+   *
+   * @throws {@link ListBiggestWinnersError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const paginator = client.listBiggestWinners({
+   *   category: 'sports',
+   *   pageSize: 10,
+   *   window: LeaderboardWindow.Week,
+   * });
+   *
+   * for await (const page of paginator) {
+   *   // page.items: BiggestWinner[]
+   * }
+   * ```
+   */
+  listBiggestWinners(
+    request?: ListBiggestWinnersRequest,
+  ): Paginated<BiggestWinner[]>;
 };
 
 export function analyticsActions(client: BasePublicClient): AnalyticsActions;
@@ -177,6 +238,11 @@ export function analyticsActions(client: BaseClient): AnalyticsActions {
     listBuilderLeaderboard: listBuilderLeaderboard.bind(null, client),
     fetchBuilderVolume: fetchBuilderVolume.bind(null, client),
     listTraderLeaderboard: listTraderLeaderboard.bind(null, client),
+    fetchTraderLeaderboardStanding: fetchTraderLeaderboardStanding.bind(
+      null,
+      client,
+    ),
+    listBiggestWinners: listBiggestWinners.bind(null, client),
   };
 }
 
@@ -184,10 +250,14 @@ export function analyticsActions(client: BaseClient): AnalyticsActions {
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on AnalyticsActions.
 export {
+  BiggestWinnerKind,
   BuilderVolumeInterval,
   FetchBuilderVolumeError,
+  FetchTraderLeaderboardStandingError,
   LeaderboardWindow,
+  ListBiggestWinnersError,
   ListBuilderLeaderboardError,
   ListBuilderTradesError,
   ListTraderLeaderboardError,
+  TraderLeaderboardSort,
 } from '../actions';
