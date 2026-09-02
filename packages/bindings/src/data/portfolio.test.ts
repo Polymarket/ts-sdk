@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   FetchPortfolioValueResponseSchema,
+  FetchUserPnlResponseSchema,
   FetchUserStatsResponseSchema,
+  FetchUserVolumeResponseSchema,
 } from './portfolio';
 
 const WALLET = `0x${'1'.repeat(40)}`;
@@ -87,6 +89,52 @@ describe('FetchUserStatsResponseSchema', () => {
       views: 0,
       joinDate: null,
       allTimePnl: null,
+    });
+  });
+});
+
+describe('FetchUserPnlResponseSchema', () => {
+  it('normalizes the series metadata and points', () => {
+    expect(
+      FetchUserPnlResponseSchema.parse({
+        data: {
+          proxy_wallet: WALLET,
+          interval: '1w',
+          fidelity: '3h',
+          source_fidelity: '1d',
+          points: [userPnlPoint()],
+        },
+      }),
+    ).toMatchObject({
+      wallet: WALLET,
+      interval: '1w',
+      fidelity: '3h',
+      sourceFidelity: '1d',
+      points: [
+        {
+          timestamp: 1_700_000_100_000,
+          realizedPnl: '11.373456',
+          unrealizedPnl: null,
+        },
+      ],
+    });
+  });
+});
+
+describe('FetchUserVolumeResponseSchema', () => {
+  it('normalizes volume amounts to decimal strings', () => {
+    expect(
+      FetchUserVolumeResponseSchema.parse({
+        data: {
+          volume: 1000.123456,
+          volume_usdc: '750.654321',
+          trade_count: 99,
+        },
+      }),
+    ).toEqual({
+      volume: '1000.123456',
+      volumeUsdc: '750.654321',
+      tradeCount: 99,
     });
   });
 });
