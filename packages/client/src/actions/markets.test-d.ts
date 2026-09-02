@@ -1,4 +1,5 @@
 import {
+  type MetaHolder,
   PriceHistoryInterval,
   type PriceHistoryPoint,
 } from '@polymarket/bindings/data';
@@ -6,7 +7,11 @@ import type { Market } from '@polymarket/bindings/gamma';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
 import type { Paginated } from '../pagination';
-import type { ListPriceHistoryRequest, listPriceHistory } from './markets';
+import type {
+  ListPriceHistoryRequest,
+  listMarketHolders,
+  listPriceHistory,
+} from './markets';
 
 describe('price history request types', () => {
   it('accepts exactly one time selection', () => {
@@ -49,6 +54,14 @@ describe('price history request types', () => {
   });
 });
 
+describe('market holders request types', () => {
+  it('returns normalized pagination', () => {
+    expectTypeOf<ReturnType<typeof listMarketHolders>>().toEqualTypeOf<
+      Paginated<MetaHolder[]>
+    >();
+  });
+});
+
 function listMarketPriceHistory(actions: DataActions, market: Market) {
   const tokenId = market.outcomes.yes.tokenId;
 
@@ -63,3 +76,15 @@ function listMarketPriceHistory(actions: DataActions, market: Market) {
 }
 
 void listMarketPriceHistory;
+
+function listMarketHoldersForMarket(actions: DataActions, market: Market) {
+  if (market.conditionId === null) return;
+
+  expectTypeOf(
+    actions.listMarketHolders({
+      conditionIds: [market.conditionId],
+    }),
+  ).toEqualTypeOf<Paginated<MetaHolder[]>>();
+}
+
+void listMarketHoldersForMarket;

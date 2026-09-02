@@ -304,20 +304,31 @@ export type DataActions = {
     request?: FetchOpenInterestRequest,
   ): Promise<OpenInterest[]>;
   /**
-   * Lists the top holders for one or more markets.
+   * Lists top holders grouped by outcome for one or more markets.
+   *
+   * `conditionIds` accepts up to 20 distinct market condition IDs. `pageSize`
+   * defaults to 100 (max 1000) and applies separately to each outcome. Merge
+   * matching `assetId` groups across pages rather than relying on array position.
+   * Amounts are net holdings by default. `includePnl` switches to per-outcome
+   * gross holdings and adds position economics; it requires one condition ID and
+   * a page size of at most 100. Transient rate limits are retried automatically.
    *
    * @throws {@link ListMarketHoldersError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const holders = await client.listMarketHolders({
-   *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
-   *   limit: 5,
+   * const result = client.listMarketHolders({
+   *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+   *   pageSize: 5,
    * });
+   *
+   * for await (const page of result) {
+   *   // page.items: MetaHolder[]
+   * }
    * ```
    */
-  listMarketHolders(request: ListMarketHoldersRequest): Promise<MetaHolder[]>;
+  listMarketHolders(request: ListMarketHoldersRequest): Paginated<MetaHolder[]>;
   /**
    * Lists trades for a wallet, market, or event — or the global recent-trades
    * feed when no filter is given.
