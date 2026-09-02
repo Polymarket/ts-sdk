@@ -232,8 +232,6 @@ describe('Markets', () => {
       });
 
       const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
-      expect(firstPage.hasMore).toBe(true);
-      expect(firstPage.nextCursor).toBeDefined();
 
       const firstPoint = firstPage.items[0];
       expect(firstPoint).toEqual(

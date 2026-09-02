@@ -549,10 +549,7 @@ const PriceHistoryRangeRequestSchema = z
     }
 
     const upperBound = end ?? Math.floor(Date.now() / 1_000);
-    if (
-      upperBound >= start &&
-      upperBound - start > MAX_PRICE_HISTORY_WINDOW_SECONDS
-    ) {
+    if (upperBound - start > MAX_PRICE_HISTORY_WINDOW_SECONDS) {
       context.addIssue({
         code: 'custom',
         message: 'start to end must span at most 15 days',

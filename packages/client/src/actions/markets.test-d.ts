@@ -49,26 +49,17 @@ describe('price history request types', () => {
   });
 });
 
-function checkDataActionsReturnType(actions: DataActions) {
-  expectTypeOf(
-    actions.listPriceHistory({
-      tokenId: '123',
-      interval: PriceHistoryInterval.OneDay,
-    }),
-  ).toEqualTypeOf<Paginated<PriceHistoryPoint[]>>();
-}
-
-void checkDataActionsReturnType;
-
 function listMarketPriceHistory(actions: DataActions, market: Market) {
   const tokenId = market.outcomes.yes.tokenId;
 
   if (tokenId === null) return;
 
-  actions.listPriceHistory({
-    tokenId,
-    interval: PriceHistoryInterval.OneDay,
-  });
+  expectTypeOf(
+    actions.listPriceHistory({
+      tokenId,
+      interval: PriceHistoryInterval.OneDay,
+    }),
+  ).toEqualTypeOf<Paginated<PriceHistoryPoint[]>>();
 }
 
 void listMarketPriceHistory;
