@@ -100,10 +100,7 @@ const PayoutSchema = z
 export const ResolutionSchema = z
   .object({
     question_id: QuestionIdSchema.optional(),
-    condition_id: ConditionIdSchema.refine(
-      (conditionId) => conditionId.length === 66,
-      'Expected a 32-byte condition ID',
-    ).optional(),
+    condition_id: ConditionIdSchema.optional(),
     status: ResolutionStatusSchema,
     extended_review: z.boolean(),
     was_disputed: z.boolean(),
