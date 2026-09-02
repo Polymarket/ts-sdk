@@ -397,7 +397,7 @@ export const UserPnlPointSchema = z
 export type UserStats = {
   wallet: EvmAddress;
   /** Exact number of distinct markets the wallet has traded. */
-  trades: number;
+  tradedMarketCount: number;
   /** Largest resolved position win over $1, in USDC; otherwise zero. */
   biggestWin: DecimalString;
   views: number;
@@ -417,9 +417,17 @@ export const UserStatsSchema = z
     all_time_pnl: UserPnlPointSchema.nullish(),
   })
   .transform(
-    ({ proxy_wallet, biggest_win, join_date, all_time_pnl, ...stats }) => ({
+    ({
+      proxy_wallet,
+      trades,
+      biggest_win,
+      join_date,
+      all_time_pnl,
+      ...stats
+    }) => ({
       ...stats,
       wallet: proxy_wallet,
+      tradedMarketCount: trades,
       biggestWin: biggest_win,
       joinDate: join_date ?? null,
       allTimePnl: all_time_pnl ?? null,

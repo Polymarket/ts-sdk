@@ -463,10 +463,10 @@ export const FetchUserStatsError = makeErrorGuard(
 /**
  * Fetches profile and lifetime trading statistics for a wallet.
  *
- * `trades` is the exact number of distinct markets traded. `biggestWin` is
- * the largest resolved position win, and `allTimePnl` is the latest published
- * cumulative PnL observation. Returns `null` when the wallet is not a known
- * user.
+ * `tradedMarketCount` is the exact number of distinct markets traded.
+ * `biggestWin` is the largest resolved position win, and `allTimePnl` is the
+ * latest published cumulative PnL observation. Returns `null` when the wallet
+ * is not a known user.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

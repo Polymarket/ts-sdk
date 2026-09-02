@@ -45,7 +45,7 @@ describe('FetchUserStatsResponseSchema', () => {
 
     expect(stats).toMatchObject({
       wallet: WALLET,
-      trades: 42,
+      tradedMarketCount: 42,
       biggestWin: '123.456789',
       views: 7,
       joinDate: 1_700_000_000_000,
@@ -82,7 +82,7 @@ describe('FetchUserStatsResponseSchema', () => {
       }),
     ).toEqual({
       wallet: WALLET,
-      trades: 0,
+      tradedMarketCount: 0,
       biggestWin: '0',
       views: 0,
       joinDate: null,

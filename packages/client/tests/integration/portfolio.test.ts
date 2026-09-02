@@ -245,7 +245,7 @@ describe('Portfolio', () => {
       expect(result).toEqual(
         expect.objectContaining({
           wallet: TEST_USER,
-          trades: expect.any(Number),
+          tradedMarketCount: expect.any(Number),
           biggestWin: expect.any(String),
           views: expect.any(Number),
           joinDate: expect.any(Number),

@@ -160,6 +160,8 @@ export type PublicAccountActions = Prettify<{
   /**
    * Fetches profile and lifetime trading statistics for a wallet.
    *
+   * `tradedMarketCount` is the exact number of distinct markets traded.
+   *
    * Returns `null` when the wallet is not a known user.
    *
    * @throws {@link FetchUserStatsError}
@@ -310,6 +312,8 @@ export type SecureAccountActions = Prettify<{
   ): Promise<PortfolioValue>;
   /**
    * Fetches profile and lifetime trading statistics for a wallet.
+   *
+   * `tradedMarketCount` is the exact number of distinct markets traded.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    * Returns `null` when the wallet is not a known user.
