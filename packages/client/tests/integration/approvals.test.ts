@@ -4,9 +4,78 @@ import {
   WalletType,
 } from '@polymarket/client';
 import { ZERO_ADDRESS } from '@polymarket/types';
+import { vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 describe('Approvals', () => {
+  describe('PublicClient.fetchTradingApprovalsState', () => {
+    it('reads missing approvals without a signer or write operation', async ({
+      publicClient,
+    }) => {
+      const originalFetch = globalThis.fetch;
+      const rpcMethods: string[] = [];
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const request =
+            input instanceof Request ? input.clone() : new Request(input, init);
+          const payload = (await request.clone().json()) as
+            | { method: string }
+            | { method: string }[];
+          const requests = Array.isArray(payload) ? payload : [payload];
+
+          rpcMethods.push(...requests.map(({ method }) => method));
+
+          return originalFetch(input, init);
+        });
+
+      try {
+        const state = await publicClient.fetchTradingApprovalsState({
+          user: ZERO_ADDRESS,
+        });
+
+        expect(state.isFullyApproved).toBe(false);
+        expect(state.missing.erc20).toHaveLength(7);
+        expect(state.missing.erc1155).toHaveLength(8);
+        expect(
+          state.missing.erc20.every(({ amount }) => amount === 2n ** 256n - 1n),
+        ).toBe(true);
+        expect(rpcMethods.length).toBeGreaterThan(0);
+        expect(rpcMethods.every((method) => method === 'eth_call')).toBe(true);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
+
+  describe('SecureClient.fetchTradingApprovalsState', () => {
+    it('reads the authenticated account wallet', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const ethCallBatchSpy = vi.spyOn(
+        secureClientWithDepositWallet.rpc,
+        'ethCallBatch',
+      );
+      const encodedWallet = secureClientWithDepositWallet.account.wallet
+        .slice(2)
+        .toLowerCase();
+
+      try {
+        await secureClientWithDepositWallet.fetchTradingApprovalsState();
+
+        expect(ethCallBatchSpy).toHaveBeenCalledOnce();
+        const [requests] = ethCallBatchSpy.mock.calls[0] ?? [];
+        expect(
+          requests?.every(({ data }) =>
+            data.toLowerCase().includes(encodedWallet),
+          ),
+        ).toBe(true);
+      } finally {
+        ethCallBatchSpy.mockRestore();
+      }
+    });
+  });
+
   describe('SecureClient.approveErc20', () => {
     it('submits a collateral approval for the standard exchange', async ({
       depositWalletAddress,
