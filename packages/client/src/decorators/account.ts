@@ -139,9 +139,9 @@ export type PublicAccountActions = Prettify<{
   /**
    * Fetches the total value for a wallet's positions.
    *
-   * When `conditionId` is present, only those single-market positions are
+   * When `conditionIds` is present, only those single-market positions are
    * included; portfolio-level combo positions are excluded. Accepts at most
-   * 20 distinct condition ids.
+   * 20 distinct condition IDs.
    *
    * @throws {@link FetchPortfolioValueError}
    * Thrown on failure.
@@ -150,6 +150,7 @@ export type PublicAccountActions = Prettify<{
    * ```ts
    * const value = await client.fetchPortfolioValue({
    *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+   *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
    * });
    * ```
    */
@@ -295,9 +296,9 @@ export type SecureAccountActions = Prettify<{
   /**
    * Fetches the total value for a wallet's positions.
    *
-   * When `conditionId` is present, only those single-market positions are
+   * When `conditionIds` is present, only those single-market positions are
    * included; portfolio-level combo positions are excluded. Accepts at most
-   * 20 distinct condition ids.
+   * 20 distinct condition IDs.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *

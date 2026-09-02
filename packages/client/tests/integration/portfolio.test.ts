@@ -210,7 +210,7 @@ describe('Portfolio', () => {
 
       await publicClient.fetchPortfolioValue({
         user: TEST_USER,
-        conditionId: TEST_CONDITION_ID,
+        conditionIds: [TEST_CONDITION_ID],
       });
 
       const [request] = dataRequests(fetchSpy, '/v2/value');

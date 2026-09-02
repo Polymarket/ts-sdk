@@ -375,9 +375,7 @@ export function listComboPositions(
 
 const FetchPortfolioValueRequestSchema = z.object({
   user: EvmAddressSchema,
-  conditionId: z
-    .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
-    .optional(),
+  conditionIds: distinctIdList(ConditionIdSchema, 20).optional(),
 });
 
 export type FetchPortfolioValueRequest = z.input<
@@ -401,9 +399,9 @@ export const FetchPortfolioValueError = makeErrorGuard(
 /**
  * Fetches the total value for a wallet's positions.
  *
- * When `conditionId` is present, only those single-market positions are
+ * When `conditionIds` is present, only those single-market positions are
  * included; portfolio-level combo positions are excluded. Accepts at most 20
- * distinct condition ids.
+ * distinct condition IDs.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -415,6 +413,7 @@ export const FetchPortfolioValueError = makeErrorGuard(
  * ```ts
  * const value = await fetchPortfolioValue(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
  * });
  *
  * // value: PortfolioValue
@@ -424,7 +423,7 @@ export async function fetchPortfolioValue(
   client: BaseClient,
   request: FetchPortfolioValueRequest,
 ): Promise<PortfolioValue> {
-  const { conditionId, ...params } = parseUserInput(
+  const { conditionIds, ...params } = parseUserInput(
     request,
     FetchPortfolioValueRequestSchema,
   );
@@ -434,7 +433,7 @@ export async function fetchPortfolioValue(
       client.data.get('/v2/value', {
         params: toDataSearchParams({
           ...params,
-          condition: conditionId,
+          condition: conditionIds,
         }),
       }),
     ).andThen(validateWith(FetchPortfolioValueResponseSchema)),
