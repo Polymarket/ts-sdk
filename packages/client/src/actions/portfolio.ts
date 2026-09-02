@@ -11,16 +11,16 @@ import {
   ComboPositionStatus,
   ComboPositionStatusSchema,
   FetchPortfolioValueResponseSchema,
+  FetchUserStatsResponseSchema,
   ListComboPositionsResponseSchema,
   ListPositionsResponseSchema,
+  type PortfolioValue,
   type Position,
   PositionFilterTypeSchema,
   PositionSortBySchema,
   PositionStatusSchema,
   SortDirectionSchema,
-  type Traded,
-  TradedSchema,
-  type Value,
+  type UserStats,
 } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
@@ -374,8 +374,8 @@ export function listComboPositions(
 }
 
 const FetchPortfolioValueRequestSchema = z.object({
-  user: z.string(),
-  market: z.array(z.string()).optional(),
+  user: EvmAddressSchema,
+  conditionIds: distinctIdList(ConditionIdSchema, 20).optional(),
 });
 
 export type FetchPortfolioValueRequest = z.input<
@@ -399,6 +399,10 @@ export const FetchPortfolioValueError = makeErrorGuard(
 /**
  * Fetches the total value for a wallet's positions.
  *
+ * When `conditionIds` is present, only those single-market positions are
+ * included; portfolio-level combo positions are excluded. Accepts at most 20
+ * distinct condition IDs.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
@@ -409,41 +413,46 @@ export const FetchPortfolioValueError = makeErrorGuard(
  * ```ts
  * const value = await fetchPortfolioValue(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
  * });
  *
- * // value: Value[]
+ * // value: PortfolioValue
  * ```
  */
 export async function fetchPortfolioValue(
   client: BaseClient,
   request: FetchPortfolioValueRequest,
-): Promise<Value[]> {
-  const params = parseUserInput(request, FetchPortfolioValueRequestSchema);
+): Promise<PortfolioValue> {
+  const { conditionIds, ...params } = parseUserInput(
+    request,
+    FetchPortfolioValueRequestSchema,
+  );
 
   return unwrap(
-    client.data
-      .get('/value', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(validateWith(FetchPortfolioValueResponseSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/value', {
+        params: toDataSearchParams({
+          ...params,
+          condition: conditionIds,
+        }),
+      }),
+    ).andThen(validateWith(FetchPortfolioValueResponseSchema)),
   );
 }
 
-const FetchTradedMarketCountRequestSchema = z.object({
-  user: z.string(),
+const FetchUserStatsRequestSchema = z.object({
+  user: EvmAddressSchema,
 });
 
-export type FetchTradedMarketCountRequest = z.input<
-  typeof FetchTradedMarketCountRequestSchema
->;
+export type FetchUserStatsRequest = z.input<typeof FetchUserStatsRequestSchema>;
 
-export type FetchTradedMarketCountError =
+export type FetchUserStatsError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const FetchTradedMarketCountError = makeErrorGuard(
+export const FetchUserStatsError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -452,35 +461,40 @@ export const FetchTradedMarketCountError = makeErrorGuard(
 );
 
 /**
- * Fetches the total number of markets a wallet has traded.
+ * Fetches profile and lifetime trading statistics for a wallet.
+ *
+ * `tradedMarketCount` is the exact number of distinct markets traded.
+ * `biggestWin` is the largest resolved position win, and `allTimePnl` is the
+ * latest published cumulative PnL observation. Returns `null` when the wallet
+ * is not a known user.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link FetchTradedMarketCountError}
+ * @throws {@link FetchUserStatsError}
  * Thrown on failure.
  *
  * @example
  * ```ts
- * const traded = await fetchTradedMarketCount(client, {
+ * const stats = await fetchUserStats(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
  * });
  *
- * // traded === Traded
+ * // stats: UserStats | null
  * ```
  */
-export async function fetchTradedMarketCount(
+export async function fetchUserStats(
   client: BaseClient,
-  request: FetchTradedMarketCountRequest,
-): Promise<Traded> {
-  const params = parseUserInput(request, FetchTradedMarketCountRequestSchema);
+  request: FetchUserStatsRequest,
+): Promise<UserStats | null> {
+  const params = parseUserInput(request, FetchUserStatsRequestSchema);
 
   return unwrap(
-    client.data
-      .get('/traded', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(validateWith(TradedSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/user-stats', {
+        params: toDataSearchParams(params),
+      }),
+    ).andThen(validateWith(FetchUserStatsResponseSchema)),
   );
 }
 

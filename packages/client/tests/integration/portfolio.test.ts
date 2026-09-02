@@ -10,6 +10,8 @@ import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+const TEST_CONDITION_ID =
+  '0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422';
 
 describe('Portfolio', () => {
   afterEach(() => {
@@ -193,12 +195,28 @@ describe('Portfolio', () => {
         user: TEST_USER,
       });
 
-      expect(result).toEqual([
+      expect(result).toEqual(
         expect.objectContaining({
-          user: TEST_USER,
+          wallet: TEST_USER,
           value: expect.any(String),
         }),
-      ]);
+      );
+    });
+
+    it('sends condition filters with the canonical query key', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.fetchPortfolioValue({
+        user: TEST_USER,
+        conditionIds: [TEST_CONDITION_ID],
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/value');
+      expect(request?.get('condition')).toBe(TEST_CONDITION_ID);
+      expect(request?.has('condition_id')).toBe(false);
+      expect(request?.has('market')).toBe(false);
     });
 
     it('defaults secure clients to the authenticated wallet', async ({
@@ -207,24 +225,40 @@ describe('Portfolio', () => {
     }) => {
       const result = await secureClientWithDepositWallet.fetchPortfolioValue();
 
-      expect(result[0]?.user).toSatisfy((user) =>
-        isSameEvmAddress(user, depositWalletAddress),
+      expect(result.wallet).toSatisfy((wallet) =>
+        isSameEvmAddress(wallet, depositWalletAddress),
       );
     });
   });
 
-  describe('fetchTradedMarketCount', () => {
-    it('fetches total traded market count for a wallet', async ({
+  describe('fetchUserStats', () => {
+    it('fetches profile and lifetime trading stats', async ({
       publicClient,
     }) => {
-      const result = await publicClient.fetchTradedMarketCount({
-        user: TEST_USER,
-      });
+      const result = await publicClient
+        .fetchUserStats({
+          user: TEST_USER,
+        })
+        .then(expectPresent);
+      const pnl = expectPresent(result.allTimePnl);
 
       expect(result).toEqual(
         expect.objectContaining({
-          traded: expect.any(Number),
-          user: TEST_USER,
+          wallet: TEST_USER,
+          tradedMarketCount: expect.any(Number),
+          biggestWin: expect.any(String),
+          views: expect.any(Number),
+          joinDate: expect.any(Number),
+        }),
+      );
+      expect(pnl).toEqual(
+        expect.objectContaining({
+          timestamp: expect.any(Number),
+          sourceBlock: expect.any(Number),
+          realizedPnl: expect.any(String),
+          volume: expect.any(String),
+          volumeUsdc: expect.any(String),
+          tradeCount: expect.any(Number),
         }),
       );
     });
@@ -233,11 +267,13 @@ describe('Portfolio', () => {
       depositWalletAddress,
       secureClientWithDepositWallet,
     }) => {
-      const result =
-        await secureClientWithDepositWallet.fetchTradedMarketCount();
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-      expect(result.user).toSatisfy((user) =>
-        isSameEvmAddress(user, depositWalletAddress),
+      await secureClientWithDepositWallet.fetchUserStats();
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-stats');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );
     });
   });
@@ -271,8 +307,15 @@ describe('Portfolio', () => {
 function comboPositionRequests(
   fetchSpy: MockInstance<typeof fetch>,
 ): URLSearchParams[] {
+  return dataRequests(fetchSpy, '/v2/positions/combos');
+}
+
+function dataRequests(
+  fetchSpy: MockInstance<typeof fetch>,
+  pathname: string,
+): URLSearchParams[] {
   return fetchSpy.mock.calls
     .map(([input]) => (input instanceof Request ? input.url : String(input)))
-    .filter((url) => new URL(url).pathname === '/v2/positions/combos')
+    .filter((url) => new URL(url).pathname === pathname)
     .map((url) => new URL(url).searchParams);
 }

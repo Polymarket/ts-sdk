@@ -17,7 +17,7 @@ import {
   PositionIdSchema,
   type TokenId,
 } from '../shared';
-import { dataPageSchema } from './envelope';
+import { dataEnvelopeSchema, dataPageSchema } from './envelope';
 
 export enum ComboPositionStatus {
   Open = 'OPEN',
@@ -239,10 +239,200 @@ export const PositionSchema = z
     verified: position.verified,
   })) satisfies z.ZodType<Position>;
 
-export const ValueSchema = z.object({
-  user: EvmAddressSchema.nullish(),
-  value: DecimalishSchema.nullish(),
-});
+export type PortfolioValue = {
+  wallet: EvmAddress;
+  /** Total marked portfolio value, in USDC, rounded to four decimals. */
+  value: DecimalString;
+};
+
+export const PortfolioValueSchema = z
+  .object({
+    proxy_wallet: EvmAddressSchema,
+    value: DecimalishSchema,
+  })
+  .transform(({ proxy_wallet, value }) => ({
+    wallet: proxy_wallet,
+    value,
+  })) satisfies z.ZodType<PortfolioValue>;
+
+/**
+ * One cumulative wallet PnL observation. Fractional money and size values
+ * are normalized to decimal strings.
+ */
+export type UserPnlPoint = {
+  /** Observation time as Unix epoch milliseconds. */
+  timestamp: EpochMilliseconds;
+  /** Chain block at which the point was observed. */
+  sourceBlock: number;
+  /** Realized PnL from market positions. */
+  realizedMarketPnl: DecimalString;
+  /** Realized PnL from liquidity-provision activity. */
+  realizedLpPnl: DecimalString;
+  /** Realized PnL from combo positions. */
+  realizedComboPnl: DecimalString;
+  /** Mark-to-market PnL of open inventory. */
+  unrealizedPnl: DecimalString | null;
+  feesRefunded: DecimalString | null;
+  makerRebate: DecimalString | null;
+  takerRebate: DecimalString | null;
+  rewardIncome: DecimalString | null;
+  yieldIncome: DecimalString | null;
+  referralIncome: DecimalString | null;
+  deposits: DecimalString | null;
+  withdrawals: DecimalString | null;
+  /** Sum of market, liquidity-provision, and combo realized PnL. */
+  realizedPnl: DecimalString;
+  /** Rebates plus reward, yield, and referral income. */
+  walletIncome: DecimalString | null;
+  /** Realized plus unrealized position PnL. */
+  positionPnl: DecimalString | null;
+  /** Realized PnL plus wallet income. */
+  settledPnl: DecimalString | null;
+  /** Position PnL plus wallet income. */
+  economicPnl: DecimalString | null;
+  /** Compatibility trading-PnL series. */
+  tradePnl: DecimalString | null;
+  /** Reward, yield, and referral income. */
+  sponsoredIncome: DecimalString | null;
+  /** Cumulative fee charges, represented as a negative amount. */
+  fees: DecimalString | null;
+  /** Fee refunds minus charges. */
+  feesPaid: DecimalString | null;
+  /** Deposits minus withdrawals. */
+  cashflowNet: DecimalString | null;
+  /** Cumulative maker-attributed fill volume, in shares. */
+  volume: DecimalString;
+  /** Cumulative maker-attributed fill volume, in USDC. */
+  volumeUsdc: DecimalString;
+  /** Cumulative maker-attributed canonical fill count. */
+  tradeCount: number;
+};
+
+const UncoveredAmountSchema = DecimalishSchema.nullish().transform(
+  (amount) => amount ?? null,
+);
+
+export const UserPnlPointSchema = z
+  .object({
+    timestamp: EpochSecondsToMillisecondsSchema,
+    source_block: z.number().int().nonnegative(),
+    realized_market_pnl: DecimalishSchema,
+    realized_lp_pnl: DecimalishSchema,
+    realized_combo_pnl: DecimalishSchema,
+    unrealized_pnl: UncoveredAmountSchema,
+    fees_refunded: UncoveredAmountSchema,
+    maker_rebate: UncoveredAmountSchema,
+    taker_rebate: UncoveredAmountSchema,
+    reward_income: UncoveredAmountSchema,
+    yield_income: UncoveredAmountSchema,
+    referral_income: UncoveredAmountSchema,
+    deposits: UncoveredAmountSchema,
+    withdrawals: UncoveredAmountSchema,
+    realized_pnl: DecimalishSchema,
+    wallet_income: UncoveredAmountSchema,
+    position_pnl: UncoveredAmountSchema,
+    settled_pnl: UncoveredAmountSchema,
+    economic_pnl: UncoveredAmountSchema,
+    trade_pnl: UncoveredAmountSchema,
+    sponsored_income: UncoveredAmountSchema,
+    fees: UncoveredAmountSchema,
+    fees_paid: UncoveredAmountSchema,
+    cashflow_net: UncoveredAmountSchema,
+    volume: DecimalishSchema,
+    volume_usdc: DecimalishSchema,
+    trade_count: z.number().int().nonnegative(),
+  })
+  .transform(
+    ({
+      source_block,
+      realized_market_pnl,
+      realized_lp_pnl,
+      realized_combo_pnl,
+      unrealized_pnl,
+      fees_refunded,
+      maker_rebate,
+      taker_rebate,
+      reward_income,
+      yield_income,
+      referral_income,
+      realized_pnl,
+      wallet_income,
+      position_pnl,
+      settled_pnl,
+      economic_pnl,
+      trade_pnl,
+      sponsored_income,
+      fees_paid,
+      cashflow_net,
+      volume_usdc,
+      trade_count,
+      ...point
+    }) => ({
+      ...point,
+      sourceBlock: source_block,
+      realizedMarketPnl: realized_market_pnl,
+      realizedLpPnl: realized_lp_pnl,
+      realizedComboPnl: realized_combo_pnl,
+      unrealizedPnl: unrealized_pnl,
+      feesRefunded: fees_refunded,
+      makerRebate: maker_rebate,
+      takerRebate: taker_rebate,
+      rewardIncome: reward_income,
+      yieldIncome: yield_income,
+      referralIncome: referral_income,
+      realizedPnl: realized_pnl,
+      walletIncome: wallet_income,
+      positionPnl: position_pnl,
+      settledPnl: settled_pnl,
+      economicPnl: economic_pnl,
+      tradePnl: trade_pnl,
+      sponsoredIncome: sponsored_income,
+      feesPaid: fees_paid,
+      cashflowNet: cashflow_net,
+      volumeUsdc: volume_usdc,
+      tradeCount: trade_count,
+    }),
+  ) satisfies z.ZodType<UserPnlPoint>;
+
+export type UserStats = {
+  wallet: EvmAddress;
+  /** Exact number of distinct markets the wallet has traded. */
+  tradedMarketCount: number;
+  /** Largest resolved position win over $1, in USDC; otherwise zero. */
+  biggestWin: DecimalString;
+  views: number;
+  /** Account join time as Unix epoch milliseconds, when known. */
+  joinDate: EpochMilliseconds | null;
+  /** Latest cumulative all-time PnL observation, when published. */
+  allTimePnl: UserPnlPoint | null;
+};
+
+export const UserStatsSchema = z
+  .object({
+    proxy_wallet: EvmAddressSchema,
+    trades: z.number().int().nonnegative(),
+    biggest_win: DecimalishSchema,
+    views: z.number().int().nonnegative(),
+    join_date: EpochSecondsToMillisecondsSchema.nullish(),
+    all_time_pnl: UserPnlPointSchema.nullish(),
+  })
+  .transform(
+    ({
+      proxy_wallet,
+      trades,
+      biggest_win,
+      join_date,
+      all_time_pnl,
+      ...stats
+    }) => ({
+      ...stats,
+      wallet: proxy_wallet,
+      tradedMarketCount: trades,
+      biggestWin: biggest_win,
+      joinDate: join_date ?? null,
+      allTimePnl: all_time_pnl ?? null,
+    }),
+  ) satisfies z.ZodType<UserStats>;
 
 export const ComboPositionMarketEventSchema = z
   .object({
@@ -385,11 +575,14 @@ export const ComboPositionSchema = z
   );
 
 export const ListPositionsResponseSchema = dataPageSchema(PositionSchema);
-export const FetchPortfolioValueResponseSchema = z.array(ValueSchema);
+export const FetchPortfolioValueResponseSchema =
+  dataEnvelopeSchema(PortfolioValueSchema);
+export const FetchUserStatsResponseSchema = dataEnvelopeSchema(
+  UserStatsSchema.nullable(),
+);
 export const ListComboPositionsResponseSchema =
   dataPageSchema(ComboPositionSchema);
 
-export type Value = z.infer<typeof ValueSchema>;
 export type ComboPositionMarketEvent = z.infer<
   typeof ComboPositionMarketEventSchema
 >;
@@ -399,6 +592,9 @@ export type ComboPosition = z.infer<typeof ComboPositionSchema>;
 export type ListPositionsResponse = z.infer<typeof ListPositionsResponseSchema>;
 export type FetchPortfolioValueResponse = z.infer<
   typeof FetchPortfolioValueResponseSchema
+>;
+export type FetchUserStatsResponse = z.infer<
+  typeof FetchUserStatsResponseSchema
 >;
 export type ListComboPositionsResponse = z.infer<
   typeof ListComboPositionsResponseSchema
