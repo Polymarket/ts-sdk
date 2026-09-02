@@ -1,8 +1,10 @@
 import {
   ConditionIdSchema,
   IsoDateTimeStringSchema,
+  type PaginationCursor,
   PaginationCursorSchema,
   PositionIdSchema,
+  TokenIdSchema,
 } from '@polymarket/bindings';
 import {
   type ComboMarket,
@@ -11,8 +13,12 @@ import {
 import {
   FetchOpenInterestResponseSchema,
   ListMarketHoldersResponseSchema,
+  ListPriceHistoryResponseSchema,
   type MetaHolder,
   type OpenInterest,
+  PriceHistoryInterval,
+  PriceHistoryIntervalSchema,
+  type PriceHistoryPoint,
 } from '@polymarket/bindings/data';
 import {
   FetchMarketTagsResponseSchema,
@@ -40,11 +46,14 @@ import { withRateLimitRetry } from '../retry';
 import {
   CanonicalMarketConditionIdSchema,
   distinctIdList,
+  EpochSecondsLikeSchema,
   snakeCase,
   toDataSearchParams,
   toLegacyDataSearchParams,
   toSearchParams,
 } from './params';
+
+export { PriceHistoryInterval };
 
 // The public markets endpoint forces active=true and archived=false server-side.
 const ListMarketsRequestSchema = z.object({
@@ -445,6 +454,195 @@ export async function listMarketHolders(
         params: toLegacyDataSearchParams(params),
       })
       .andThen(validateWith(ListMarketHoldersResponseSchema)),
+  );
+}
+
+export type ListPriceHistoryRequest =
+  | {
+      tokenId: string;
+      interval: PriceHistoryInterval;
+      bucketSeconds?: number;
+      cursor?: PaginationCursor;
+      pageSize?: number;
+      start?: never;
+      end?: never;
+      asOf?: never;
+    }
+  | {
+      tokenId: string;
+      start: number | Date;
+      end?: number | Date;
+      bucketSeconds?: number;
+      cursor?: PaginationCursor;
+      pageSize?: number;
+      interval?: never;
+      asOf?: never;
+    }
+  | {
+      tokenId: string;
+      asOf: number | Date;
+      interval?: never;
+      start?: never;
+      end?: never;
+      bucketSeconds?: never;
+      cursor?: never;
+      pageSize?: never;
+    };
+
+const MAX_PRICE_HISTORY_WINDOW_SECONDS = 15 * 24 * 60 * 60;
+
+const PriceHistoryTimestampSchema = EpochSecondsLikeSchema.pipe(
+  z.number().int().positive(),
+);
+
+const PriceHistoryTokenIdSchema = z.string().min(1).pipe(TokenIdSchema);
+
+const PriceHistorySeriesRequestFields = {
+  tokenId: PriceHistoryTokenIdSchema,
+  bucketSeconds: z.number().int().min(60).max(86_400).optional(),
+  cursor: PaginationCursorSchema.optional(),
+  pageSize: PageSizeSchema.max(10_000).default(10_000),
+};
+
+const PriceHistoryIntervalRequestSchema = z
+  .object({
+    ...PriceHistorySeriesRequestFields,
+    interval: PriceHistoryIntervalSchema,
+    start: z.never().optional(),
+    end: z.never().optional(),
+    asOf: z.never().optional(),
+  })
+  .superRefine(({ bucketSeconds, interval }, context) => {
+    const minimumBucketSeconds =
+      interval === PriceHistoryInterval.Max ||
+      interval === PriceHistoryInterval.OneMonth
+        ? 600
+        : interval === PriceHistoryInterval.OneWeek
+          ? 300
+          : 60;
+
+    if (bucketSeconds !== undefined && bucketSeconds < minimumBucketSeconds) {
+      context.addIssue({
+        code: 'custom',
+        message: `bucketSeconds must be at least ${minimumBucketSeconds} for this interval`,
+        path: ['bucketSeconds'],
+      });
+    }
+  });
+
+const PriceHistoryRangeRequestSchema = z
+  .object({
+    ...PriceHistorySeriesRequestFields,
+    start: PriceHistoryTimestampSchema,
+    end: PriceHistoryTimestampSchema.optional(),
+    interval: z.never().optional(),
+    asOf: z.never().optional(),
+  })
+  .superRefine(({ end, start }, context) => {
+    if (end !== undefined && end < start) {
+      context.addIssue({
+        code: 'custom',
+        message: 'end must not precede start',
+        path: ['end'],
+      });
+      return;
+    }
+
+    const upperBound = end ?? Math.floor(Date.now() / 1_000);
+    if (
+      upperBound >= start &&
+      upperBound - start > MAX_PRICE_HISTORY_WINDOW_SECONDS
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'start to end must span at most 15 days',
+        path: ['end'],
+      });
+    }
+  });
+
+const PriceHistoryAsOfRequestSchema = z.object({
+  tokenId: PriceHistoryTokenIdSchema,
+  asOf: PriceHistoryTimestampSchema,
+  interval: z.never().optional(),
+  start: z.never().optional(),
+  end: z.never().optional(),
+  bucketSeconds: z.never().optional(),
+  cursor: z.never().optional(),
+  pageSize: z.never().optional(),
+});
+
+const ListPriceHistoryRequestSchema = z.union([
+  PriceHistoryIntervalRequestSchema,
+  PriceHistoryRangeRequestSchema,
+  PriceHistoryAsOfRequestSchema,
+]) satisfies z.ZodType<ListPriceHistoryRequest, ListPriceHistoryRequest>;
+
+export type ListPriceHistoryError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListPriceHistoryError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists historical price observations for an outcome token.
+ *
+ * Select exactly one time form: a relative `interval`, an explicit `start`
+ * with optional `end`, or the latest observation at or before an `asOf`
+ * instant. Time inputs accept Unix epoch seconds or `Date` values. Prices are
+ * decimal strings and returned timestamps are Unix epoch milliseconds. Series
+ * pages are ordered oldest first; an `asOf` request returns at most one item.
+ * Series page sizes default to and are capped at 10,000 points. Transient rate
+ * limits are retried automatically.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link ListPriceHistoryError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const history = listPriceHistory(client, {
+ *   tokenId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+ *   interval: PriceHistoryInterval.OneDay,
+ *   bucketSeconds: 3600,
+ * });
+ *
+ * for await (const page of history) {
+ *   // page.items: PriceHistoryPoint[]
+ * }
+ * ```
+ */
+export function listPriceHistory(
+  client: BaseClient,
+  request: ListPriceHistoryRequest,
+): Paginated<PriceHistoryPoint[]> {
+  const { cursor, pageSize, ...params } = parseUserInput(
+    request,
+    ListPriceHistoryRequestSchema,
+  );
+
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/prices-history', {
+          params: toDataSearchParams({
+            ...params,
+            limit: pageSize,
+            cursor,
+          }),
+        }),
+      ).andThen(validateWith(ListPriceHistoryResponseSchema)),
+    cursor,
   );
 }
 

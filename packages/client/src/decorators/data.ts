@@ -4,7 +4,6 @@ import type {
   LastTradePriceForAsset,
   Midpoints,
   OrderBook,
-  PriceHistoryPoint,
   Prices,
   Spreads,
 } from '@polymarket/bindings/clob';
@@ -12,6 +11,7 @@ import type {
   LiveVolume,
   MetaHolder,
   OpenInterest,
+  PriceHistoryPoint,
   Resolution,
   Trade,
 } from '@polymarket/bindings/data';
@@ -26,7 +26,6 @@ import {
   type FetchOpenInterestRequest,
   type FetchOrderBookRequest,
   type FetchOrderBooksRequest,
-  type FetchPriceHistoryRequest,
   type FetchPriceRequest,
   type FetchPricesRequest,
   type FetchResolutionsRequest,
@@ -41,14 +40,15 @@ import {
   fetchOrderBook,
   fetchOrderBooks,
   fetchPrice,
-  fetchPriceHistory,
   fetchPrices,
   fetchResolutions,
   fetchSpread,
   fetchSpreads,
   type ListMarketHoldersRequest,
+  type ListPriceHistoryRequest,
   type ListTradesRequest,
   listMarketHolders,
+  listPriceHistory,
   listTrades,
 } from '../actions';
 import type {
@@ -233,19 +233,35 @@ export type DataActions = {
     request: FetchLastTradePricesRequest,
   ): Promise<LastTradePriceForAsset[]>;
   /**
-   * Fetches historical price points for an exchange asset.
+   * Lists historical price observations for an outcome token.
    *
-   * @throws {@link FetchPriceHistoryError}
+   * Select exactly one time form: a relative `interval`, an explicit `start`
+   * with optional `end`, or the latest observation at or before an `asOf`
+   * instant. Time inputs accept Unix epoch seconds or `Date` values. Prices are
+   * decimal strings and returned timestamps are Unix epoch milliseconds. Series
+   * pages are ordered oldest first; an `asOf` request returns at most one item.
+   * Series page sizes default to and are capped at 10,000 points. Transient rate
+   * limits are retried automatically.
+   *
+   * @throws {@link ListPriceHistoryError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const history = await client.fetchPriceHistory({ assetId: '0x0122…0000', interval: '1d' });
+   * const history = client.listPriceHistory({
+   *   tokenId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+   *   interval: PriceHistoryInterval.OneDay,
+   *   bucketSeconds: 3600,
+   * });
+   *
+   * for await (const page of history) {
+   *   // page.items: PriceHistoryPoint[]
+   * }
    * ```
    */
-  fetchPriceHistory(
-    request: FetchPriceHistoryRequest,
-  ): Promise<PriceHistoryPoint[]>;
+  listPriceHistory(
+    request: ListPriceHistoryRequest,
+  ): Paginated<PriceHistoryPoint[]>;
   /**
    * Estimates the price level a market order would cross at current book depth.
    *
@@ -364,7 +380,7 @@ export function dataActions(client: BaseClient): DataActions {
     fetchSpreads: fetchSpreads.bind(null, client),
     fetchLastTradePrice: fetchLastTradePrice.bind(null, client),
     fetchLastTradePrices: fetchLastTradePrices.bind(null, client),
-    fetchPriceHistory: fetchPriceHistory.bind(null, client),
+    listPriceHistory: listPriceHistory.bind(null, client),
     estimateMarketPrice: estimateMarketPrice.bind(null, client),
     fetchOpenInterest: fetchOpenInterest.bind(null, client),
     listMarketHolders: listMarketHolders.bind(null, client),
@@ -386,13 +402,14 @@ export {
   FetchOrderBookError,
   FetchOrderBooksError,
   FetchPriceError,
-  FetchPriceHistoryError,
   FetchPricesError,
   FetchResolutionsError,
   FetchSpreadError,
   FetchSpreadsError,
   ListMarketHoldersError,
+  ListPriceHistoryError,
   ListTradesError,
+  PriceHistoryInterval,
   ResolutionMarketType,
   ResolutionReporter,
   ResolutionSource,
