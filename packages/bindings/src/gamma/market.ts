@@ -88,11 +88,7 @@ export enum ProtocolVersion {
   V2 = 'v2',
 }
 
-export type MarketProtocolVersion = ProtocolVersion | (string & {});
-
-export const ProtocolVersionSchema = z
-  .string()
-  .transform((value): MarketProtocolVersion => value);
+const ProtocolVersionSchema = z.enum(ProtocolVersion);
 
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
@@ -209,7 +205,7 @@ export type MarketTag = {
 export type Market = {
   id: MarketId;
   /** Protocol version used to trade this market. */
-  version?: MarketProtocolVersion | null;
+  version?: ProtocolVersion | null;
   slug?: string | null;
   conditionId: ConditionId | null;
   question?: string | null;

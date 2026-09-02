@@ -62,7 +62,7 @@ describe('MarketSchema', () => {
 
   it.each([
     {
-      name: 'legacy market',
+      name: 'CTF market',
       identifiers: {
         clobTokenIds: '["11", "12"]',
         version: ProtocolVersion.V1,
@@ -118,13 +118,13 @@ describe('MarketSchema', () => {
     expect(market.version).toBe(protocolVersion);
   });
 
-  it('passes unknown protocol versions through as strings', () => {
-    const market = MarketSchema.parse({
+  it('rejects unknown protocol versions', () => {
+    const result = MarketSchema.safeParse({
       ...rawBinaryMarket,
       version: 'v3',
     });
 
-    expect(market.version).toBe('v3');
+    expect(result.success).toBe(false);
   });
 
   it('accepts a null protocol version', () => {

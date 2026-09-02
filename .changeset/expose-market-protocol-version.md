@@ -3,4 +3,4 @@
 "@polymarket/client": minor
 ---
 
-Expose forward-compatible market protocol versions.
+Expose protocol versions on markets and events.
