@@ -99,18 +99,49 @@ describe('Events', () => {
   });
 
   describe('fetchEventLiveVolume', () => {
-    it('fetches live volume for an event', async ({ publicClient }) => {
+    it('fetches taker volume from the v2 route', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const result = await publicClient.fetchEventLiveVolume({
-        id: event.id,
+        eventIds: [event.id],
       });
 
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toEqual(
+      expect(result).toEqual(
         expect.objectContaining({
           markets: expect.any(Array),
-          total: expect.any(String),
+          takerVolumeTotal: expect.any(String),
         }),
       );
+
+      for (const market of result.markets) {
+        expect(market).toEqual(
+          expect.objectContaining({
+            takerVolume: expect.any(String),
+          }),
+        );
+        expect(
+          market.conditionId === null || typeof market.conditionId === 'string',
+        ).toBe(true);
+      }
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/live-volume');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('event_id'),
+      ).toBe(event.id);
+    });
+
+    it('rejects a partially invalid event selection', async ({
+      publicClient,
+    }) => {
+      await expect(
+        publicClient.fetchEventLiveVolume({
+          eventIds: [event.id, 'not-an-event'],
+        }),
+      ).rejects.toThrow(UserInputError);
     });
   });
 

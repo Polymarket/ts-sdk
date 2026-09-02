@@ -9,8 +9,8 @@ import {
   ListComboMarketsResponseSchema,
 } from '@polymarket/bindings/combos';
 import {
+  FetchOpenInterestResponseSchema,
   ListMarketHoldersResponseSchema,
-  ListOpenInterestResponseSchema,
   type MetaHolder,
   type OpenInterest,
 } from '@polymarket/bindings/data';
@@ -36,7 +36,15 @@ import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toLegacyDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  CanonicalMarketConditionIdSchema,
+  distinctIdList,
+  snakeCase,
+  toDataSearchParams,
+  toLegacyDataSearchParams,
+  toSearchParams,
+} from './params';
 
 // The public markets endpoint forces active=true and archived=false server-side.
 const ListMarketsRequestSchema = z.object({
@@ -115,15 +123,8 @@ const ListMarketHoldersRequestSchema = z.object({
   minBalance: z.number().int().optional(),
 });
 
-const ListOpenInterestRequestSchema = z.object({
-  market: z.array(z.string()).optional(),
-});
-
 export type ListMarketHoldersRequest = z.input<
   typeof ListMarketHoldersRequestSchema
->;
-export type ListOpenInterestRequest = z.input<
-  typeof ListOpenInterestRequestSchema
 >;
 type ListMarketsParams = z.output<typeof ListMarketsRequestSchema>;
 
@@ -447,13 +448,21 @@ export async function listMarketHolders(
   );
 }
 
-export type ListOpenInterestError =
+const FetchOpenInterestRequestSchema = z.object({
+  conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20).optional(),
+});
+
+export type FetchOpenInterestRequest = z.input<
+  typeof FetchOpenInterestRequestSchema
+>;
+
+export type FetchOpenInterestError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const ListOpenInterestError = makeErrorGuard(
+export const FetchOpenInterestError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -462,35 +471,44 @@ export const ListOpenInterestError = makeErrorGuard(
 );
 
 /**
- * Lists open interest for one or more markets.
+ * Fetches priced gross open interest for selected markets or globally.
+ *
+ * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
+ * the global aggregate, whose `conditionId` is `null`. A requested servable
+ * market with no holdings has a zero value; an absent row means the market is
+ * not servable. Values are in USDC. Transient rate limits are retried
+ * automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link ListOpenInterestError}
+ * @throws {@link FetchOpenInterestError}
  * Thrown on failure.
  *
  * @example
  * ```ts
- * const openInterest = await listOpenInterest(client, {
- *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+ * const openInterest = await fetchOpenInterest(client, {
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
  * });
  *
  * // openInterest: OpenInterest[]
  * ```
  */
-export async function listOpenInterest(
+export async function fetchOpenInterest(
   client: BaseClient,
-  request: ListOpenInterestRequest = {},
+  request: FetchOpenInterestRequest = {},
 ): Promise<OpenInterest[]> {
-  const params = parseUserInput(request, ListOpenInterestRequestSchema);
+  const { conditionIds } = parseUserInput(
+    request,
+    FetchOpenInterestRequestSchema,
+  );
 
   return unwrap(
-    client.data
-      .get('/oi', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(validateWith(ListOpenInterestResponseSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/oi', {
+        params: toDataSearchParams({ condition: conditionIds }),
+      }),
+    ).andThen(validateWith(FetchOpenInterestResponseSchema)),
   );
 }
 

@@ -1,3 +1,9 @@
+import {
+  type ConditionId,
+  ConditionIdSchema,
+  EventIdSchema,
+  toConditionId,
+} from '@polymarket/bindings';
 import { z } from 'zod';
 
 export type SearchParamPrimitive = boolean | number | string;
@@ -121,6 +127,39 @@ export const TimeWindowSchema = z
   .transform((value) => (value === 'full' ? { start: 1 } : value));
 
 export type TimeWindow = z.input<typeof TimeWindowSchema>;
+
+function toCanonicalMarketConditionId(conditionId: ConditionId): ConditionId {
+  const paddedConditionId =
+    conditionId.length === 64 ? `${conditionId}00` : conditionId;
+
+  return toConditionId(paddedConditionId.toLowerCase());
+}
+
+function isSupportedMarketConditionId(conditionId: ConditionId): boolean {
+  if (conditionId.length === 66) return true;
+
+  const normalizedConditionId = conditionId.toLowerCase();
+  return (
+    normalizedConditionId.startsWith('0x01') ||
+    normalizedConditionId.startsWith('0x02')
+  );
+}
+
+/**
+ * A canonical 32-byte market condition ID. A 31-byte protocol v2 market ID is
+ * right-padded to its canonical representation; combo condition IDs are
+ * rejected.
+ */
+export const CanonicalMarketConditionIdSchema = ConditionIdSchema.refine(
+  isSupportedMarketConditionId,
+  'Expected a 32-byte condition ID or a 31-byte protocol v2 market condition ID',
+).transform(toCanonicalMarketConditionId);
+
+/** A positive event ID that fits the platform's signed 32-bit identifier. */
+export const PositiveInt32EventIdSchema = EventIdSchema.refine(
+  (eventId) => /^[1-9]\d*$/.test(eventId) && BigInt(eventId) <= 2_147_483_647n,
+  'Expected a positive 32-bit event ID',
+);
 
 /**
  * A list of ids deduplicated case-insensitively (first-seen casing kept) and

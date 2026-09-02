@@ -11,6 +11,7 @@ import {
   type PositionId,
   type TokenId,
 } from '../shared';
+import { dataEnvelopeSchema } from './envelope';
 
 export type Holder = {
   wallet: EvmAddress | null | undefined;
@@ -68,58 +69,68 @@ export const MetaHolderSchema = z
   })) satisfies z.ZodType<MetaHolder>;
 
 export type OpenInterest = {
-  /** Condition ID of the market whose open interest is reported. */
-  conditionId: ConditionId | null | undefined;
-  /** @deprecated Use `conditionId`. */
-  market: ConditionId | null | undefined;
-  value?: DecimalString | null;
+  /** Condition ID of the market, or `null` for the global aggregate. */
+  conditionId: ConditionId | null;
+  /** Priced gross open interest in USDC. */
+  value: DecimalString;
 };
 
 export const OpenInterestSchema = z
   .object({
-    market: ConditionIdSchema.nullish(),
-    value: DecimalishSchema.nullish(),
+    condition_id: z.union([ConditionIdSchema, z.literal('GLOBAL')]),
+    value: DecimalishSchema,
   })
-  .transform(({ market, ...rest }) => ({
-    ...rest,
-    conditionId: market,
-    market,
+  .transform(({ condition_id, value }) => ({
+    conditionId: condition_id === 'GLOBAL' ? null : condition_id,
+    value,
   })) satisfies z.ZodType<OpenInterest>;
 
-export type MarketVolume = {
-  /** Condition ID of the market whose live volume is reported. */
-  conditionId: ConditionId | null | undefined;
-  /** @deprecated Use `conditionId`. */
-  market: ConditionId | null | undefined;
-  value?: DecimalString | null;
+export type MarketLiveVolume = {
+  /** Condition ID of the market, or `null` when the source row is unidentified. */
+  conditionId: ConditionId | null;
+  /** Cumulative one-side taker volume in shares. */
+  takerVolume: DecimalString;
 };
 
-export const MarketVolumeSchema = z
+export const MarketLiveVolumeSchema = z
   .object({
-    market: z.preprocess(emptyStringToNull, ConditionIdSchema.nullish()),
-    value: DecimalishSchema.nullish(),
+    condition_id: z.preprocess(emptyStringToNull, ConditionIdSchema.nullable()),
+    taker_volume: DecimalishSchema,
   })
-  .transform(({ market, ...rest }) => ({
-    ...rest,
-    conditionId: market,
-    market,
-  })) satisfies z.ZodType<MarketVolume>;
+  .transform(({ condition_id, taker_volume }) => ({
+    conditionId: condition_id,
+    takerVolume: taker_volume,
+  })) satisfies z.ZodType<MarketLiveVolume>;
 
-export const LiveVolumeSchema = z.object({
-  total: DecimalishSchema.nullish(),
-  markets: z.array(MarketVolumeSchema).nullish(),
-});
+export type LiveVolume = {
+  /** Sum of every returned market's taker volume, in shares. */
+  takerVolumeTotal: DecimalString;
+  /** Markets ordered by taker volume descending. */
+  markets: MarketLiveVolume[];
+};
+
+export const LiveVolumeSchema = z
+  .object({
+    taker_volume_total: DecimalishSchema,
+    conditions: z.array(MarketLiveVolumeSchema),
+  })
+  .transform(({ conditions, taker_volume_total }) => ({
+    markets: conditions,
+    takerVolumeTotal: taker_volume_total,
+  })) satisfies z.ZodType<LiveVolume>;
 
 export const ListMarketHoldersResponseSchema = z.array(MetaHolderSchema);
-export const ListOpenInterestResponseSchema = z.array(OpenInterestSchema);
-export const FetchEventLiveVolumeResponseSchema = z.array(LiveVolumeSchema);
+export const FetchOpenInterestResponseSchema = dataEnvelopeSchema(
+  z.array(OpenInterestSchema),
+);
+export const FetchEventLiveVolumeResponseSchema =
+  dataEnvelopeSchema(LiveVolumeSchema);
 
-export type LiveVolume = z.infer<typeof LiveVolumeSchema>;
 export type ListMarketHoldersResponse = z.infer<
   typeof ListMarketHoldersResponseSchema
 >;
-export type ListOpenInterestResponse = z.infer<
-  typeof ListOpenInterestResponseSchema
+export type FetchOpenInterestResponse = z.infer<
+  typeof FetchOpenInterestResponseSchema
 >;
 export type FetchEventLiveVolumeResponse = z.infer<
   typeof FetchEventLiveVolumeResponseSchema
