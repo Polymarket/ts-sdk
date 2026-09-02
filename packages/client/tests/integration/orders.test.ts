@@ -4,11 +4,11 @@ import {
   OrderType,
   toOrderId,
 } from '@polymarket/bindings';
-import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
   createSecureClient,
   InsufficientLiquidityError,
   type Market,
+  OrderPostStatus,
   type RateLimitUpdate,
   type SecureClient,
   UserInputError,
