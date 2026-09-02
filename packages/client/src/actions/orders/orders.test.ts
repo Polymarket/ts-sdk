@@ -1,4 +1,5 @@
 import {
+  type ClobAssetId,
   OrderSide,
   OrderType,
   toPositionId,
@@ -9,7 +10,7 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
-import type { OrderRouting } from './asset';
+import { SignerType } from '../../wallet';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -57,6 +58,7 @@ describe('createUnsignedOrder', () => {
   }) => {
     const order = createUnsignedOrder(createOrderDraft({ wallet }), {
       signer: SIGNER,
+      signerType: SignerType.OWNER,
       wallet,
       walletType,
     });
@@ -87,6 +89,7 @@ describe('createUnsignedOrder', () => {
       createOrderDraft({ wallet: DEPOSIT_WALLET }),
       {
         signer: SIGNER,
+        signerType: SignerType.OWNER,
         wallet: DEPOSIT_WALLET,
         walletType: WalletType.DEPOSIT_WALLET,
       },
@@ -101,14 +104,12 @@ describe('createUnsignedOrder', () => {
     const positionId = toPositionId('2');
     const order = createUnsignedOrder(
       createOrderDraft({
-        routing: {
-          assetId: positionId,
-          exchangeVersion: ExchangeOrderProtocolVersion.V3,
-        },
+        assetId: positionId,
         wallet: DEPOSIT_WALLET,
       }),
       {
         signer: SIGNER,
+        signerType: SignerType.OWNER,
         wallet: DEPOSIT_WALLET,
         walletType: WalletType.DEPOSIT_WALLET,
       },
@@ -120,19 +121,16 @@ describe('createUnsignedOrder', () => {
 });
 
 type CreateOrderDraftParams = {
-  routing?: OrderRouting;
+  assetId?: ClobAssetId;
   wallet: EvmAddress;
 };
 
 function createOrderDraft({
-  routing = {
-    assetId: toTokenId('1'),
-    exchangeVersion: ExchangeOrderProtocolVersion.V2,
-  },
+  assetId = toTokenId('1'),
   wallet,
 }: CreateOrderDraftParams): OrderDraft {
   return {
-    ...routing,
+    assetId,
     chainId: 137,
     exchangeAddress: '0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e' as EvmAddress,
     expiration: 0,

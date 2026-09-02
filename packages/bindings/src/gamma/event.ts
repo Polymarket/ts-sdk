@@ -129,7 +129,6 @@ export const SeriesReferenceSchema = z.object({
   cgAssetName: z.string().nullish(),
   score: z.number().int().nullish(),
   commentCount: z.number().int().nullish(),
-  requiresTranslation: z.boolean().nullish(),
 });
 
 export const TemplateReferenceSchema = z.object({
@@ -195,6 +194,11 @@ export const BestLineSchema = z.object({
   line: z.number().nullish(),
 });
 
+export enum TeamOrdering {
+  Home = 'home',
+  Away = 'away',
+}
+
 export const TeamSchema = z.object({
   id: TeamIdSchema,
   name: z.string().nullish(),
@@ -207,6 +211,7 @@ export const TeamSchema = z.object({
   updatedAt: IsoDateTimeStringSchema.nullish(),
   providerId: z.number().int().nullish(),
   color: z.string().nullish(),
+  ordering: z.enum(TeamOrdering).nullish(),
 });
 
 export const SportsMetadataSchema = z.object({
@@ -245,7 +250,6 @@ export type EventState = {
   ended?: boolean | null;
   automaticallyActive?: boolean | null;
   commentsEnabled?: boolean | null;
-  requiresTranslation?: boolean | null;
 };
 
 export type EventSchedule = {
@@ -261,7 +265,6 @@ export type EventSchedule = {
 
 export type EventMetrics = {
   liquidity?: DecimalString | null;
-  liquidityAmm?: DecimalString | null;
   liquidityClob?: DecimalString | null;
   volume?: DecimalString | null;
   volume24hr?: DecimalString | null;
@@ -448,7 +451,6 @@ export const GammaEventSchema = z.object({
   disqusThread: z.string().nullish(),
   parentEventId: EventIdSchema.nullish(),
   enableOrderBook: z.boolean().nullish(),
-  liquidityAmm: DecimalishSchema.nullish(),
   liquidityClob: DecimalishSchema.nullish(),
   negRisk: z.boolean().nullish(),
   negRiskMarketID: z.string().nullish(),
@@ -511,7 +513,6 @@ export const GammaEventSchema = z.object({
   bestLines: z.array(BestLineSchema).nullish(),
   homeTeamName: z.string().nullish(),
   awayTeamName: z.string().nullish(),
-  requiresTranslation: z.boolean().nullish(),
   turnProviderId: z.string().nullish(),
   lastHighlight: z.string().nullish(),
   lastHighlightType: z.string().nullish(),
@@ -594,7 +595,6 @@ function normalizeEvent(event: GammaEvent): Event {
       ended: event.ended,
       automaticallyActive: event.automaticallyActive,
       commentsEnabled: event.commentsEnabled,
-      requiresTranslation: event.requiresTranslation,
     },
     schedule: {
       startDate: event.startDate,
@@ -608,7 +608,6 @@ function normalizeEvent(event: GammaEvent): Event {
     },
     metrics: {
       liquidity: event.liquidity,
-      liquidityAmm: event.liquidityAmm,
       liquidityClob: event.liquidityClob,
       volume: event.volume,
       volume24hr: event.volume24hr,

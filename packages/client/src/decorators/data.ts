@@ -1,7 +1,7 @@
 import type { DecimalString } from '@polymarket/bindings';
 import type {
   LastTradePrice,
-  LastTradePriceForToken,
+  LastTradePriceForAsset,
   Midpoints,
   OrderBook,
   PriceHistoryPoint,
@@ -71,112 +71,112 @@ export type DataActions = {
     request: FetchEventLiveVolumeRequest,
   ): Promise<LiveVolume[]>;
   /**
-   * Fetches the midpoint price for a token as a decimal string.
+   * Fetches the midpoint price for an exchange asset as a decimal string.
    *
    * @throws {@link FetchMidpointError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const midpoint = await client.fetchMidpoint({ tokenId: '123' });
+   * const midpoint = await client.fetchMidpoint({ assetId: '0x0122…0000' });
    * ```
    */
   fetchMidpoint(request: FetchMidpointRequest): Promise<DecimalString>;
   /**
-   * Fetches midpoint prices for multiple tokens as a token ID keyed lookup.
+   * Fetches midpoint prices for multiple exchange assets as an asset ID keyed lookup.
    *
    * @throws {@link FetchMidpointsError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const midpoints = await client.fetchMidpoints([{ tokenId: '123' }]);
+   * const midpoints = await client.fetchMidpoints([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchMidpoints(request: FetchMidpointsRequest): Promise<Midpoints>;
   /**
-   * Fetches the current quoted price for a token and side as a decimal string.
+   * Fetches the current quoted price for an exchange asset and side as a decimal string.
    *
    * @throws {@link FetchPriceError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const price = await client.fetchPrice({ tokenId: '123', side: OrderSide.BUY });
+   * const price = await client.fetchPrice({ assetId: '0x0122…0000', side: OrderSide.BUY });
    * ```
    */
   fetchPrice(request: FetchPriceRequest): Promise<DecimalString>;
   /**
-   * Fetches quoted prices for multiple tokens as a token ID keyed lookup.
+   * Fetches quoted prices for multiple exchange assets as an asset ID keyed lookup.
    *
    * @throws {@link FetchPricesError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const prices = await client.fetchPrices([{ tokenId: '123', side: OrderSide.BUY }]);
+   * const prices = await client.fetchPrices([{ assetId: '0x0122…0000', side: OrderSide.BUY }]);
    * ```
    */
   fetchPrices(request: FetchPricesRequest): Promise<Prices>;
   /**
-   * Fetches the current order book for a token.
+   * Fetches the current order book for an exchange asset.
    *
    * @throws {@link FetchOrderBookError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const book = await client.fetchOrderBook({ tokenId: '123' });
+   * const book = await client.fetchOrderBook({ assetId: '0x0122…0000' });
    * ```
    */
   fetchOrderBook(request: FetchOrderBookRequest): Promise<OrderBook>;
   /**
-   * Fetches order books for multiple tokens.
+   * Fetches order books for multiple exchange assets.
    *
    * @throws {@link FetchOrderBooksError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const books = await client.fetchOrderBooks([{ tokenId: '123' }]);
+   * const books = await client.fetchOrderBooks([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchOrderBooks(request: FetchOrderBooksRequest): Promise<OrderBook[]>;
   /**
-   * Fetches the spread for a token as a decimal string.
+   * Fetches the spread for an exchange asset as a decimal string.
    *
    * @throws {@link FetchSpreadError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const spread = await client.fetchSpread({ tokenId: '123' });
+   * const spread = await client.fetchSpread({ assetId: '0x0122…0000' });
    * ```
    */
   fetchSpread(request: FetchSpreadRequest): Promise<DecimalString>;
   /**
-   * Fetches spreads for multiple tokens as a token ID keyed lookup.
+   * Fetches spreads for multiple exchange assets as an asset ID keyed lookup.
    *
    * @throws {@link FetchSpreadsError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const spreads = await client.fetchSpreads([{ tokenId: '123' }]);
+   * const spreads = await client.fetchSpreads([{ assetId: '0x0122…0000' }]);
    * ```
    */
   fetchSpreads(request: FetchSpreadsRequest): Promise<Spreads>;
   /**
-   * Fetches the last traded price for a token.
+   * Fetches the last traded price for an exchange asset.
    *
-   * Returns `null` when the token has not traded.
+   * Returns `null` when the asset has not traded.
    *
    * @throws {@link FetchLastTradePriceError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const trade = await client.fetchLastTradePrice({ tokenId: '123' });
+   * const trade = await client.fetchLastTradePrice({ assetId: '0x0122…0000' });
    *
    * // trade === LastTradePrice | null
    * ```
@@ -185,33 +185,32 @@ export type DataActions = {
     request: FetchLastTradePriceRequest,
   ): Promise<LastTradePrice | null>;
   /**
-   * Fetches last traded prices for multiple tokens.
+   * Fetches last traded prices for multiple exchange assets.
    *
-   * Tokens without trades are omitted from the response. Match returned rows by
-   * `tokenId`; the array is not positionally aligned with the request.
+   * Assets without trades are omitted from the response. Match returned rows by
+   * `assetId`; the array is not positionally aligned with the request.
    *
    * @throws {@link FetchLastTradePricesError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const tokenId = '123';
-   * const trades = await client.fetchLastTradePrices([{ tokenId }]);
-   * const trade = trades.find((candidate) => candidate.tokenId === tokenId);
+   * const trades = await client.fetchLastTradePrices([{ assetId: '0x0122…0000' }]);
+   * const trade = trades.find((candidate) => candidate.assetId === '0x0122…0000');
    * ```
    */
   fetchLastTradePrices(
     request: FetchLastTradePricesRequest,
-  ): Promise<LastTradePriceForToken[]>;
+  ): Promise<LastTradePriceForAsset[]>;
   /**
-   * Fetches historical price points for a token.
+   * Fetches historical price points for an exchange asset.
    *
    * @throws {@link FetchPriceHistoryError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const history = await client.fetchPriceHistory({ tokenId: '123', interval: '1d' });
+   * const history = await client.fetchPriceHistory({ assetId: '0x0122…0000', interval: '1d' });
    * ```
    */
   fetchPriceHistory(
@@ -229,18 +228,9 @@ export type DataActions = {
    * @example
    * ```ts
    * const price = await client.estimateMarketPrice({
-   *   tokenId: '123',
+   *   assetId: '0x0122…0000',
    *   side: OrderSide.BUY,
    *   amount: 10,
-   * });
-   * ```
-   *
-   * @example Position-backed outcome
-   * ```ts
-   * const price = await client.estimateMarketPrice({
-   *   positionId: '456',
-   *   side: OrderSide.SELL,
-   *   shares: 10,
    * });
    * ```
    */

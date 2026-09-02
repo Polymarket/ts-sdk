@@ -1,15 +1,21 @@
 import {
   ComboPositionOutcome,
   ComboPositionSort,
+  ComboPositionStatus,
   UserInputError,
 } from '@polymarket/client';
-import { isSameEvmAddress } from '@polymarket/types';
+import { expectPresent, isSameEvmAddress } from '@polymarket/types';
+import { afterEach, type MockInstance, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
 
 describe('Portfolio', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listPositions', () => {
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({
@@ -133,6 +139,89 @@ describe('Portfolio', () => {
 
       expect(filtered.items[0].conditionId).toBe(result.items[0].conditionId);
     });
+
+    it('filters by one status', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const result = await publicClient
+        .listComboPositions({
+          user: TEST_USER,
+          pageSize: 10,
+          status: ComboPositionStatus.ResolvedWin,
+        })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      for (const position of result.items) {
+        expect(position.status).toBe(ComboPositionStatus.ResolvedWin);
+      }
+
+      const requests = comboPositionRequests(fetchSpy);
+      expect(requests).toHaveLength(1);
+      expect(expectPresent(requests[0]).getAll('status')).toEqual([
+        ComboPositionStatus.ResolvedWin,
+      ]);
+    });
+
+    it('serializes multiple statuses once and retains them across pages', async ({
+      publicClient,
+    }) => {
+      const statuses = [
+        ComboPositionStatus.ResolvedWin,
+        ComboPositionStatus.ResolvedPartial,
+        ComboPositionStatus.ResolvedLoss,
+      ] as const;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const paginator = publicClient.listComboPositions({
+        user: TEST_USER,
+        pageSize: 1,
+        status: statuses,
+      });
+      const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+      const secondPage = await paginator
+        .from(firstPage.nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      for (const position of [...firstPage.items, ...secondPage.items]) {
+        expect(statuses).toContain(position.status);
+      }
+
+      const requests = comboPositionRequests(fetchSpy);
+      expect(requests).toHaveLength(2);
+
+      for (const request of requests) {
+        expect(request.getAll('status')).toEqual([statuses.join(',')]);
+      }
+
+      expect(expectPresent(requests[0]).get('cursor')).toBeNull();
+      expect(expectPresent(requests[1]).get('cursor')).toBe(
+        firstPage.nextCursor,
+      );
+    });
+
+    it('rejects invalid status filters before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const invalidStatuses = [
+        `${ComboPositionStatus.Open},${ComboPositionStatus.Partial}`,
+        [],
+        [ComboPositionStatus.Open, 'UNKNOWN'],
+      ];
+
+      for (const status of invalidStatuses) {
+        expect(() =>
+          publicClient.listComboPositions({
+            user: TEST_USER,
+            status: status as never,
+          }),
+        ).toThrow(UserInputError);
+      }
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('fetchPortfolioValue', () => {
@@ -215,3 +304,12 @@ describe('Portfolio', () => {
     });
   });
 });
+
+function comboPositionRequests(
+  fetchSpy: MockInstance<typeof fetch>,
+): URLSearchParams[] {
+  return fetchSpy.mock.calls
+    .map(([input]) => (input instanceof Request ? input.url : String(input)))
+    .filter((url) => new URL(url).pathname === '/v1/positions/combos')
+    .map((url) => new URL(url).searchParams);
+}

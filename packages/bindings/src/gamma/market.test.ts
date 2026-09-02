@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ComboKnownStatus,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
@@ -7,7 +8,6 @@ import {
 
 const rawBinaryMarket = {
   id: '1',
-  marketMakerAddress: '0x0000000000000000000000000000000000000000',
   outcomes: '["Yes", "No"]',
   outcomePrices: '["0.4", "0.6"]',
 };
@@ -23,14 +23,17 @@ const UNKNOWN_MODULE_CONDITION_ID =
 // who-will-the-world-s-richest-person-be-on-february-27-2021.
 const rawMultiOutcomeMarket = {
   id: '2',
-  marketMakerAddress: '0x0000000000000000000000000000000000000000',
   outcomes: '["Jeff Bezos", "Elon Musk", "Other"]',
 };
 
 describe('MarketSchema', () => {
   it('normalizes binary outcomes', () => {
-    const market = MarketSchema.parse(rawBinaryMarket);
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'enabled',
+    });
 
+    expect(market.state.comboStatus).toBe(ComboKnownStatus.Enabled);
     expect(market.outcomes).toEqual({
       yes: {
         label: 'Yes',
@@ -45,6 +48,15 @@ describe('MarketSchema', () => {
         price: '0.6',
       },
     });
+  });
+
+  it('passes unknown Combo statuses through as strings', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      comboStatus: 'not-a-status-yet',
+    });
+
+    expect(market.state.comboStatus).toBe('not-a-status-yet');
   });
 
   it.each([
@@ -120,6 +132,25 @@ describe('MarketSchema', () => {
     const result = MarketSchema.safeParse(rawMultiOutcomeMarket);
 
     expect(result.success).toBe(false);
+  });
+
+  // Gamma stopped returning these fields, but historical AMM markets and
+  // not-yet-migrated responses may still carry them.
+  it('ignores removed legacy fields still present in raw responses', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      marketMakerAddress: '0x0000000000000000000000000000000000000000',
+      ammType: 'fpmm',
+      fpmmLive: true,
+      volumeAmm: '123.45',
+      volume24hrAmm: '1.5',
+      liquidityAmm: '67.89',
+      pagerDutyNotificationEnabled: true,
+      requiresTranslation: true,
+    });
+
+    expect(market.id).toBe('1');
+    expect('volumeAmm' in market.metrics).toBe(false);
   });
 });
 

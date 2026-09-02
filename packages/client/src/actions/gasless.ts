@@ -1,4 +1,8 @@
-import { EvmAddressSchema, TransactionIdSchema } from '@polymarket/bindings';
+import {
+  EvmAddressSchema,
+  type TransactionId,
+  TransactionIdSchema,
+} from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type GaslessTransaction,
@@ -9,7 +13,6 @@ import {
   RelayerExecuteParamsSchema,
   type RelayerExecuteRequest,
   RelayerExecuteRequestSchema,
-  type RelayerExecuteResponse,
   RelayerExecuteResponseSchema,
   type RelayerLegacyExecuteRequest,
   RelayerTransactionState,
@@ -27,6 +30,7 @@ import {
   invariant,
   isHexString,
   type NonEmptyArray,
+  type TxHash,
   unwrap,
   ZERO_ADDRESS,
 } from '@polymarket/types';
@@ -53,7 +57,10 @@ import type {
   TypedDataField,
   TypedDataPayload,
 } from '../types';
-import { deriveCurrentDepositWalletAddress } from '../wallet';
+import {
+  deriveCurrentDepositWalletAddress,
+  wrapDepositWalletSignature,
+} from '../wallet';
 import {
   type RequestAddressRequest,
   requestAddress,
@@ -590,15 +597,18 @@ export async function* buildDepositWalletExecuteRequest(
   const depositWalletCalls = calls.map(toDepositWalletCall);
   const deadline = `${Math.floor(Date.now() / 1000) + DEPOSIT_WALLET_DEFAULT_DEADLINE_SECONDS}`;
 
-  const signature = expectEvmSignature(
-    yield signGaslessTypedData(
-      createDepositWalletBatchTypedDataPayload({
-        calls: depositWalletCalls,
-        chainId: client.environment.chainId,
-        deadline,
-        nonce: executeParams.nonce,
-        wallet: client.account.wallet,
-      }),
+  const signature = wrapDepositWalletSignature(
+    client.account,
+    expectEvmSignature(
+      yield signGaslessTypedData(
+        createDepositWalletBatchTypedDataPayload({
+          calls: depositWalletCalls,
+          chainId: client.environment.chainId,
+          deadline,
+          nonce: executeParams.nonce,
+          wallet: client.account.wallet,
+        }),
+      ),
     ),
   );
 
@@ -633,15 +643,18 @@ export async function* resignDepositWalletExecuteRequest(
   RelayerDepositWalletExecuteRequest,
   EvmAddress | EvmSignature | TransactionHandle
 > {
-  const signature = expectEvmSignature(
-    yield signGaslessTypedData(
-      createDepositWalletBatchTypedDataPayload({
-        calls: calls.map(toDepositWalletCall),
-        chainId: client.environment.chainId,
-        deadline: request.depositWalletParams.deadline,
-        nonce,
-        wallet: client.account.wallet,
-      }),
+  const signature = wrapDepositWalletSignature(
+    client.account,
+    expectEvmSignature(
+      yield signGaslessTypedData(
+        createDepositWalletBatchTypedDataPayload({
+          calls: calls.map(toDepositWalletCall),
+          chainId: client.environment.chainId,
+          deadline: request.depositWalletParams.deadline,
+          nonce,
+          wallet: client.account.wallet,
+        }),
+      ),
     ),
   );
 
@@ -990,6 +1003,11 @@ export const WaitForGaslessTransactionError = makeErrorGuard(
   TransactionFailedError,
 );
 
+type SubmittedGaslessTransaction = {
+  transactionHash: TxHash | null;
+  transactionId: TransactionId;
+};
+
 /**
  * Transaction handle for relayer-backed submissions; polls the submitted
  * transaction until it settles.
@@ -1002,7 +1020,7 @@ export class GaslessTransactionHandle implements TransactionHandle {
   readonly transactionHash;
   readonly transactionId;
 
-  constructor(client: BaseClient, response: RelayerExecuteResponse) {
+  constructor(client: BaseClient, response: SubmittedGaslessTransaction) {
     this.#client = client;
     this.transactionHash = response.transactionHash;
     this.transactionId = response.transactionId;

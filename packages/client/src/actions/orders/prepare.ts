@@ -11,6 +11,7 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import { wrapDepositWalletSignature } from '../../wallet';
 import { PrepareLimitOrderParamsSchema, prepareLimitOrderDraft } from './limit';
 import {
   PrepareMarketOrderParamsSchema,
@@ -60,10 +61,10 @@ export const PrepareMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const workflow = await prepareMarketOrder(client, {
+ *   assetId: '0x0122…0000',
  *   amount: 10,
  *   maxPrice: '0.55',
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -84,7 +85,10 @@ export async function prepareMarketOrder(
 
     return createSignedOrder(
       unsignedOrder,
-      createOrderSignature(unsignedOrder, signature),
+      wrapDepositWalletSignature(
+        client.account,
+        createOrderSignature(unsignedOrder, signature),
+      ),
     );
   }.call(null);
 }
@@ -117,11 +121,11 @@ export const PrepareLimitOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const workflow = await prepareLimitOrder(client, {
+ *   assetId: '0x0122…0000',
  *   postOnly: true,
  *   price: 0.52,
  *   side: OrderSide.BUY,
  *   size: 10,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -142,7 +146,10 @@ export async function prepareLimitOrder(
 
     const order = createSignedOrder(
       unsignedOrder,
-      createOrderSignature(unsignedOrder, signature),
+      wrapDepositWalletSignature(
+        client.account,
+        createOrderSignature(unsignedOrder, signature),
+      ),
     );
 
     return params.postOnly === true ? { ...order, postOnly: true } : order;
@@ -164,10 +171,10 @@ export const PrepareMarketOrderPostingError = PrepareMarketOrderError;
  * @example
  * ```ts
  * const workflow = await prepareMarketOrderPosting(client, {
+ *   assetId: '0x0122…0000',
  *   minPrice: '0.54',
  *   shares: 10,
  *   side: OrderSide.SELL,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -196,11 +203,11 @@ export const PrepareLimitOrderPostingError = PrepareLimitOrderError;
  * @example
  * ```ts
  * const workflow = await prepareLimitOrderPosting(client, {
+ *   assetId: '0x0122…0000',
  *   postOnly: true,
  *   price: 0.52,
  *   side: OrderSide.BUY,
  *   size: 10,
- *   tokenId: '123',
  * });
  * ```
  */

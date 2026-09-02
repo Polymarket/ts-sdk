@@ -1,73 +1,67 @@
-import type { TickSizeValue } from '@polymarket/bindings';
+import type { ClobAssetId, TickSizeValue } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
 import { invariant } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
-import { ExchangeOrderProtocolVersion } from '../../exchange';
-import type { OrderRouting } from './asset';
-import { decimalPlaces, isMultipleOf } from './math';
+import { isV2PositionId } from '../../protocol';
+import { FIXED_SCALE, type ScaledPrice, toScaledPrice } from './fixed';
 
 export type RoundingConfig = {
   amount: number;
-  price: number;
   size: number;
 };
 
 export function resolveRoundingConfig(tickSize: TickSizeValue): RoundingConfig {
   switch (tickSize) {
     case 0.1:
-      return { amount: 3, price: 1, size: 2 };
+      return { amount: 3, size: 2 };
     case 0.01:
-      return { amount: 4, price: 2, size: 2 };
+      return { amount: 4, size: 2 };
     case 0.005:
-      return { amount: 5, price: 3, size: 2 };
+      return { amount: 5, size: 2 };
     case 0.0025:
-      return { amount: 6, price: 4, size: 2 };
+      return { amount: 6, size: 2 };
     case 0.001:
-      return { amount: 5, price: 3, size: 2 };
+      return { amount: 5, size: 2 };
     case 0.0001:
-      return { amount: 6, price: 4, size: 2 };
+      return { amount: 6, size: 2 };
   }
 
   invariant(false, `Unsupported tick size: ${tickSize}`);
 }
 
 /**
- * Validates that a user-supplied order price lies on the market's tick grid
- * within `[tickSize, 1 - tickSize]` and returns it unchanged.
+ * Normalizes a user-supplied order price to six-decimal fixed point and
+ * validates that it lies on the market's tick grid within
+ * `[tickSize, 1 - tickSize]`.
  *
- * Grid membership is fully determined by the tick size: valid prices have at
- * most as many decimals as the tick and are integer multiples of it. This
- * mirrors the exchange's own validation, which divides the price by the
- * market's minimum tick and requires an integer result.
+ * Grid membership is checked with integer modulo after the conversion boundary
+ * has rejected unsupported precision. This mirrors the exchange's own
+ * validation, which divides the price by the market's minimum tick and requires
+ * an integer result.
  *
  * @internal
  */
 export function validatePriceOnTickGrid(
   price: number,
   tickSize: TickSizeValue,
-): number {
-  const tickDecimals = decimalPlaces(tickSize);
+): ScaledPrice {
+  const scaledPrice = toScaledPrice(price);
+  const scaledTick = toScaledPrice(tickSize);
 
-  if (price < tickSize || price > 1 - tickSize) {
+  if (scaledPrice < scaledTick || scaledPrice > FIXED_SCALE - scaledTick) {
     throw new UserInputError(
       `must be between ${tickSize} and ${1 - tickSize} for tick size ${tickSize}.`,
     );
   }
 
-  if (decimalPlaces(price) > tickDecimals) {
-    throw new UserInputError(
-      `must conform to tick size ${tickSize} with at most ${tickDecimals} decimal places.`,
-    );
-  }
-
-  if (!isMultipleOf(price, tickSize)) {
+  if (scaledPrice % scaledTick !== 0n) {
     throw new UserInputError(
       `${price} must be a multiple of tick size ${tickSize}.`,
     );
   }
 
-  return price;
+  return scaledPrice;
 }
 
 export function resolveExchangeAddress(
@@ -82,10 +76,10 @@ export function resolveExchangeAddress(
 /** @internal */
 export function resolveOrderExchangeAddress(
   client: BaseSecureClient,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
   negRisk: boolean,
 ): EvmAddress {
-  return routing.exchangeVersion === ExchangeOrderProtocolVersion.V3
+  return isV2PositionId(assetId)
     ? client.environment.contracts.exchangeV3
     : resolveExchangeAddress(client, negRisk);
 }

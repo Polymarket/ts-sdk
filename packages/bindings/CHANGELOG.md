@@ -1,5 +1,36 @@
 # @polymarket/bindings
 
+## 0.8.0
+
+### Minor Changes
+
+- a8dba73: Expose pending Combo market status and avoid using pending markets when discovering live RFQ legs.
+- a1959b6: Add protocol-neutral `assetId` fields across CLOB reads, filters, and realtime events, and `conditionId` fields across CLOB reads and realtime events, while retaining deprecated `tokenId`, `tokenIds`, and `market` compatibility aliases.
+- 5c18246: Add protocol-neutral `assetId` and `conditionId` fields to Data API responses while retaining deprecated identifier aliases.
+
+### Patch Changes
+
+- 2fd5cc5: Normalize empty live-volume market identifiers to null.
+
+## 0.7.0
+
+### Minor Changes
+
+- d754986: Type notification payloads: `Notification` is now a discriminated union on the new `NotificationType` enum, `owner` is the branded `ApiKey`, and each notification kind carries a typed `payload` instead of `unknown`.
+
+  At runtime, notification kinds unknown to this SDK version are omitted from `fetchNotifications`, while recognized kinds whose payloads do not match their schemas reject the entire response.
+
+  Malformed combo condition IDs, question IDs, EVM addresses, and transaction hashes now report schema validation failures instead of escaping parsing as raw errors.
+
+- 0db340d: Add scoped Deposit Wallet session-key authorization, active-key fetching, revocation, and ordinary SecureClient support for authorized session signers. Known scopes have enum members, while newer scope strings remain accepted and preserved for forward compatibility. Authorizations default to `ALL` when scopes are omitted.
+
+### Patch Changes
+
+- aae2882: RequestRejectedError now exposes a typed restriction distinguishing matching-engine restarts (HTTP 425) from post-only mode (HTTP 503), its retryAfter value falls back to the retry_after_seconds response field when the Retry-After header is absent, and batch post-only rejections map to the post_only_mode order error code instead of unknown. The SDK still does not retry automatically.
+- ccd6ef4: Remove unused CTF-specific runtime condition ID aliases in favor of the protocol-neutral condition ID APIs. The deprecated `CtfConditionId` type alias remains available for source compatibility.
+- Updated dependencies [0db340d]
+  - @polymarket/types@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes
