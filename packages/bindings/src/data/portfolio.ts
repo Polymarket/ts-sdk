@@ -258,7 +258,6 @@ export const PortfolioValueSchema = z
 /** Window served by a user PnL series. */
 export enum UserPnlInterval {
   Max = 'max',
-  All = 'all',
   OneMonth = '1m',
   OneWeek = '1w',
   OneDay = '1d',
