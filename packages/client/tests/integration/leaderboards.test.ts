@@ -89,6 +89,22 @@ describe('Leaderboards', () => {
         }),
       );
     });
+
+    it('defaults to the authenticated wallet for secure clients', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await secureClientWithDepositWallet.fetchTraderLeaderboardStanding({
+        window: LeaderboardWindow.All,
+      });
+
+      const requests = traderLeaderboardRequests(fetchSpy);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.get('user')).toBe(
+        secureClientWithDepositWallet.account.wallet,
+      );
+    });
   });
 
   describe('listBiggestWinners', () => {
