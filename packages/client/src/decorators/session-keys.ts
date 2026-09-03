@@ -4,7 +4,6 @@ import {
   authorizeSessionKey,
   fetchSessionKeys,
   type RevokeSessionKeyRequest,
-  type RevokeSessionKeyResult,
   revokeSessionKey,
   type SessionKey,
 } from '../actions';
@@ -54,13 +53,13 @@ export type SessionKeyActions = {
   /**
    * Revokes a session key authorized for the Deposit Wallet.
    *
-   * Revocation may take several minutes while existing activity is canceled and
-   * the on-chain revocation is confirmed.
+   * Returns once the session key is removed from the active-key registry and can
+   * no longer be used. The on-chain transaction may still be pending.
    * Requires API-key authentication that supports gasless transactions.
    *
    * @example
    * ```ts
-   * const revocation = await client.revokeSessionKey({
+   * await client.revokeSessionKey({
    *   address: sessionAddress,
    * });
    * ```
@@ -68,9 +67,7 @@ export type SessionKeyActions = {
    * @throws {@link RevokeSessionKeyError}
    * Thrown on failure.
    */
-  revokeSessionKey(
-    request: RevokeSessionKeyRequest,
-  ): Promise<RevokeSessionKeyResult>;
+  revokeSessionKey(request: RevokeSessionKeyRequest): Promise<void>;
 };
 
 export function sessionKeyActions(client: BaseSecureClient): SessionKeyActions {
@@ -85,7 +82,6 @@ export type {
   AuthorizeSessionKeyRequest,
   AuthorizeSessionKeyResult,
   RevokeSessionKeyRequest,
-  RevokeSessionKeyResult,
   SessionKey,
   SessionKeyScope,
 } from '../actions';

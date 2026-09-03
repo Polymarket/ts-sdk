@@ -334,12 +334,6 @@ const RevokeSessionKeyRequestSchema = z
     }),
   ) satisfies z.ZodType<ParsedRevokeSessionKeyRequest, RevokeSessionKeyRequest>;
 
-/** Result of a confirmed session-key revocation. */
-export type RevokeSessionKeyResult = {
-  /** Confirmed transaction that applied the revocation. */
-  transaction: TransactionOutcome;
-};
-
 export type RevokeSessionKeyError =
   | CancelledSigningError
   | RateLimitError
@@ -365,8 +359,8 @@ export const RevokeSessionKeyError = makeErrorGuard(
 /**
  * Revokes a session key authorized for the Deposit Wallet.
  *
- * Revocation may take several minutes while existing activity is canceled and
- * the on-chain revocation is confirmed.
+ * Returns once the session key is removed from the active-key registry and can
+ * no longer be used. The on-chain transaction may still be pending.
  * Requires API-key authentication that supports gasless transactions.
  *
  * @remarks
@@ -374,7 +368,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const revocation = await revokeSessionKey(client, {
+ * await revokeSessionKey(client, {
  *   address: sessionAddress,
  * });
  * ```
@@ -385,7 +379,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
 export async function revokeSessionKey(
   client: BaseSecureClient,
   request: RevokeSessionKeyRequest,
-): Promise<RevokeSessionKeyResult> {
+): Promise<void> {
   assertOwnerDepositWallet(client);
 
   if (!client.supportsGasless) {
@@ -423,14 +417,37 @@ export async function revokeSessionKey(
     kind: 'revocation',
     status: response.status,
   });
-  const transaction = await new GaslessTransactionHandle(client, {
-    transactionHash: null,
-    transactionId: response.transactionId,
-  }).wait();
+  // This eager return is intentional; the backend continues the remaining
+  // revocation work after the key leaves the active-key registry.
+  await waitForRevokedSessionKey(client, parsedRequest.address);
+}
 
-  return {
-    transaction,
-  };
+async function waitForRevokedSessionKey(
+  client: BaseSecureClient,
+  address: EvmAddress,
+): Promise<void> {
+  // This revocation readiness check deliberately reuses the relayer transaction
+  // polling limits instead of introducing revocation-specific configuration.
+  // The defaults allow about 200 seconds (100 polls every two seconds).
+  for (
+    let pollCount = 0;
+    pollCount < client.environment.relayerMaxPolls;
+    pollCount += 1
+  ) {
+    const isActive = (await fetchSessionKeys(client)).some((sessionKey) =>
+      isSameEvmAddress(sessionKey.address, address),
+    );
+
+    if (!isActive) {
+      return;
+    }
+
+    await delay(client.environment.relayerPollFrequencyMs);
+  }
+
+  throw new TimeoutError(
+    `Timed out waiting for session key ${address} to be revoked`,
+  );
 }
 
 async function waitForAuthorizedSessionKey(
