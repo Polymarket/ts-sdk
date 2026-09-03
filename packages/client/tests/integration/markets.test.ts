@@ -14,6 +14,7 @@ const HOLDERS_CONDITION_ID =
   '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093';
 const OTHER_CONDITION_ID =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
+const FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS = 253_402_300_800;
 const publicClient = createPublicClient({ environment });
 
 const {
@@ -289,6 +290,12 @@ describe('Markets', () => {
           end: 1_701_296_001,
         }),
       ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          asOf: FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS,
+        }),
+      ).toThrow(UserInputError);
     });
 
     it('walks normalized price history pages', async ({ publicClient }) => {
@@ -297,7 +304,6 @@ describe('Markets', () => {
       const paginator = publicClient.listPriceHistory({
         assetId,
         interval: PriceHistoryInterval.OneDay,
-        bucketSeconds: 60,
         pageSize: 2,
       });
 
@@ -334,7 +340,7 @@ describe('Markets', () => {
         expect(request.searchParams.get('token_id')).toBe(assetId);
         expect(request.searchParams.has('asset_id')).toBe(false);
         expect(request.searchParams.get('interval')).toBe('1d');
-        expect(request.searchParams.get('bucket_seconds')).toBe('60');
+        expect(request.searchParams.has('bucket_seconds')).toBe(false);
       }
       expect(requests[1]?.searchParams.get('cursor')).toBe(
         firstPage.nextCursor,

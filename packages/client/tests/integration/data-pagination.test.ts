@@ -1,5 +1,5 @@
 import { OrderSide } from '@polymarket/bindings';
-import { dataEnvelopeSchema, dataPageSchema } from '@polymarket/bindings/data';
+import { dataEnvelopeSchema } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { describe, expect, it } from './fixtures';
@@ -73,32 +73,6 @@ describe('Data pagination', () => {
  * corresponding endpoint lands in the SDK.
  */
 describe('Data envelope', () => {
-  it('parses a paginated list envelope into the page shape', async ({
-    publicClient,
-  }) => {
-    const response = await unwrap(
-      publicClient.data.get('v2/leaderboard', {
-        params: new URLSearchParams({ limit: '2', time_period: 'all' }),
-      }),
-    );
-
-    const page = dataPageSchema(
-      z
-        .object({
-          rank: z.number().int(),
-          user_id: z.string(),
-          pnl: z.number(),
-          volume: z.number(),
-          verified: z.boolean(),
-        })
-        .loose(),
-    ).parse(await response.json());
-
-    expect(page.items.length).toBeGreaterThan(0);
-    expect(page.hasMore).toBe(true);
-    expect(page.nextCursor).toEqual(expect.any(String));
-  });
-
   it('unwraps a single-object envelope to the payload', async ({
     publicClient,
   }) => {

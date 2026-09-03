@@ -531,9 +531,11 @@ export type ListPriceHistoryRequest =
     };
 
 const MAX_PRICE_HISTORY_WINDOW_SECONDS = 15 * 24 * 60 * 60;
+/** Latest supported instant: 9999-12-31T23:59:59Z. */
+const MAX_PRICE_HISTORY_TIMESTAMP_SECONDS = 253_402_300_799;
 
 const PriceHistoryTimestampSchema = EpochSecondsLikeSchema.pipe(
-  z.number().int().positive(),
+  z.number().int().positive().max(MAX_PRICE_HISTORY_TIMESTAMP_SECONDS),
 );
 
 const PriceHistoryAssetIdSchema = z.string().min(1).pipe(ClobAssetIdSchema);
@@ -635,11 +637,15 @@ export const ListPriceHistoryError = makeErrorGuard(
  *
  * Select exactly one time form: a relative `interval`, an explicit `start`
  * with optional `end`, or the latest observation at or before an `asOf`
- * instant. Time inputs accept Unix epoch seconds or `Date` values. Prices are
- * decimal strings and returned timestamps are Unix epoch milliseconds. Series
- * pages are ordered oldest first; an `asOf` request returns at most one item.
- * Series page sizes default to and are capped at 10,000 points. Transient rate
- * limits are retried automatically.
+ * instant. Time inputs accept Unix epoch seconds or `Date` values. When
+ * `bucketSeconds` is omitted, resolution is selected automatically for the
+ * requested window and reported on each point as `resolutionSeconds`. An
+ * explicit bucket is used exactly as requested and may produce an empty series
+ * when that resolution is unavailable for the window. Prices are decimal
+ * strings and returned timestamps are Unix epoch milliseconds. Series pages
+ * are ordered oldest first; an `asOf` request returns at most one item. Series
+ * page sizes default to and are capped at 10,000 points. Transient rate limits
+ * are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
