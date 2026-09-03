@@ -417,6 +417,8 @@ export async function revokeSessionKey(
     kind: 'revocation',
     status: response.status,
   });
+  // This eager return is intentional; the backend continues the remaining
+  // revocation work after the key leaves the active-key registry.
   await waitForRevokedSessionKey(client, parsedRequest.address);
 }
 
@@ -424,6 +426,9 @@ async function waitForRevokedSessionKey(
   client: BaseSecureClient,
   address: EvmAddress,
 ): Promise<void> {
+  // This revocation readiness check deliberately reuses the relayer transaction
+  // polling limits instead of introducing revocation-specific configuration.
+  // The defaults allow about 200 seconds (100 polls every two seconds).
   for (
     let pollCount = 0;
     pollCount < client.environment.relayerMaxPolls;
