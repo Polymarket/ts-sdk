@@ -1,11 +1,5 @@
 import { OrderSide } from '@polymarket/bindings';
-import { dataEnvelopeSchema } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
-import { z } from 'zod';
 import { describe, expect, it } from './fixtures';
-
-// A wallet shape that is valid but cannot correspond to a real account.
-const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
 
 describe('Data pagination', () => {
   it('walks consecutive pages with for await and re-sends filters', async ({
@@ -64,42 +58,5 @@ describe('Data pagination', () => {
     expect(firstOfSecond?.timestamp).toBeLessThanOrEqual(
       lastOfFirst?.timestamp ?? 0,
     );
-  });
-});
-
-/**
- * Envelope-level coverage for v2 surfaces that have no public action yet.
- * Each block below folds into its action's integration test as the
- * corresponding endpoint lands in the SDK.
- */
-describe('Data envelope', () => {
-  it('unwraps a single-object envelope to the payload', async ({
-    publicClient,
-  }) => {
-    const response = await unwrap(publicClient.data.get('v2/oi'));
-
-    const markets = dataEnvelopeSchema(
-      z.array(
-        z.object({ condition_id: z.string(), value: z.number() }).loose(),
-      ),
-    ).parse(await response.json());
-
-    expect(markets.length).toBeGreaterThan(0);
-  });
-
-  it('keeps a null answer parsed rather than failing validation', async ({
-    publicClient,
-  }) => {
-    const response = await unwrap(
-      publicClient.data.get('v2/user-stats', {
-        params: new URLSearchParams({ user: UNKNOWN_WALLET }),
-      }),
-    );
-
-    const stats = dataEnvelopeSchema(
-      z.object({ trades: z.number().int() }).loose().nullable(),
-    ).parse(await response.json());
-
-    expect(stats).toBeNull();
   });
 });

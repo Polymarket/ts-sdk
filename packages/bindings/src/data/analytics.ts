@@ -56,58 +56,106 @@ export type ListPriceHistoryResponse = z.infer<
 >;
 
 export type Holder = {
-  wallet: EvmAddress | null | undefined;
+  wallet: EvmAddress;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
-  assetId: TokenId | PositionId | null | undefined;
+  assetId: TokenId | PositionId;
   /** @deprecated Use `assetId`. */
-  tokenId: TokenId | PositionId | null | undefined;
-  bio?: string | null;
-  pseudonym?: string | null;
-  amount?: DecimalString | null;
-  displayUsernamePublic?: boolean | null;
-  outcomeIndex?: number | null;
-  name?: string | null;
-  profileImage?: string | null;
-  profileImageOptimized?: string | null;
+  tokenId: TokenId | PositionId;
+  /** Holding in shares: net by default, per-side gross with PnL included. */
+  amount: DecimalString;
+  displayUsernamePublic: boolean;
+  outcomeIndex: number | null;
+  verified: boolean;
+  bio: string | null;
+  pseudonym: string | null;
+  name: string | null;
+  profileImage: string | null;
+  profileImageOptimized: string | null;
+  /** Historical entry price per share, when PnL is included. */
+  avgPrice?: DecimalString | null;
+  /** Fee-exclusive entry cost in USDC, when PnL is included. */
+  entryCostUsdc?: DecimalString | null;
+  /** Current outcome price, when PnL is included. */
+  currentPrice?: DecimalString | null;
+  /** Current holding value in USDC, when PnL is included. */
+  currentValue?: DecimalString | null;
+  /** Realized PnL in USDC, when PnL is included. */
+  realizedPnl?: DecimalString | null;
+  /** Unrealized PnL in USDC, when PnL is included. */
+  unrealizedPnl?: DecimalString | null;
+  /** Total PnL in USDC, when PnL is included. */
+  totalPnl?: DecimalString | null;
 };
+
+const NullableHolderTextSchema = z.preprocess(
+  (value) => (value === '' ? null : value),
+  z.string().nullable(),
+);
 
 export const HolderSchema = z
   .object({
-    proxyWallet: EvmAddressSchema.nullish(),
-    bio: z.string().nullish(),
-    asset: ClobAssetIdSchema.nullish(),
-    pseudonym: z.string().nullish(),
-    amount: DecimalishSchema.nullish(),
-    displayUsernamePublic: z.boolean().nullish(),
-    outcomeIndex: z.number().int().nullish(),
-    name: z.string().nullish(),
-    profileImage: z.string().nullish(),
-    profileImageOptimized: z.string().nullish(),
+    proxy_wallet: EvmAddressSchema,
+    bio: NullableHolderTextSchema,
+    token_id: ClobAssetIdSchema,
+    pseudonym: NullableHolderTextSchema,
+    amount: DecimalishSchema,
+    display_username_public: z.boolean(),
+    outcome_index: z.preprocess(
+      (value) => (value === 999 ? null : value),
+      z.number().int().nullable(),
+    ),
+    name: NullableHolderTextSchema,
+    profile_image: NullableHolderTextSchema,
+    profile_image_optimized: NullableHolderTextSchema,
+    verified: z.boolean(),
+    avg_price: DecimalishSchema.nullish(),
+    entry_cost_usdc: DecimalishSchema.nullish(),
+    current_price: DecimalishSchema.nullish(),
+    current_value: DecimalishSchema.nullish(),
+    realized_pnl: DecimalishSchema.nullish(),
+    unrealized_pnl: DecimalishSchema.nullish(),
+    total_pnl: DecimalishSchema.nullish(),
   })
-  .transform(({ asset, proxyWallet, ...rest }) => ({
-    ...rest,
-    wallet: proxyWallet,
-    assetId: asset,
-    tokenId: asset,
+  .transform((holder) => ({
+    wallet: holder.proxy_wallet,
+    assetId: holder.token_id,
+    tokenId: holder.token_id,
+    amount: holder.amount,
+    displayUsernamePublic: holder.display_username_public,
+    outcomeIndex: holder.outcome_index,
+    verified: holder.verified,
+    bio: holder.bio,
+    pseudonym: holder.pseudonym,
+    name: holder.name,
+    profileImage: holder.profile_image,
+    profileImageOptimized: holder.profile_image_optimized,
+    avgPrice: holder.avg_price,
+    entryCostUsdc: holder.entry_cost_usdc,
+    currentPrice: holder.current_price,
+    currentValue: holder.current_value,
+    realizedPnl: holder.realized_pnl,
+    unrealizedPnl: holder.unrealized_pnl,
+    totalPnl: holder.total_pnl,
   })) satisfies z.ZodType<Holder>;
 
 export type MetaHolder = {
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
-  assetId: TokenId | PositionId | null | undefined;
+  assetId: TokenId | PositionId;
   /** @deprecated Use `assetId`. */
-  token: TokenId | PositionId | null | undefined;
-  holders?: Holder[] | null;
+  token: TokenId | PositionId;
+  /** Holders for this outcome, ordered by amount descending. */
+  holders: Holder[];
 };
 
 export const MetaHolderSchema = z
   .object({
-    token: ClobAssetIdSchema.nullish(),
-    holders: z.array(HolderSchema).nullish(),
+    token_id: ClobAssetIdSchema,
+    holders: z.array(HolderSchema),
   })
-  .transform(({ token, ...rest }) => ({
-    ...rest,
-    assetId: token,
-    token,
+  .transform(({ holders, token_id }) => ({
+    assetId: token_id,
+    token: token_id,
+    holders,
   })) satisfies z.ZodType<MetaHolder>;
 
 export type OpenInterest = {
@@ -161,7 +209,7 @@ export const LiveVolumeSchema = z
     takerVolumeTotal: taker_volume_total,
   })) satisfies z.ZodType<LiveVolume>;
 
-export const ListMarketHoldersResponseSchema = z.array(MetaHolderSchema);
+export const ListMarketHoldersResponseSchema = dataPageSchema(MetaHolderSchema);
 export const FetchOpenInterestResponseSchema = dataEnvelopeSchema(
   z.array(OpenInterestSchema),
 );

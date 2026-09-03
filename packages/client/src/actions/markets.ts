@@ -49,7 +49,6 @@ import {
   EpochSecondsLikeSchema,
   snakeCase,
   toDataSearchParams,
-  toLegacyDataSearchParams,
   toSearchParams,
 } from './params';
 
@@ -126,15 +125,6 @@ export type FetchMarketTagsRequest = z.input<
   typeof FetchMarketTagsRequestSchema
 >;
 
-const ListMarketHoldersRequestSchema = z.object({
-  limit: z.number().int().optional(),
-  market: z.array(z.string()),
-  minBalance: z.number().int().optional(),
-});
-
-export type ListMarketHoldersRequest = z.input<
-  typeof ListMarketHoldersRequestSchema
->;
 type ListMarketsParams = z.output<typeof ListMarketsRequestSchema>;
 
 export type ListMarketsError =
@@ -409,6 +399,37 @@ export async function fetchMarketTags(
   );
 }
 
+const ListMarketHoldersRequestSchema = z
+  .object({
+    conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20),
+    cursor: PaginationCursorSchema.optional(),
+    includePnl: z.boolean().optional(),
+    minBalance: z.number().nonnegative().optional(),
+    pageSize: PageSizeSchema.max(1000).default(100),
+  })
+  .superRefine(({ conditionIds, includePnl, pageSize }, context) => {
+    if (!includePnl) return;
+
+    if (conditionIds.length !== 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'includePnl requires exactly one conditionId',
+        path: ['conditionIds'],
+      });
+    }
+
+    if (pageSize > 100) {
+      context.addIssue({
+        code: 'custom',
+        message: 'includePnl supports pageSize at most 100',
+        path: ['pageSize'],
+      });
+    }
+  });
+
+export type ListMarketHoldersRequest = z.input<
+  typeof ListMarketHoldersRequestSchema
+>;
 export type ListMarketHoldersError =
   | RateLimitError
   | RequestRejectedError
@@ -424,7 +445,16 @@ export const ListMarketHoldersError = makeErrorGuard(
 );
 
 /**
- * Lists the top holders for one or more markets.
+ * Lists top holders grouped by outcome for one or more markets.
+ *
+ * `conditionIds` accepts up to 20 distinct market condition IDs. `pageSize`
+ * defaults to 100 (max 1000) and applies separately to each outcome. Merge
+ * matching `assetId` groups across pages rather than relying on array position.
+ * `minBalance` uses display shares and defaults to `0`; `1` means one share,
+ * equivalent to 1,000,000 base units.
+ * Amounts are net holdings by default. `includePnl` switches to per-outcome
+ * gross holdings and adds position economics; it requires one condition ID and
+ * a page size of at most 100. Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -434,26 +464,37 @@ export const ListMarketHoldersError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const holders = await listMarketHolders(client, {
- *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
- *   limit: 5,
+ * const result = listMarketHolders(client, {
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+ *   pageSize: 5,
  * });
  *
- * // holders: MetaHolder[]
+ * for await (const page of result) {
+ *   // page.items: MetaHolder[]
+ * }
  * ```
  */
-export async function listMarketHolders(
+export function listMarketHolders(
   client: BaseClient,
   request: ListMarketHoldersRequest,
-): Promise<MetaHolder[]> {
-  const params = parseUserInput(request, ListMarketHoldersRequestSchema);
+): Paginated<MetaHolder[]> {
+  const { conditionIds, cursor, includePnl, minBalance, pageSize } =
+    parseUserInput(request, ListMarketHoldersRequestSchema);
 
-  return unwrap(
-    client.data
-      .get('/holders', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(validateWith(ListMarketHoldersResponseSchema)),
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/holders', {
+          params: toDataSearchParams({
+            condition: conditionIds,
+            limit: pageSize,
+            cursor,
+            includePnl,
+            minBalance,
+          }),
+        }),
+      ).andThen(validateWith(ListMarketHoldersResponseSchema)),
+    cursor,
   );
 }
 
