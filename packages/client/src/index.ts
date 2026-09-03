@@ -10,7 +10,11 @@ export {
 export type * from '@polymarket/bindings/data';
 export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
-export { WalletType } from '@polymarket/bindings/gamma';
+export {
+  ComboKnownStatus,
+  TeamOrdering,
+  WalletType,
+} from '@polymarket/bindings/gamma';
 export type * from '@polymarket/bindings/perps';
 export {
   PerpsDepositStatus,
