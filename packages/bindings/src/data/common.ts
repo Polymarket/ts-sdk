@@ -43,24 +43,3 @@ export enum TradeFilterType {
 }
 
 export const TradeFilterTypeSchema = z.enum(TradeFilterType);
-
-export const TimePeriodSchema = z.enum(['DAY', 'WEEK', 'MONTH', 'ALL']);
-
-export const LeaderboardCategorySchema = z.enum([
-  'OVERALL',
-  'POLITICS',
-  'SPORTS',
-  'CRYPTO',
-  'CULTURE',
-  'MENTIONS',
-  'WEATHER',
-  'ECONOMICS',
-  'TECH',
-  'FINANCE',
-]);
-
-export const LeaderboardOrderBySchema = z.enum(['PNL', 'VOL']);
-
-export type TimePeriod = z.infer<typeof TimePeriodSchema>;
-export type LeaderboardCategory = z.infer<typeof LeaderboardCategorySchema>;
-export type LeaderboardOrderBy = z.infer<typeof LeaderboardOrderBySchema>;
