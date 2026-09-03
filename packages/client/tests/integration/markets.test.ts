@@ -273,18 +273,18 @@ describe('Markets', () => {
     it('rejects invalid series windows before requesting them', ({
       publicClient,
     }) => {
-      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
 
       expect(() =>
         publicClient.listPriceHistory({
-          tokenId,
+          assetId,
           interval: PriceHistoryInterval.OneWeek,
           bucketSeconds: 60,
         }),
       ).toThrow(UserInputError);
       expect(() =>
         publicClient.listPriceHistory({
-          tokenId,
+          assetId,
           start: 1_700_000_000,
           end: 1_701_296_001,
         }),
@@ -292,10 +292,10 @@ describe('Markets', () => {
     });
 
     it('walks normalized price history pages', async ({ publicClient }) => {
-      const tokenId = expectPresent(market.outcomes.yes.tokenId);
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const paginator = publicClient.listPriceHistory({
-        tokenId,
+        assetId,
         interval: PriceHistoryInterval.OneDay,
         bucketSeconds: 60,
         pageSize: 2,
@@ -331,7 +331,8 @@ describe('Markets', () => {
 
       expect(requests).toHaveLength(2);
       for (const request of requests) {
-        expect(request.searchParams.get('token_id')).toBe(tokenId);
+        expect(request.searchParams.get('token_id')).toBe(assetId);
+        expect(request.searchParams.has('asset_id')).toBe(false);
         expect(request.searchParams.get('interval')).toBe('1d');
         expect(request.searchParams.get('bucket_seconds')).toBe('60');
       }

@@ -233,7 +233,7 @@ export type DataActions = {
     request: FetchLastTradePricesRequest,
   ): Promise<LastTradePriceForAsset[]>;
   /**
-   * Lists historical price observations for an outcome token.
+   * Lists historical price observations for an exchange asset.
    *
    * Select exactly one time form: a relative `interval`, an explicit `start`
    * with optional `end`, or the latest observation at or before an `asOf`
@@ -249,7 +249,7 @@ export type DataActions = {
    * @example
    * ```ts
    * const history = client.listPriceHistory({
-   *   tokenId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+   *   assetId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
    *   interval: PriceHistoryInterval.OneDay,
    *   bucketSeconds: 3600,
    * });

@@ -16,28 +16,28 @@ import type {
 describe('price history request types', () => {
   it('accepts exactly one time selection', () => {
     const intervalRequest = {
-      tokenId: '123',
+      assetId: '123',
       interval: PriceHistoryInterval.OneDay,
     } satisfies ListPriceHistoryRequest;
     const rangeRequest = {
-      tokenId: '123',
+      assetId: '123',
       start: new Date(),
       end: new Date(),
     } satisfies ListPriceHistoryRequest;
     const asOfRequest = {
-      tokenId: '123',
+      assetId: '123',
       asOf: 1_700_000_000,
     } satisfies ListPriceHistoryRequest;
 
     // @ts-expect-error Interval and explicit ranges are mutually exclusive.
     const conflictingRequest: ListPriceHistoryRequest = {
-      tokenId: '123',
+      assetId: '123',
       interval: PriceHistoryInterval.OneDay,
       start: 1_700_000_000,
     };
     // @ts-expect-error A time selection is required.
     const missingWindowRequest: ListPriceHistoryRequest = {
-      tokenId: '123',
+      assetId: '123',
     };
 
     void intervalRequest;
@@ -63,13 +63,13 @@ describe('market holders request types', () => {
 });
 
 function listMarketPriceHistory(actions: DataActions, market: Market) {
-  const tokenId = market.outcomes.yes.tokenId;
+  const assetId = market.outcomes.yes.tokenId;
 
-  if (tokenId === null) return;
+  if (assetId === null) return;
 
   expectTypeOf(
     actions.listPriceHistory({
-      tokenId,
+      assetId,
       interval: PriceHistoryInterval.OneDay,
     }),
   ).toEqualTypeOf<Paginated<PriceHistoryPoint[]>>();
