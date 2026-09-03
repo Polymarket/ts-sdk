@@ -1,10 +1,10 @@
 import {
+  ClobAssetIdSchema,
   ConditionIdSchema,
   IsoDateTimeStringSchema,
   type PaginationCursor,
   PaginationCursorSchema,
   PositionIdSchema,
-  TokenIdSchema,
 } from '@polymarket/bindings';
 import {
   type ComboMarket,
@@ -459,7 +459,7 @@ export async function listMarketHolders(
 
 export type ListPriceHistoryRequest =
   | {
-      tokenId: string;
+      assetId: string;
       interval: PriceHistoryInterval;
       bucketSeconds?: number;
       cursor?: PaginationCursor;
@@ -469,7 +469,7 @@ export type ListPriceHistoryRequest =
       asOf?: never;
     }
   | {
-      tokenId: string;
+      assetId: string;
       start: number | Date;
       end?: number | Date;
       bucketSeconds?: number;
@@ -479,7 +479,7 @@ export type ListPriceHistoryRequest =
       asOf?: never;
     }
   | {
-      tokenId: string;
+      assetId: string;
       asOf: number | Date;
       interval?: never;
       start?: never;
@@ -495,10 +495,10 @@ const PriceHistoryTimestampSchema = EpochSecondsLikeSchema.pipe(
   z.number().int().positive(),
 );
 
-const PriceHistoryTokenIdSchema = z.string().min(1).pipe(TokenIdSchema);
+const PriceHistoryAssetIdSchema = z.string().min(1).pipe(ClobAssetIdSchema);
 
 const PriceHistorySeriesRequestFields = {
-  tokenId: PriceHistoryTokenIdSchema,
+  assetId: PriceHistoryAssetIdSchema,
   bucketSeconds: z.number().int().min(60).max(86_400).optional(),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.max(10_000).default(10_000),
@@ -559,7 +559,7 @@ const PriceHistoryRangeRequestSchema = z
   });
 
 const PriceHistoryAsOfRequestSchema = z.object({
-  tokenId: PriceHistoryTokenIdSchema,
+  assetId: PriceHistoryAssetIdSchema,
   asOf: PriceHistoryTimestampSchema,
   interval: z.never().optional(),
   start: z.never().optional(),
@@ -590,7 +590,7 @@ export const ListPriceHistoryError = makeErrorGuard(
 );
 
 /**
- * Lists historical price observations for an outcome token.
+ * Lists historical price observations for an exchange asset.
  *
  * Select exactly one time form: a relative `interval`, an explicit `start`
  * with optional `end`, or the latest observation at or before an `asOf`
@@ -609,7 +609,7 @@ export const ListPriceHistoryError = makeErrorGuard(
  * @example
  * ```ts
  * const history = listPriceHistory(client, {
- *   tokenId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+ *   assetId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
  *   interval: PriceHistoryInterval.OneDay,
  *   bucketSeconds: 3600,
  * });
@@ -623,7 +623,7 @@ export function listPriceHistory(
   client: BaseClient,
   request: ListPriceHistoryRequest,
 ): Paginated<PriceHistoryPoint[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+  const { assetId, cursor, pageSize, ...params } = parseUserInput(
     request,
     ListPriceHistoryRequestSchema,
   );
@@ -634,6 +634,7 @@ export function listPriceHistory(
         client.data.get('/v2/prices-history', {
           params: toDataSearchParams({
             ...params,
+            tokenId: assetId,
             limit: pageSize,
             cursor,
           }),
