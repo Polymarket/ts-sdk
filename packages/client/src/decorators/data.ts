@@ -309,7 +309,8 @@ export type DataActions = {
    * `conditionIds` accepts up to 20 distinct market condition IDs. `pageSize`
    * defaults to 100 (max 1000) and applies separately to each outcome. Merge
    * matching `assetId` groups across pages rather than relying on array position.
-   * `minBalance` is measured in shares and defaults to `0`.
+   * `minBalance` uses display shares and defaults to `0`; `1` means one share,
+   * equivalent to 1,000,000 base units.
    * Amounts are net holdings by default. `includePnl` switches to per-outcome
    * gross holdings and adds position economics; it requires one condition ID and
    * a page size of at most 100. Transient rate limits are retried automatically.
