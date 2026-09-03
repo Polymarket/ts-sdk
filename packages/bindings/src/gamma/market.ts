@@ -83,6 +83,13 @@ export type ComboStatus = ComboKnownStatus | (string & {});
 
 const ComboStatusSchema = z.string().transform((value): ComboStatus => value);
 
+export enum ProtocolVersion {
+  V1 = 'v1',
+  V2 = 'v2',
+}
+
+const ProtocolVersionSchema = z.enum(ProtocolVersion);
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -197,6 +204,8 @@ export type MarketTag = {
 
 export type Market = {
   id: MarketId;
+  /** Protocol version used to trade this market. */
+  version?: ProtocolVersion | null;
   slug?: string | null;
   conditionId: ConditionId | null;
   question?: string | null;
@@ -221,6 +230,7 @@ export type Market = {
 
 export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
+  version: ProtocolVersionSchema.nullish(),
   question: z.string().nullish(),
   conditionId: z
     .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())
@@ -440,6 +450,7 @@ export type FetchMarketTagsResponse = z.infer<
 export function normalizeMarket(market: GammaMarket): Market {
   return {
     id: market.id,
+    version: market.version,
     slug: market.slug,
     conditionId: market.conditionId,
     question: market.question,

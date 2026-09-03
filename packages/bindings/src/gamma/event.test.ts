@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { EventSchema, TeamOrdering } from './event';
+import { ProtocolVersion } from './market';
 
 describe('EventSchema', () => {
+  it('exposes the protocol version shared by its markets', () => {
+    const event = EventSchema.parse({
+      id: '570555',
+      version: ProtocolVersion.V2,
+    });
+
+    expect(event.version).toBe(ProtocolVersion.V2);
+  });
+
   it('exposes parentEventId as a string event id', () => {
     const event = EventSchema.parse({
       id: '570555',
