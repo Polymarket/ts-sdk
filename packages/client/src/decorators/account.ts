@@ -564,13 +564,23 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
   };
 }
 
+type WithAccountWallet<TRequest> = Omit<TRequest, 'user'> & { user: string };
+
 function withAccountWallet<TRequest extends { user?: string }>(
   client: BaseSecureClient,
   request: TRequest = {} as TRequest,
-): Omit<TRequest, 'user'> & { user: string } {
+): WithAccountWallet<TRequest> {
+  if (
+    request === null ||
+    typeof request !== 'object' ||
+    Array.isArray(request)
+  ) {
+    return request as WithAccountWallet<TRequest>;
+  }
+
   return {
     ...request,
-    user: request.user ?? client.account.wallet,
+    user: request.user === undefined ? client.account.wallet : request.user,
   };
 }
 

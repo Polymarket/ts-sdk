@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EventSchema } from './event';
+import { EventSchema, TeamOrdering } from './event';
 
 describe('EventSchema', () => {
   it('exposes parentEventId as a string event id', () => {
@@ -16,5 +16,20 @@ describe('EventSchema', () => {
     expect(
       EventSchema.parse({ id: '570146', parentEventId: null }).parentEventId,
     ).toBeNull();
+  });
+
+  it('preserves typed team ordering', () => {
+    const event = EventSchema.parse({
+      id: '570146',
+      teams: [
+        { id: 114315, ordering: 'home' },
+        { id: 114317, ordering: 'away' },
+      ],
+    });
+
+    expect(event.sports.teams.map((team) => team.ordering)).toEqual([
+      TeamOrdering.Home,
+      TeamOrdering.Away,
+    ]);
   });
 });
