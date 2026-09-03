@@ -1,5 +1,6 @@
 import {
   createPublicClient,
+  PriceHistoryInterval,
   UnexpectedResponseError,
   UserInputError,
 } from '@polymarket/client';
@@ -9,6 +10,7 @@ import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+const FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS = 253_402_300_800;
 const publicClient = createPublicClient({ environment });
 
 const {
@@ -194,6 +196,84 @@ describe('Markets', () => {
           holders: expect.any(Array),
           token: expect.any(String),
         }),
+      );
+    });
+  });
+
+  describe('listPriceHistory', () => {
+    it('rejects invalid series windows before requesting them', ({
+      publicClient,
+    }) => {
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
+
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          interval: PriceHistoryInterval.OneWeek,
+          bucketSeconds: 60,
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          start: 1_700_000_000,
+          end: 1_701_296_001,
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          asOf: FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS,
+        }),
+      ).toThrow(UserInputError);
+    });
+
+    it('walks normalized price history pages', async ({ publicClient }) => {
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const paginator = publicClient.listPriceHistory({
+        assetId,
+        interval: PriceHistoryInterval.OneDay,
+        pageSize: 2,
+      });
+
+      const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+
+      const firstPoint = firstPage.items[0];
+      expect(firstPoint).toEqual(
+        expect.objectContaining({
+          price: expect.any(String),
+          resolutionSeconds: expect.any(Number),
+          timestamp: expect.any(Number),
+        }),
+      );
+      expect(firstPoint.timestamp).toBeGreaterThan(1_000_000_000_000);
+
+      const secondPage = await paginator
+        .from(firstPage.nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+      const lastFirstTimestamp = expectPresent(
+        firstPage.items.at(-1),
+      ).timestamp;
+      expect(secondPage.items[0].timestamp).toBeGreaterThan(lastFirstTimestamp);
+
+      const requests = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .filter((url) => new URL(url).pathname === '/v2/prices-history')
+        .map((url) => new URL(url));
+
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.searchParams.get('token_id')).toBe(assetId);
+        expect(request.searchParams.has('asset_id')).toBe(false);
+        expect(request.searchParams.get('interval')).toBe('1d');
+        expect(request.searchParams.has('bucket_seconds')).toBe(false);
+      }
+      expect(requests[1]?.searchParams.get('cursor')).toBe(
+        firstPage.nextCursor,
       );
     });
   });

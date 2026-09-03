@@ -6,12 +6,54 @@ import {
   ConditionIdSchema,
   DecimalishSchema,
   type DecimalString,
+  type EpochMilliseconds,
+  EpochSecondsToMillisecondsSchema,
   EvmAddressSchema,
   emptyStringToNull,
   type PositionId,
   type TokenId,
 } from '../shared';
-import { dataEnvelopeSchema } from './envelope';
+import { dataEnvelopeSchema, dataPageSchema } from './envelope';
+
+/** Relative window for a token's price history. */
+export enum PriceHistoryInterval {
+  Max = 'max',
+  OneMonth = '1m',
+  OneWeek = '1w',
+  OneDay = '1d',
+  SixHours = '6h',
+  OneHour = '1h',
+}
+
+export const PriceHistoryIntervalSchema = z.enum(PriceHistoryInterval);
+
+export type PriceHistoryPoint = {
+  /** Observation time as Unix epoch milliseconds. */
+  timestamp: EpochMilliseconds;
+  /** Observed price, normalized to a decimal string. */
+  price: DecimalString;
+  /** Width of the observation window in seconds; zero identifies an exact tick. */
+  resolutionSeconds: number;
+};
+
+export const PriceHistoryPointSchema = z
+  .object({
+    timestamp: EpochSecondsToMillisecondsSchema,
+    price: DecimalishSchema,
+    resolution_seconds: z.number().int().nonnegative(),
+  })
+  .transform(({ price, resolution_seconds, timestamp }) => ({
+    timestamp,
+    price,
+    resolutionSeconds: resolution_seconds,
+  })) satisfies z.ZodType<PriceHistoryPoint>;
+
+export const ListPriceHistoryResponseSchema = dataPageSchema(
+  PriceHistoryPointSchema,
+);
+export type ListPriceHistoryResponse = z.infer<
+  typeof ListPriceHistoryResponseSchema
+>;
 
 export type Holder = {
   wallet: EvmAddress | null | undefined;

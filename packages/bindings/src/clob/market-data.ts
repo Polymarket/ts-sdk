@@ -12,16 +12,6 @@ import {
   type TokenId,
 } from '../shared';
 
-export enum PriceHistoryInterval {
-  MAX = 'max',
-  ONE_WEEK = '1w',
-  ONE_DAY = '1d',
-  SIX_HOURS = '6h',
-  ONE_HOUR = '1h',
-}
-
-export const PriceHistoryIntervalSchema = z.enum(PriceHistoryInterval);
-
 export const MidpointSchema = z.object({
   mid: DecimalStringSchema,
 });
@@ -104,18 +94,6 @@ export const LastTradePricesSchema = z.array(
   LastTradePriceForTokenResponseSchema,
 );
 export type LastTradePrices = z.infer<typeof LastTradePricesSchema>;
-
-const PriceHistoryPointSchema = z.object({
-  t: z.number().int(),
-  // CLOB price history is intentionally approximate and emitted as JSON numbers.
-  p: z.number(),
-});
-export type PriceHistoryPoint = z.infer<typeof PriceHistoryPointSchema>;
-
-export const PriceHistorySchema = z.object({
-  history: z.array(PriceHistoryPointSchema),
-});
-export type PriceHistory = z.infer<typeof PriceHistorySchema>;
 
 export const ConditionByTokenSchema = z
   .object({
