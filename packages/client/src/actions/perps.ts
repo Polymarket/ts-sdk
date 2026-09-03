@@ -116,6 +116,8 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -125,11 +127,13 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
