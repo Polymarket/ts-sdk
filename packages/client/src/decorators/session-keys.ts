@@ -59,7 +59,7 @@ export type SessionKeyActions = {
    *
    * @example
    * ```ts
-   * const revocation = await client.revokeSessionKey({
+   * await client.revokeSessionKey({
    *   address: sessionAddress,
    * });
    * ```

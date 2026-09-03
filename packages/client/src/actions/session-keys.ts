@@ -368,7 +368,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const revocation = await revokeSessionKey(client, {
+ * await revokeSessionKey(client, {
  *   address: sessionAddress,
  * });
  * ```
