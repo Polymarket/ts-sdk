@@ -12,6 +12,7 @@ export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
 export {
   ComboKnownStatus,
+  ProtocolVersion,
   TeamOrdering,
   WalletType,
 } from '@polymarket/bindings/gamma';
