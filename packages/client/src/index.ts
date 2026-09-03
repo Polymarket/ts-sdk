@@ -1,5 +1,17 @@
 export type * from '@polymarket/bindings';
 export { OrderSide, OrderType } from '@polymarket/bindings';
+export type {
+  FundingAddresses,
+  FundingAddressSet,
+  FundingAsset,
+  FundingFeeBreakdown,
+  FundingQuote,
+  FundingToken,
+  FundingTransaction,
+  FundingTransactionStatus,
+  FundingWarning,
+} from '@polymarket/bindings/bridge';
+export { KnownFundingTransactionStatus } from '@polymarket/bindings/bridge';
 export type * from '@polymarket/bindings/clob';
 export {
   NotificationType,
