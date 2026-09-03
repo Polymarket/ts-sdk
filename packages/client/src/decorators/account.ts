@@ -8,6 +8,7 @@ import type {
   ComboPosition,
   PortfolioValue,
   Position,
+  TraderLeaderboardStanding,
   UserPnlSeries,
   UserStats,
   UserVolume,
@@ -19,12 +20,14 @@ import {
   downloadAccountingSnapshot,
   dropNotifications,
   type FetchPortfolioValueRequest,
+  type FetchTraderLeaderboardStandingRequest,
   type FetchUserPnlRequest,
   type FetchUserStatsRequest,
   type FetchUserVolumeRequest,
   fetchClosedOnlyMode,
   fetchNotifications,
   fetchPortfolioValue,
+  fetchTraderLeaderboardStanding,
   fetchUserPnl,
   fetchUserStats,
   fetchUserVolume,
@@ -63,6 +66,8 @@ export type SecureListComboPositionsRequest =
   DefaultAccountWallet<ListComboPositionsRequest>;
 export type SecureFetchPortfolioValueRequest =
   DefaultAccountWallet<FetchPortfolioValueRequest>;
+export type SecureFetchTraderLeaderboardStandingRequest =
+  DefaultAccountWallet<FetchTraderLeaderboardStandingRequest>;
 export type SecureFetchUserPnlRequest =
   DefaultAccountWallet<FetchUserPnlRequest>;
 export type SecureFetchUserStatsRequest =
@@ -167,6 +172,26 @@ export type PublicAccountActions = Prettify<{
   fetchPortfolioValue(
     request: FetchPortfolioValueRequest,
   ): Promise<PortfolioValue>;
+  /**
+   * Fetches one trader's standing on both the PnL and volume boards.
+   *
+   * `window` defaults to one day and `category` to overall. A `null` rank means
+   * the trader is unranked on that board. Returns `null` for an unknown wallet.
+   *
+   * @throws {@link FetchTraderLeaderboardStandingError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const standing = await client.fetchTraderLeaderboardStanding({
+   *   user: '0xa71093cafc0c099b4ccab24c3cb8018d817923c4',
+   *   window: LeaderboardWindow.All,
+   * });
+   * ```
+   */
+  fetchTraderLeaderboardStanding(
+    request: FetchTraderLeaderboardStandingRequest,
+  ): Promise<TraderLeaderboardStanding | null>;
   /**
    * Fetches profile and lifetime trading statistics for a wallet.
    *
@@ -359,6 +384,26 @@ export type SecureAccountActions = Prettify<{
     request?: SecureFetchPortfolioValueRequest,
   ): Promise<PortfolioValue>;
   /**
+   * Fetches one trader's standing on both the PnL and volume boards.
+   *
+   * Defaults to the authenticated account's wallet when `user` is omitted.
+   * `window` defaults to one day and `category` to overall. A `null` rank means
+   * the trader is unranked on that board. Returns `null` for an unknown wallet.
+   *
+   * @throws {@link FetchTraderLeaderboardStandingError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const standing = await client.fetchTraderLeaderboardStanding({
+   *   window: LeaderboardWindow.All,
+   * });
+   * ```
+   */
+  fetchTraderLeaderboardStanding(
+    request?: SecureFetchTraderLeaderboardStandingRequest,
+  ): Promise<TraderLeaderboardStanding | null>;
+  /**
    * Fetches profile and lifetime trading statistics for a wallet.
    *
    * `tradedMarketCount` is the exact number of distinct markets traded.
@@ -506,6 +551,10 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
     listPositions: listPositions.bind(null, client),
     listComboPositions: listComboPositions.bind(null, client),
     fetchPortfolioValue: fetchPortfolioValue.bind(null, client),
+    fetchTraderLeaderboardStanding: fetchTraderLeaderboardStanding.bind(
+      null,
+      client,
+    ),
     fetchUserStats: fetchUserStats.bind(null, client),
     fetchUserPnl: fetchUserPnl.bind(null, client),
     fetchUserVolume: fetchUserVolume.bind(null, client),
@@ -544,6 +593,13 @@ export function accountActions(
       listComboPositions(client, withAccountWallet(client, request)),
     fetchPortfolioValue: (request?: SecureFetchPortfolioValueRequest) =>
       fetchPortfolioValue(client, withAccountWallet(client, request)),
+    fetchTraderLeaderboardStanding: (
+      request?: SecureFetchTraderLeaderboardStandingRequest,
+    ) =>
+      fetchTraderLeaderboardStanding(
+        client,
+        withAccountWallet(client, request),
+      ),
     fetchUserStats: (request?: SecureFetchUserStatsRequest) =>
       fetchUserStats(client, withAccountWallet(client, request)),
     fetchUserPnl: (request?: SecureFetchUserPnlRequest) =>
@@ -573,6 +629,7 @@ export {
   FetchClosedOnlyModeError,
   FetchNotificationsError,
   FetchPortfolioValueError,
+  FetchTraderLeaderboardStandingError,
   FetchUserPnlError,
   FetchUserStatsError,
   FetchUserVolumeError,
