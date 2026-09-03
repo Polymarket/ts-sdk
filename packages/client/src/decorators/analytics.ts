@@ -4,14 +4,10 @@ import type {
   BuilderStanding,
   BuilderVolumePoint,
   TraderLeaderboardEntry,
-  TraderLeaderboardStanding,
 } from '@polymarket/bindings/data';
-import type { Prettify } from '@polymarket/types';
 import {
   type FetchBuilderVolumeRequest,
-  type FetchTraderLeaderboardStandingRequest,
   fetchBuilderVolume,
-  fetchTraderLeaderboardStanding,
   type ListBiggestWinnersRequest,
   type ListBuilderLeaderboardRequest,
   type ListBuilderTradesRequest,
@@ -181,27 +177,6 @@ export type AnalyticsActions = {
   ): Paginated<TraderLeaderboardEntry[]>;
 
   /**
-   * Fetches one trader's standing on both the PnL and volume boards.
-   *
-   * `window` defaults to one day and `category` to overall. A `null` rank means
-   * the trader is unranked on that board. Returns `null` for an unknown wallet.
-   *
-   * @throws {@link FetchTraderLeaderboardStandingError}
-   * Thrown on failure.
-   *
-   * @example
-   * ```ts
-   * const standing = await client.fetchTraderLeaderboardStanding({
-   *   user: '0xa71093cafc0c099b4ccab24c3cb8018d817923c4',
-   *   window: LeaderboardWindow.All,
-   * });
-   * ```
-   */
-  fetchTraderLeaderboardStanding(
-    request: FetchTraderLeaderboardStandingRequest,
-  ): Promise<TraderLeaderboardStanding | null>;
-
-  /**
    * Lists the largest individual winning positions.
    *
    * The board has one row per position, ranked by its resolution profit.
@@ -231,86 +206,25 @@ export type AnalyticsActions = {
   ): Paginated<BiggestWinner[]>;
 };
 
-export type SecureFetchTraderLeaderboardStandingRequest = Prettify<
-  Omit<FetchTraderLeaderboardStandingRequest, 'user'> & {
-    /**
-     * Wallet address to use.
-     *
-     * @defaultValue `client.account.wallet`
-     */
-    user?: string;
-  }
->;
-
-export type SecureAnalyticsActions = Prettify<
-  Omit<AnalyticsActions, 'fetchTraderLeaderboardStanding'> & {
-    /**
-     * Fetches one trader's standing on both the PnL and volume boards.
-     *
-     * Defaults to the authenticated account's wallet when `user` is omitted.
-     * `window` defaults to one day and `category` to overall. A `null` rank
-     * means the trader is unranked on that board. Returns `null` for an unknown
-     * wallet.
-     *
-     * @throws {@link FetchTraderLeaderboardStandingError}
-     * Thrown on failure.
-     *
-     * @example
-     * ```ts
-     * const standing = await client.fetchTraderLeaderboardStanding({
-     *   window: LeaderboardWindow.All,
-     * });
-     * ```
-     */
-    fetchTraderLeaderboardStanding(
-      request?: SecureFetchTraderLeaderboardStandingRequest,
-    ): Promise<TraderLeaderboardStanding | null>;
-  }
->;
-
 export function analyticsActions(client: BasePublicClient): AnalyticsActions;
-export function analyticsActions(
-  client: BaseSecureClient,
-): SecureAnalyticsActions;
-export function analyticsActions(
-  client: BaseClient,
-): AnalyticsActions | SecureAnalyticsActions {
-  const actions: AnalyticsActions = {
+export function analyticsActions(client: BaseSecureClient): AnalyticsActions;
+export function analyticsActions(client: BaseClient): AnalyticsActions {
+  return {
     listBuilderTrades: listBuilderTrades.bind(null, client),
     listBuilderLeaderboard: listBuilderLeaderboard.bind(null, client),
     fetchBuilderVolume: fetchBuilderVolume.bind(null, client),
     listTraderLeaderboard: listTraderLeaderboard.bind(null, client),
-    fetchTraderLeaderboardStanding: fetchTraderLeaderboardStanding.bind(
-      null,
-      client,
-    ),
     listBiggestWinners: listBiggestWinners.bind(null, client),
-  };
-
-  if (client.isPublicClient()) {
-    return actions;
-  }
-
-  return {
-    ...actions,
-    fetchTraderLeaderboardStanding: (
-      request: SecureFetchTraderLeaderboardStandingRequest = {},
-    ) =>
-      fetchTraderLeaderboardStanding(client, {
-        ...request,
-        user: request.user ?? client.account.wallet,
-      }),
   };
 }
 
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on AnalyticsActions / SecureAnalyticsActions.
+// Keep this list in sync with the methods on AnalyticsActions.
 export {
   BiggestWinnerKind,
   BuilderVolumeInterval,
   FetchBuilderVolumeError,
-  FetchTraderLeaderboardStandingError,
   LeaderboardWindow,
   ListBiggestWinnersError,
   ListBuilderLeaderboardError,
