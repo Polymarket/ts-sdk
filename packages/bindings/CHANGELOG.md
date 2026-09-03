@@ -1,5 +1,19 @@
 # @polymarket/bindings
 
+## 0.9.0
+
+### Minor Changes
+
+- 8a26d28: Accept protocol-neutral `assetId` inputs when estimating, preparing, creating, and placing market and limit orders, infer Polymarket V2 routing from the structured position-ID namespace, and retain `tokenId` as a deprecated input alias.
+- 4486dee: Expose each market's Combo eligibility status as `market.state.comboStatus`,
+  while passing newly introduced status values through as strings.
+- 74ad47b: Expose protocol versions on markets and events.
+- 01438a1: Remove legacy AMM-era fields that the API no longer returns: `marketMakerAddress`, `ammType`, `fpmmLive`, `volumeAmm`, `volume24hrAmm`, `volume1wkAmm`, `volume1moAmm`, `volume1yrAmm`, and `liquidityAmm` from the raw market schema, `liquidityAmm` from the raw event schema, `volumeAmm` from `MarketMetrics`, and `liquidityAmm` from `EventMetrics`. Also remove the internal `pagerDutyNotificationEnabled` market field and `requiresTranslation` from market, event, series, and tag models, and drop the `marketMakerAddresses` filter from `listMarkets`. Responses that still carry any of these fields keep parsing; the values are ignored.
+
+### Patch Changes
+
+- 663d79b: Preserve each team's `ordering` value on event and team-list responses.
+
 ## 0.8.0
 
 ### Minor Changes
