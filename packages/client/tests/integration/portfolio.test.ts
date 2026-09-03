@@ -12,6 +12,7 @@ import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
 const TEST_CONDITION_ID =
   '0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422';
 
@@ -263,6 +264,14 @@ describe('Portfolio', () => {
           tradeCount: expect.any(Number),
         }),
       );
+    });
+
+    it('keeps an unknown user as null', async ({ publicClient }) => {
+      const result = await publicClient.fetchUserStats({
+        user: UNKNOWN_WALLET,
+      });
+
+      expect(result).toBeNull();
     });
 
     it('defaults secure clients to the authenticated wallet', async ({
