@@ -4,12 +4,15 @@ import {
   ConditionIdSchema,
   type DecimalString,
   DecimalStringSchema,
+  E6BigIntStringToDecimalStringSchema,
+  EpochLikeToIsoDateTimeStringSchema,
+  emptyStringToNull,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
-  type MixedDateTimeString,
-  MixedDateTimeStringSchema,
   type QuestionId,
   QuestionIdSchema,
+  type TxHash,
+  TxHashSchema,
 } from '../shared';
 import { dataEnvelopeSchema } from './envelope';
 
@@ -72,21 +75,28 @@ export type Resolution = {
   reproposedPrice?: DecimalString;
   /** Final oracle settlement price, omitted until set. */
   price?: DecimalString;
-  /** Transaction for the latest lifecycle event, when available. */
-  transactionHash?: string;
-  /** Log index for `transactionHash`, when available. */
-  logIndex?: string;
-  /** Latest lifecycle change, represented as epoch seconds or RFC3339 UTC. */
-  lastUpdatedAt: MixedDateTimeString;
+  /** Transaction for the latest lifecycle event, or `null` when unavailable. */
+  transactionHash: TxHash | null;
+  /** Log index for `transactionHash`, or `null` when unavailable. */
+  logIndex: number | null;
+  /** Latest lifecycle change as an ISO 8601 datetime. */
+  lastUpdatedAt: IsoDateTimeString;
   marketType?: ResolutionMarketType;
-  /** Per-outcome payout in micro collateral units per share. */
-  payouts?: number[];
+  /** Per-outcome payout in collateral units per share. */
+  payouts?: [outcome0: DecimalString, outcome1: DecimalString];
   resolutionSource?: ResolutionSource;
   reporter?: ResolutionReporter;
   wasArbitrated?: boolean;
   resolvedBlock?: number;
   resolvedAt?: IsoDateTimeString;
 };
+
+const PayoutSchema = z
+  .number()
+  .int()
+  .min(0)
+  .transform(String)
+  .pipe(E6BigIntStringToDecimalStringSchema);
 
 export const ResolutionSchema = z
   .object({
@@ -99,11 +109,14 @@ export const ResolutionSchema = z
     proposed_price: DecimalStringSchema.optional(),
     reproposed_price: DecimalStringSchema.optional(),
     price: DecimalStringSchema.optional(),
-    transaction_hash: z.string(),
-    log_index: z.string(),
-    last_update_timestamp: MixedDateTimeStringSchema,
+    transaction_hash: z.preprocess(emptyStringToNull, TxHashSchema.nullable()),
+    log_index: z.preprocess(
+      emptyStringToNull,
+      z.string().regex(/^\d+$/).transform(Number).nullable(),
+    ),
+    last_update_timestamp: EpochLikeToIsoDateTimeStringSchema,
     market_type: ResolutionMarketTypeSchema.optional(),
-    payouts: z.array(z.number().int()).optional(),
+    payouts: z.tuple([PayoutSchema, PayoutSchema]).optional(),
     resolution_source: ResolutionSourceSchema.optional(),
     reporter: ResolutionReporterSchema.optional(),
     was_arbitrated: z.boolean().optional(),
@@ -116,6 +129,8 @@ export const ResolutionSchema = z
       extendedReview: wire.extended_review,
       wasDisputed: wire.was_disputed,
       questionRulesUpdated: wire.new_version_q,
+      transactionHash: wire.transaction_hash,
+      logIndex: wire.log_index,
       lastUpdatedAt: wire.last_update_timestamp,
     };
 
@@ -132,10 +147,6 @@ export const ResolutionSchema = z
     if (wire.price !== undefined && wire.price !== '69') {
       resolution.price = wire.price;
     }
-    if (wire.transaction_hash !== '') {
-      resolution.transactionHash = wire.transaction_hash;
-    }
-    if (wire.log_index !== '') resolution.logIndex = wire.log_index;
     if (wire.market_type !== undefined)
       resolution.marketType = wire.market_type;
     if (wire.payouts !== undefined) resolution.payouts = wire.payouts;

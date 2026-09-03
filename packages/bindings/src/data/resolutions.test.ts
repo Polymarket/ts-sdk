@@ -41,13 +41,13 @@ describe('FetchResolutionsResponseSchema', () => {
         reproposedPrice: '600000',
         price: '1000000',
         transactionHash: `0x${'c'.repeat(64)}`,
-        logIndex: '17',
-        lastUpdatedAt: '1722470400',
+        logIndex: 17,
+        lastUpdatedAt: '2024-08-01T00:00:00.000Z',
       },
     ]);
   });
 
-  it('normalizes condition lifecycle fields and removes unset sentinels', () => {
+  it('normalizes condition lifecycle fields and absent transaction metadata', () => {
     const resolutions = FetchResolutionsResponseSchema.parse({
       data: [
         {
@@ -63,7 +63,7 @@ describe('FetchResolutionsResponseSchema', () => {
           log_index: '',
           last_update_timestamp: '2026-08-02T03:04:05Z',
           market_type: 'BINARY',
-          payouts: [1_000_000, 0],
+          payouts: [500_000, 500_000],
           resolution_source: 'reported',
           reporter: 'UMA_OO',
           was_arbitrated: false,
@@ -80,9 +80,11 @@ describe('FetchResolutionsResponseSchema', () => {
         extendedReview: false,
         wasDisputed: false,
         questionRulesUpdated: false,
+        transactionHash: null,
+        logIndex: null,
         lastUpdatedAt: '2026-08-02T03:04:05Z',
         marketType: ResolutionMarketType.Binary,
-        payouts: [1_000_000, 0],
+        payouts: ['0.5', '0.5'],
         resolutionSource: ResolutionSource.Reported,
         reporter: ResolutionReporter.UmaOptimisticOracle,
         wasArbitrated: false,
@@ -90,5 +92,24 @@ describe('FetchResolutionsResponseSchema', () => {
         resolvedAt: '2026-08-02T03:04:05Z',
       },
     ]);
+  });
+
+  it('rejects malformed transaction hashes', () => {
+    expect(() =>
+      FetchResolutionsResponseSchema.parse({
+        data: [
+          {
+            question_id: QUESTION_ID,
+            status: 'resolved',
+            extended_review: false,
+            was_disputed: false,
+            new_version_q: false,
+            transaction_hash: 'not-a-transaction-hash',
+            log_index: '17',
+            last_update_timestamp: '1722470400',
+          },
+        ],
+      }),
+    ).toThrow();
   });
 });
