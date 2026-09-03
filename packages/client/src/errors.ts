@@ -242,6 +242,23 @@ export class TimeoutError extends PolymarketError {
 }
 
 /**
+ * Error thrown when an operation is interrupted through an abort signal.
+ */
+export class OperationAbortedError extends PolymarketError {
+  override name = 'OperationAbortedError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+
+  static fromReason(reason: unknown): OperationAbortedError {
+    return new OperationAbortedError('Operation was aborted.', {
+      cause: reason,
+    });
+  }
+}
+
+/**
  * Error thrown when a submitted transaction reaches a terminal failure state.
  */
 export class TransactionFailedError extends PolymarketError {
