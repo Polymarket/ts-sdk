@@ -1,6 +1,9 @@
 name: Integration Tests
 
 on:
+  push:
+    branches:
+      - integration/data-api-v2
   workflow_call:
     inputs:
       test_file_pattern:
