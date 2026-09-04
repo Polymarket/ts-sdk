@@ -18,6 +18,8 @@ import {
   PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
   PerpsCredentialsResponseSchema,
+  type PerpsDecimalInput,
+  PerpsDecimalInputSchema,
   PerpsDeleteProxyResponseSchema,
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
@@ -25,6 +27,8 @@ import {
   type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
+  type PerpsInternalTransferId,
+  PerpsInternalTransferResponseSchema,
   type PerpsKlineInterval,
   PerpsKlineIntervalSchema,
   type PerpsPublicTrade,
@@ -67,6 +71,7 @@ import {
   type TransactionHandle,
   type TypedDataPayload,
 } from '../types';
+import { SignerType } from '../wallet';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
@@ -96,6 +101,7 @@ export type {
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
@@ -1047,6 +1053,25 @@ const WithdrawFromPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
 }) satisfies z.ZodType<WithdrawFromPerpsRequest>;
 
+const PositivePerpsDecimalInputSchema = PerpsDecimalInputSchema.refine(
+  (value) => /^\d+(?:\.\d+)?$/.test(value) && /[1-9]/.test(value),
+  'Expected a positive fixed-point decimal amount.',
+);
+
+const PerpsInternalTransferLabelSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => new TextEncoder().encode(value).byteLength <= 64,
+    'Expected a label no longer than 64 UTF-8 bytes.',
+  );
+
+const TransferPerpsCollateralRequestSchema = z.object({
+  recipient: z.string().transform((value) => expectEvmAddress(value)),
+  amount: PositivePerpsDecimalInputSchema,
+  label: PerpsInternalTransferLabelSchema.optional(),
+}) satisfies z.ZodType<TransferPerpsCollateralRequest>;
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -1063,6 +1088,18 @@ export type DepositToPerpsRequest = {
 export type WithdrawFromPerpsRequest = {
   /** Collateral amount in base units. */
   amount: bigint;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralRequest = {
+  /** Main address of the receiving Perps account. */
+  recipient: string;
+  /** Positive collateral amount in decimalized token units. */
+  amount: PerpsDecimalInput;
+  /** Optional reconciliation label, up to 64 UTF-8 bytes. */
+  label?: string;
 };
 
 /**
@@ -1156,6 +1193,28 @@ export type WithdrawFromPerpsError =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const WithdrawFromPerpsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralError =
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const TransferPerpsCollateralError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -1366,6 +1425,72 @@ export async function withdrawFromPerps(
   }
 
   return response.withdrawalId;
+}
+
+/**
+ * Transfers Perps collateral to another account.
+ *
+ * @remarks
+ * The exact decimal amount is signed by the owner account and sent unchanged.
+ * The request is attempted once. A timeout or server error after submission
+ * has an unknown outcome; reconcile through internal-transfer history using a
+ * caller-supplied label before submitting another transfer.
+ *
+ * @throws {@link TransferPerpsCollateralError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function transferPerpsCollateral(
+  client: BaseSecureClient,
+  request: TransferPerpsCollateralRequest,
+): Promise<PerpsInternalTransferId> {
+  assertPerpsOwnerSigner(client);
+  const params = parseUserInput(request, TransferPerpsCollateralRequestSchema);
+
+  if (isSameEvmAddress(params.recipient, client.account.signer)) {
+    throw new UserInputError(
+      'Perps collateral cannot be transferred to the authenticated account.',
+    );
+  }
+
+  const account = client.account.signer;
+  const token = client.environment.contracts.collateralToken;
+  const op = {
+    type: 'internalTransfer' as const,
+    args: {
+      account,
+      token,
+      amount: params.amount,
+      to: params.recipient,
+    },
+  };
+  const signedOp = [
+    'internalTransfer',
+    [account, token, params.amount, params.recipient],
+  ] as const satisfies PerpsSignedOp;
+  const salt = randomUint32();
+  const timestamp = Date.now();
+  const signature = await signPerpsOwnerOp(client, {
+    salt,
+    signedOp,
+    timestamp,
+  });
+  const body: Record<string, unknown> = {
+    op,
+    salt,
+    sig: signature,
+    ts: timestamp,
+  };
+  if (params.label !== undefined) body.label = params.label;
+
+  const response = await unwrap(
+    client.perps
+      .post('/v1/account/internal-transfer', { json: body })
+      .andThen(validateWith(PerpsInternalTransferResponseSchema)),
+  );
+
+  return response.transferId;
 }
 
 async function createPerpsCredentials(
@@ -1636,6 +1761,14 @@ function assertPerpsCredentialsKeyMatchesProxy(
   if (!isSameEvmAddress(privateKeyAddress, credentials.proxy)) {
     throw new UserInputError(
       'Perps credentials private key does not match the proxy address.',
+    );
+  }
+}
+
+function assertPerpsOwnerSigner(client: BaseSecureClient): void {
+  if (client.account.signerType !== SignerType.OWNER) {
+    throw new UserInputError(
+      'Perps collateral transfers must be signed by the account owner.',
     );
   }
 }

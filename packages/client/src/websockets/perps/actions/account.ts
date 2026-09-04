@@ -17,6 +17,7 @@ import {
   ListPerpsEquityHistoryResponseSchema,
   ListPerpsFillsResponseSchema,
   ListPerpsFundingPaymentsResponseSchema,
+  ListPerpsInternalTransfersResponseSchema,
   ListPerpsNotificationsResponseSchema,
   ListPerpsPnlHistoryResponseSchema,
   ListPerpsWithdrawalsResponseSchema,
@@ -34,6 +35,7 @@ import {
   type PerpsEquityPoint,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
+  type PerpsInternalTransfer,
   type PerpsNotificationEntry,
   type PerpsOrder,
   PerpsOrderIdSchema,
@@ -88,6 +90,7 @@ const PerpsIntervalHistoryRequestBaseSchema = z.object({
 const PerpsDescendingAccountHistoryKindSchema = z.enum([
   'perpsFundingPayments',
   'perpsDeposits',
+  'perpsInternalTransfers',
   'perpsWithdrawals',
 ]);
 
@@ -624,6 +627,100 @@ export function listPerpsWithdrawals(
         return toPerpsDescendingAccountPage({
           getKey: (withdrawal) => String(withdrawal.withdrawalId),
           getTimestamp: latestPerpsWithdrawalTimestamp,
+          items,
+          responseData: response.data,
+          responseMore: response.more,
+          state,
+        });
+      });
+  }, cursor);
+}
+
+const ListPerpsInternalTransfersInitialRequestSchema =
+  PerpsHistoryRequestBaseSchema.extend({
+    cursor: PaginationCursorSchema.optional(),
+  }) satisfies z.ZodType<
+    Exclude<ListPerpsInternalTransfersRequest, { cursor: PaginationCursor }>
+  >;
+
+const ListPerpsInternalTransfersCursorRequestSchema = z.object({
+  cursor: PaginationCursorSchema,
+}) satisfies z.ZodType<
+  Extract<ListPerpsInternalTransfersRequest, { cursor: PaginationCursor }>
+>;
+
+const ListPerpsInternalTransfersRequestSchema = z.union([
+  ListPerpsInternalTransfersInitialRequestSchema.transform(
+    ({ cursor, ...request }) => ({
+      cursor,
+      params: toPerpsHistoryParams(request, NINETY_DAYS_MS),
+    }),
+  ),
+  ListPerpsInternalTransfersCursorRequestSchema.transform(({ cursor }) => ({
+    cursor,
+    params: undefined,
+  })),
+]);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type ListPerpsInternalTransfersRequest =
+  | {
+      /** Inclusive start timestamp in milliseconds. */
+      start?: number;
+      /** Inclusive end timestamp in milliseconds. */
+      end?: number;
+      /** Opaque cursor returned by a previous page. */
+      cursor?: PaginationCursor;
+    }
+  | {
+      /** Opaque cursor returned by a previous page. */
+      cursor: PaginationCursor;
+    };
+
+/**
+ * Lists settled internal transfers with SDK-owned pagination.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export function listPerpsInternalTransfers(
+  api: ServiceClient,
+  request: ListPerpsInternalTransfersRequest = {},
+): Paginated<PerpsInternalTransfer[]> {
+  const { cursor, params } = parseUserInput(
+    request,
+    ListPerpsInternalTransfersRequestSchema,
+  );
+  return paginate((pageCursor) => {
+    let state: PerpsDescendingAccountCursorState;
+    if (pageCursor === undefined) {
+      invariant(
+        params !== undefined,
+        'Expected initial Perps internal-transfer params.',
+      );
+      state = { kind: 'perpsInternalTransfers', seenKeys: [], ...params };
+    } else {
+      state = decodePerpsAccountCursor(
+        pageCursor,
+        PerpsDescendingAccountCursorStateSchema,
+      );
+    }
+    const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
+    const seenKeys = new Set(state.seenKeys);
+
+    return api
+      .get('/v1/account/internal-transfers', {
+        params: toPerpsSearchParams(searchParams),
+      })
+      .andThen(validateWith(ListPerpsInternalTransfersResponseSchema))
+      .map((response): Page<PerpsInternalTransfer[]> => {
+        const items = response.data.filter(
+          (transfer) => !seenKeys.has(String(transfer.transferId)),
+        );
+        return toPerpsDescendingAccountPage({
+          getKey: (transfer) => String(transfer.transferId),
+          getTimestamp: (transfer) => transfer.createdTimestamp,
           items,
           responseData: response.data,
           responseMore: response.more,

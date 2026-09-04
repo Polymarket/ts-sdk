@@ -23,6 +23,7 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
   PerpsMarginType,
   PerpsNotificationOrderType,
