@@ -1,6 +1,8 @@
 import {
+  ClobAssetIdSchema,
   ConditionIdSchema,
   IsoDateTimeStringSchema,
+  type PaginationCursor,
   PaginationCursorSchema,
   PositionIdSchema,
 } from '@polymarket/bindings';
@@ -9,12 +11,14 @@ import {
   ListComboMarketsResponseSchema,
 } from '@polymarket/bindings/combos';
 import {
+  FetchOpenInterestResponseSchema,
   ListMarketHoldersResponseSchema,
-  ListMarketPositionsResponseSchema,
-  ListOpenInterestResponseSchema,
+  ListPriceHistoryResponseSchema,
   type MetaHolder,
-  type MetaMarketPosition,
   type OpenInterest,
+  PriceHistoryInterval,
+  PriceHistoryIntervalSchema,
+  type PriceHistoryPoint,
 } from '@polymarket/bindings/data';
 import {
   FetchMarketTagsResponseSchema,
@@ -35,16 +39,20 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import {
-  decodeOffsetCursor,
-  encodeOffsetCursor,
-  PageSizeSchema,
-  type Paginated,
-  paginate,
-} from '../pagination';
+import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  CanonicalMarketConditionIdSchema,
+  distinctIdList,
+  EpochSecondsLikeSchema,
+  snakeCase,
+  toDataSearchParams,
+  toSearchParams,
+} from './params';
+
+export { PriceHistoryInterval };
 
 // The public markets endpoint forces active=true and archived=false server-side.
 const ListMarketsRequestSchema = z.object({
@@ -115,46 +123,6 @@ const FetchMarketTagsRequestSchema = z.object({
 
 export type FetchMarketTagsRequest = z.input<
   typeof FetchMarketTagsRequestSchema
->;
-
-const ListMarketHoldersRequestSchema = z.object({
-  limit: z.number().int().optional(),
-  market: z.array(z.string()),
-  minBalance: z.number().int().optional(),
-});
-
-const ListOpenInterestRequestSchema = z.object({
-  market: z.array(z.string()).optional(),
-});
-
-const MarketPositionStatusSchema = z.enum(['OPEN', 'CLOSED', 'ALL']);
-const MarketPositionSortBySchema = z.enum([
-  'TOKENS',
-  'CASH_PNL',
-  'REALIZED_PNL',
-  'TOTAL_PNL',
-]);
-const MarketPositionSortDirectionSchema = z.enum(['ASC', 'DESC']);
-
-const ListMarketPositionsRequestSchema = z.object({
-  cursor: PaginationCursorSchema.optional(),
-  market: z.string(),
-  // Matches the upstream per-request limit cap.
-  pageSize: PageSizeSchema.max(500).default(20),
-  user: z.string().optional(),
-  status: MarketPositionStatusSchema.optional(),
-  sortBy: MarketPositionSortBySchema.optional(),
-  sortDirection: MarketPositionSortDirectionSchema.optional(),
-});
-
-export type ListMarketHoldersRequest = z.input<
-  typeof ListMarketHoldersRequestSchema
->;
-export type ListOpenInterestRequest = z.input<
-  typeof ListOpenInterestRequestSchema
->;
-export type ListMarketPositionsRequest = z.input<
-  typeof ListMarketPositionsRequestSchema
 >;
 
 type ListMarketsParams = z.output<typeof ListMarketsRequestSchema>;
@@ -431,6 +399,37 @@ export async function fetchMarketTags(
   );
 }
 
+const ListMarketHoldersRequestSchema = z
+  .object({
+    conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20),
+    cursor: PaginationCursorSchema.optional(),
+    includePnl: z.boolean().optional(),
+    minBalance: z.number().nonnegative().optional(),
+    pageSize: PageSizeSchema.max(1000).default(100),
+  })
+  .superRefine(({ conditionIds, includePnl, pageSize }, context) => {
+    if (!includePnl) return;
+
+    if (conditionIds.length !== 1) {
+      context.addIssue({
+        code: 'custom',
+        message: 'includePnl requires exactly one conditionId',
+        path: ['conditionIds'],
+      });
+    }
+
+    if (pageSize > 100) {
+      context.addIssue({
+        code: 'custom',
+        message: 'includePnl supports pageSize at most 100',
+        path: ['pageSize'],
+      });
+    }
+  });
+
+export type ListMarketHoldersRequest = z.input<
+  typeof ListMarketHoldersRequestSchema
+>;
 export type ListMarketHoldersError =
   | RateLimitError
   | RequestRejectedError
@@ -446,7 +445,16 @@ export const ListMarketHoldersError = makeErrorGuard(
 );
 
 /**
- * Lists the top holders for one or more markets.
+ * Lists top holders grouped by outcome for one or more markets.
+ *
+ * `conditionIds` accepts up to 20 distinct market condition IDs. `pageSize`
+ * defaults to 100 (max 1000) and applies separately to each outcome. Merge
+ * matching `assetId` groups across pages rather than relying on array position.
+ * `minBalance` uses display shares and defaults to `0`; `1` means one share,
+ * equivalent to 1,000,000 base units.
+ * Amounts are net holdings by default. `includePnl` switches to per-outcome
+ * gross holdings and adds position economics; it requires one condition ID and
+ * a page size of at most 100. Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -456,36 +464,167 @@ export const ListMarketHoldersError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const holders = await listMarketHolders(client, {
- *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
- *   limit: 5,
+ * const result = listMarketHolders(client, {
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+ *   pageSize: 5,
  * });
  *
- * // holders: MetaHolder[]
+ * for await (const page of result) {
+ *   // page.items: MetaHolder[]
+ * }
  * ```
  */
-export async function listMarketHolders(
+export function listMarketHolders(
   client: BaseClient,
   request: ListMarketHoldersRequest,
-): Promise<MetaHolder[]> {
-  const params = parseUserInput(request, ListMarketHoldersRequestSchema);
+): Paginated<MetaHolder[]> {
+  const { conditionIds, cursor, includePnl, minBalance, pageSize } =
+    parseUserInput(request, ListMarketHoldersRequestSchema);
 
-  return unwrap(
-    client.data
-      .get('/holders', {
-        params: toDataSearchParams(params),
-      })
-      .andThen(validateWith(ListMarketHoldersResponseSchema)),
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/holders', {
+          params: toDataSearchParams({
+            condition: conditionIds,
+            limit: pageSize,
+            cursor,
+            includePnl,
+            minBalance,
+          }),
+        }),
+      ).andThen(validateWith(ListMarketHoldersResponseSchema)),
+    cursor,
   );
 }
 
-export type ListOpenInterestError =
+export type ListPriceHistoryRequest =
+  | {
+      assetId: string;
+      interval: PriceHistoryInterval;
+      bucketSeconds?: number;
+      cursor?: PaginationCursor;
+      pageSize?: number;
+      start?: never;
+      end?: never;
+      asOf?: never;
+    }
+  | {
+      assetId: string;
+      start: number | Date;
+      end?: number | Date;
+      bucketSeconds?: number;
+      cursor?: PaginationCursor;
+      pageSize?: number;
+      interval?: never;
+      asOf?: never;
+    }
+  | {
+      assetId: string;
+      asOf: number | Date;
+      interval?: never;
+      start?: never;
+      end?: never;
+      bucketSeconds?: never;
+      cursor?: never;
+      pageSize?: never;
+    };
+
+const MAX_PRICE_HISTORY_WINDOW_SECONDS = 15 * 24 * 60 * 60;
+/** Latest supported instant: 9999-12-31T23:59:59Z. */
+const MAX_PRICE_HISTORY_TIMESTAMP_SECONDS = 253_402_300_799;
+
+const PriceHistoryTimestampSchema = EpochSecondsLikeSchema.pipe(
+  z.number().int().positive().max(MAX_PRICE_HISTORY_TIMESTAMP_SECONDS),
+);
+
+const PriceHistoryAssetIdSchema = z.string().min(1).pipe(ClobAssetIdSchema);
+
+const PriceHistorySeriesRequestFields = {
+  assetId: PriceHistoryAssetIdSchema,
+  bucketSeconds: z.number().int().min(60).max(86_400).optional(),
+  cursor: PaginationCursorSchema.optional(),
+  pageSize: PageSizeSchema.max(10_000).default(10_000),
+};
+
+const PriceHistoryIntervalRequestSchema = z
+  .object({
+    ...PriceHistorySeriesRequestFields,
+    interval: PriceHistoryIntervalSchema,
+    start: z.never().optional(),
+    end: z.never().optional(),
+    asOf: z.never().optional(),
+  })
+  .superRefine(({ bucketSeconds, interval }, context) => {
+    const minimumBucketSeconds =
+      interval === PriceHistoryInterval.Max ||
+      interval === PriceHistoryInterval.OneMonth
+        ? 600
+        : interval === PriceHistoryInterval.OneWeek
+          ? 300
+          : 60;
+
+    if (bucketSeconds !== undefined && bucketSeconds < minimumBucketSeconds) {
+      context.addIssue({
+        code: 'custom',
+        message: `bucketSeconds must be at least ${minimumBucketSeconds} for this interval`,
+        path: ['bucketSeconds'],
+      });
+    }
+  });
+
+const PriceHistoryRangeRequestSchema = z
+  .object({
+    ...PriceHistorySeriesRequestFields,
+    start: PriceHistoryTimestampSchema,
+    end: PriceHistoryTimestampSchema.optional(),
+    interval: z.never().optional(),
+    asOf: z.never().optional(),
+  })
+  .superRefine(({ end, start }, context) => {
+    if (end !== undefined && end < start) {
+      context.addIssue({
+        code: 'custom',
+        message: 'end must not precede start',
+        path: ['end'],
+      });
+      return;
+    }
+
+    const upperBound = end ?? Math.floor(Date.now() / 1_000);
+    if (upperBound - start > MAX_PRICE_HISTORY_WINDOW_SECONDS) {
+      context.addIssue({
+        code: 'custom',
+        message: 'start to end must span at most 15 days',
+        path: ['end'],
+      });
+    }
+  });
+
+const PriceHistoryAsOfRequestSchema = z.object({
+  assetId: PriceHistoryAssetIdSchema,
+  asOf: PriceHistoryTimestampSchema,
+  interval: z.never().optional(),
+  start: z.never().optional(),
+  end: z.never().optional(),
+  bucketSeconds: z.never().optional(),
+  cursor: z.never().optional(),
+  pageSize: z.never().optional(),
+});
+
+const ListPriceHistoryRequestSchema = z.union([
+  PriceHistoryIntervalRequestSchema,
+  PriceHistoryRangeRequestSchema,
+  PriceHistoryAsOfRequestSchema,
+]) satisfies z.ZodType<ListPriceHistoryRequest, ListPriceHistoryRequest>;
+
+export type ListPriceHistoryError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const ListOpenInterestError = makeErrorGuard(
+export const ListPriceHistoryError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -494,126 +633,126 @@ export const ListOpenInterestError = makeErrorGuard(
 );
 
 /**
- * Lists open interest for one or more markets.
+ * Lists historical price observations for an exchange asset.
+ *
+ * Select exactly one time form: a relative `interval`, an explicit `start`
+ * with optional `end`, or the latest observation at or before an `asOf`
+ * instant. Time inputs accept Unix epoch seconds or `Date` values. When
+ * `bucketSeconds` is omitted, resolution is selected automatically for the
+ * requested window and reported on each point as `resolutionSeconds`. An
+ * explicit bucket is used exactly as requested and may produce an empty series
+ * when that resolution is unavailable for the window. Prices are decimal
+ * strings and returned timestamps are Unix epoch milliseconds. Series pages
+ * are ordered oldest first; an `asOf` request returns at most one item. Series
+ * page sizes default to and are capped at 10,000 points. Transient rate limits
+ * are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * @throws {@link ListOpenInterestError}
+ * @throws {@link ListPriceHistoryError}
  * Thrown on failure.
  *
  * @example
  * ```ts
- * const openInterest = await listOpenInterest(client, {
- *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+ * const history = listPriceHistory(client, {
+ *   assetId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+ *   interval: PriceHistoryInterval.OneDay,
+ *   bucketSeconds: 3600,
+ * });
+ *
+ * for await (const page of history) {
+ *   // page.items: PriceHistoryPoint[]
+ * }
+ * ```
+ */
+export function listPriceHistory(
+  client: BaseClient,
+  request: ListPriceHistoryRequest,
+): Paginated<PriceHistoryPoint[]> {
+  const { assetId, cursor, pageSize, ...params } = parseUserInput(
+    request,
+    ListPriceHistoryRequestSchema,
+  );
+
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/prices-history', {
+          params: toDataSearchParams({
+            ...params,
+            tokenId: assetId,
+            limit: pageSize,
+            cursor,
+          }),
+        }),
+      ).andThen(validateWith(ListPriceHistoryResponseSchema)),
+    cursor,
+  );
+}
+
+const FetchOpenInterestRequestSchema = z.object({
+  conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20).optional(),
+});
+
+export type FetchOpenInterestRequest = z.input<
+  typeof FetchOpenInterestRequestSchema
+>;
+
+export type FetchOpenInterestError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchOpenInterestError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches priced gross open interest for selected markets or globally.
+ *
+ * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
+ * the global aggregate, whose `conditionId` is `null`. A requested servable
+ * market with no holdings has a zero value; an absent row means the market is
+ * not servable. Values are in USDC. Transient rate limits are retried
+ * automatically.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchOpenInterestError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const openInterest = await fetchOpenInterest(client, {
+ *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
  * });
  *
  * // openInterest: OpenInterest[]
  * ```
  */
-export async function listOpenInterest(
+export async function fetchOpenInterest(
   client: BaseClient,
-  request: ListOpenInterestRequest = {},
+  request: FetchOpenInterestRequest = {},
 ): Promise<OpenInterest[]> {
-  const params = parseUserInput(request, ListOpenInterestRequestSchema);
+  const { conditionIds } = parseUserInput(
+    request,
+    FetchOpenInterestRequestSchema,
+  );
 
   return unwrap(
-    client.data
-      .get('/oi', {
-        params: toDataSearchParams(params),
-      })
-      .andThen(validateWith(ListOpenInterestResponseSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/oi', {
+        params: toDataSearchParams({ condition: conditionIds }),
+      }),
+    ).andThen(validateWith(FetchOpenInterestResponseSchema)),
   );
-}
-
-export type ListMarketPositionsError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const ListMarketPositionsError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-/**
- * Lists positions for a market.
- *
- * @remarks
- * This is a low-level function. Most SDK consumers should prefer the client instance API.
- *
- * @throws {@link ListMarketPositionsError}
- * Thrown on failure.
- *
- * @example
- * Fetch the first page of results:
- * ```ts
- * const result = listMarketPositions(client, {
- *   market: '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093',
- *   pageSize: 10,
- * });
- *
- * const firstPage = await result.firstPage();
- *
- * // Optionally, fetch additional pages:
- * for await (const page of result.from(firstPage.nextCursor)) {
- *   // page.items: MetaMarketPosition[]
- * }
- * ```
- *
- * @example
- * Loop through all pages with `for await`:
- * ```ts
- * const result = listMarketPositions(client, {
- *   market: '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093',
- *   pageSize: 10,
- * });
- *
- * for await (const page of result) {
- *   // page.items: MetaMarketPosition[]
- * }
- * ```
- */
-export function listMarketPositions(
-  client: BaseClient,
-  request: ListMarketPositionsRequest,
-): Paginated<MetaMarketPosition[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
-    request,
-    ListMarketPositionsRequestSchema,
-  );
-
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/v1/market-positions', {
-        params: toDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
-        }),
-      })
-      .andThen(validateWith(ListMarketPositionsResponseSchema))
-      .map((positions) => {
-        const hasMore = positions.length >= decoded.pageSize;
-
-        return {
-          items: positions,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
 }
 
 function toMarketsSearchParams(params: ListMarketsParams): URLSearchParams {

@@ -1,5 +1,9 @@
 import {
   ComboConditionIdSchema,
+  ConditionIdSchema,
+  EventIdSchema,
+  EvmAddressSchema,
+  OrderSideSchema,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
 import {
@@ -9,8 +13,9 @@ import {
   ListActivityResponseSchema,
   ListComboActivityResponseSchema,
   ListTradesResponseSchema,
-  SideSchema,
+  SortDirectionSchema,
   type Trade,
+  TradeFilterTypeSchema,
 } from '@polymarket/bindings/data';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
@@ -23,47 +28,51 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import {
-  decodeOffsetCursor,
-  encodeOffsetCursor,
-  PageSizeSchema,
-  type Paginated,
-  paginate,
-} from '../pagination';
+import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import { distinctIdList, TimeWindowSchema, toDataSearchParams } from './params';
 
-export { ComboActivityType } from '@polymarket/bindings/data';
-
-const TradeFilterTypeSchema = z.enum(['CASH', 'TOKENS']);
+export {
+  ComboActivityType,
+  SortDirection,
+  TipSide,
+  TradeFilterType,
+} from '@polymarket/bindings/data';
 
 const ListTradesRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    // Matches the upstream per-request limit cap.
-    pageSize: PageSizeSchema.max(10_000).default(20),
+    // The service default; anything past 1000 is rejected, not clamped.
+    pageSize: PageSizeSchema.max(1000).default(100),
+    // Branded input schemas double as the guard against silent widening: the
+    // service reads a malformed/empty `user` as absent and keys routing on
+    // `condition`/`event_id` presence, so a bad filter forwarded raw would
+    // quietly serve the global feed. The empty-array min(1)s exist for the
+    // same reason.
+    user: EvmAddressSchema.optional(),
     takerOnly: z.boolean().optional(),
+    // Unlike v1, either filter field may be sent alone (verified 200 live):
+    // the service always applies the dust filter, defaulting the missing half
+    // (TOKENS / 0.01) — so a both-or-neither rule here would reject requests
+    // the service answers.
     filterType: TradeFilterTypeSchema.optional(),
-    filterAmount: z.number().optional(),
-    market: z.array(z.string()).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    user: z.string().optional(),
-    side: SideSchema.optional(),
-    start: z.number().int().min(0).optional(),
-    end: z.number().int().min(0).optional(),
+    filterAmount: z.number().min(0).optional(),
+    // Encodes to `condition_id`, an accepted alias of the canonical
+    // `condition` key. The service dedupes and then caps the selector at 20
+    // DISTINCT ids (DENG-588) — mirror both halves here so the cap error
+    // stays typed.
+    conditionId: z
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
+      .optional(),
+    eventId: z.array(EventIdSchema).min(1).optional(),
+    side: OrderSideSchema.optional(),
+    window: TimeWindowSchema.optional(),
   })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
+  .refine((value) => !(value.conditionId && value.eventId), {
+    message: 'Provide conditionId or eventId, not both',
     path: ['eventId'],
-  })
-  .refine(
-    (value) =>
-      (value.filterType === undefined) === (value.filterAmount === undefined),
-    {
-      message: 'Provide filterType and filterAmount together',
-      path: ['filterAmount'],
-    },
-  );
+  });
 
 export type ListTradesRequest = z.input<typeof ListTradesRequestSchema>;
 export type ListTradesError =
@@ -81,7 +90,16 @@ export const ListTradesError = makeErrorGuard(
 );
 
 /**
- * Lists trades for a wallet, market, or event.
+ * Lists trades for a wallet, market, or event — or the global recent-trades
+ * feed when no filter is given.
+ *
+ * Only the taker side of each match is returned by default
+ * (`takerOnly: false` includes maker rows), and a dust filter of 0.01 shares
+ * applies unless `filterType`/`filterAmount` say otherwise — either may be
+ * sent alone. `conditionId` accepts at most 20 distinct ids. `pageSize`
+ * defaults to 100 (max 1000). `window: 'full'` requests the complete
+ * history; an omitted window serves the recent feed. Transient rate limits
+ * are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -110,7 +128,7 @@ export const ListTradesError = makeErrorGuard(
  * ```ts
  * const result = listTrades(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   pageSize: 10,
+ *   window: 'full',
  * });
  *
  * for await (const page of result) {
@@ -122,60 +140,52 @@ export function listTrades(
   client: BaseClient,
   request: ListTradesRequest = {},
 ): Paginated<Trade[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+  const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
     ListTradesRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/trades', {
-        params: toDataSearchParams({
-          ...params,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/trades', {
+          // The full original filter set rides along with every cursor: the
+          // cursor binds only its paging anchor, and a filter dropped on a
+          // follow-up page would silently widen the result set.
+          params: toDataSearchParams({
+            ...params,
+            ...window,
+            limit: pageSize,
+            cursor,
+          }),
         }),
-      })
-      .andThen(validateWith(ListTradesResponseSchema))
-      .map((trades) => {
-        const hasMore = trades.length >= decoded.pageSize;
-
-        return {
-          items: trades,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
+      ).andThen(validateWith(ListTradesResponseSchema)),
+    cursor,
+  );
 }
-
-const ActivitySortBySchema = z.enum(['TIMESTAMP', 'TOKENS', 'CASH']);
-const SortDirectionSchema = z.enum(['ASC', 'DESC']);
 
 const ListActivityRequestSchema = z
   .object({
     cursor: PaginationCursorSchema.optional(),
-    // Matches the upstream per-request limit cap.
-    pageSize: PageSizeSchema.max(500).default(20),
-    user: z.string(),
-    market: z.array(z.string()).optional(),
-    eventId: z.array(z.number().int()).optional(),
-    type: z.array(ActivityTypeSchema).optional(),
-    start: z.number().int().min(0).optional(),
-    end: z.number().int().min(0).optional(),
-    sortBy: ActivitySortBySchema.optional(),
+    // The service default; anything past 1000 is rejected, not clamped.
+    pageSize: PageSizeSchema.max(1000).default(100),
+    /** The feed is wallet-anchored — `user` is required. */
+    user: EvmAddressSchema,
+    // The service dedupes and then caps every condition selector at 20
+    // DISTINCT ids (one shared parser across the surface) — mirror both
+    // halves here so the cap error stays typed.
+    conditionId: z
+      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
+      .optional(),
+    eventId: z.array(EventIdSchema).min(1).optional(),
+    type: z.array(ActivityTypeSchema).min(1).optional(),
+    side: OrderSideSchema.optional(),
+    /** `DESC` (default) walks newest-first; `ASC` oldest-first. */
     sortDirection: SortDirectionSchema.optional(),
-    side: SideSchema.optional(),
+    window: TimeWindowSchema.optional(),
   })
-  .refine((value) => !(value.market && value.eventId), {
-    message: 'Provide market or eventId, not both',
+  .refine((value) => !(value.conditionId && value.eventId), {
+    message: 'Provide conditionId or eventId, not both',
     path: ['eventId'],
   });
 
@@ -196,9 +206,14 @@ export const ListActivityError = makeErrorGuard(
 );
 
 /**
- * Lists wallet activity.
+ * Lists wallet activity, newest-first by default.
  *
- * All activity types are returned by default, including deposits and withdrawals; use the `type` filter to narrow results.
+ * Every activity type the service serves is included by default — deposits
+ * and withdrawals are not filtered out; use the `type` filter to narrow
+ * results. `window: 'full'`
+ * requests the complete history (an omitted window serves the service's
+ * default range — the most recent three years). `pageSize` defaults to 100
+ * (max 1000). Transient rate limits are retried automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -223,11 +238,11 @@ export const ListActivityError = makeErrorGuard(
  * ```
  *
  * @example
- * Loop through all pages with `for await`:
+ * Loop through the complete history with `for await`:
  * ```ts
  * const result = listActivity(client, {
  *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- *   pageSize: 10,
+ *   window: 'full',
  * });
  *
  * for await (const page of result) {
@@ -239,55 +254,41 @@ export function listActivity(
   client: BaseClient,
   request: ListActivityRequest,
 ): Paginated<Activity[]> {
-  const { cursor, pageSize, ...params } = parseUserInput(
+  const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
     ListActivityRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
-
-    return client.data
-      .get('/activity', {
-        params: toDataSearchParams({
-          ...params,
-          // The endpoint defaults excludeDepositsWithdrawals=true and drops
-          // DEPOSIT and WITHDRAWAL from the type filter even when requested
-          // explicitly, so opt out unconditionally and let the type filter
-          // decide which rows come back.
-          excludeDepositsWithdrawals: false,
-          limit: decoded.pageSize,
-          offset: decoded.offset,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/activity', {
+          params: toDataSearchParams({
+            ...params,
+            ...window,
+            // The service defaults exclude_deposits_withdrawals=true; opt out
+            // unconditionally and let the type filter decide which rows come
+            // back.
+            excludeDepositsWithdrawals: false,
+            limit: pageSize,
+            cursor,
+          }),
         }),
-      })
-      .andThen(validateWith(ListActivityResponseSchema))
-      .map((activity) => {
-        const hasMore = activity.length >= decoded.pageSize;
-
-        return {
-          items: activity,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
-  }, cursor);
+      ).andThen(validateWith(ListActivityResponseSchema)),
+    cursor,
+  );
 }
-
-const ComboConditionIdFilterSchema = z.union([
-  ComboConditionIdSchema,
-  z.array(ComboConditionIdSchema),
-]);
 
 const ListComboActivityRequestSchema = z.object({
   cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.default(50),
-  user: z.string(),
-  conditionId: ComboConditionIdFilterSchema.optional(),
+  // The service default; anything past 1000 is rejected, not clamped.
+  pageSize: PageSizeSchema.max(1000).default(100),
+  /** The feed is wallet-anchored — `user` is required. */
+  user: EvmAddressSchema,
+  // Same shared 20-DISTINCT service cap as the other condition selectors.
+  conditionId: z
+    .union([ComboConditionIdSchema, distinctIdList(ComboConditionIdSchema, 20)])
+    .optional(),
 });
 
 export type ListComboActivityRequest = z.input<
@@ -309,7 +310,12 @@ export const ListComboActivityError = makeErrorGuard(
 );
 
 /**
- * Lists combo lifecycle activity for a wallet.
+ * Lists Combo lifecycle activity for a wallet, ordered by on-chain position.
+ *
+ * Every row carries the Combo position id and its legs enriched with market
+ * metadata; redeem rows additionally carry payout semantics. `pageSize`
+ * defaults to 100 (max 1000). Transient rate limits are retried
+ * automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -337,50 +343,18 @@ export function listComboActivity(
   client: BaseClient,
   request: ListComboActivityRequest,
 ): Paginated<ComboActivity[]> {
-  const { cursor, pageSize, conditionId, ...params } = parseUserInput(
+  const { cursor, pageSize, ...params } = parseUserInput(
     request,
     ListComboActivityRequestSchema,
   );
 
-  return paginate((cursor) => {
-    const searchParams = toSearchParams(
-      {
-        ...params,
-        limit: pageSize,
-        cursor,
-      },
-      snakeCase(),
-    );
-
-    appendConditionId(searchParams, conditionId);
-
-    return client.data
-      .get('/v1/activity/combos', {
-        params: searchParams,
-      })
-      .andThen(validateWith(ListComboActivityResponseSchema))
-      .map((response) => {
-        const nextCursor = response.pagination.nextCursor ?? undefined;
-
-        return {
-          items: response.activity,
-          hasMore: nextCursor !== undefined,
-          nextCursor,
-        };
-      });
-  }, cursor);
-}
-
-function appendConditionId(
-  searchParams: URLSearchParams,
-  conditionId: z.output<typeof ComboConditionIdFilterSchema> | undefined,
-): void {
-  if (conditionId === undefined) {
-    return;
-  }
-
-  searchParams.append(
-    'market_id',
-    Array.isArray(conditionId) ? conditionId.join(',') : conditionId,
+  return paginate(
+    (cursor) =>
+      withRateLimitRetry(() =>
+        client.data.get('/v2/activity/combos', {
+          params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
+        }),
+      ).andThen(validateWith(ListComboActivityResponseSchema)),
+    cursor,
   );
 }

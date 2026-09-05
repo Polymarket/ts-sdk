@@ -2,10 +2,13 @@ import {
   IsoCalendarDateStringSchema,
   IsoDateTimeStringSchema,
   PaginationCursorSchema,
+  QuestionIdSchema,
 } from '@polymarket/bindings';
 import {
   FetchEventLiveVolumeResponseSchema,
+  FetchResolutionsResponseSchema,
   type LiveVolume,
+  type Resolution,
 } from '@polymarket/bindings/data';
 import {
   type Event,
@@ -29,7 +32,21 @@ import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
-import { snakeCase, toDataSearchParams, toSearchParams } from './params';
+import { withRateLimitRetry } from '../retry';
+import {
+  CanonicalMarketConditionIdSchema,
+  PositiveInt32EventIdSchema,
+  snakeCase,
+  toDataSearchParams,
+  toSearchParams,
+} from './params';
+
+export {
+  ResolutionMarketType,
+  ResolutionReporter,
+  ResolutionSource,
+  ResolutionStatus,
+} from '@polymarket/bindings/data';
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
@@ -107,14 +124,6 @@ const FetchEventTagsRequestSchema = z.object({
 });
 
 export type FetchEventTagsRequest = z.input<typeof FetchEventTagsRequestSchema>;
-
-const FetchEventLiveVolumeRequestSchema = z.object({
-  id: z.string(),
-});
-
-export type FetchEventLiveVolumeRequest = z.input<
-  typeof FetchEventLiveVolumeRequestSchema
->;
 
 type ListEventsParams = z.output<typeof ListEventsRequestSchema>;
 
@@ -310,6 +319,133 @@ export async function fetchEventTags(
   );
 }
 
+const ResolutionConditionIdsSchema = z
+  .array(CanonicalMarketConditionIdSchema)
+  .min(1)
+  .transform((conditionIds) => [...new Set(conditionIds)])
+  .refine(
+    (conditionIds) => conditionIds.length <= 20,
+    'At most 20 distinct condition ids',
+  );
+
+const ResolutionEventIdsSchema = z
+  .array(PositiveInt32EventIdSchema)
+  .min(1)
+  .transform((eventIds) => [...new Set(eventIds)])
+  .refine((eventIds) => eventIds.length <= 20, 'At most 20 distinct event ids');
+
+const FetchResolutionsRequestSchema = z.union([
+  z.object({
+    questionId: QuestionIdSchema,
+    conditionIds: z.never().optional(),
+    eventIds: z.never().optional(),
+  }),
+  z.object({
+    questionId: z.never().optional(),
+    conditionIds: ResolutionConditionIdsSchema,
+    eventIds: z.never().optional(),
+  }),
+  z.object({
+    questionId: z.never().optional(),
+    conditionIds: z.never().optional(),
+    eventIds: ResolutionEventIdsSchema,
+  }),
+]);
+
+export type FetchResolutionsByQuestionRequest = {
+  questionId: string;
+  conditionIds?: never;
+  eventIds?: never;
+};
+
+export type FetchResolutionsByConditionRequest = {
+  questionId?: never;
+  conditionIds: string[];
+  eventIds?: never;
+};
+
+export type FetchResolutionsByEventRequest = {
+  questionId?: never;
+  conditionIds?: never;
+  eventIds: Array<number | string>;
+};
+
+export type FetchResolutionsRequest =
+  | FetchResolutionsByQuestionRequest
+  | FetchResolutionsByConditionRequest
+  | FetchResolutionsByEventRequest;
+
+export type FetchResolutionsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchResolutionsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches resolution lifecycle rows by question, condition, or event.
+ *
+ * Provide exactly one selector. Condition and event lookups accept at most 20
+ * distinct IDs and return one row per matching condition. Missing resolutions
+ * return an empty array. A 31-byte protocol v2 market condition ID is
+ * right-padded to its canonical 32-byte form. A 31-byte combo condition ID is
+ * rejected.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchResolutionsError}
+ * Thrown on failure.
+ *
+ * @example
+ * ```ts
+ * const resolutions = await fetchResolutions(client, {
+ *   eventIds: ['903193'],
+ * });
+ *
+ * // resolutions: Resolution[]
+ * ```
+ */
+export async function fetchResolutions(
+  client: BaseClient,
+  request: FetchResolutionsRequest,
+): Promise<Resolution[]> {
+  const { conditionIds, eventIds, questionId } = parseUserInput(
+    request,
+    FetchResolutionsRequestSchema,
+  );
+
+  return unwrap(
+    withRateLimitRetry(() =>
+      client.data.get('/v2/resolutions', {
+        params: toDataSearchParams({
+          questionId,
+          condition: conditionIds,
+          eventId: eventIds,
+        }),
+      }),
+    ).andThen(validateWith(FetchResolutionsResponseSchema)),
+  );
+}
+
+const FetchEventLiveVolumeRequestSchema = z.object({
+  eventIds: z
+    .array(PositiveInt32EventIdSchema)
+    .min(1)
+    .transform((eventIds) => [...new Set(eventIds)]),
+});
+
+export type FetchEventLiveVolumeRequest = z.input<
+  typeof FetchEventLiveVolumeRequestSchema
+>;
+
 export type FetchEventLiveVolumeError =
   | RateLimitError
   | RequestRejectedError
@@ -325,7 +461,12 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
 );
 
 /**
- * Fetches live volume for an event.
+ * Fetches cumulative taker volume for one or more events.
+ *
+ * Results contain one row per market, ordered by taker volume descending, and
+ * a total across all returned markets. Volume is measured in shares. Event IDs
+ * must be positive 32-bit integers. Transient rate limits are retried
+ * automatically.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -336,24 +477,27 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
  * @example
  * ```ts
  * const volume = await fetchEventLiveVolume(client, {
- *   id: '160707',
+ *   eventIds: ['160707'],
  * });
  *
- * // volume: LiveVolume[]
+ * // volume: LiveVolume
  * ```
  */
 export async function fetchEventLiveVolume(
   client: BaseClient,
   request: FetchEventLiveVolumeRequest,
-): Promise<LiveVolume[]> {
-  const params = parseUserInput(request, FetchEventLiveVolumeRequestSchema);
+): Promise<LiveVolume> {
+  const { eventIds } = parseUserInput(
+    request,
+    FetchEventLiveVolumeRequestSchema,
+  );
 
   return unwrap(
-    client.data
-      .get('/live-volume', {
-        params: toDataSearchParams(params),
-      })
-      .andThen(validateWith(FetchEventLiveVolumeResponseSchema)),
+    withRateLimitRetry(() =>
+      client.data.get('/v2/live-volume', {
+        params: toDataSearchParams({ eventId: eventIds }),
+      }),
+    ).andThen(validateWith(FetchEventLiveVolumeResponseSchema)),
   );
 }
 

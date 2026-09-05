@@ -1,7 +1,13 @@
 import { createPublicClient, UserInputError } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
+
+const STRUCTURAL_MARKET_CONDITION_ID =
+  '0x0115903402acad794c9e221e72a37c4cd00000000000000000000000000000';
+const COMBO_CONDITION_ID =
+  '0x0315903402acad794c9e221e72a37c4cd00000000000000000000000000000';
 
 const {
   items: [event],
@@ -14,6 +20,10 @@ const {
   .then(expectNonEmptyPage);
 
 describe('Events', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listEvents', () => {
     it('fetches events', async ({ publicClient }) => {
       const paginator = publicClient.listEvents({
@@ -89,18 +99,101 @@ describe('Events', () => {
   });
 
   describe('fetchEventLiveVolume', () => {
-    it('fetches live volume for an event', async ({ publicClient }) => {
+    it('fetches taker volume from the v2 route', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const result = await publicClient.fetchEventLiveVolume({
-        id: event.id,
+        eventIds: [event.id],
       });
 
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toEqual(
+      expect(result).toEqual(
         expect.objectContaining({
           markets: expect.any(Array),
-          total: expect.any(String),
+          takerVolumeTotal: expect.any(String),
         }),
       );
+
+      for (const market of result.markets) {
+        expect(market).toEqual(
+          expect.objectContaining({
+            takerVolume: expect.any(String),
+          }),
+        );
+        expect(
+          market.conditionId === null || typeof market.conditionId === 'string',
+        ).toBe(true);
+      }
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/live-volume');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('event_id'),
+      ).toBe(event.id);
+    });
+
+    it('rejects a partially invalid event selection', async ({
+      publicClient,
+    }) => {
+      await expect(
+        publicClient.fetchEventLiveVolume({
+          eventIds: [event.id, 'not-an-event'],
+        }),
+      ).rejects.toThrow(UserInputError);
+    });
+  });
+
+  describe('fetchResolutions', () => {
+    it('fetches matching lifecycle rows by event and condition', async ({
+      publicClient,
+    }) => {
+      const byEvent = await publicClient.fetchResolutions({
+        eventIds: ['106884'],
+      });
+      const eventResolution = expectPresent(byEvent[0]);
+      const conditionId = expectPresent(eventResolution.conditionId);
+
+      const byCondition = await publicClient.fetchResolutions({
+        conditionIds: [conditionId],
+      });
+
+      expect(byCondition).toContainEqual(eventResolution);
+    });
+
+    it('pads a 31-byte protocol v2 market condition ID', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.fetchResolutions({
+        conditionIds: [STRUCTURAL_MARKET_CONDITION_ID],
+      });
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/resolutions');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('condition'),
+      ).toBe(`${STRUCTURAL_MARKET_CONDITION_ID}00`);
+    });
+
+    it('rejects a 31-byte combo condition ID', async ({ publicClient }) => {
+      await expect(
+        publicClient.fetchResolutions({
+          conditionIds: [COMBO_CONDITION_ID],
+        }),
+      ).rejects.toThrow(UserInputError);
+    });
+
+    it('rejects an empty selector', async ({ publicClient }) => {
+      await expect(
+        publicClient.fetchResolutions({ eventIds: [] }),
+      ).rejects.toThrow(UserInputError);
     });
   });
 });

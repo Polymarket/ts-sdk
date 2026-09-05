@@ -4,7 +4,6 @@ import type {
   LastTradePriceForAsset,
   Midpoints,
   OrderBook,
-  PriceHistoryPoint,
   Prices,
   Spreads,
 } from '@polymarket/bindings/clob';
@@ -12,6 +11,8 @@ import type {
   LiveVolume,
   MetaHolder,
   OpenInterest,
+  PriceHistoryPoint,
+  Resolution,
   Trade,
 } from '@polymarket/bindings/data';
 import {
@@ -22,11 +23,12 @@ import {
   type FetchLastTradePricesRequest,
   type FetchMidpointRequest,
   type FetchMidpointsRequest,
+  type FetchOpenInterestRequest,
   type FetchOrderBookRequest,
   type FetchOrderBooksRequest,
-  type FetchPriceHistoryRequest,
   type FetchPriceRequest,
   type FetchPricesRequest,
+  type FetchResolutionsRequest,
   type FetchSpreadRequest,
   type FetchSpreadsRequest,
   fetchEventLiveVolume,
@@ -34,18 +36,19 @@ import {
   fetchLastTradePrices,
   fetchMidpoint,
   fetchMidpoints,
+  fetchOpenInterest,
   fetchOrderBook,
   fetchOrderBooks,
   fetchPrice,
-  fetchPriceHistory,
   fetchPrices,
+  fetchResolutions,
   fetchSpread,
   fetchSpreads,
   type ListMarketHoldersRequest,
-  type ListOpenInterestRequest,
+  type ListPriceHistoryRequest,
   type ListTradesRequest,
   listMarketHolders,
-  listOpenInterest,
+  listPriceHistory,
   listTrades,
 } from '../actions';
 import type {
@@ -57,19 +60,46 @@ import type { Paginated } from '../pagination';
 
 export type DataActions = {
   /**
-   * Fetches live volume for an event.
+   * Fetches cumulative taker volume for one or more events.
+   *
+   * Results contain one row per market, ordered by taker volume descending, and
+   * a total across all returned markets. Volume is measured in shares. Event
+   * IDs must be positive 32-bit integers. Transient rate limits are retried
+   * automatically.
    *
    * @throws {@link FetchEventLiveVolumeError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const volume = await client.fetchEventLiveVolume({ id: '123' });
+   * const volume = await client.fetchEventLiveVolume({
+   *   eventIds: ['160707'],
+   * });
    * ```
    */
   fetchEventLiveVolume(
     request: FetchEventLiveVolumeRequest,
-  ): Promise<LiveVolume[]>;
+  ): Promise<LiveVolume>;
+  /**
+   * Fetches resolution lifecycle rows by question, condition, or event.
+   *
+   * Provide exactly one selector. Condition and event lookups accept at most
+   * 20 distinct IDs and return one row per matching condition. Missing
+   * resolutions return an empty array. A 31-byte protocol v2 market condition
+   * ID is right-padded to its canonical 32-byte form. A 31-byte combo condition
+   * ID is rejected.
+   *
+   * @throws {@link FetchResolutionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const resolutions = await client.fetchResolutions({
+   *   eventIds: ['903193'],
+   * });
+   * ```
+   */
+  fetchResolutions(request: FetchResolutionsRequest): Promise<Resolution[]>;
   /**
    * Fetches the midpoint price for an exchange asset as a decimal string.
    *
@@ -203,19 +233,39 @@ export type DataActions = {
     request: FetchLastTradePricesRequest,
   ): Promise<LastTradePriceForAsset[]>;
   /**
-   * Fetches historical price points for an exchange asset.
+   * Lists historical price observations for an exchange asset.
    *
-   * @throws {@link FetchPriceHistoryError}
+   * Select exactly one time form: a relative `interval`, an explicit `start`
+   * with optional `end`, or the latest observation at or before an `asOf`
+   * instant. Time inputs accept Unix epoch seconds or `Date` values. When
+   * `bucketSeconds` is omitted, resolution is selected automatically for the
+   * requested window and reported on each point as `resolutionSeconds`. An
+   * explicit bucket is used exactly as requested and may produce an empty series
+   * when that resolution is unavailable for the window. Prices are decimal
+   * strings and returned timestamps are Unix epoch milliseconds. Series pages
+   * are ordered oldest first; an `asOf` request returns at most one item. Series
+   * page sizes default to and are capped at 10,000 points. Transient rate limits
+   * are retried automatically.
+   *
+   * @throws {@link ListPriceHistoryError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const history = await client.fetchPriceHistory({ assetId: '0x0122…0000', interval: '1d' });
+   * const history = client.listPriceHistory({
+   *   assetId: '17023124228269928849020611259015948850061676830917875073785033885105715180702',
+   *   interval: PriceHistoryInterval.OneDay,
+   *   bucketSeconds: 3600,
+   * });
+   *
+   * for await (const page of history) {
+   *   // page.items: PriceHistoryPoint[]
+   * }
    * ```
    */
-  fetchPriceHistory(
-    request: FetchPriceHistoryRequest,
-  ): Promise<PriceHistoryPoint[]>;
+  listPriceHistory(
+    request: ListPriceHistoryRequest,
+  ): Paginated<PriceHistoryPoint[]>;
   /**
    * Estimates the price level a market order would cross at current book depth.
    *
@@ -236,36 +286,65 @@ export type DataActions = {
    */
   estimateMarketPrice(request: EstimateMarketPriceRequest): Promise<number>;
   /**
-   * Lists open interest for one or more markets.
+   * Fetches priced gross open interest for selected markets or globally.
    *
-   * @throws {@link ListOpenInterestError}
+   * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
+   * the global aggregate, whose `conditionId` is `null`. A requested servable
+   * market with no holdings has a zero value; an absent row means the market
+   * is not servable. Values are in USDC. Transient rate limits are retried
+   * automatically.
+   *
+   * @throws {@link FetchOpenInterestError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const openInterest = await client.listOpenInterest({
-   *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+   * const openInterest = await client.fetchOpenInterest({
+   *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
    * });
    * ```
    */
-  listOpenInterest(request?: ListOpenInterestRequest): Promise<OpenInterest[]>;
+  fetchOpenInterest(
+    request?: FetchOpenInterestRequest,
+  ): Promise<OpenInterest[]>;
   /**
-   * Lists the top holders for one or more markets.
+   * Lists top holders grouped by outcome for one or more markets.
+   *
+   * `conditionIds` accepts up to 20 distinct market condition IDs. `pageSize`
+   * defaults to 100 (max 1000) and applies separately to each outcome. Merge
+   * matching `assetId` groups across pages rather than relying on array position.
+   * `minBalance` uses display shares and defaults to `0`; `1` means one share,
+   * equivalent to 1,000,000 base units.
+   * Amounts are net holdings by default. `includePnl` switches to per-outcome
+   * gross holdings and adds position economics; it requires one condition ID and
+   * a page size of at most 100. Transient rate limits are retried automatically.
    *
    * @throws {@link ListMarketHoldersError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const holders = await client.listMarketHolders({
-   *   market: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
-   *   limit: 5,
+   * const result = client.listMarketHolders({
+   *   conditionIds: ['0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093'],
+   *   pageSize: 5,
    * });
+   *
+   * for await (const page of result) {
+   *   // page.items: MetaHolder[]
+   * }
    * ```
    */
-  listMarketHolders(request: ListMarketHoldersRequest): Promise<MetaHolder[]>;
+  listMarketHolders(request: ListMarketHoldersRequest): Paginated<MetaHolder[]>;
   /**
-   * Lists trades for a wallet, market, or event.
+   * Lists trades for a wallet, market, or event — or the global recent-trades
+   * feed when no filter is given.
+   *
+   * Only the taker side of each match is returned by default
+   * (`takerOnly: false` includes maker rows), and a dust filter of 0.01
+   * shares applies unless `filterType`/`filterAmount` say otherwise (either
+   * may be sent alone). `conditionId` accepts at most 20 distinct ids. `pageSize`
+   * defaults to 100 (max 1000). `start`/`end` are Unix seconds. Transient
+   * rate limits are retried automatically.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.
@@ -307,6 +386,7 @@ export function dataActions(client: BaseSecureClient): DataActions;
 export function dataActions(client: BaseClient): DataActions {
   return {
     fetchEventLiveVolume: fetchEventLiveVolume.bind(null, client),
+    fetchResolutions: fetchResolutions.bind(null, client),
     fetchMidpoint: fetchMidpoint.bind(null, client),
     fetchMidpoints: fetchMidpoints.bind(null, client),
     fetchPrice: fetchPrice.bind(null, client),
@@ -317,9 +397,9 @@ export function dataActions(client: BaseClient): DataActions {
     fetchSpreads: fetchSpreads.bind(null, client),
     fetchLastTradePrice: fetchLastTradePrice.bind(null, client),
     fetchLastTradePrices: fetchLastTradePrices.bind(null, client),
-    fetchPriceHistory: fetchPriceHistory.bind(null, client),
+    listPriceHistory: listPriceHistory.bind(null, client),
     estimateMarketPrice: estimateMarketPrice.bind(null, client),
-    listOpenInterest: listOpenInterest.bind(null, client),
+    fetchOpenInterest: fetchOpenInterest.bind(null, client),
     listMarketHolders: listMarketHolders.bind(null, client),
     listTrades: listTrades.bind(null, client),
   };
@@ -335,14 +415,20 @@ export {
   FetchLastTradePricesError,
   FetchMidpointError,
   FetchMidpointsError,
+  FetchOpenInterestError,
   FetchOrderBookError,
   FetchOrderBooksError,
   FetchPriceError,
-  FetchPriceHistoryError,
   FetchPricesError,
+  FetchResolutionsError,
   FetchSpreadError,
   FetchSpreadsError,
   ListMarketHoldersError,
-  ListOpenInterestError,
+  ListPriceHistoryError,
   ListTradesError,
+  PriceHistoryInterval,
+  ResolutionMarketType,
+  ResolutionReporter,
+  ResolutionSource,
+  ResolutionStatus,
 } from '../actions';

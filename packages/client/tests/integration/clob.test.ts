@@ -1,5 +1,4 @@
 import { OrderSide, type TokenId } from '@polymarket/bindings';
-import { PriceHistoryInterval } from '@polymarket/bindings/clob';
 import type { PublicClient } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
@@ -158,28 +157,6 @@ describe('CLOB', () => {
           price: expect.any(String),
           side: expect.any(String),
           tokenId,
-        }),
-      );
-    });
-  });
-
-  describe('fetchPriceHistory', () => {
-    it('lists historical price points for a token', async ({
-      publicClient,
-    }) => {
-      const tokenId = await selectLiquidClobTokenId(publicClient);
-
-      const result = await publicClient.fetchPriceHistory({
-        tokenId,
-        interval: PriceHistoryInterval.ONE_DAY,
-        fidelity: 60,
-      });
-
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toEqual(
-        expect.objectContaining({
-          p: expect.any(Number),
-          t: expect.any(Number),
         }),
       );
     });
