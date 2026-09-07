@@ -5,6 +5,7 @@ import {
   QuestionIdSchema,
 } from '@polymarket/bindings';
 import {
+  CanonicalMarketConditionIdSchema,
   FetchEventLiveVolumeResponseSchema,
   FetchResolutionsResponseSchema,
   type LiveVolume,
@@ -34,7 +35,6 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
-  CanonicalMarketConditionIdSchema,
   PositiveInt32EventIdSchema,
   snakeCase,
   toDataSearchParams,

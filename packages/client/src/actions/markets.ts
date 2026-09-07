@@ -11,6 +11,7 @@ import {
   ListComboMarketsResponseSchema,
 } from '@polymarket/bindings/combos';
 import {
+  CanonicalMarketConditionIdSchema,
   FetchOpenInterestResponseSchema,
   ListMarketHoldersResponseSchema,
   ListPriceHistoryResponseSchema,
@@ -44,7 +45,6 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
-  CanonicalMarketConditionIdSchema,
   distinctIdList,
   EpochSecondsLikeSchema,
   snakeCase,

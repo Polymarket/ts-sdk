@@ -343,8 +343,10 @@ export type DataActions = {
    * (`takerOnly: false` includes maker rows), and a dust filter of 0.01
    * shares applies unless `filterType`/`filterAmount` say otherwise (either
    * may be sent alone). `conditionId` accepts at most 20 distinct ids. `pageSize`
-   * defaults to 100 (max 1000). `start`/`end` are Unix seconds. Transient
-   * rate limits are retried automatically.
+   * defaults to 100 (max 1000). `window: 'full'` requests the complete
+   * history; an omitted window serves the recent feed. Window bounds accept
+   * Unix epoch seconds or `Date` values. Transient rate limits are retried
+   * automatically.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.

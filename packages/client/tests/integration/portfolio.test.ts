@@ -21,6 +21,41 @@ describe('Portfolio', () => {
     vi.restoreAllMocks();
   });
 
+  for (const prefix of ['01', '02']) {
+    it(`normalizes v2 portfolio condition IDs (${prefix})`, async ({
+      publicClient,
+    }) => {
+      const structuralId = `0x${prefix}${'ab'.repeat(30)}`;
+      const canonicalId = `${structuralId}00`;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient
+        .listPositions({ conditionId: structuralId, pageSize: 1 })
+        .firstPage();
+      await publicClient
+        .listPositions({
+          user: TEST_USER,
+          conditionId: [structuralId, canonicalId],
+          pageSize: 1,
+        })
+        .firstPage();
+      const value = await publicClient.fetchPortfolioValue({
+        user: TEST_USER,
+        conditionIds: [structuralId, canonicalId],
+      });
+
+      expect(value.wallet).toBe(TEST_USER);
+      const positionsRequests = dataRequests(fetchSpy, '/v2/positions');
+      expect(positionsRequests).toHaveLength(2);
+      for (const request of positionsRequests) {
+        expect(request.get('condition_id')).toBe(canonicalId);
+      }
+      const valueRequests = dataRequests(fetchSpy, '/v2/value');
+      expect(valueRequests).toHaveLength(1);
+      expect(valueRequests[0]?.get('condition')).toBe(canonicalId);
+    });
+  }
+
   describe('listPositions', () => {
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({

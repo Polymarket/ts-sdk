@@ -267,7 +267,12 @@ export type PublicAccountActions = Prettify<{
   /**
    * Lists wallet activity.
    *
-   * Every activity type the service serves is included by default — deposits and withdrawals are not filtered out; use the `type` filter to narrow results.
+   * Every activity type is included by default, including deposits and
+   * withdrawals; use the `type` filter to narrow results. An omitted `window`
+   * serves the most recent three years; `window: 'full'` requests the complete
+   * history. Window bounds accept Unix epoch seconds or `Date` values. Results
+   * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
+   * transient rate limits are retried automatically.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.
@@ -454,7 +459,12 @@ export type SecureAccountActions = Prettify<{
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *
-   * Every activity type the service serves is included by default — deposits and withdrawals are not filtered out; use the `type` filter to narrow results.
+   * Every activity type is included by default, including deposits and
+   * withdrawals; use the `type` filter to narrow results. An omitted `window`
+   * serves the most recent three years; `window: 'full'` requests the complete
+   * history. Window bounds accept Unix epoch seconds or `Date` values. Results
+   * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
+   * transient rate limits are retried automatically.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.

@@ -1,11 +1,11 @@
 import {
   ComboConditionIdSchema,
-  ConditionIdSchema,
   EventIdSchema,
   EvmAddressSchema,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
 import {
+  CanonicalMarketConditionIdSchema,
   type ComboPosition,
   ComboPositionSortBySchema,
   ComboPositionStatus,
@@ -75,7 +75,10 @@ const ListPositionsRequestSchema = z
     // The service dedupes and then caps every condition selector at 20
     // DISTINCT ids (one shared parser across the surface).
     conditionId: z
-      .union([ConditionIdSchema, distinctIdList(ConditionIdSchema, 20)])
+      .union([
+        CanonicalMarketConditionIdSchema,
+        distinctIdList(CanonicalMarketConditionIdSchema, 20),
+      ])
       .optional(),
     /** OPEN (default, includes REDEEMABLE rows) | REDEEMABLE | CLOSED. */
     status: PositionStatusSchema.optional(),
@@ -383,7 +386,7 @@ export function listComboPositions(
 
 const FetchPortfolioValueRequestSchema = z.object({
   user: EvmAddressSchema,
-  conditionIds: distinctIdList(ConditionIdSchema, 20).optional(),
+  conditionIds: distinctIdList(CanonicalMarketConditionIdSchema, 20).optional(),
 });
 
 export type FetchPortfolioValueRequest = z.input<
