@@ -97,6 +97,17 @@ describe('Activity', () => {
         }),
       );
 
+      const market = expectPresent(expectPresent(item.legs[0]).market);
+      expect(market).toMatchObject({
+        question: expect.any(String),
+        groupItemTitle: expect.any(String),
+        sportsMarketType: expect.any(String),
+        outcomes: expect.any(Array),
+      });
+      expect(market.line === null || typeof market.line === 'number').toBe(
+        true,
+      );
+
       if (item.type === ComboActivityType.Redeem) {
         expect(item).toHaveProperty('payout');
       } else {

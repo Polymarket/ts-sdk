@@ -141,6 +141,19 @@ describe('Portfolio', () => {
         }),
       );
 
+      const market = expectPresent(
+        expectPresent(expectPresent(result.items[0]).legs[0]).market,
+      );
+      expect(market).toMatchObject({
+        question: expect.any(String),
+        groupItemTitle: expect.any(String),
+        sportsMarketType: expect.any(String),
+        outcomes: expect.any(Array),
+      });
+      expect(market.line === null || typeof market.line === 'number').toBe(
+        true,
+      );
+
       const filtered = await publicClient
         .listComboPositions({
           user: TEST_USER,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ComboPositionMarketSchema,
   FetchPortfolioValueResponseSchema,
   FetchUserPnlResponseSchema,
   FetchUserStatsResponseSchema,
@@ -170,3 +171,27 @@ function userPnlPoint() {
     trade_count: 99,
   };
 }
+
+describe('ComboPositionMarketSchema', () => {
+  it.each([
+    2.5,
+    null,
+  ])('preserves combo display metadata with line %s', (line) => {
+    const market = ComboPositionMarketSchema.parse({
+      question: 'Will the total exceed 2.5?',
+      group_item_title: 'Total goals',
+      sports_market_type: 'totals',
+      line,
+      outcomes: ['Over', 'Under'],
+    });
+    expect(market).toMatchObject({
+      question: 'Will the total exceed 2.5?',
+      groupItemTitle: 'Total goals',
+      sportsMarketType: 'totals',
+      line,
+      outcomes: ['Over', 'Under'],
+    });
+    expect(market).not.toHaveProperty('group_item_title');
+    expect(market).not.toHaveProperty('sports_market_type');
+  });
+});

@@ -521,6 +521,16 @@ export const ComboPositionMarketSchema = z
     market_id: z.string().nullish(),
     slug: z.string().nullish(),
     title: z.string().nullish(),
+    /** Full market question. */
+    question: z.string().nullish(),
+    /** Short per-leg label before the title fallback. */
+    group_item_title: z.string().nullish(),
+    /** Sports market classification, empty for non-sports markets. */
+    sports_market_type: z.string().nullish(),
+    /** Sports line, or null when the market has none. */
+    line: z.number().nullish(),
+    /** Outcome labels in outcome-index order. */
+    outcomes: z.array(z.string()).nullish(),
     outcome: z.string().nullish(),
     image_url: z.string().nullish(),
     icon_url: z.string().nullish(),
@@ -530,13 +540,25 @@ export const ComboPositionMarketSchema = z
     end_date: IsoDateTimeStringSchema.nullish(),
     event: ComboPositionMarketEventSchema.nullish(),
   })
-  .transform(({ market_id, image_url, icon_url, end_date, ...rest }) => ({
-    ...rest,
-    marketId: market_id,
-    imageUrl: image_url,
-    iconUrl: icon_url,
-    endDate: end_date,
-  }));
+  .transform(
+    ({
+      market_id,
+      image_url,
+      icon_url,
+      end_date,
+      group_item_title,
+      sports_market_type,
+      ...rest
+    }) => ({
+      ...rest,
+      marketId: market_id,
+      groupItemTitle: group_item_title,
+      sportsMarketType: sports_market_type,
+      imageUrl: image_url,
+      iconUrl: icon_url,
+      endDate: end_date,
+    }),
+  );
 
 export const ComboPositionLegSchema = z
   .object({
