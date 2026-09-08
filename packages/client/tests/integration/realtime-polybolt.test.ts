@@ -11,9 +11,11 @@ const NativeWebSocket = globalThis.WebSocket;
 class ObservedWebSocket extends NativeWebSocket {
   static connections: ObservedWebSocket[] = [];
   readonly operations: SentOperation[] = [];
+  messages = 0;
   constructor(url: string | URL, protocols?: string | string[]) {
     super(url, protocols);
     ObservedWebSocket.connections.push(this);
+    this.addEventListener('message', () => this.messages++);
   }
   override send(data: string | Blob | BufferSource): void {
     if (typeof data === 'string') {
@@ -47,6 +49,26 @@ describe.skipIf(environment.rtds.protocol !== 'polybolt')(
     afterEach(() => {
       vi.unstubAllGlobals();
       ObservedWebSocket.connections = [];
+    });
+
+    it('discards buffered prices when closed before iteration starts', async ({
+      secureClientWithDepositWallet: client,
+    }) => {
+      vi.stubGlobal('WebSocket', ObservedWebSocket);
+      try {
+        const handle = await client.subscribe([
+          { topic: 'prices.crypto', symbols: ['btcusd'] },
+        ]);
+        await expect
+          .poll(() => ObservedWebSocket.connections[0]?.messages ?? 0)
+          .toBeGreaterThanOrEqual(3);
+        await handle.close();
+        const events = [];
+        for await (const event of handle) events.push(event);
+        expect(events).toEqual([]);
+      } finally {
+        await client.closeSubscriptions();
+      }
     });
 
     it('delivers each update once for duplicate canonical symbols', async ({

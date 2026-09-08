@@ -46,11 +46,13 @@ export class SocketPool {
     const queue = pushable<RealtimePriceEvent>({ objectMode: true });
     const releases: (() => void)[] = [];
     let closed = false;
+    let terminalError: Error | undefined;
     const close = async () => {
       if (closed) return;
       closed = true;
       for (const release of releases) release();
-      queue.end();
+      if (terminalError === undefined) await queue.return();
+      else queue.end(terminalError);
       this.#closers.delete(close);
     };
     this.#closers.add(close);
@@ -91,6 +93,7 @@ export class SocketPool {
               } as RealtimePriceEvent);
             },
             end(error) {
+              terminalError = error;
               queue.end(error);
               void close();
             },

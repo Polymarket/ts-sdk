@@ -4912,5 +4912,13 @@
       "value": 78803.7152610941,
       "window_seconds": 60
     }
+  },
+  {
+    "op": "authed",
+    "rid": "capture-auth"
+  },
+  {
+    "op": "pong",
+    "rid": "capture-auth-ping"
   }
 ]
