@@ -67,7 +67,8 @@ export class PolyboltSocket {
   #requestId = 0;
   #authenticated = false;
   #closed = false;
-  #connecting: Promise<unknown> | undefined;
+  #started = false;
+  #connecting: Promise<void> | undefined;
   #lastSent = 0;
   #generation = 0;
   keyTarget = 64;
@@ -109,7 +110,10 @@ export class PolyboltSocket {
     }
     state.listeners.add(listener);
     if (state.snapshot !== undefined) listener.event(state.snapshot);
-    if (!this.#authenticated) this.#ensureConnected();
+    if (!this.#started) {
+      this.#started = true;
+      void this.#connect().catch(() => this.#schedule(1006));
+    }
     return state.ready;
   }
 
@@ -128,18 +132,17 @@ export class PolyboltSocket {
       }, 1_000);
   }
 
-  #ensureConnected(): void {
-    if (this.#connecting !== undefined || this.#closed) return;
-    this.#connecting = this.#connect()
-      .catch(() => {
-        this.#schedule(1006);
-      })
-      .finally(() => {
-        this.#connecting = undefined;
-      });
+  #connect(): Promise<void> {
+    if (this.#closed) return Promise.resolve();
+    if (this.#connecting !== undefined) return this.#connecting;
+    const connecting = this.#open().finally(() => {
+      if (this.#connecting === connecting) this.#connecting = undefined;
+    });
+    this.#connecting = connecting;
+    return connecting;
   }
 
-  async #connect(): Promise<void> {
+  async #open(): Promise<void> {
     const generation = this.#generation;
     await this.#connection.connect({
       url: this.#options.url,
@@ -368,6 +371,16 @@ export class PolyboltSocket {
       pending.reject(error);
     }
     this.#pending.clear();
+    for (const state of this.#keys.values()) {
+      state.snapshot = undefined;
+      if (!state.subscribed) continue;
+      const { promise, resolve, reject } = Promise.withResolvers<void>();
+      void promise.catch(() => undefined);
+      state.ready = promise;
+      state.resolve = resolve;
+      state.reject = reject;
+      state.subscribed = false;
+    }
   }
 
   #lost(info: WebSocketCloseInfo): void {
@@ -392,10 +405,12 @@ export class PolyboltSocket {
   }
 
   #fail(error: Error): void {
-    for (const key of this.#keys.values()) {
-      key.reject(error);
-      for (const listener of key.listeners) listener.end(error);
-    }
+    // Ending one multi-key handle removes listeners from other keys. Snapshot
+    // the fanout first so every handle still observes the terminal error.
+    const states = [...this.#keys.values()];
+    const listeners = new Set(states.flatMap((key) => [...key.listeners]));
+    for (const key of states) key.reject(error);
+    for (const listener of listeners) listener.end(error);
     void this.close();
   }
 

@@ -35,7 +35,14 @@ export class SocketPool {
   async subscribe(
     spec: PolyboltSpec,
   ): Promise<SubscriptionHandle<RealtimePriceEvent>> {
-    const subscriptions = subscriptionsFor(spec);
+    const subscriptions = [
+      ...new Map(
+        subscriptionsFor(spec).map((subscription) => [
+          subscription.key,
+          subscription,
+        ]),
+      ).values(),
+    ];
     const queue = pushable<RealtimePriceEvent>({ objectMode: true });
     const releases: (() => void)[] = [];
     let closed = false;

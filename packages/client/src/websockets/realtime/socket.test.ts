@@ -72,6 +72,84 @@ describe('realtime timing boundaries', () => {
     expect(polyboltReconnectDelay(1006, 20)).toBe(29970);
   });
 
+  it('preserves backoff and awaits one authentication and fresh acceptance for shared keys after reconnect', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const manager = new RealtimeWebSocketManager({
+      url,
+      protocol: 'polybolt',
+      credentials,
+    });
+    let connections = 0;
+    let auths = 0;
+    let drop = () => {};
+    let releaseAuth = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        const connection = ++connections;
+        drop = () => client.close(4002);
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as {
+            op: string;
+            rid: string;
+            subscriptions?: { channel: string }[];
+          };
+          if (frame.op === 'auth') {
+            auths++;
+            const accept = () =>
+              client.send(JSON.stringify({ op: 'authed', rid: frame.rid }));
+            if (connection === 1) accept();
+            else releaseAuth = accept;
+          } else if (frame.op === 'subscribe' || frame.op === 'unsubscribe') {
+            for (const subscription of frame.subscriptions ?? [])
+              client.send(
+                JSON.stringify({
+                  op: frame.op === 'subscribe' ? 'subscribed' : 'unsubscribed',
+                  channel: subscription.channel,
+                  rid: frame.rid,
+                }),
+              );
+          }
+        });
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(auths).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      await initial;
+      drop();
+      await vi.advanceTimersByTimeAsync(0);
+      let settled = false;
+      const joining = manager
+        .subscribe({ topic: 'prices.crypto', symbols: ['btcusd'] })
+        .then((handle) => {
+          settled = true;
+          return handle;
+        });
+      await vi.advanceTimersByTimeAsync(400);
+      expect(settled).toBe(false);
+      expect(connections).toBe(1);
+      await vi.waitFor(() => expect(auths).toBe(2));
+      const third = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(settled).toBe(false);
+      expect(auths).toBe(2);
+      releaseAuth();
+      await vi.advanceTimersByTimeAsync(120);
+      await Promise.all([joining, third]);
+      expect(settled).toBe(true);
+    } finally {
+      await manager.close();
+    }
+  });
+
   it('sends protocol pings and treats any inbound frame as liveness', async () => {
     vi.useFakeTimers();
     const heartbeat = new PolyboltWebSocketHeartbeat();

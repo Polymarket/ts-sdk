@@ -49,6 +49,30 @@ describe.skipIf(environment.rtds.protocol !== 'polybolt')(
       ObservedWebSocket.connections = [];
     });
 
+    it('delivers each update once for duplicate canonical symbols', async ({
+      secureClientWithDepositWallet: client,
+    }) => {
+      const handle = await client.subscribe([
+        { topic: 'prices.crypto', symbols: ['btcusd', 'BTCUSD'] },
+      ]);
+      const sequences: (number | undefined)[] = [];
+      const timer = setTimeout(() => {
+        void handle.close();
+      }, 15_000);
+      try {
+        for await (const event of handle) {
+          if (event.type !== 'update') continue;
+          sequences.push(event.seq);
+          if (sequences.length === 2) break;
+        }
+        expect(sequences).toHaveLength(2);
+        expect(sequences[0]).not.toBe(sequences[1]);
+      } finally {
+        clearTimeout(timer);
+        await client.closeSubscriptions();
+      }
+    });
+
     it('authenticates, shares keys, batches filters and grows beyond 64 keys', async ({
       secureClientWithDepositWallet: client,
     }) => {
@@ -72,7 +96,7 @@ describe.skipIf(environment.rtds.protocol !== 'polybolt')(
             .sort(),
         ).toEqual([6, 64]);
         const duplicate = await client.subscribe([
-          { topic: 'prices.polymarket', assetIds: ['1'] },
+          { topic: 'prices.polymarket', assetIds: ['0001'] },
         ]);
         expect(ObservedWebSocket.connections).toHaveLength(2);
         await duplicate.close();
@@ -101,7 +125,7 @@ describe.skipIf(environment.rtds.protocol !== 'polybolt')(
     }) => {
       try {
         const specs = [
-          { topic: 'prices.crypto', symbols: ['btcusd', 'ethusd'] },
+          { topic: 'prices.crypto', symbols: ['btcusd', 'BTCUSD', 'ethusd'] },
           { topic: 'prices.crypto.binance', symbols: ['btcusd'] },
           {
             topic: 'prices.crypto.twap',
