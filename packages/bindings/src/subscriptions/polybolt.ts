@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
+  ConditionIdSchema,
   DecimalishSchema,
   DecimalStringSchema,
   EpochMillisecondsSchema,
+  OptionalDecimalStringSchema,
 } from '../shared';
 
 export enum RealtimeErrorCode {
@@ -116,10 +119,10 @@ const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
 }));
 const BboPayloadSchema = z
   .object({
-    market: z.string(),
-    asset_id: z.string(),
-    best_bid: DecimalishSchema,
-    best_ask: DecimalishSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
+    best_bid: OptionalDecimalStringSchema,
+    best_ask: OptionalDecimalStringSchema,
     hash: z.string(),
     timestamp: EpochMillisecondsSchema,
   })

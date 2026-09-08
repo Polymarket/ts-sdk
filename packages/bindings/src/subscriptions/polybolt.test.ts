@@ -114,4 +114,27 @@ describe('realtime frame normalization', () => {
       ),
     ).toBeUndefined();
   });
+
+  it('delivers BBO updates when either book side is empty', () => {
+    const event = parsePolyboltEvent(
+      PolyboltEnvelopeSchema.parse({
+        v: 1,
+        channel: 'price.polymarket',
+        seq: 2,
+        ts: 123456,
+        payload: {
+          market: `0x${'1'.repeat(64)}`,
+          asset_id: '123',
+          best_bid: '',
+          best_ask: '0.5',
+          hash: 'abc',
+          timestamp: 123456,
+        },
+      }),
+    );
+    expect(event).toMatchObject({
+      topic: 'prices.polymarket',
+      payload: { bestBid: null, bestAsk: '0.5' },
+    });
+  });
 });

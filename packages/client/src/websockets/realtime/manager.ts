@@ -87,4 +87,6 @@ export class RealtimeWebSocketManager
 }
 
 /** @deprecated Use RealtimeWebSocketManager. Removed two months after the default stream migration release. */
-export { RealtimeWebSocketManager as RtdsWebSocketManager };
+export const RtdsWebSocketManager = RealtimeWebSocketManager;
+/** @deprecated Use RealtimeWebSocketManager. Removed two months after the default stream migration release. */
+export type RtdsWebSocketManager = RealtimeWebSocketManager;

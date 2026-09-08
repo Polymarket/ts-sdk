@@ -341,8 +341,8 @@ export class PolyboltSocket {
           )
             continue;
         }
+        state.snapshot = refreshSnapshot(state.snapshot, event);
         for (const listener of state.listeners) listener.event(event);
-        if (event.type === 'subscribe') state.snapshot = event;
       }
     }
     if ((envelope.data.dropped ?? 0) > 0) this.#resync(envelope.data.channel);
@@ -427,4 +427,31 @@ export class PolyboltSocket {
     this.#keys.clear();
     await this.#connection.close();
   }
+}
+
+// A handle joining a shared key needs current history, not the barrier from
+// when the first handle connected. Maintain the same two-minute window locally.
+function refreshSnapshot(
+  previous: PriceEvent | undefined,
+  event: PriceEvent,
+): PriceEvent | undefined {
+  if (event.type === 'subscribe') return event;
+  if (event.topic === 'prices.polymarket') return undefined;
+  const history = previous?.type === 'subscribe' ? previous.payload.data : [];
+  const { symbol, timestamp, value } = event.payload;
+  if ((history.at(-1)?.timestamp ?? 0) > timestamp) return previous;
+  const data = [
+    ...history.filter(
+      (point) =>
+        point.timestamp > timestamp - 120_000 && point.timestamp < timestamp,
+    ),
+    { timestamp, value },
+  ];
+  if (event.topic === 'prices.crypto.twap')
+    return {
+      ...event,
+      type: 'subscribe',
+      payload: { symbol, data, windowSeconds: event.payload.windowSeconds },
+    };
+  return { ...event, type: 'subscribe', payload: { symbol, data } };
 }

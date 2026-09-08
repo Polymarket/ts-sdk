@@ -190,6 +190,47 @@ describe.skipIf(environment.rtds.protocol !== 'polybolt')(
       }
     });
 
+    it('seeds a joining handle with current shared history', async ({
+      secureClientWithDepositWallet: client,
+    }) => {
+      vi.stubGlobal('WebSocket', ObservedWebSocket);
+      const initial = await client.subscribe([
+        { topic: 'prices.crypto.binance', symbols: ['btcusd'] },
+      ]);
+      const latest = Promise.withResolvers<number>();
+      const consuming = (async () => {
+        for await (const event of initial)
+          latest.resolve(event.payload.timestamp);
+      })();
+      const timer = setTimeout(
+        () => latest.reject(new Error('No live price arrived.')),
+        15_000,
+      );
+      try {
+        const timestamp = await latest.promise;
+        const snapshot = await first(
+          await client.subscribe([
+            { topic: 'prices.crypto', symbols: ['btcusd'] },
+          ]),
+          (event) => event.type === 'subscribe',
+        );
+        expect(snapshot.type).toBe('subscribe');
+        if (snapshot.type === 'subscribe')
+          expect(
+            snapshot.payload.data.at(-1)?.timestamp,
+          ).toBeGreaterThanOrEqual(timestamp);
+        expect(
+          ObservedWebSocket.connections
+            .flatMap((socket) => socket.operations)
+            .filter((op) => op.op === 'subscribe'),
+        ).toHaveLength(1);
+      } finally {
+        clearTimeout(timer);
+        await client.closeSubscriptions();
+        await consuming;
+      }
+    });
+
     it('rejects missing filters and public access before opening a socket', async ({
       publicClient,
       secureClientWithDepositWallet: client,

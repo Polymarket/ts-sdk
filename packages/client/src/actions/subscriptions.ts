@@ -287,6 +287,8 @@ export type PublicRealtimeEvent =
 
 export type SecureRealtimeEvent =
   | PublicRealtimeEvent
+  | CryptoPricesBinanceSnapshotEvent
+  | CryptoPricesChainlinkTwapSnapshotEvent
   | UserEvent
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
@@ -342,11 +344,15 @@ type EventForCryptoPricesChainlinkTwapSubscription<
 
 type AliasSnapshot<TSpec> = TSpec extends { includeSnapshot?: infer TInclude }
   ? true extends TInclude
-    ? TSpec extends { topic: 'prices.crypto.binance' }
-      ? CryptoPricesBinanceSnapshotEvent
-      : TSpec extends { topic: 'prices.crypto.chainlink.twap' }
-        ? CryptoPricesChainlinkTwapSnapshotEvent
-        : never
+    ? TSpec extends { topic: infer TTopic }
+      ?
+          | ('prices.crypto.binance' extends TTopic
+              ? CryptoPricesBinanceSnapshotEvent
+              : never)
+          | ('prices.crypto.chainlink.twap' extends TTopic
+              ? CryptoPricesChainlinkTwapSnapshotEvent
+              : never)
+      : never
     : never
   : never;
 

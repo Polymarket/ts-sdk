@@ -38,6 +38,10 @@ const PriceSubscriptionSchema = z.object({
   windowSeconds: z.union([z.literal(30), z.literal(60)]).optional(),
   includeSnapshot: z.boolean().optional(),
 });
+enum PriceEventType {
+  Update = 'update',
+  Subscribe = 'subscribe',
+}
 const EquitySubscriptionSchema = z.object({
   symbol: z
     .string()
@@ -45,7 +49,7 @@ const EquitySubscriptionSchema = z.object({
     .min(1)
     .max(64)
     .regex(/^[a-zA-Z0-9._:/-]+$/),
-  types: z.array(z.enum(['update', 'subscribe'])).optional(),
+  types: z.array(z.enum(PriceEventType)).optional(),
 });
 const BboSubscriptionSchema = z.object({
   assetIds: z

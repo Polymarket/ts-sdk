@@ -30,6 +30,7 @@ import {
   type CryptoPricesChainlinkTwapWindowSeconds as RootCryptoPricesChainlinkTwapWindowSeconds,
 } from '../index';
 import type {
+  CryptoPricesSubscription,
   EquityPricesEvent,
   EventForSubscriptionSpecs,
   MarketSubscription,
@@ -41,6 +42,13 @@ const ASSET_ID = toTokenId('123');
 
 describe('source-neutral price subscription types', () => {
   it('maps new topics and snapshot opt-ins without widening default aliases', () => {
+    expectTypeOf<
+      EventForSubscriptionSpecs<[CryptoPricesSubscription]>
+    >().toEqualTypeOf<
+      | CryptoPricesBinanceEvent
+      | CryptoPricesChainlinkEvent
+      | CryptoPricesBinanceSnapshotEvent
+    >();
     expectTypeOf<
       EventForSubscriptionSpecs<
         [{ topic: 'prices.crypto'; symbols: ['btcusd'] }]
