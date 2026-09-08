@@ -152,6 +152,8 @@ const RfqErrorCodeSchema = z.string().transform((value): RfqErrorCode => value);
 export type ComboMarket = {
   id: MarketId;
   conditionId: ConditionId;
+  /** Whether Combo enablement is still pending for this market. */
+  pending: boolean;
   slug: string;
   title: string;
   outcomes: ComboMarketOutcomes;
@@ -176,6 +178,7 @@ const ComboMarketSchema = z
     id: MarketIdSchema,
     condition_id: ConditionIdSchema,
     position_ids: z.array(PositionIdSchema),
+    pending: z.boolean(),
     slug: z.string(),
     title: z.string(),
     outcomes: z.array(z.string()),
@@ -215,6 +218,7 @@ const ComboMarketSchema = z
       conditionId: market.condition_id,
       id: market.id,
       image: market.image,
+      pending: market.pending,
       outcomes: {
         yes: {
           label: market.outcomes[0] as string,

@@ -121,20 +121,20 @@ export type AuthorizeSessionKeyRequest = {
   idempotencyKey?: string;
   /** Requested scopes. Defaults to `ALL`, which must appear alone. */
   scopes?: SessionKeyScope[];
-  /** Absolute expiry as whole future Unix seconds. */
-  validUntil: number;
 };
 
 type ParsedAuthorizeSessionKeyRequest = {
   address: EvmAddress;
   idempotencyKey?: string;
   scopes: SessionKeyScope[];
-  validUntil: number;
 };
 
 const DEFAULT_SESSION_KEY_SCOPES = [
   SessionKeyKnownScope.ALL,
 ] satisfies SessionKeyScope[];
+const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
+
+const SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS = 5 * 60 * 1_000;
 
 const AuthorizeSessionKeyRequestSchema = z
   .object({
@@ -144,7 +144,6 @@ const AuthorizeSessionKeyRequestSchema = z
       .array(SessionSignerScopeSchema)
       .min(1)
       .default(DEFAULT_SESSION_KEY_SCOPES),
-    validUntil: z.number().int(),
   })
   .superRefine((value, context) => {
     if (isSameEvmAddress(value.address, ZERO_ADDRESS)) {
@@ -163,14 +162,6 @@ const AuthorizeSessionKeyRequestSchema = z
         code: 'custom',
         message: 'Session key scope ALL cannot be combined with another scope.',
         path: ['scopes'],
-      });
-    }
-
-    if (value.validUntil <= Math.floor(Date.now() / 1_000)) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Session key expiry must be a future Unix timestamp.',
-        path: ['validUntil'],
       });
     }
   })
@@ -220,6 +211,7 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * The SDK receives only the public address. The application remains
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
+ * The authorization expires 180 days after it is created.
  * Requires builder API-key authentication.
  *
  * @remarks
@@ -232,7 +224,6 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * ```ts
  * const authorization = await authorizeSessionKey(client, {
  *   address: sessionAddress,
- *   validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
  * });
  * ```
  *
@@ -255,12 +246,14 @@ export async function authorizeSessionKey(
     request,
     AuthorizeSessionKeyRequestSchema,
   );
+  const validUntil =
+    Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
   const signedBatch = await completeWith(client.signer)(
     buildDepositWalletExecuteRequest(client, [
       authorizeSessionSignerCall(
         client.account.wallet,
         parsedRequest.address,
-        BigInt(parsedRequest.validUntil),
+        BigInt(validUntil),
       ),
     ]),
   );
@@ -270,7 +263,7 @@ export async function authorizeSessionKey(
     scopes: parsedRequest.scopes,
     sessionSignerAddress: parsedRequest.address,
     signature: signedBatch.signature,
-    validUntil: `${parsedRequest.validUntil}`,
+    validUntil: `${validUntil}`,
     walletAddress: client.account.wallet,
   };
   const response = await unwrap(
@@ -281,6 +274,7 @@ export async function authorizeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
   );
@@ -297,7 +291,7 @@ export async function authorizeSessionKey(
   const sessionKey = await waitForAuthorizedSessionKey(client, {
     address: parsedRequest.address,
     scopes: parsedRequest.scopes,
-    validUntil: parsedRequest.validUntil,
+    validUntil,
   });
 
   return {
@@ -340,12 +334,6 @@ const RevokeSessionKeyRequestSchema = z
     }),
   ) satisfies z.ZodType<ParsedRevokeSessionKeyRequest, RevokeSessionKeyRequest>;
 
-/** Result of a confirmed session-key revocation. */
-export type RevokeSessionKeyResult = {
-  /** Confirmed transaction that applied the revocation. */
-  transaction: TransactionOutcome;
-};
-
 export type RevokeSessionKeyError =
   | CancelledSigningError
   | RateLimitError
@@ -371,8 +359,8 @@ export const RevokeSessionKeyError = makeErrorGuard(
 /**
  * Revokes a session key authorized for the Deposit Wallet.
  *
- * Revocation may take several minutes while existing activity is canceled and
- * the on-chain revocation is confirmed.
+ * Returns once the session key is removed from the active-key registry and can
+ * no longer be used. The on-chain transaction may still be pending.
  * Requires API-key authentication that supports gasless transactions.
  *
  * @remarks
@@ -380,7 +368,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const revocation = await revokeSessionKey(client, {
+ * await revokeSessionKey(client, {
  *   address: sessionAddress,
  * });
  * ```
@@ -391,7 +379,7 @@ export const RevokeSessionKeyError = makeErrorGuard(
 export async function revokeSessionKey(
   client: BaseSecureClient,
   request: RevokeSessionKeyRequest,
-): Promise<RevokeSessionKeyResult> {
+): Promise<void> {
   assertOwnerDepositWallet(client);
 
   if (!client.supportsGasless) {
@@ -421,6 +409,7 @@ export async function revokeSessionKey(
             parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
         },
         json: payload,
+        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
       })
       .andThen(validateWith(RelayerRevokeSessionSignerResponseSchema)),
   );
@@ -428,14 +417,37 @@ export async function revokeSessionKey(
     kind: 'revocation',
     status: response.status,
   });
-  const transaction = await new GaslessTransactionHandle(client, {
-    transactionHash: null,
-    transactionId: response.transactionId,
-  }).wait();
+  // This eager return is intentional; the backend continues the remaining
+  // revocation work after the key leaves the active-key registry.
+  await waitForRevokedSessionKey(client, parsedRequest.address);
+}
 
-  return {
-    transaction,
-  };
+async function waitForRevokedSessionKey(
+  client: BaseSecureClient,
+  address: EvmAddress,
+): Promise<void> {
+  // This revocation readiness check deliberately reuses the relayer transaction
+  // polling limits instead of introducing revocation-specific configuration.
+  // The defaults allow about 200 seconds (100 polls every two seconds).
+  for (
+    let pollCount = 0;
+    pollCount < client.environment.relayerMaxPolls;
+    pollCount += 1
+  ) {
+    const isActive = (await fetchSessionKeys(client)).some((sessionKey) =>
+      isSameEvmAddress(sessionKey.address, address),
+    );
+
+    if (!isActive) {
+      return;
+    }
+
+    await delay(client.environment.relayerPollFrequencyMs);
+  }
+
+  throw new TimeoutError(
+    `Timed out waiting for session key ${address} to be revoked`,
+  );
 }
 
 async function waitForAuthorizedSessionKey(

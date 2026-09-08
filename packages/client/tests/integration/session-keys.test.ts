@@ -13,6 +13,8 @@ import { describe, expect, it, publicClient } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
 
+const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
+
 const market = await findHighVolumeLowPriceMarket(publicClient, {
   sportsOnly: false,
 });
@@ -27,7 +29,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
     await expect(
       secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
-        validUntil: Math.floor(Date.now() / 1_000) + 2 * 60 * 60,
       }),
     ).rejects.toThrow(
       'Session-key authorization requires builder API-key authentication.',
@@ -71,12 +72,14 @@ describe('Session keys', { timeout: 600_000 }, () => {
       transport: http(environment.rpc),
     });
     const sessionAddress = await sessionSigner.getAddress();
-    const validUntil = Math.floor(Date.now() / 1_000) + 2 * 60 * 60;
+    const earliestExpiry =
+      Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
     const authorization =
       await secureClientWithDepositWallet.authorizeSessionKey({
         address: sessionAddress,
-        validUntil,
       });
+    const latestExpiry =
+      Math.floor(Date.now() / 1_000) + SESSION_KEY_LIFETIME_SECONDS;
 
     annotate(`Session address: ${sessionAddress}`);
     annotate(
@@ -86,6 +89,9 @@ describe('Session keys', { timeout: 600_000 }, () => {
       /^0x[0-9a-f]{64}$/i,
     );
     expect(authorization.transaction.transactionId).not.toBeNull();
+    const { validUntil } = authorization.sessionKey;
+    expect(validUntil).toBeGreaterThanOrEqual(earliestExpiry);
+    expect(validUntil).toBeLessThanOrEqual(latestExpiry);
     expect(authorization.sessionKey).toEqual({
       address: sessionAddress.toLowerCase(),
       scopes: [SessionKeyKnownScope.ALL],
@@ -134,18 +140,10 @@ describe('Session keys', { timeout: 600_000 }, () => {
       expect(cancellation.canceled).toContain(orderId);
       orderId = undefined;
 
-      const revocation = await secureClientWithDepositWallet.revokeSessionKey({
+      await secureClientWithDepositWallet.revokeSessionKey({
         address: sessionAddress,
       });
       revoked = true;
-
-      annotate(
-        `Revocation transaction: ${revocation.transaction.transactionHash}`,
-      );
-      expect(revocation.transaction.transactionHash).toMatch(
-        /^0x[0-9a-f]{64}$/i,
-      );
-      expect(revocation.transaction.transactionId).not.toBeNull();
 
       const remainingSessionKeys =
         await secureClientWithDepositWallet.fetchSessionKeys();

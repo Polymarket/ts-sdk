@@ -1,5 +1,56 @@
 # @polymarket/client
 
+## 0.9.0
+
+### Minor Changes
+
+- 8a26d28: Accept protocol-neutral `assetId` inputs when estimating, preparing, creating, and placing market and limit orders, infer Polymarket V2 routing from the structured position-ID namespace, and retain `tokenId` as a deprecated input alias.
+- 1fb4dd9: Add `fetchTradingApprovalsState` for reading a wallet's missing trading approvals without a signer or transaction workflow. Export the approval requirement types, and report malformed approval-check results as `UnexpectedResponseError` in both read and setup workflows.
+
+  Secure account read methods now reject invalid request values—including `null`, arrays, primitives, and `user: null`—with `UserInputError` instead of silently defaulting the wallet or throwing a raw error.
+
+- 4486dee: Expose each market's Combo eligibility status as `market.state.comboStatus`,
+  while passing newly introduced status values through as strings.
+- 74ad47b: Expose protocol versions on markets and events.
+- 01438a1: Remove legacy AMM-era fields that the API no longer returns: `marketMakerAddress`, `ammType`, `fpmmLive`, `volumeAmm`, `volume24hrAmm`, `volume1wkAmm`, `volume1moAmm`, `volume1yrAmm`, and `liquidityAmm` from the raw market schema, `liquidityAmm` from the raw event schema, `volumeAmm` from `MarketMetrics`, and `liquidityAmm` from `EventMetrics`. Also remove the internal `pagerDutyNotificationEnabled` market field and `requiresTranslation` from market, event, series, and tag models, and drop the `marketMakerAddresses` filter from `listMarkets`. Responses that still carry any of these fields keep parsing; the values are ignored.
+- 1a47d73: Return from `revokeSessionKey` once the session key is removed from the active-key registry instead of waiting for on-chain confirmation. The method now returns `Promise<void>`, and `RevokeSessionKeyResult` has been removed.
+
+### Patch Changes
+
+- 6558f22: Allow session-key authorization and revocation relayer submissions up to five minutes to accommodate synchronous validation and broadcast processing.
+- 663d79b: Preserve each team's `ordering` value on event and team-list responses.
+- Updated dependencies [8a26d28]
+- Updated dependencies [663d79b]
+- Updated dependencies [4486dee]
+- Updated dependencies [74ad47b]
+- Updated dependencies [01438a1]
+  - @polymarket/bindings@0.9.0
+
+## 0.8.1
+
+### Patch Changes
+
+- 4fa74dc: Fix session-key authorization expiry at 180 days and remove `validUntil` from the public request.
+
+## 0.8.0
+
+### Minor Changes
+
+- a8dba73: Expose pending Combo market status and avoid using pending markets when discovering live RFQ legs.
+- a1959b6: Add protocol-neutral `assetId` fields across CLOB reads, filters, and realtime events, and `conditionId` fields across CLOB reads and realtime events, while retaining deprecated `tokenId`, `tokenIds`, and `market` compatibility aliases.
+- 5c18246: Add protocol-neutral `assetId` and `conditionId` fields to Data API responses while retaining deprecated identifier aliases.
+- efbd77b: Support splitting, merging, and redeeming ordinary Polymarket V2 positions through the existing market position lifecycle APIs; allow position-ID redemption for binary, negative-risk, and Combo positions; and consistently name low-level CTF and Router transaction builders.
+- 851bff4: Include the PolyV2 binary and negative-risk modules in the protocol-neutral trading approval workflow.
+
+### Patch Changes
+
+- 2fd5cc5: Normalize empty live-volume market identifiers to null.
+- Updated dependencies [a8dba73]
+- Updated dependencies [a1959b6]
+- Updated dependencies [5c18246]
+- Updated dependencies [2fd5cc5]
+  - @polymarket/bindings@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

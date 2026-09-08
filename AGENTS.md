@@ -62,6 +62,7 @@
 
 - A market's minimum tick size may become finer, such as `0.01` to `0.001`, but it cannot become coarser, such as `0.001` to `0.01`. SDK caching and recovery logic may rely on this monotonic behavior and should not add defensive handling for tick-size coarsening.
 - When a Perps order is submitted with a client order ID, every corresponding private order update echoes that same client order ID. SDK order-placement workflows may rely on this invariant for pre-acknowledgement correlation.
+- Polymarket V2 position IDs reserve bits 40 through 103 as zero. SDK order routing may classify a valid uint256 asset identifier as Polymarket V2 when all 64 reserved bits are zero; registered CTF token IDs do not occupy this structured-ID namespace. Treat this as a routing invariant, not full position-ID validation, and continue to let CLOB validate that the asset exists.
 
 ## TypeScript config
 

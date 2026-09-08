@@ -48,9 +48,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const result = await publicClient.estimateMarketPrice({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         orderType: OrderType.FAK,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(result).toEqual(expect.any(Number));
@@ -189,9 +189,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const order = await secureClientWithDepositWallet.createMarketOrder({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         builderCode,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(order.builder).toBe(builderCode);
@@ -423,10 +423,10 @@ describe('Orders', { timeout: 60_000 }, () => {
       const minSize = expectPresent(market.trading.minimumOrderSize);
 
       const result = await secureClientWithDepositWallet.placeLimitOrder({
+        assetId: yesTokenId,
         price: minPrice,
         side: OrderSide.BUY,
         size: minSize,
-        tokenId: yesTokenId,
       });
 
       expect(result.ok).toBe(true);

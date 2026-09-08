@@ -1,10 +1,9 @@
-import type { TickSizeValue } from '@polymarket/bindings';
+import type { ClobAssetId, TickSizeValue } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
 import { invariant } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
-import { ExchangeOrderProtocolVersion } from '../../exchange';
-import type { OrderRouting } from './asset';
+import { isV2PositionId } from '../../protocol';
 import { FIXED_SCALE, type ScaledPrice, toScaledPrice } from './fixed';
 
 export type RoundingConfig = {
@@ -77,10 +76,10 @@ export function resolveExchangeAddress(
 /** @internal */
 export function resolveOrderExchangeAddress(
   client: BaseSecureClient,
-  routing: OrderRouting,
+  assetId: ClobAssetId,
   negRisk: boolean,
 ): EvmAddress {
-  return routing.exchangeVersion === ExchangeOrderProtocolVersion.V3
+  return isV2PositionId(assetId)
     ? client.environment.contracts.exchangeV3
     : resolveExchangeAddress(client, negRisk);
 }

@@ -7,6 +7,7 @@ import {
   DecimalishSchema,
   type DecimalString,
   EvmAddressSchema,
+  emptyStringToNull,
   type PositionId,
   type TokenId,
 } from '../shared';
@@ -95,7 +96,7 @@ export type MarketVolume = {
 
 export const MarketVolumeSchema = z
   .object({
-    market: ConditionIdSchema.nullish(),
+    market: z.preprocess(emptyStringToNull, ConditionIdSchema.nullish()),
     value: DecimalishSchema.nullish(),
   })
   .transform(({ market, ...rest }) => ({

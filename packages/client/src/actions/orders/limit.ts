@@ -1,5 +1,8 @@
 import {
+  type BuilderCode,
   BuilderCodeSchema,
+  type ClobAssetId,
+  type OrderSide,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
@@ -10,12 +13,7 @@ import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
 import { computeLimitOrderAmounts } from './amounts';
-import {
-  createOrderRouting,
-  type OrderRouting,
-  PositionOrderAssetSchema,
-  TokenOrderAssetSchema,
-} from './asset';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
@@ -39,10 +37,20 @@ const BasePrepareLimitOrderParamsSchema = z.strictObject({
   expiration: z.number().int().nonnegative().optional(),
 });
 
+export type PrepareLimitOrderDraftParams = {
+  assetId: ClobAssetId;
+  builderCode?: BuilderCode;
+  expiration?: number;
+  postOnly: boolean;
+  price: number;
+  side: OrderSide;
+  size: number;
+};
+
 export const PrepareLimitOrderParamsSchema = z
   .union([
-    BasePrepareLimitOrderParamsSchema.extend(TokenOrderAssetSchema.shape),
-    BasePrepareLimitOrderParamsSchema.extend(PositionOrderAssetSchema.shape),
+    BasePrepareLimitOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    BasePrepareLimitOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
   ])
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
@@ -57,14 +65,17 @@ export const PrepareLimitOrderParamsSchema = z
         });
       }
     }
-  }) satisfies z.ZodType<PrepareLimitOrderRequest>;
-
-export type PrepareLimitOrderDraftParams = z.output<
-  typeof PrepareLimitOrderParamsSchema
+  })
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  })) satisfies z.ZodType<
+  PrepareLimitOrderDraftParams,
+  PrepareLimitOrderRequest
 >;
 
 type ResolveLimitOrderContextParams = {
-  routing: OrderRouting;
+  assetId: ClobAssetId;
   price: number;
 };
 
@@ -72,9 +83,8 @@ export async function prepareLimitOrderDraft(
   client: BaseSecureClient,
   params: PrepareLimitOrderDraftParams,
 ): Promise<OrderDraft> {
-  const routing = createOrderRouting(params);
   const context = await resolveLimitOrderContext(client, {
-    routing,
+    assetId: params.assetId,
     price: params.price,
   });
   const amounts = computeLimitOrderAmounts({
@@ -85,7 +95,7 @@ export async function prepareLimitOrderDraft(
   });
 
   return {
-    ...routing,
+    assetId: params.assetId,
     builderCode: params.builderCode,
     chainId: client.environment.chainId,
     exchangeAddress: context.exchangeAddress,
@@ -111,8 +121,7 @@ async function resolveLimitOrderContext(
   client: BaseSecureClient,
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
-  const { assetId } = params.routing;
-  const metadata = await resolveOrderMarketMetadata(client, assetId);
+  const metadata = await resolveOrderMarketMetadata(client, params.assetId);
 
   try {
     return buildLimitOrderContext(client, params, metadata);
@@ -123,7 +132,7 @@ async function resolveLimitOrderContext(
 
     const currentMetadata = await fetchCurrentOrderMarketMetadata(
       client,
-      assetId,
+      params.assetId,
     );
 
     return buildLimitOrderContext(client, params, currentMetadata);
@@ -140,7 +149,7 @@ function buildLimitOrderContext(
   return {
     exchangeAddress: resolveOrderExchangeAddress(
       client,
-      params.routing,
+      params.assetId,
       metadata.negRisk,
     ),
     funderAddress: client.account.wallet,

@@ -75,9 +75,9 @@ export const PostOrdersError = makeErrorGuard(
  * @example
  * ```ts
  * const order = await client.createMarketOrder({
+ *   assetId: '0x0122…0000',
  *   amount: 10,
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * const response = await postOrder(client)(order);
  * ```

@@ -47,6 +47,16 @@ describe('Portfolio', () => {
         isSameEvmAddress(wallet, depositWalletAddress),
       );
     });
+
+    it('rejects invalid secure client input', ({
+      secureClientWithDepositWallet,
+    }) => {
+      for (const request of [null, [], 'invalid', { user: null }]) {
+        expect(() =>
+          secureClientWithDepositWallet.listPositions(request as never),
+        ).toThrow(UserInputError);
+      }
+    });
   });
 
   describe('listClosedPositions', () => {

@@ -1,5 +1,31 @@
 # @polymarket/bindings
 
+## 0.9.0
+
+### Minor Changes
+
+- 8a26d28: Accept protocol-neutral `assetId` inputs when estimating, preparing, creating, and placing market and limit orders, infer Polymarket V2 routing from the structured position-ID namespace, and retain `tokenId` as a deprecated input alias.
+- 4486dee: Expose each market's Combo eligibility status as `market.state.comboStatus`,
+  while passing newly introduced status values through as strings.
+- 74ad47b: Expose protocol versions on markets and events.
+- 01438a1: Remove legacy AMM-era fields that the API no longer returns: `marketMakerAddress`, `ammType`, `fpmmLive`, `volumeAmm`, `volume24hrAmm`, `volume1wkAmm`, `volume1moAmm`, `volume1yrAmm`, and `liquidityAmm` from the raw market schema, `liquidityAmm` from the raw event schema, `volumeAmm` from `MarketMetrics`, and `liquidityAmm` from `EventMetrics`. Also remove the internal `pagerDutyNotificationEnabled` market field and `requiresTranslation` from market, event, series, and tag models, and drop the `marketMakerAddresses` filter from `listMarkets`. Responses that still carry any of these fields keep parsing; the values are ignored.
+
+### Patch Changes
+
+- 663d79b: Preserve each team's `ordering` value on event and team-list responses.
+
+## 0.8.0
+
+### Minor Changes
+
+- a8dba73: Expose pending Combo market status and avoid using pending markets when discovering live RFQ legs.
+- a1959b6: Add protocol-neutral `assetId` fields across CLOB reads, filters, and realtime events, and `conditionId` fields across CLOB reads and realtime events, while retaining deprecated `tokenId`, `tokenIds`, and `market` compatibility aliases.
+- 5c18246: Add protocol-neutral `assetId` and `conditionId` fields to Data API responses while retaining deprecated identifier aliases.
+
+### Patch Changes
+
+- 2fd5cc5: Normalize empty live-volume market identifiers to null.
+
 ## 0.7.0
 
 ### Minor Changes
