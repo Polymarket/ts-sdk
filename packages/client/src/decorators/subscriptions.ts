@@ -12,13 +12,31 @@ import type {
 } from '../clients';
 
 export type {
+  CryptoPriceEvent,
+  CryptoPriceSnapshotEvent,
+  CryptoPriceSubscription,
+  CryptoPricesBinanceSnapshotEvent,
   CryptoPricesChainlinkTwapEvent,
   CryptoPricesChainlinkTwapSixtyEvent,
+  CryptoPricesChainlinkTwapSnapshotEvent,
   CryptoPricesChainlinkTwapSubscription,
   CryptoPricesChainlinkTwapThirtyEvent,
   CryptoPricesChainlinkTwapWindowSeconds,
+  CryptoTwapPriceEvent,
+  CryptoTwapPriceSnapshotEvent,
+  CryptoTwapPriceSubscription,
+  EquityPriceEvent,
+  EquityPriceSubscription,
+  PolymarketPriceEvent,
+  PolymarketPriceSubscription,
+  PriceSubscription,
 } from '../actions';
 export { SubscribeError } from '../actions';
+export type { RealtimeWebSocketManagerOptions } from '../websockets/realtime/manager';
+export {
+  RealtimeWebSocketManager,
+  RtdsWebSocketManager,
+} from '../websockets/realtime/manager';
 
 export type PublicSubscriptionsActions = {
   /**

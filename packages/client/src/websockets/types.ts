@@ -1,7 +1,4 @@
 import type {
-  CommentsEvent,
-  CryptoPricesEvent,
-  EquityPricesEvent,
   MarketEvent,
   PerpsMarketDataEvent,
   SportsEvent,
@@ -19,6 +16,8 @@ import type {
   UserSubscription,
 } from '../actions/subscriptions';
 import type { PerpsSessionManager } from './perps/manager';
+import type { RealtimeSpec } from './realtime/manager';
+import type { RealtimeManagerEvent } from './realtime/pool';
 import type { RfqQuoterWebSocketManager } from './rfq';
 
 /**
@@ -72,12 +71,13 @@ export type PublicWebSocketManagers = {
     SportsSubscription,
     SportsEvent
   >;
+  /** @deprecated Use realtime on a secure client. Removed two months after the default stream migration release. */
   readonly rtds: WebSocketSubscriptionManager<
     | CommentsSubscription
     | CryptoPricesSubscription
     | CryptoPricesChainlinkTwapSubscription
     | EquityPricesSubscription,
-    CommentsEvent | CryptoPricesEvent | EquityPricesEvent
+    RealtimeManagerEvent
   >;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -90,6 +90,15 @@ export type PublicWebSocketManagers = {
 
 // Secure client additionally exposes the user surface.
 export type SecureWebSocketManagers = PublicWebSocketManagers & {
+  readonly realtime: WebSocketSubscriptionManager<
+    RealtimeSpec,
+    RealtimeManagerEvent
+  >;
+  /** @deprecated Use realtime. Removed two months after the default stream migration release. */
+  readonly rtds: WebSocketSubscriptionManager<
+    RealtimeSpec,
+    RealtimeManagerEvent
+  >;
   readonly clobUser: WebSocketSubscriptionManager<UserSubscription, UserEvent>;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.

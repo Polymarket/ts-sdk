@@ -59,8 +59,8 @@ import {
   PerpsSessionManager,
   PerpsSubscriptionManager,
   type PublicWebSocketManagers,
+  RealtimeWebSocketManager,
   RfqQuoterWebSocketManager,
-  RtdsWebSocketManager,
   type SecureWebSocketManagers,
   SportsWebSocketManager,
 } from './websockets';
@@ -176,7 +176,7 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return this.context.perps;
   }
 
-  /** @internal */
+  /** Shared managers for realtime subscriptions. */
   get webSockets(): PublicWebSocketManagers {
     return this.context.webSockets;
   }
@@ -339,9 +339,12 @@ class BasePublicClient<
           headers: config.environment.sports.headers,
           url: config.environment.sports.ws,
         }),
-        rtds: new RtdsWebSocketManager({
+        rtds: new RealtimeWebSocketManager({
           headers: config.environment.rtds.headers,
           url: config.environment.rtds.ws,
+          protocol: config.environment.rtds.protocol,
+          legacyUrl: config.environment.rtdsLegacy?.ws,
+          legacyHeaders: config.environment.rtdsLegacy?.headers,
         }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
@@ -537,6 +540,14 @@ class BaseSecureClient<
   }
 
   constructor(config: SecureClientConfig) {
+    const realtime = new RealtimeWebSocketManager({
+      url: config.environment.rtds.ws,
+      headers: config.environment.rtds.headers,
+      protocol: config.environment.rtds.protocol,
+      legacyUrl: config.environment.rtdsLegacy?.ws,
+      legacyHeaders: config.environment.rtdsLegacy?.headers,
+      credentials: config.credentials,
+    });
     super({
       account: config.account,
       credentials: config.credentials,
@@ -617,10 +628,8 @@ class BaseSecureClient<
           headers: config.environment.sports.headers,
           url: config.environment.sports.ws,
         }),
-        rtds: new RtdsWebSocketManager({
-          headers: config.environment.rtds.headers,
-          url: config.environment.rtds.ws,
-        }),
+        rtds: realtime,
+        realtime,
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
           url: config.environment.perps.ws,
@@ -674,7 +683,7 @@ class BaseSecureClient<
     return this.context.builderGateway;
   }
 
-  /** @internal */
+  /** Shared managers for public and authenticated realtime subscriptions. */
   override get webSockets(): SecureWebSocketManagers {
     return this.context.webSockets;
   }

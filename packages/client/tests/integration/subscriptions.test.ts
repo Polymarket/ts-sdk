@@ -42,29 +42,33 @@ async function collectCryptoSymbols(
 }
 
 describe('Subscriptions', () => {
-  it('routes public subscriptions and merges their events', async ({
-    publicClient,
+  it('routes market and price subscriptions and merges their events', async ({
+    secureClientWithDepositWallet: client,
+    environment,
   }) => {
     const market = await findHighVolumeLowPriceMarket(publicClient);
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
+    const expectedSymbols =
+      environment.rtds.protocol === 'polybolt'
+        ? ['btcusd', 'ethusd']
+        : ['btcusdt', 'ethusdt'];
 
-    const handle = await publicClient.subscribe([
+    const handle = await client.subscribe([
       { tokenIds: [tokenId], topic: 'market' },
       { topic: 'sports' },
-      { symbols: ['btcusdt'], topic: 'prices.crypto.binance' },
-      { symbols: ['ethusdt'], topic: 'prices.crypto.binance' },
+      { symbols: expectedSymbols, topic: 'prices.crypto.binance' },
     ]);
 
     try {
       const symbols = await collectCryptoSymbols(
         handle as AsyncIterable<EventWithOptionalSymbol>,
-        ['btcusdt', 'ethusdt'],
+        expectedSymbols,
       );
 
-      expect(symbols).toEqual(new Set(['btcusdt', 'ethusdt']));
+      expect(symbols).toEqual(new Set(expectedSymbols));
     } finally {
       await handle.close();
-      await publicClient.closeSubscriptions();
+      await client.closeSubscriptions();
     }
   });
 

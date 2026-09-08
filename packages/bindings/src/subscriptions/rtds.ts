@@ -123,12 +123,15 @@ const CryptoPricesChainlinkTwapSixtyTopicSchema =
   });
 
 export const CryptoPricesBinanceEventSchema = z.object({
+  seq: z.number().optional(),
+  dropped: z.number().optional(),
   topic: CryptoPricesBinanceTopicSchema,
   type: z.literal('update'),
   timestamp: EpochMillisecondsSchema,
   payload: PriceUpdatePayloadSchema,
 });
 
+/** @deprecated Use source-neutral price events. Removed two months after the default stream migration release. */
 export type CryptoPricesBinanceEvent = z.infer<
   typeof CryptoPricesBinanceEventSchema
 >;
@@ -140,6 +143,7 @@ export const CryptoPricesChainlinkEventSchema = z.object({
   payload: PriceUpdatePayloadSchema,
 });
 
+/** @deprecated Removed when the legacy spot stream shuts down. */
 export type CryptoPricesChainlinkEvent = z.infer<
   typeof CryptoPricesChainlinkEventSchema
 >;
@@ -191,6 +195,8 @@ function cryptoPricesChainlinkTwapPayloadSchema<
 }
 
 export const CryptoPricesChainlinkTwapThirtyEventSchema = z.object({
+  seq: z.number().optional(),
+  dropped: z.number().optional(),
   topic: CryptoPricesChainlinkTwapThirtyTopicSchema,
   type: z.literal('update'),
   timestamp: EpochMillisecondsSchema,
@@ -202,6 +208,8 @@ export type CryptoPricesChainlinkTwapThirtyEvent = z.infer<
 >;
 
 export const CryptoPricesChainlinkTwapSixtyEventSchema = z.object({
+  seq: z.number().optional(),
+  dropped: z.number().optional(),
   topic: CryptoPricesChainlinkTwapSixtyTopicSchema,
   type: z.literal('update'),
   timestamp: EpochMillisecondsSchema,
@@ -217,6 +225,7 @@ export const CryptoPricesChainlinkTwapEventSchema = z.union([
   CryptoPricesChainlinkTwapSixtyEventSchema,
 ]);
 
+/** @deprecated Use source-neutral price events. Removed two months after the default stream migration release. */
 export type CryptoPricesChainlinkTwapEvent = z.infer<
   typeof CryptoPricesChainlinkTwapEventSchema
 >;
@@ -288,6 +297,8 @@ const EquityPricesTopicSchema: z.ZodType<EquityPricesTopic> =
   });
 
 export const EquityPricesUpdateEventSchema = z.object({
+  seq: z.number().optional(),
+  dropped: z.number().optional(),
   topic: EquityPricesTopicSchema,
   type: z.literal('update'),
   timestamp: EpochMillisecondsSchema,
@@ -299,6 +310,8 @@ export type EquityPricesUpdateEvent = z.infer<
 >;
 
 export const EquityPricesSubscribeEventSchema = z.object({
+  seq: z.number().optional(),
+  dropped: z.number().optional(),
   topic: EquityPricesTopicSchema,
   type: z.literal('subscribe'),
   timestamp: EpochMillisecondsSchema,
@@ -314,6 +327,7 @@ export const EquityPricesEventSchema = z.discriminatedUnion('type', [
   EquityPricesSubscribeEventSchema,
 ]);
 
+/** @deprecated Use source-neutral price events. Removed two months after the default stream migration release. */
 export type EquityPricesEvent = z.infer<typeof EquityPricesEventSchema>;
 
 export const CommentsEventSchema = z.discriminatedUnion('type', [
@@ -323,6 +337,7 @@ export const CommentsEventSchema = z.discriminatedUnion('type', [
   ReactionRemovedEventSchema,
 ]);
 
+/** @deprecated Removed when the legacy comments stream shuts down. */
 export type CommentsEvent = z.infer<typeof CommentsEventSchema>;
 
 export const RealtimeEventSchema = z.discriminatedUnion('topic', [

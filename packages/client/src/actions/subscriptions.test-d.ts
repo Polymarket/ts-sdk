@@ -1,18 +1,28 @@
 import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
 import type {
+  CryptoPriceEvent,
   CryptoPricesBinanceEvent,
+  CryptoPricesBinanceSnapshotEvent,
   CryptoPricesChainlinkEvent,
   CryptoPricesChainlinkTwapEvent,
   CryptoPricesChainlinkTwapSixtyEvent,
   CryptoPricesChainlinkTwapThirtyEvent,
+  CryptoTwapPriceEvent,
   CustomMarketEvent,
+  EquityPriceEvent,
   MarketEvent,
+  PolymarketPriceEvent,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
 import { describe, expectTypeOf, it } from 'vitest';
-import type { TransportError, UserInputError } from '../errors';
+import type {
+  ConnectionLostError,
+  SubscriptionRejectedError,
+  TransportError,
+  UserInputError,
+} from '../errors';
 import {
   createPublicClient,
   type CryptoPricesChainlinkTwapEvent as RootCryptoPricesChainlinkTwapEvent,
@@ -28,6 +38,74 @@ import type {
 } from './subscriptions';
 
 const ASSET_ID = toTokenId('123');
+
+describe('source-neutral price subscription types', () => {
+  it('maps new topics and snapshot opt-ins without widening default aliases', () => {
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [{ topic: 'prices.crypto'; symbols: ['btcusd'] }]
+      >
+    >().toEqualTypeOf<CryptoPriceEvent>();
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [
+          {
+            topic: 'prices.crypto.twap';
+            symbols: ['btcusd'];
+            windowSeconds: 60;
+          },
+        ]
+      >
+    >().toEqualTypeOf<CryptoTwapPriceEvent>();
+    expectTypeOf<
+      EventForSubscriptionSpecs<[{ topic: 'prices.equity'; symbol: 'aapl' }]>
+    >().toEqualTypeOf<EquityPriceEvent>();
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [{ topic: 'prices.polymarket'; assetIds: ['1'] }]
+      >
+    >().toEqualTypeOf<PolymarketPriceEvent>();
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [
+          {
+            topic: 'prices.crypto.binance';
+            symbols: ['btcusd'];
+            includeSnapshot: true;
+          },
+        ]
+      >
+    >().toEqualTypeOf<
+      CryptoPricesBinanceEvent | CryptoPricesBinanceSnapshotEvent
+    >();
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [
+          {
+            topic: 'prices.crypto.binance';
+            symbols: ['btcusd'];
+            includeSnapshot: boolean;
+          },
+        ]
+      >
+    >().toEqualTypeOf<
+      CryptoPricesBinanceEvent | CryptoPricesBinanceSnapshotEvent
+    >();
+    expectTypeOf<
+      EventForSubscriptionSpecs<
+        [{ topic: 'prices.crypto.binance'; symbols: ['btcusd'] }]
+      >
+    >().toEqualTypeOf<CryptoPricesBinanceEvent>();
+  });
+
+  it('requires secure access for the new topics', () => {
+    const client = createPublicClient();
+    // @ts-expect-error New price topics require a secure client.
+    client.subscribe([{ topic: 'prices.crypto', symbols: ['btcusd'] }]);
+    // @ts-expect-error New BBO topics require a secure client.
+    client.subscribe([{ topic: 'prices.polymarket', assetIds: ['1'] }]);
+  });
+});
 
 describe('EventForSubscriptionSpecs', () => {
   it('exports the TWAP public surface from the package root', () => {
@@ -192,7 +270,10 @@ describe('EventForSubscriptionSpecs', () => {
 describe('SubscribeError', () => {
   it('includes invalid input and transport failures', () => {
     expectTypeOf<SubscribeError>().toEqualTypeOf<
-      UserInputError | TransportError
+      | UserInputError
+      | TransportError
+      | ConnectionLostError
+      | SubscriptionRejectedError
     >();
   });
 });

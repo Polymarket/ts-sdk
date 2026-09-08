@@ -1,0 +1,4916 @@
+[
+  {
+    "op": "error",
+    "code": "bad_op"
+  },
+  {
+    "op": "pong",
+    "rid": "ping"
+  },
+  {
+    "op": "subscribed",
+    "channel": "price.crypto",
+    "rid": "capture"
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto",
+    "seq": 1,
+    "ts": 1788886176000,
+    "snapshot": true,
+    "payload": {
+      "data": [
+        {
+          "full_accuracy_value": "78803.76173179",
+          "timestamp": 1788886057000,
+          "value": 78803.76173179
+        },
+        {
+          "full_accuracy_value": "78801.86287741",
+          "timestamp": 1788886058000,
+          "value": 78801.86287741
+        },
+        {
+          "full_accuracy_value": "78798.28703224",
+          "timestamp": 1788886059000,
+          "value": 78798.28703224
+        },
+        {
+          "full_accuracy_value": "78820.17730525",
+          "timestamp": 1788886060000,
+          "value": 78820.17730525
+        },
+        {
+          "full_accuracy_value": "78823.42959108",
+          "timestamp": 1788886061000,
+          "value": 78823.42959108
+        },
+        {
+          "full_accuracy_value": "78823.23938396",
+          "timestamp": 1788886062000,
+          "value": 78823.23938396
+        },
+        {
+          "full_accuracy_value": "78827.45934475",
+          "timestamp": 1788886063000,
+          "value": 78827.45934475
+        },
+        {
+          "full_accuracy_value": "78829.68501215",
+          "timestamp": 1788886064000,
+          "value": 78829.68501215
+        },
+        {
+          "full_accuracy_value": "78826.93910925",
+          "timestamp": 1788886065000,
+          "value": 78826.93910925
+        },
+        {
+          "full_accuracy_value": "78826.0500075",
+          "timestamp": 1788886066000,
+          "value": 78826.0500075
+        },
+        {
+          "full_accuracy_value": "78822.93932451",
+          "timestamp": 1788886067000,
+          "value": 78822.93932451
+        },
+        {
+          "full_accuracy_value": "78822.93932442",
+          "timestamp": 1788886068000,
+          "value": 78822.93932442
+        },
+        {
+          "full_accuracy_value": "78822.93931942",
+          "timestamp": 1788886069000,
+          "value": 78822.93931942
+        },
+        {
+          "full_accuracy_value": "78822.93931942",
+          "timestamp": 1788886070000,
+          "value": 78822.93931942
+        },
+        {
+          "full_accuracy_value": "78821.89951999",
+          "timestamp": 1788886071000,
+          "value": 78821.89951999
+        },
+        {
+          "full_accuracy_value": "78822.41325071",
+          "timestamp": 1788886072000,
+          "value": 78822.41325071
+        },
+        {
+          "full_accuracy_value": "78822.94562598",
+          "timestamp": 1788886073000,
+          "value": 78822.94562598
+        },
+        {
+          "full_accuracy_value": "78822.93932447",
+          "timestamp": 1788886074000,
+          "value": 78822.93932447
+        },
+        {
+          "full_accuracy_value": "78822.9393245",
+          "timestamp": 1788886075000,
+          "value": 78822.9393245
+        },
+        {
+          "full_accuracy_value": "78822.93931942",
+          "timestamp": 1788886076000,
+          "value": 78822.93931942
+        },
+        {
+          "full_accuracy_value": "78822.94956758",
+          "timestamp": 1788886077000,
+          "value": 78822.94956758
+        },
+        {
+          "full_accuracy_value": "78822.94956758",
+          "timestamp": 1788886078000,
+          "value": 78822.94956758
+        },
+        {
+          "full_accuracy_value": "78822.93931942",
+          "timestamp": 1788886079000,
+          "value": 78822.93931942
+        },
+        {
+          "full_accuracy_value": "78814.18109925",
+          "timestamp": 1788886080000,
+          "value": 78814.18109925
+        },
+        {
+          "full_accuracy_value": "78814.18109925",
+          "timestamp": 1788886081000,
+          "value": 78814.18109925
+        },
+        {
+          "full_accuracy_value": "78808.97092597",
+          "timestamp": 1788886082000,
+          "value": 78808.97092597
+        },
+        {
+          "full_accuracy_value": "78808.39999999",
+          "timestamp": 1788886083000,
+          "value": 78808.39999999
+        },
+        {
+          "full_accuracy_value": "78808.45",
+          "timestamp": 1788886084000,
+          "value": 78808.45
+        },
+        {
+          "full_accuracy_value": "78807.93131081",
+          "timestamp": 1788886085000,
+          "value": 78807.93131081
+        },
+        {
+          "full_accuracy_value": "78807.93131081",
+          "timestamp": 1788886086000,
+          "value": 78807.93131081
+        },
+        {
+          "full_accuracy_value": "78808.18275065",
+          "timestamp": 1788886087000,
+          "value": 78808.18275065
+        },
+        {
+          "full_accuracy_value": "78808.1827507",
+          "timestamp": 1788886088000,
+          "value": 78808.1827507
+        },
+        {
+          "full_accuracy_value": "78808.1317195",
+          "timestamp": 1788886089000,
+          "value": 78808.1317195
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886090000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886091000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78807.77035593",
+          "timestamp": 1788886092000,
+          "value": 78807.77035593
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886093000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886094000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886095000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886096000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886097000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78807.94471515",
+          "timestamp": 1788886098000,
+          "value": 78807.94471515
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886099000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78808.14412478",
+          "timestamp": 1788886100000,
+          "value": 78808.14412478
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886101000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886102000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78812.33373466",
+          "timestamp": 1788886103000,
+          "value": 78812.33373466
+        },
+        {
+          "full_accuracy_value": "78812.33373466",
+          "timestamp": 1788886104000,
+          "value": 78812.33373466
+        },
+        {
+          "full_accuracy_value": "78812.00999999",
+          "timestamp": 1788886105000,
+          "value": 78812.00999999
+        },
+        {
+          "full_accuracy_value": "78812.33373466",
+          "timestamp": 1788886106000,
+          "value": 78812.33373466
+        },
+        {
+          "full_accuracy_value": "78810.93049",
+          "timestamp": 1788886107000,
+          "value": 78810.93049
+        },
+        {
+          "full_accuracy_value": "78811.01271368",
+          "timestamp": 1788886108000,
+          "value": 78811.01271368
+        },
+        {
+          "full_accuracy_value": "78812.72970836",
+          "timestamp": 1788886109000,
+          "value": 78812.72970836
+        },
+        {
+          "full_accuracy_value": "78812.72970836",
+          "timestamp": 1788886110000,
+          "value": 78812.72970836
+        },
+        {
+          "full_accuracy_value": "78817.40676471",
+          "timestamp": 1788886111000,
+          "value": 78817.40676471
+        },
+        {
+          "full_accuracy_value": "78818.63664387",
+          "timestamp": 1788886112000,
+          "value": 78818.63664387
+        },
+        {
+          "full_accuracy_value": "78818.32951547",
+          "timestamp": 1788886113000,
+          "value": 78818.32951547
+        },
+        {
+          "full_accuracy_value": "78818.3580835",
+          "timestamp": 1788886114000,
+          "value": 78818.3580835
+        },
+        {
+          "full_accuracy_value": "78818.40093554",
+          "timestamp": 1788886115000,
+          "value": 78818.40093554
+        },
+        {
+          "full_accuracy_value": "78818.40807755",
+          "timestamp": 1788886116000,
+          "value": 78818.40807755
+        },
+        {
+          "full_accuracy_value": "78819.65188764",
+          "timestamp": 1788886117000,
+          "value": 78819.65188764
+        },
+        {
+          "full_accuracy_value": "78819.61829547",
+          "timestamp": 1788886118000,
+          "value": 78819.61829547
+        },
+        {
+          "full_accuracy_value": "78819.50108918",
+          "timestamp": 1788886119000,
+          "value": 78819.50108918
+        },
+        {
+          "full_accuracy_value": "78819.75853842",
+          "timestamp": 1788886120000,
+          "value": 78819.75853842
+        },
+        {
+          "full_accuracy_value": "78819.45944539",
+          "timestamp": 1788886121000,
+          "value": 78819.45944539
+        },
+        {
+          "full_accuracy_value": "78819.97366986",
+          "timestamp": 1788886122000,
+          "value": 78819.97366986
+        },
+        {
+          "full_accuracy_value": "78819.89510779",
+          "timestamp": 1788886123000,
+          "value": 78819.89510779
+        },
+        {
+          "full_accuracy_value": "78819.82368772",
+          "timestamp": 1788886124000,
+          "value": 78819.82368772
+        },
+        {
+          "full_accuracy_value": "78811.27842561",
+          "timestamp": 1788886125000,
+          "value": 78811.27842561
+        },
+        {
+          "full_accuracy_value": "78810.15249937",
+          "timestamp": 1788886126000,
+          "value": 78810.15249937
+        },
+        {
+          "full_accuracy_value": "78809.75839935",
+          "timestamp": 1788886127000,
+          "value": 78809.75839935
+        },
+        {
+          "full_accuracy_value": "78809.50735195",
+          "timestamp": 1788886128000,
+          "value": 78809.50735195
+        },
+        {
+          "full_accuracy_value": "78807.97624237",
+          "timestamp": 1788886129000,
+          "value": 78807.97624237
+        },
+        {
+          "full_accuracy_value": "78807.34999994",
+          "timestamp": 1788886130000,
+          "value": 78807.34999994
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886131000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78807.3",
+          "timestamp": 1788886132000,
+          "value": 78807.3
+        },
+        {
+          "full_accuracy_value": "78807.35",
+          "timestamp": 1788886133000,
+          "value": 78807.35
+        },
+        {
+          "full_accuracy_value": "78807.39999999",
+          "timestamp": 1788886134000,
+          "value": 78807.39999999
+        },
+        {
+          "full_accuracy_value": "78807.39999999",
+          "timestamp": 1788886135000,
+          "value": 78807.39999999
+        },
+        {
+          "full_accuracy_value": "78807.50505354",
+          "timestamp": 1788886136000,
+          "value": 78807.50505354
+        },
+        {
+          "full_accuracy_value": "78807.47572825",
+          "timestamp": 1788886137000,
+          "value": 78807.47572825
+        },
+        {
+          "full_accuracy_value": "78807.46379811",
+          "timestamp": 1788886138000,
+          "value": 78807.46379811
+        },
+        {
+          "full_accuracy_value": "78807.44380545",
+          "timestamp": 1788886139000,
+          "value": 78807.44380545
+        },
+        {
+          "full_accuracy_value": "78807.35",
+          "timestamp": 1788886140000,
+          "value": 78807.35
+        },
+        {
+          "full_accuracy_value": "78807.43237701",
+          "timestamp": 1788886141000,
+          "value": 78807.43237701
+        },
+        {
+          "full_accuracy_value": "78807.42382975",
+          "timestamp": 1788886142000,
+          "value": 78807.42382975
+        },
+        {
+          "full_accuracy_value": "78807.0004751",
+          "timestamp": 1788886143000,
+          "value": 78807.0004751
+        },
+        {
+          "full_accuracy_value": "78806.21229475",
+          "timestamp": 1788886144000,
+          "value": 78806.21229475
+        },
+        {
+          "full_accuracy_value": "78807.43000245",
+          "timestamp": 1788886145000,
+          "value": 78807.43000245
+        },
+        {
+          "full_accuracy_value": "78807.42443972",
+          "timestamp": 1788886146000,
+          "value": 78807.42443972
+        },
+        {
+          "full_accuracy_value": "78807.43366102",
+          "timestamp": 1788886147000,
+          "value": 78807.43366102
+        },
+        {
+          "full_accuracy_value": "78807.39999999",
+          "timestamp": 1788886148000,
+          "value": 78807.39999999
+        },
+        {
+          "full_accuracy_value": "78807.35",
+          "timestamp": 1788886149000,
+          "value": 78807.35
+        },
+        {
+          "full_accuracy_value": "78806.21229475",
+          "timestamp": 1788886150000,
+          "value": 78806.21229475
+        },
+        {
+          "full_accuracy_value": "78807.43878011",
+          "timestamp": 1788886151000,
+          "value": 78807.43878011
+        },
+        {
+          "full_accuracy_value": "78807.43757231",
+          "timestamp": 1788886152000,
+          "value": 78807.43757231
+        },
+        {
+          "full_accuracy_value": "78807.44951064",
+          "timestamp": 1788886153000,
+          "value": 78807.44951064
+        },
+        {
+          "full_accuracy_value": "78808.58",
+          "timestamp": 1788886154000,
+          "value": 78808.58
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886155000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886156000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78808.18274562",
+          "timestamp": 1788886157000,
+          "value": 78808.18274562
+        },
+        {
+          "full_accuracy_value": "78810.38728738",
+          "timestamp": 1788886158000,
+          "value": 78810.38728738
+        },
+        {
+          "full_accuracy_value": "78815.19686875",
+          "timestamp": 1788886159000,
+          "value": 78815.19686875
+        },
+        {
+          "full_accuracy_value": "78815.19686875",
+          "timestamp": 1788886160000,
+          "value": 78815.19686875
+        },
+        {
+          "full_accuracy_value": "78819.36731673",
+          "timestamp": 1788886161000,
+          "value": 78819.36731673
+        },
+        {
+          "full_accuracy_value": "78807.53761433",
+          "timestamp": 1788886162000,
+          "value": 78807.53761433
+        },
+        {
+          "full_accuracy_value": "78794.15449937",
+          "timestamp": 1788886163000,
+          "value": 78794.15449937
+        },
+        {
+          "full_accuracy_value": "78794.15449937",
+          "timestamp": 1788886164000,
+          "value": 78794.15449937
+        },
+        {
+          "full_accuracy_value": "78793.91961135",
+          "timestamp": 1788886165000,
+          "value": 78793.91961135
+        },
+        {
+          "full_accuracy_value": "78793.50948291",
+          "timestamp": 1788886166000,
+          "value": 78793.50948291
+        },
+        {
+          "full_accuracy_value": "78793.50948291",
+          "timestamp": 1788886167000,
+          "value": 78793.50948291
+        },
+        {
+          "full_accuracy_value": "78793.50003",
+          "timestamp": 1788886168000,
+          "value": 78793.50003
+        },
+        {
+          "full_accuracy_value": "78793.50948291",
+          "timestamp": 1788886169000,
+          "value": 78793.50948291
+        },
+        {
+          "full_accuracy_value": "78794.15449937",
+          "timestamp": 1788886170000,
+          "value": 78794.15449937
+        },
+        {
+          "full_accuracy_value": "78794.15449937",
+          "timestamp": 1788886171000,
+          "value": 78794.15449937
+        },
+        {
+          "full_accuracy_value": "78794.15449937",
+          "timestamp": 1788886172000,
+          "value": 78794.15449937
+        },
+        {
+          "full_accuracy_value": "78795.78999999",
+          "timestamp": 1788886173000,
+          "value": 78795.78999999
+        },
+        {
+          "full_accuracy_value": "78795.8",
+          "timestamp": 1788886174000,
+          "value": 78795.8
+        },
+        {
+          "full_accuracy_value": "78795.67693046",
+          "timestamp": 1788886175000,
+          "value": 78795.67693046
+        },
+        {
+          "full_accuracy_value": "78795.01552451",
+          "timestamp": 1788886176000,
+          "value": 78795.01552451
+        }
+      ],
+      "symbol": "btcusd"
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto",
+    "seq": 2,
+    "ts": 1788886176000,
+    "snapshot": true,
+    "payload": {
+      "data": [
+        {
+          "full_accuracy_value": "2496.60283171",
+          "timestamp": 1788886057000,
+          "value": 2496.60283171
+        },
+        {
+          "full_accuracy_value": "2496.51150355",
+          "timestamp": 1788886058000,
+          "value": 2496.51150355
+        },
+        {
+          "full_accuracy_value": "2496.25585976",
+          "timestamp": 1788886059000,
+          "value": 2496.25585976
+        },
+        {
+          "full_accuracy_value": "2497.26509181",
+          "timestamp": 1788886060000,
+          "value": 2497.26509181
+        },
+        {
+          "full_accuracy_value": "2497.2898198",
+          "timestamp": 1788886061000,
+          "value": 2497.2898198
+        },
+        {
+          "full_accuracy_value": "2497.36667571",
+          "timestamp": 1788886062000,
+          "value": 2497.36667571
+        },
+        {
+          "full_accuracy_value": "2497.44764252",
+          "timestamp": 1788886063000,
+          "value": 2497.44764252
+        },
+        {
+          "full_accuracy_value": "2497.46802298",
+          "timestamp": 1788886064000,
+          "value": 2497.46802298
+        },
+        {
+          "full_accuracy_value": "2497.48428258",
+          "timestamp": 1788886065000,
+          "value": 2497.48428258
+        },
+        {
+          "full_accuracy_value": "2497.41323071",
+          "timestamp": 1788886066000,
+          "value": 2497.41323071
+        },
+        {
+          "full_accuracy_value": "2497.39188525",
+          "timestamp": 1788886067000,
+          "value": 2497.39188525
+        },
+        {
+          "full_accuracy_value": "2497.43485977",
+          "timestamp": 1788886068000,
+          "value": 2497.43485977
+        },
+        {
+          "full_accuracy_value": "2497.50137416",
+          "timestamp": 1788886069000,
+          "value": 2497.50137416
+        },
+        {
+          "full_accuracy_value": "2497.45333834",
+          "timestamp": 1788886070000,
+          "value": 2497.45333834
+        },
+        {
+          "full_accuracy_value": "2497.44250527",
+          "timestamp": 1788886071000,
+          "value": 2497.44250527
+        },
+        {
+          "full_accuracy_value": "2497.45125522",
+          "timestamp": 1788886072000,
+          "value": 2497.45125522
+        },
+        {
+          "full_accuracy_value": "2497.4946956",
+          "timestamp": 1788886073000,
+          "value": 2497.4946956
+        },
+        {
+          "full_accuracy_value": "2497.43582056",
+          "timestamp": 1788886074000,
+          "value": 2497.43582056
+        },
+        {
+          "full_accuracy_value": "2497.4334182",
+          "timestamp": 1788886075000,
+          "value": 2497.4334182
+        },
+        {
+          "full_accuracy_value": "2497.47723491",
+          "timestamp": 1788886076000,
+          "value": 2497.47723491
+        },
+        {
+          "full_accuracy_value": "2497.47598492",
+          "timestamp": 1788886077000,
+          "value": 2497.47598492
+        },
+        {
+          "full_accuracy_value": "2497.68118963",
+          "timestamp": 1788886078000,
+          "value": 2497.68118963
+        },
+        {
+          "full_accuracy_value": "2497.76460986",
+          "timestamp": 1788886079000,
+          "value": 2497.76460986
+        },
+        {
+          "full_accuracy_value": "2497.65489859",
+          "timestamp": 1788886080000,
+          "value": 2497.65489859
+        },
+        {
+          "full_accuracy_value": "2497.67328242",
+          "timestamp": 1788886081000,
+          "value": 2497.67328242
+        },
+        {
+          "full_accuracy_value": "2497.25074097",
+          "timestamp": 1788886082000,
+          "value": 2497.25074097
+        },
+        {
+          "full_accuracy_value": "2497.2153838",
+          "timestamp": 1788886083000,
+          "value": 2497.2153838
+        },
+        {
+          "full_accuracy_value": "2497.15423632",
+          "timestamp": 1788886084000,
+          "value": 2497.15423632
+        },
+        {
+          "full_accuracy_value": "2497.14779748",
+          "timestamp": 1788886085000,
+          "value": 2497.14779748
+        },
+        {
+          "full_accuracy_value": "2497.15465292",
+          "timestamp": 1788886086000,
+          "value": 2497.15465292
+        },
+        {
+          "full_accuracy_value": "2497.17260542",
+          "timestamp": 1788886087000,
+          "value": 2497.17260542
+        },
+        {
+          "full_accuracy_value": "2497.36355537",
+          "timestamp": 1788886088000,
+          "value": 2497.36355537
+        },
+        {
+          "full_accuracy_value": "2497.36227623",
+          "timestamp": 1788886089000,
+          "value": 2497.36227623
+        },
+        {
+          "full_accuracy_value": "2497.35936217",
+          "timestamp": 1788886090000,
+          "value": 2497.35936217
+        },
+        {
+          "full_accuracy_value": "2497.37406109",
+          "timestamp": 1788886091000,
+          "value": 2497.37406109
+        },
+        {
+          "full_accuracy_value": "2497.37577697",
+          "timestamp": 1788886092000,
+          "value": 2497.37577697
+        },
+        {
+          "full_accuracy_value": "2497.38575107",
+          "timestamp": 1788886093000,
+          "value": 2497.38575107
+        },
+        {
+          "full_accuracy_value": "2497.51143319",
+          "timestamp": 1788886094000,
+          "value": 2497.51143319
+        },
+        {
+          "full_accuracy_value": "2497.51702012",
+          "timestamp": 1788886095000,
+          "value": 2497.51702012
+        },
+        {
+          "full_accuracy_value": "2497.43520251",
+          "timestamp": 1788886096000,
+          "value": 2497.43520251
+        },
+        {
+          "full_accuracy_value": "2497.50851775",
+          "timestamp": 1788886097000,
+          "value": 2497.50851775
+        },
+        {
+          "full_accuracy_value": "2497.51051691",
+          "timestamp": 1788886098000,
+          "value": 2497.51051691
+        },
+        {
+          "full_accuracy_value": "2497.51100844",
+          "timestamp": 1788886099000,
+          "value": 2497.51100844
+        },
+        {
+          "full_accuracy_value": "2497.50673634",
+          "timestamp": 1788886100000,
+          "value": 2497.50673634
+        },
+        {
+          "full_accuracy_value": "2497.51914839",
+          "timestamp": 1788886101000,
+          "value": 2497.51914839
+        },
+        {
+          "full_accuracy_value": "2497.51416622",
+          "timestamp": 1788886102000,
+          "value": 2497.51416622
+        },
+        {
+          "full_accuracy_value": "2497.66248516",
+          "timestamp": 1788886103000,
+          "value": 2497.66248516
+        },
+        {
+          "full_accuracy_value": "2497.67833061",
+          "timestamp": 1788886104000,
+          "value": 2497.67833061
+        },
+        {
+          "full_accuracy_value": "2497.67389837",
+          "timestamp": 1788886105000,
+          "value": 2497.67389837
+        },
+        {
+          "full_accuracy_value": "2497.67298624",
+          "timestamp": 1788886106000,
+          "value": 2497.67298624
+        },
+        {
+          "full_accuracy_value": "2497.67368868",
+          "timestamp": 1788886107000,
+          "value": 2497.67368868
+        },
+        {
+          "full_accuracy_value": "2497.68238544",
+          "timestamp": 1788886108000,
+          "value": 2497.68238544
+        },
+        {
+          "full_accuracy_value": "2497.73569322",
+          "timestamp": 1788886109000,
+          "value": 2497.73569322
+        },
+        {
+          "full_accuracy_value": "2497.73637297",
+          "timestamp": 1788886110000,
+          "value": 2497.73637297
+        },
+        {
+          "full_accuracy_value": "2497.83273438",
+          "timestamp": 1788886111000,
+          "value": 2497.83273438
+        },
+        {
+          "full_accuracy_value": "2497.85095746",
+          "timestamp": 1788886112000,
+          "value": 2497.85095746
+        },
+        {
+          "full_accuracy_value": "2497.85179069",
+          "timestamp": 1788886113000,
+          "value": 2497.85179069
+        },
+        {
+          "full_accuracy_value": "2497.85179067",
+          "timestamp": 1788886114000,
+          "value": 2497.85179067
+        },
+        {
+          "full_accuracy_value": "2497.89922434",
+          "timestamp": 1788886115000,
+          "value": 2497.89922434
+        },
+        {
+          "full_accuracy_value": "2497.90870625",
+          "timestamp": 1788886116000,
+          "value": 2497.90870625
+        },
+        {
+          "full_accuracy_value": "2497.93708214",
+          "timestamp": 1788886117000,
+          "value": 2497.93708214
+        },
+        {
+          "full_accuracy_value": "2497.92617466",
+          "timestamp": 1788886118000,
+          "value": 2497.92617466
+        },
+        {
+          "full_accuracy_value": "2497.90292245",
+          "timestamp": 1788886119000,
+          "value": 2497.90292245
+        },
+        {
+          "full_accuracy_value": "2497.85345738",
+          "timestamp": 1788886120000,
+          "value": 2497.85345738
+        },
+        {
+          "full_accuracy_value": "2497.8517909",
+          "timestamp": 1788886121000,
+          "value": 2497.8517909
+        },
+        {
+          "full_accuracy_value": "2497.90375561",
+          "timestamp": 1788886122000,
+          "value": 2497.90375561
+        },
+        {
+          "full_accuracy_value": "2497.94012061",
+          "timestamp": 1788886123000,
+          "value": 2497.94012061
+        },
+        {
+          "full_accuracy_value": "2497.86178966",
+          "timestamp": 1788886124000,
+          "value": 2497.86178966
+        },
+        {
+          "full_accuracy_value": "2497.50971943",
+          "timestamp": 1788886125000,
+          "value": 2497.50971943
+        },
+        {
+          "full_accuracy_value": "2497.52277314",
+          "timestamp": 1788886126000,
+          "value": 2497.52277314
+        },
+        {
+          "full_accuracy_value": "2497.51652603",
+          "timestamp": 1788886127000,
+          "value": 2497.51652603
+        },
+        {
+          "full_accuracy_value": "2497.41477244",
+          "timestamp": 1788886128000,
+          "value": 2497.41477244
+        },
+        {
+          "full_accuracy_value": "2497.14224634",
+          "timestamp": 1788886129000,
+          "value": 2497.14224634
+        },
+        {
+          "full_accuracy_value": "2497.10282562",
+          "timestamp": 1788886130000,
+          "value": 2497.10282562
+        },
+        {
+          "full_accuracy_value": "2497.07282942",
+          "timestamp": 1788886131000,
+          "value": 2497.07282942
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886132000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886133000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886134000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886135000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886136000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886137000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886138000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886139000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886140000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886141000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886142000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.06640743",
+          "timestamp": 1788886143000,
+          "value": 2497.06640743
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886144000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886145000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282942",
+          "timestamp": 1788886146000,
+          "value": 2497.07282942
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886147000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886148000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886149000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886150000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886151000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886152000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.07282687",
+          "timestamp": 1788886153000,
+          "value": 2497.07282687
+        },
+        {
+          "full_accuracy_value": "2497.37349322",
+          "timestamp": 1788886154000,
+          "value": 2497.37349322
+        },
+        {
+          "full_accuracy_value": "2497.42071208",
+          "timestamp": 1788886155000,
+          "value": 2497.42071208
+        },
+        {
+          "full_accuracy_value": "2497.41369194",
+          "timestamp": 1788886156000,
+          "value": 2497.41369194
+        },
+        {
+          "full_accuracy_value": "2497.47940837",
+          "timestamp": 1788886157000,
+          "value": 2497.47940837
+        },
+        {
+          "full_accuracy_value": "2497.57365531",
+          "timestamp": 1788886158000,
+          "value": 2497.57365531
+        },
+        {
+          "full_accuracy_value": "2497.7685074",
+          "timestamp": 1788886159000,
+          "value": 2497.7685074
+        },
+        {
+          "full_accuracy_value": "2497.77916581",
+          "timestamp": 1788886160000,
+          "value": 2497.77916581
+        },
+        {
+          "full_accuracy_value": "2497.97354038",
+          "timestamp": 1788886161000,
+          "value": 2497.97354038
+        },
+        {
+          "full_accuracy_value": "2497.5227169",
+          "timestamp": 1788886162000,
+          "value": 2497.5227169
+        },
+        {
+          "full_accuracy_value": "2497.04170651",
+          "timestamp": 1788886163000,
+          "value": 2497.04170651
+        },
+        {
+          "full_accuracy_value": "2497.00892283",
+          "timestamp": 1788886164000,
+          "value": 2497.00892283
+        },
+        {
+          "full_accuracy_value": "2496.96284313",
+          "timestamp": 1788886165000,
+          "value": 2496.96284313
+        },
+        {
+          "full_accuracy_value": "2497.01071572",
+          "timestamp": 1788886166000,
+          "value": 2497.01071572
+        },
+        {
+          "full_accuracy_value": "2497.00928373",
+          "timestamp": 1788886167000,
+          "value": 2497.00928373
+        },
+        {
+          "full_accuracy_value": "2497.00928327",
+          "timestamp": 1788886168000,
+          "value": 2497.00928327
+        },
+        {
+          "full_accuracy_value": "2497.00877113",
+          "timestamp": 1788886169000,
+          "value": 2497.00877113
+        },
+        {
+          "full_accuracy_value": "2497.06450093",
+          "timestamp": 1788886170000,
+          "value": 2497.06450093
+        },
+        {
+          "full_accuracy_value": "2497.06462395",
+          "timestamp": 1788886171000,
+          "value": 2497.06462395
+        },
+        {
+          "full_accuracy_value": "2497.0952591",
+          "timestamp": 1788886172000,
+          "value": 2497.0952591
+        },
+        {
+          "full_accuracy_value": "2497.23531218",
+          "timestamp": 1788886173000,
+          "value": 2497.23531218
+        },
+        {
+          "full_accuracy_value": "2497.51064863",
+          "timestamp": 1788886174000,
+          "value": 2497.51064863
+        },
+        {
+          "full_accuracy_value": "2497.51079284",
+          "timestamp": 1788886175000,
+          "value": 2497.51079284
+        },
+        {
+          "full_accuracy_value": "2497.39671562",
+          "timestamp": 1788886176000,
+          "value": 2497.39671562
+        }
+      ],
+      "symbol": "ethusd"
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto",
+    "seq": 3,
+    "ts": 1788886176645,
+    "snapshot": true,
+    "payload": {
+      "data": [],
+      "symbol": "btcusdt"
+    }
+  },
+  {
+    "op": "subscribed",
+    "channel": "price.crypto.twap",
+    "rid": "capture"
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto.twap",
+    "seq": 1,
+    "ts": 1788886176645,
+    "snapshot": true,
+    "payload": {
+      "data": [],
+      "symbol": "btcusd",
+      "window_seconds": 30
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto.twap",
+    "seq": 2,
+    "ts": 1788886175000,
+    "snapshot": true,
+    "payload": {
+      "data": [
+        {
+          "full_accuracy_value": "78788.525642908795142144",
+          "timestamp": 1788886057000,
+          "value": 78788.52564290879
+        },
+        {
+          "full_accuracy_value": "78788.786579938813673472",
+          "timestamp": 1788886058000,
+          "value": 78788.78657993881
+        },
+        {
+          "full_accuracy_value": "78789.052518750893375488",
+          "timestamp": 1788886059000,
+          "value": 78789.05251875089
+        },
+        {
+          "full_accuracy_value": "78789.596746410050453504",
+          "timestamp": 1788886060000,
+          "value": 78789.59674641005
+        },
+        {
+          "full_accuracy_value": "78789.844376201967173632",
+          "timestamp": 1788886061000,
+          "value": 78789.84437620197
+        },
+        {
+          "full_accuracy_value": "78790.419837467750301696",
+          "timestamp": 1788886062000,
+          "value": 78790.41983746775
+        },
+        {
+          "full_accuracy_value": "78790.419837467750301696",
+          "timestamp": 1788886063000,
+          "value": 78790.41983746775
+        },
+        {
+          "full_accuracy_value": "78790.97700078084685824",
+          "timestamp": 1788886064000,
+          "value": 78790.97700078084
+        },
+        {
+          "full_accuracy_value": "78791.619270678272802816",
+          "timestamp": 1788886065000,
+          "value": 78791.61927067827
+        },
+        {
+          "full_accuracy_value": "78793.024356358366953472",
+          "timestamp": 1788886067000,
+          "value": 78793.02435635836
+        },
+        {
+          "full_accuracy_value": "78793.731154028393398272",
+          "timestamp": 1788886068000,
+          "value": 78793.7311540284
+        },
+        {
+          "full_accuracy_value": "78794.447885799667007488",
+          "timestamp": 1788886069000,
+          "value": 78794.44788579967
+        },
+        {
+          "full_accuracy_value": "78795.0316266920607744",
+          "timestamp": 1788886070000,
+          "value": 78795.03162669206
+        },
+        {
+          "full_accuracy_value": "78795.679587853133676544",
+          "timestamp": 1788886071000,
+          "value": 78795.67958785313
+        },
+        {
+          "full_accuracy_value": "78796.31131171128082432",
+          "timestamp": 1788886072000,
+          "value": 78796.31131171128
+        },
+        {
+          "full_accuracy_value": "78797.527168839514587136",
+          "timestamp": 1788886074000,
+          "value": 78797.52716883952
+        },
+        {
+          "full_accuracy_value": "78798.838542165159706624",
+          "timestamp": 1788886075000,
+          "value": 78798.83854216516
+        },
+        {
+          "full_accuracy_value": "78798.838542165159706624",
+          "timestamp": 1788886076000,
+          "value": 78798.83854216516
+        },
+        {
+          "full_accuracy_value": "78799.523997143323901952",
+          "timestamp": 1788886077000,
+          "value": 78799.52399714332
+        },
+        {
+          "full_accuracy_value": "78800.192428855485530112",
+          "timestamp": 1788886078000,
+          "value": 78800.19242885549
+        },
+        {
+          "full_accuracy_value": "78800.851771227545534464",
+          "timestamp": 1788886079000,
+          "value": 78800.85177122755
+        },
+        {
+          "full_accuracy_value": "78801.481548741453283328",
+          "timestamp": 1788886080000,
+          "value": 78801.48154874146
+        },
+        {
+          "full_accuracy_value": "78802.124054735144091648",
+          "timestamp": 1788886081000,
+          "value": 78802.12405473515
+        },
+        {
+          "full_accuracy_value": "78803.313353487365963776",
+          "timestamp": 1788886082000,
+          "value": 78803.31335348736
+        },
+        {
+          "full_accuracy_value": "78803.817992384910721024",
+          "timestamp": 1788886083000,
+          "value": 78803.81799238491
+        },
+        {
+          "full_accuracy_value": "78804.173420136201453568",
+          "timestamp": 1788886084000,
+          "value": 78804.1734201362
+        },
+        {
+          "full_accuracy_value": "78804.173420136201453568",
+          "timestamp": 1788886085000,
+          "value": 78804.1734201362
+        },
+        {
+          "full_accuracy_value": "78804.532503056746545152",
+          "timestamp": 1788886086000,
+          "value": 78804.53250305675
+        },
+        {
+          "full_accuracy_value": "78804.8816275386793984",
+          "timestamp": 1788886087000,
+          "value": 78804.88162753868
+        },
+        {
+          "full_accuracy_value": "78805.214567169253179392",
+          "timestamp": 1788886088000,
+          "value": 78805.21456716926
+        },
+        {
+          "full_accuracy_value": "78805.53157394941607936",
+          "timestamp": 1788886089000,
+          "value": 78805.53157394941
+        },
+        {
+          "full_accuracy_value": "78805.82799983999188992",
+          "timestamp": 1788886090000,
+          "value": 78805.82799984
+        },
+        {
+          "full_accuracy_value": "78806.138008900923817984",
+          "timestamp": 1788886091000,
+          "value": 78806.13800890092
+        },
+        {
+          "full_accuracy_value": "78806.487541396092747776",
+          "timestamp": 1788886092000,
+          "value": 78806.4875413961
+        },
+        {
+          "full_accuracy_value": "78806.814881766654869504",
+          "timestamp": 1788886093000,
+          "value": 78806.81488176665
+        },
+        {
+          "full_accuracy_value": "78807.382305269310554112",
+          "timestamp": 1788886094000,
+          "value": 78807.3823052693
+        },
+        {
+          "full_accuracy_value": "78807.382305269310554112",
+          "timestamp": 1788886095000,
+          "value": 78807.3823052693
+        },
+        {
+          "full_accuracy_value": "78807.829995088645193728",
+          "timestamp": 1788886096000,
+          "value": 78807.82999508864
+        },
+        {
+          "full_accuracy_value": "78808.048037355048665088",
+          "timestamp": 1788886098000,
+          "value": 78808.04803735505
+        },
+        {
+          "full_accuracy_value": "78808.232170229212381184",
+          "timestamp": 1788886099000,
+          "value": 78808.23217022921
+        },
+        {
+          "full_accuracy_value": "78808.40942839593435136",
+          "timestamp": 1788886100000,
+          "value": 78808.40942839593
+        },
+        {
+          "full_accuracy_value": "78808.73862843217215488",
+          "timestamp": 1788886101000,
+          "value": 78808.73862843217
+        },
+        {
+          "full_accuracy_value": "78808.73862843217215488",
+          "timestamp": 1788886102000,
+          "value": 78808.73862843217
+        },
+        {
+          "full_accuracy_value": "78808.913179739124924416",
+          "timestamp": 1788886103000,
+          "value": 78808.91317973913
+        },
+        {
+          "full_accuracy_value": "78808.988571249030463488",
+          "timestamp": 1788886104000,
+          "value": 78808.98857124904
+        },
+        {
+          "full_accuracy_value": "78809.064841438646239232",
+          "timestamp": 1788886105000,
+          "value": 78809.06484143865
+        },
+        {
+          "full_accuracy_value": "78809.30004312688427008",
+          "timestamp": 1788886106000,
+          "value": 78809.30004312689
+        },
+        {
+          "full_accuracy_value": "78809.30004312688427008",
+          "timestamp": 1788886107000,
+          "value": 78809.30004312689
+        },
+        {
+          "full_accuracy_value": "78809.42345975578492928",
+          "timestamp": 1788886108000,
+          "value": 78809.42345975578
+        },
+        {
+          "full_accuracy_value": "78809.515514234755088384",
+          "timestamp": 1788886109000,
+          "value": 78809.51551423475
+        },
+        {
+          "full_accuracy_value": "78809.747919924046594048",
+          "timestamp": 1788886111000,
+          "value": 78809.74791992405
+        },
+        {
+          "full_accuracy_value": "78809.911212121738182656",
+          "timestamp": 1788886112000,
+          "value": 78809.91121212173
+        },
+        {
+          "full_accuracy_value": "78810.319604366230683648",
+          "timestamp": 1788886113000,
+          "value": 78810.31960436623
+        },
+        {
+          "full_accuracy_value": "78810.558892323230449664",
+          "timestamp": 1788886115000,
+          "value": 78810.55889232323
+        },
+        {
+          "full_accuracy_value": "78810.820458983861518336",
+          "timestamp": 1788886116000,
+          "value": 78810.82045898386
+        },
+        {
+          "full_accuracy_value": "78811.10139798974103552",
+          "timestamp": 1788886117000,
+          "value": 78811.10139798974
+        },
+        {
+          "full_accuracy_value": "78811.377207909470437376",
+          "timestamp": 1788886118000,
+          "value": 78811.37720790946
+        },
+        {
+          "full_accuracy_value": "78811.607472816621879296",
+          "timestamp": 1788886119000,
+          "value": 78811.60747281663
+        },
+        {
+          "full_accuracy_value": "78811.869245361124016128",
+          "timestamp": 1788886120000,
+          "value": 78811.86924536113
+        },
+        {
+          "full_accuracy_value": "78812.125787054353154048",
+          "timestamp": 1788886121000,
+          "value": 78812.12578705435
+        },
+        {
+          "full_accuracy_value": "78812.400473211895021568",
+          "timestamp": 1788886122000,
+          "value": 78812.40047321189
+        },
+        {
+          "full_accuracy_value": "78812.352127223040311296",
+          "timestamp": 1788886123000,
+          "value": 78812.35212722304
+        },
+        {
+          "full_accuracy_value": "78812.340339310929641472",
+          "timestamp": 1788886124000,
+          "value": 78812.34033931093
+        },
+        {
+          "full_accuracy_value": "78812.326684707902193664",
+          "timestamp": 1788886125000,
+          "value": 78812.3266847079
+        },
+        {
+          "full_accuracy_value": "78812.280431013120704512",
+          "timestamp": 1788886126000,
+          "value": 78812.28043101312
+        },
+        {
+          "full_accuracy_value": "78812.175070515332907008",
+          "timestamp": 1788886127000,
+          "value": 78812.17507051534
+        },
+        {
+          "full_accuracy_value": "78811.952910984445689856",
+          "timestamp": 1788886128000,
+          "value": 78811.95291098444
+        },
+        {
+          "full_accuracy_value": "78811.759733006867103744",
+          "timestamp": 1788886129000,
+          "value": 78811.75973300687
+        },
+        {
+          "full_accuracy_value": "78811.566555029187854336",
+          "timestamp": 1788886130000,
+          "value": 78811.56655502919
+        },
+        {
+          "full_accuracy_value": "78811.351252644761960448",
+          "timestamp": 1788886131000,
+          "value": 78811.35125264476
+        },
+        {
+          "full_accuracy_value": "78811.107892879903686656",
+          "timestamp": 1788886132000,
+          "value": 78811.10789287991
+        },
+        {
+          "full_accuracy_value": "78810.85982344350793728",
+          "timestamp": 1788886133000,
+          "value": 78810.8598234435
+        },
+        {
+          "full_accuracy_value": "78810.584526681823772672",
+          "timestamp": 1788886134000,
+          "value": 78810.58452668182
+        },
+        {
+          "full_accuracy_value": "78810.023348375920836608",
+          "timestamp": 1788886135000,
+          "value": 78810.02334837592
+        },
+        {
+          "full_accuracy_value": "78810.023348375920836608",
+          "timestamp": 1788886136000,
+          "value": 78810.02334837592
+        },
+        {
+          "full_accuracy_value": "78809.464848983256989696",
+          "timestamp": 1788886138000,
+          "value": 78809.46484898326
+        },
+        {
+          "full_accuracy_value": "78809.180418201849167872",
+          "timestamp": 1788886139000,
+          "value": 78809.18041820185
+        },
+        {
+          "full_accuracy_value": "78808.895970753770422272",
+          "timestamp": 1788886140000,
+          "value": 78808.89597075377
+        },
+        {
+          "full_accuracy_value": "78808.345329619766870016",
+          "timestamp": 1788886141000,
+          "value": 78808.34532961977
+        },
+        {
+          "full_accuracy_value": "78808.345329619766870016",
+          "timestamp": 1788886142000,
+          "value": 78808.34532961977
+        },
+        {
+          "full_accuracy_value": "78808.091095327387418624",
+          "timestamp": 1788886143000,
+          "value": 78808.09109532739
+        },
+        {
+          "full_accuracy_value": "78807.916184084710162432",
+          "timestamp": 1788886144000,
+          "value": 78807.91618408471
+        },
+        {
+          "full_accuracy_value": "78807.816084997709758464",
+          "timestamp": 1788886145000,
+          "value": 78807.81608499771
+        },
+        {
+          "full_accuracy_value": "78807.636471051324489728",
+          "timestamp": 1788886146000,
+          "value": 78807.63647105133
+        },
+        {
+          "full_accuracy_value": "78807.636471051324489728",
+          "timestamp": 1788886147000,
+          "value": 78807.63647105133
+        },
+        {
+          "full_accuracy_value": "78807.561706409025339392",
+          "timestamp": 1788886148000,
+          "value": 78807.56170640902
+        },
+        {
+          "full_accuracy_value": "78807.516773201888673792",
+          "timestamp": 1788886149000,
+          "value": 78807.51677320189
+        },
+        {
+          "full_accuracy_value": "78807.493305708771803136",
+          "timestamp": 1788886150000,
+          "value": 78807.49330570878
+        },
+        {
+          "full_accuracy_value": "78807.462083638763454464",
+          "timestamp": 1788886151000,
+          "value": 78807.46208363876
+        },
+        {
+          "full_accuracy_value": "78807.313521939782303744",
+          "timestamp": 1788886152000,
+          "value": 78807.31352193978
+        },
+        {
+          "full_accuracy_value": "78807.313521939782303744",
+          "timestamp": 1788886153000,
+          "value": 78807.31352193978
+        },
+        {
+          "full_accuracy_value": "78807.24572739861479424",
+          "timestamp": 1788886154000,
+          "value": 78807.24572739862
+        },
+        {
+          "full_accuracy_value": "78807.14715347418087424",
+          "timestamp": 1788886155000,
+          "value": 78807.14715347419
+        },
+        {
+          "full_accuracy_value": "78807.128414286283538432",
+          "timestamp": 1788886156000,
+          "value": 78807.12841428629
+        },
+        {
+          "full_accuracy_value": "78807.128414286283538432",
+          "timestamp": 1788886157000,
+          "value": 78807.12841428629
+        },
+        {
+          "full_accuracy_value": "78807.110115013179736064",
+          "timestamp": 1788886158000,
+          "value": 78807.11011501317
+        },
+        {
+          "full_accuracy_value": "78807.096666101605466112",
+          "timestamp": 1788886159000,
+          "value": 78807.0966661016
+        },
+        {
+          "full_accuracy_value": "78807.08905255607205888",
+          "timestamp": 1788886160000,
+          "value": 78807.08905255607
+        },
+        {
+          "full_accuracy_value": "78807.081439524928094208",
+          "timestamp": 1788886161000,
+          "value": 78807.08143952493
+        },
+        {
+          "full_accuracy_value": "78807.290745806259224576",
+          "timestamp": 1788886162000,
+          "value": 78807.29074580625
+        },
+        {
+          "full_accuracy_value": "78807.461564964587700224",
+          "timestamp": 1788886163000,
+          "value": 78807.46156496459
+        },
+        {
+          "full_accuracy_value": "78807.592074669314801664",
+          "timestamp": 1788886164000,
+          "value": 78807.59207466932
+        },
+        {
+          "full_accuracy_value": "78807.592074669314801664",
+          "timestamp": 1788886165000,
+          "value": 78807.59207466932
+        },
+        {
+          "full_accuracy_value": "78807.34222876678291456",
+          "timestamp": 1788886166000,
+          "value": 78807.34222876678
+        },
+        {
+          "full_accuracy_value": "78806.738592681682796544",
+          "timestamp": 1788886168000,
+          "value": 78806.73859268168
+        },
+        {
+          "full_accuracy_value": "78806.465645977322651648",
+          "timestamp": 1788886169000,
+          "value": 78806.46564597733
+        },
+        {
+          "full_accuracy_value": "78806.19092307100041216",
+          "timestamp": 1788886170000,
+          "value": 78806.190923071
+        },
+        {
+          "full_accuracy_value": "78805.624772115413598208",
+          "timestamp": 1788886171000,
+          "value": 78805.6247721154
+        },
+        {
+          "full_accuracy_value": "78805.624772115413598208",
+          "timestamp": 1788886172000,
+          "value": 78805.6247721154
+        },
+        {
+          "full_accuracy_value": "78804.853886471800619008",
+          "timestamp": 1788886174000,
+          "value": 78804.8538864718
+        },
+        {
+          "full_accuracy_value": "78804.459977474683437056",
+          "timestamp": 1788886175000,
+          "value": 78804.45997747469
+        }
+      ],
+      "symbol": "btcusd",
+      "window_seconds": 60
+    }
+  },
+  {
+    "op": "subscribed",
+    "channel": "price.equity",
+    "rid": "capture"
+  },
+  {
+    "v": 1,
+    "channel": "price.equity",
+    "seq": 1,
+    "ts": 1788886176400,
+    "snapshot": true,
+    "payload": {
+      "data": [
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886056800,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886057000,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886057200,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886057400,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886057600,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886057800,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886058000,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886058200,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886058400,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886058600,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886058800,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886059000,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11001",
+          "timestamp": 1788886059200,
+          "value": 316.11001
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886059400,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886059600,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886059800,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.11003",
+          "timestamp": 1788886060000,
+          "value": 316.11003
+        },
+        {
+          "full_accuracy_value": "316.11006",
+          "timestamp": 1788886060200,
+          "value": 316.11006
+        },
+        {
+          "full_accuracy_value": "316.11005",
+          "timestamp": 1788886060400,
+          "value": 316.11005
+        },
+        {
+          "full_accuracy_value": "316.11004",
+          "timestamp": 1788886060600,
+          "value": 316.11004
+        },
+        {
+          "full_accuracy_value": "316.11",
+          "timestamp": 1788886060800,
+          "value": 316.11
+        },
+        {
+          "full_accuracy_value": "316.107",
+          "timestamp": 1788886061000,
+          "value": 316.107
+        },
+        {
+          "full_accuracy_value": "316.10504",
+          "timestamp": 1788886061200,
+          "value": 316.10504
+        },
+        {
+          "full_accuracy_value": "316.10504",
+          "timestamp": 1788886061400,
+          "value": 316.10504
+        },
+        {
+          "full_accuracy_value": "316.10503",
+          "timestamp": 1788886061600,
+          "value": 316.10503
+        },
+        {
+          "full_accuracy_value": "316.10504",
+          "timestamp": 1788886061800,
+          "value": 316.10504
+        },
+        {
+          "full_accuracy_value": "316.105",
+          "timestamp": 1788886062000,
+          "value": 316.105
+        },
+        {
+          "full_accuracy_value": "316.105",
+          "timestamp": 1788886062200,
+          "value": 316.105
+        },
+        {
+          "full_accuracy_value": "316.105",
+          "timestamp": 1788886062400,
+          "value": 316.105
+        },
+        {
+          "full_accuracy_value": "316.105",
+          "timestamp": 1788886062600,
+          "value": 316.105
+        },
+        {
+          "full_accuracy_value": "316.105",
+          "timestamp": 1788886062800,
+          "value": 316.105
+        },
+        {
+          "full_accuracy_value": "316.095",
+          "timestamp": 1788886063000,
+          "value": 316.095
+        },
+        {
+          "full_accuracy_value": "316.09626",
+          "timestamp": 1788886063200,
+          "value": 316.09626
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886063400,
+          "value": 316.1
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886063600,
+          "value": 316.1
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886063800,
+          "value": 316.1
+        },
+        {
+          "full_accuracy_value": "316.09129",
+          "timestamp": 1788886064000,
+          "value": 316.09129
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886064200,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886064400,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886064600,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886064800,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886065000,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.07552",
+          "timestamp": 1788886065200,
+          "value": 316.07552
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886065400,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886065600,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886065800,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886066000,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.0701",
+          "timestamp": 1788886066200,
+          "value": 316.0701
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886066400,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886066600,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.06126",
+          "timestamp": 1788886066800,
+          "value": 316.06126
+        },
+        {
+          "full_accuracy_value": "316.06008",
+          "timestamp": 1788886067000,
+          "value": 316.06008
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886067200,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.06008",
+          "timestamp": 1788886067400,
+          "value": 316.06008
+        },
+        {
+          "full_accuracy_value": "316.06002",
+          "timestamp": 1788886067600,
+          "value": 316.06002
+        },
+        {
+          "full_accuracy_value": "316.06008",
+          "timestamp": 1788886067800,
+          "value": 316.06008
+        },
+        {
+          "full_accuracy_value": "316.06892",
+          "timestamp": 1788886068000,
+          "value": 316.06892
+        },
+        {
+          "full_accuracy_value": "316.06936",
+          "timestamp": 1788886068200,
+          "value": 316.06936
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886068400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886068600,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.06929",
+          "timestamp": 1788886068800,
+          "value": 316.06929
+        },
+        {
+          "full_accuracy_value": "316.06594",
+          "timestamp": 1788886069000,
+          "value": 316.06594
+        },
+        {
+          "full_accuracy_value": "316.06658",
+          "timestamp": 1788886069200,
+          "value": 316.06658
+        },
+        {
+          "full_accuracy_value": "316.06006",
+          "timestamp": 1788886069400,
+          "value": 316.06006
+        },
+        {
+          "full_accuracy_value": "316.035",
+          "timestamp": 1788886069600,
+          "value": 316.035
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886069800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886070000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.02497",
+          "timestamp": 1788886070200,
+          "value": 316.02497
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886070400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.02537",
+          "timestamp": 1788886070600,
+          "value": 316.02537
+        },
+        {
+          "full_accuracy_value": "316.02594",
+          "timestamp": 1788886070800,
+          "value": 316.02594
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886071000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886071200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886071400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886071600,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886071800,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886072000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02499",
+          "timestamp": 1788886072200,
+          "value": 316.02499
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886072400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886072600,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886072800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886073000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.01998",
+          "timestamp": 1788886073200,
+          "value": 316.01998
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886073400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.01998",
+          "timestamp": 1788886073600,
+          "value": 316.01998
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886073800,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01595",
+          "timestamp": 1788886074000,
+          "value": 316.01595
+        },
+        {
+          "full_accuracy_value": "316.01595",
+          "timestamp": 1788886074200,
+          "value": 316.01595
+        },
+        {
+          "full_accuracy_value": "316.01563",
+          "timestamp": 1788886074400,
+          "value": 316.01563
+        },
+        {
+          "full_accuracy_value": "316.01595",
+          "timestamp": 1788886074600,
+          "value": 316.01595
+        },
+        {
+          "full_accuracy_value": "316.0275",
+          "timestamp": 1788886074800,
+          "value": 316.0275
+        },
+        {
+          "full_accuracy_value": "316.0299",
+          "timestamp": 1788886075000,
+          "value": 316.0299
+        },
+        {
+          "full_accuracy_value": "316.02936",
+          "timestamp": 1788886075200,
+          "value": 316.02936
+        },
+        {
+          "full_accuracy_value": "316.02993",
+          "timestamp": 1788886075400,
+          "value": 316.02993
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886075600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.02002",
+          "timestamp": 1788886075800,
+          "value": 316.02002
+        },
+        {
+          "full_accuracy_value": "316.02002",
+          "timestamp": 1788886076000,
+          "value": 316.02002
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886076200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886076400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886076600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.01904",
+          "timestamp": 1788886076800,
+          "value": 316.01904
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886077000,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886077200,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01506",
+          "timestamp": 1788886077400,
+          "value": 316.01506
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886077600,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886077800,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886078000,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886078200,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886078400,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886078600,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01001",
+          "timestamp": 1788886078800,
+          "value": 316.01001
+        },
+        {
+          "full_accuracy_value": "316.01905",
+          "timestamp": 1788886079000,
+          "value": 316.01905
+        },
+        {
+          "full_accuracy_value": "316.01996",
+          "timestamp": 1788886079200,
+          "value": 316.01996
+        },
+        {
+          "full_accuracy_value": "316.01989",
+          "timestamp": 1788886079400,
+          "value": 316.01989
+        },
+        {
+          "full_accuracy_value": "316.01997",
+          "timestamp": 1788886079600,
+          "value": 316.01997
+        },
+        {
+          "full_accuracy_value": "316.01996",
+          "timestamp": 1788886079800,
+          "value": 316.01996
+        },
+        {
+          "full_accuracy_value": "316.01995",
+          "timestamp": 1788886080000,
+          "value": 316.01995
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886080200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886080400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886080600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886080800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886081000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.015",
+          "timestamp": 1788886081200,
+          "value": 316.015
+        },
+        {
+          "full_accuracy_value": "316.015",
+          "timestamp": 1788886081400,
+          "value": 316.015
+        },
+        {
+          "full_accuracy_value": "316.015",
+          "timestamp": 1788886081600,
+          "value": 316.015
+        },
+        {
+          "full_accuracy_value": "316.015",
+          "timestamp": 1788886081800,
+          "value": 316.015
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886082000,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886082200,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886082400,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886082600,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01508",
+          "timestamp": 1788886082800,
+          "value": 316.01508
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886083000,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01508",
+          "timestamp": 1788886083200,
+          "value": 316.01508
+        },
+        {
+          "full_accuracy_value": "316.01504",
+          "timestamp": 1788886083400,
+          "value": 316.01504
+        },
+        {
+          "full_accuracy_value": "316.01507",
+          "timestamp": 1788886083600,
+          "value": 316.01507
+        },
+        {
+          "full_accuracy_value": "316.01506",
+          "timestamp": 1788886083800,
+          "value": 316.01506
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886084000,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01503",
+          "timestamp": 1788886084200,
+          "value": 316.01503
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886084400,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01502",
+          "timestamp": 1788886084600,
+          "value": 316.01502
+        },
+        {
+          "full_accuracy_value": "316.01531",
+          "timestamp": 1788886084800,
+          "value": 316.01531
+        },
+        {
+          "full_accuracy_value": "316.01531",
+          "timestamp": 1788886085000,
+          "value": 316.01531
+        },
+        {
+          "full_accuracy_value": "316.01531",
+          "timestamp": 1788886085200,
+          "value": 316.01531
+        },
+        {
+          "full_accuracy_value": "316.01626",
+          "timestamp": 1788886085400,
+          "value": 316.01626
+        },
+        {
+          "full_accuracy_value": "316.01595",
+          "timestamp": 1788886085600,
+          "value": 316.01595
+        },
+        {
+          "full_accuracy_value": "316.01595",
+          "timestamp": 1788886085800,
+          "value": 316.01595
+        },
+        {
+          "full_accuracy_value": "316.01508",
+          "timestamp": 1788886086000,
+          "value": 316.01508
+        },
+        {
+          "full_accuracy_value": "316.01999",
+          "timestamp": 1788886086200,
+          "value": 316.01999
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886086400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886086600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886086800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886087000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886087200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.01778",
+          "timestamp": 1788886087400,
+          "value": 316.01778
+        },
+        {
+          "full_accuracy_value": "316.01505",
+          "timestamp": 1788886087600,
+          "value": 316.01505
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886087800,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.01",
+          "timestamp": 1788886088000,
+          "value": 316.01
+        },
+        {
+          "full_accuracy_value": "316.01501",
+          "timestamp": 1788886088200,
+          "value": 316.01501
+        },
+        {
+          "full_accuracy_value": "316.00594",
+          "timestamp": 1788886088400,
+          "value": 316.00594
+        },
+        {
+          "full_accuracy_value": "316.0175",
+          "timestamp": 1788886088600,
+          "value": 316.0175
+        },
+        {
+          "full_accuracy_value": "316.01778",
+          "timestamp": 1788886088800,
+          "value": 316.01778
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886089000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886089200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886089400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886089600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886089800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02002",
+          "timestamp": 1788886090000,
+          "value": 316.02002
+        },
+        {
+          "full_accuracy_value": "316.02009",
+          "timestamp": 1788886090200,
+          "value": 316.02009
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886090400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886090600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886090800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886091000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886091200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886091400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886091600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886091800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886092000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886092200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886092400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886092600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02003",
+          "timestamp": 1788886092800,
+          "value": 316.02003
+        },
+        {
+          "full_accuracy_value": "316.02003",
+          "timestamp": 1788886093000,
+          "value": 316.02003
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886093200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886093400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886093600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.021",
+          "timestamp": 1788886093800,
+          "value": 316.021
+        },
+        {
+          "full_accuracy_value": "316.03905",
+          "timestamp": 1788886094000,
+          "value": 316.03905
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886094200,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.042",
+          "timestamp": 1788886094400,
+          "value": 316.042
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886094600,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04998",
+          "timestamp": 1788886094800,
+          "value": 316.04998
+        },
+        {
+          "full_accuracy_value": "316.04968",
+          "timestamp": 1788886095000,
+          "value": 316.04968
+        },
+        {
+          "full_accuracy_value": "316.04968",
+          "timestamp": 1788886095200,
+          "value": 316.04968
+        },
+        {
+          "full_accuracy_value": "316.04998",
+          "timestamp": 1788886095400,
+          "value": 316.04998
+        },
+        {
+          "full_accuracy_value": "316.04991",
+          "timestamp": 1788886095600,
+          "value": 316.04991
+        },
+        {
+          "full_accuracy_value": "316.04995",
+          "timestamp": 1788886095800,
+          "value": 316.04995
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886096000,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04998",
+          "timestamp": 1788886096200,
+          "value": 316.04998
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886096400,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04997",
+          "timestamp": 1788886096600,
+          "value": 316.04997
+        },
+        {
+          "full_accuracy_value": "316.04999",
+          "timestamp": 1788886096800,
+          "value": 316.04999
+        },
+        {
+          "full_accuracy_value": "316.04997",
+          "timestamp": 1788886097000,
+          "value": 316.04997
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886097200,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04626",
+          "timestamp": 1788886097400,
+          "value": 316.04626
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886097600,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886097800,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.03352",
+          "timestamp": 1788886098000,
+          "value": 316.03352
+        },
+        {
+          "full_accuracy_value": "316.03352",
+          "timestamp": 1788886098200,
+          "value": 316.03352
+        },
+        {
+          "full_accuracy_value": "316.03352",
+          "timestamp": 1788886098400,
+          "value": 316.03352
+        },
+        {
+          "full_accuracy_value": "316.03352",
+          "timestamp": 1788886098600,
+          "value": 316.03352
+        },
+        {
+          "full_accuracy_value": "316.03205",
+          "timestamp": 1788886098800,
+          "value": 316.03205
+        },
+        {
+          "full_accuracy_value": "316.03205",
+          "timestamp": 1788886099000,
+          "value": 316.03205
+        },
+        {
+          "full_accuracy_value": "316.03205",
+          "timestamp": 1788886099200,
+          "value": 316.03205
+        },
+        {
+          "full_accuracy_value": "316.03158",
+          "timestamp": 1788886099400,
+          "value": 316.03158
+        },
+        {
+          "full_accuracy_value": "316.03126",
+          "timestamp": 1788886099600,
+          "value": 316.03126
+        },
+        {
+          "full_accuracy_value": "316.03126",
+          "timestamp": 1788886099800,
+          "value": 316.03126
+        },
+        {
+          "full_accuracy_value": "316.03158",
+          "timestamp": 1788886100000,
+          "value": 316.03158
+        },
+        {
+          "full_accuracy_value": "316.03158",
+          "timestamp": 1788886100200,
+          "value": 316.03158
+        },
+        {
+          "full_accuracy_value": "316.03158",
+          "timestamp": 1788886100400,
+          "value": 316.03158
+        },
+        {
+          "full_accuracy_value": "316.03158",
+          "timestamp": 1788886100600,
+          "value": 316.03158
+        },
+        {
+          "full_accuracy_value": "316.03001",
+          "timestamp": 1788886100800,
+          "value": 316.03001
+        },
+        {
+          "full_accuracy_value": "316.02999",
+          "timestamp": 1788886101000,
+          "value": 316.02999
+        },
+        {
+          "full_accuracy_value": "316.029",
+          "timestamp": 1788886101200,
+          "value": 316.029
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886101400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886101600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886101800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886102000,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.01998",
+          "timestamp": 1788886102200,
+          "value": 316.01998
+        },
+        {
+          "full_accuracy_value": "316.02503",
+          "timestamp": 1788886102400,
+          "value": 316.02503
+        },
+        {
+          "full_accuracy_value": "316.0275",
+          "timestamp": 1788886102600,
+          "value": 316.0275
+        },
+        {
+          "full_accuracy_value": "316.02995",
+          "timestamp": 1788886102800,
+          "value": 316.02995
+        },
+        {
+          "full_accuracy_value": "316.02996",
+          "timestamp": 1788886103000,
+          "value": 316.02996
+        },
+        {
+          "full_accuracy_value": "316.02905",
+          "timestamp": 1788886103200,
+          "value": 316.02905
+        },
+        {
+          "full_accuracy_value": "316.02905",
+          "timestamp": 1788886103400,
+          "value": 316.02905
+        },
+        {
+          "full_accuracy_value": "316.03001",
+          "timestamp": 1788886103600,
+          "value": 316.03001
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886103800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886104000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886104200,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886104400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886104600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886104800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886105000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886105200,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886105400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886105600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03005",
+          "timestamp": 1788886105800,
+          "value": 316.03005
+        },
+        {
+          "full_accuracy_value": "316.03001",
+          "timestamp": 1788886106000,
+          "value": 316.03001
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886106200,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886106400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886106600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.02001",
+          "timestamp": 1788886106800,
+          "value": 316.02001
+        },
+        {
+          "full_accuracy_value": "316.02001",
+          "timestamp": 1788886107000,
+          "value": 316.02001
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886107200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886107400,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886107600,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02165",
+          "timestamp": 1788886107800,
+          "value": 316.02165
+        },
+        {
+          "full_accuracy_value": "316.02203",
+          "timestamp": 1788886108000,
+          "value": 316.02203
+        },
+        {
+          "full_accuracy_value": "316.02497",
+          "timestamp": 1788886108200,
+          "value": 316.02497
+        },
+        {
+          "full_accuracy_value": "316.02405",
+          "timestamp": 1788886108400,
+          "value": 316.02405
+        },
+        {
+          "full_accuracy_value": "316.02405",
+          "timestamp": 1788886108600,
+          "value": 316.02405
+        },
+        {
+          "full_accuracy_value": "316.02496",
+          "timestamp": 1788886108800,
+          "value": 316.02496
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886109000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886109200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886109400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02502",
+          "timestamp": 1788886109600,
+          "value": 316.02502
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886109800,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886110000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886110200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886110400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886110600,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886110800,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886111000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886111200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886111400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886111600,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886111800,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02497",
+          "timestamp": 1788886112000,
+          "value": 316.02497
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886112200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02499",
+          "timestamp": 1788886112400,
+          "value": 316.02499
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886112600,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02495",
+          "timestamp": 1788886112800,
+          "value": 316.02495
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886113000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886113200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886113400,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02063",
+          "timestamp": 1788886113600,
+          "value": 316.02063
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886113800,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02003",
+          "timestamp": 1788886114000,
+          "value": 316.02003
+        },
+        {
+          "full_accuracy_value": "316.02",
+          "timestamp": 1788886114200,
+          "value": 316.02
+        },
+        {
+          "full_accuracy_value": "316.02031",
+          "timestamp": 1788886114400,
+          "value": 316.02031
+        },
+        {
+          "full_accuracy_value": "316.0249",
+          "timestamp": 1788886114600,
+          "value": 316.0249
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886114800,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886115000,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.025",
+          "timestamp": 1788886115200,
+          "value": 316.025
+        },
+        {
+          "full_accuracy_value": "316.02505",
+          "timestamp": 1788886115400,
+          "value": 316.02505
+        },
+        {
+          "full_accuracy_value": "316.02999",
+          "timestamp": 1788886115600,
+          "value": 316.02999
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886115800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886116000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886116200,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886116400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886116600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886116800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03001",
+          "timestamp": 1788886117000,
+          "value": 316.03001
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886117200,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886117400,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.0499",
+          "timestamp": 1788886117600,
+          "value": 316.0499
+        },
+        {
+          "full_accuracy_value": "316.04997",
+          "timestamp": 1788886117800,
+          "value": 316.04997
+        },
+        {
+          "full_accuracy_value": "316.04936",
+          "timestamp": 1788886118000,
+          "value": 316.04936
+        },
+        {
+          "full_accuracy_value": "316.04873",
+          "timestamp": 1788886118200,
+          "value": 316.04873
+        },
+        {
+          "full_accuracy_value": "316.04905",
+          "timestamp": 1788886118400,
+          "value": 316.04905
+        },
+        {
+          "full_accuracy_value": "316.04997",
+          "timestamp": 1788886118600,
+          "value": 316.04997
+        },
+        {
+          "full_accuracy_value": "316.04501",
+          "timestamp": 1788886118800,
+          "value": 316.04501
+        },
+        {
+          "full_accuracy_value": "316.04997",
+          "timestamp": 1788886119000,
+          "value": 316.04997
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886119200,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886119400,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886119600,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886119800,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886120000,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886120200,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886120400,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886120600,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886120800,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886121000,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886121200,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886121400,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886121600,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886121800,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.0575",
+          "timestamp": 1788886122000,
+          "value": 316.0575
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886122200,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886122400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886122600,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886122800,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886123000,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886123200,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886123400,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886123600,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886123800,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886124000,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886124200,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08202",
+          "timestamp": 1788886124400,
+          "value": 316.08202
+        },
+        {
+          "full_accuracy_value": "316.08234",
+          "timestamp": 1788886124600,
+          "value": 316.08234
+        },
+        {
+          "full_accuracy_value": "316.08479",
+          "timestamp": 1788886124800,
+          "value": 316.08479
+        },
+        {
+          "full_accuracy_value": "316.08498",
+          "timestamp": 1788886125000,
+          "value": 316.08498
+        },
+        {
+          "full_accuracy_value": "316.08497",
+          "timestamp": 1788886125200,
+          "value": 316.08497
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886125400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.09125",
+          "timestamp": 1788886125600,
+          "value": 316.09125
+        },
+        {
+          "full_accuracy_value": "316.08994",
+          "timestamp": 1788886125800,
+          "value": 316.08994
+        },
+        {
+          "full_accuracy_value": "316.08999",
+          "timestamp": 1788886126000,
+          "value": 316.08999
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886126200,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886126400,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886126600,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886126800,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886127000,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.08249",
+          "timestamp": 1788886127200,
+          "value": 316.08249
+        },
+        {
+          "full_accuracy_value": "316.0766",
+          "timestamp": 1788886127400,
+          "value": 316.0766
+        },
+        {
+          "full_accuracy_value": "316.0725",
+          "timestamp": 1788886127600,
+          "value": 316.0725
+        },
+        {
+          "full_accuracy_value": "316.061",
+          "timestamp": 1788886127800,
+          "value": 316.061
+        },
+        {
+          "full_accuracy_value": "316.05016",
+          "timestamp": 1788886128000,
+          "value": 316.05016
+        },
+        {
+          "full_accuracy_value": "316.05003",
+          "timestamp": 1788886128200,
+          "value": 316.05003
+        },
+        {
+          "full_accuracy_value": "316.05083",
+          "timestamp": 1788886128400,
+          "value": 316.05083
+        },
+        {
+          "full_accuracy_value": "316.05005",
+          "timestamp": 1788886128600,
+          "value": 316.05005
+        },
+        {
+          "full_accuracy_value": "316.05515",
+          "timestamp": 1788886128800,
+          "value": 316.05515
+        },
+        {
+          "full_accuracy_value": "316.06502",
+          "timestamp": 1788886129000,
+          "value": 316.06502
+        },
+        {
+          "full_accuracy_value": "316.06519",
+          "timestamp": 1788886129200,
+          "value": 316.06519
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886129400,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886129600,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886129800,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886130000,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886130200,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886130400,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886130600,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.09967",
+          "timestamp": 1788886130800,
+          "value": 316.09967
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886131000,
+          "value": 316.1
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886131200,
+          "value": 316.1
+        },
+        {
+          "full_accuracy_value": "316.09882",
+          "timestamp": 1788886131400,
+          "value": 316.09882
+        },
+        {
+          "full_accuracy_value": "316.08066",
+          "timestamp": 1788886131600,
+          "value": 316.08066
+        },
+        {
+          "full_accuracy_value": "316.07508",
+          "timestamp": 1788886131800,
+          "value": 316.07508
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886132000,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.07626",
+          "timestamp": 1788886132200,
+          "value": 316.07626
+        },
+        {
+          "full_accuracy_value": "316.079",
+          "timestamp": 1788886132400,
+          "value": 316.079
+        },
+        {
+          "full_accuracy_value": "316.07876",
+          "timestamp": 1788886132600,
+          "value": 316.07876
+        },
+        {
+          "full_accuracy_value": "316.07876",
+          "timestamp": 1788886132800,
+          "value": 316.07876
+        },
+        {
+          "full_accuracy_value": "316.08405",
+          "timestamp": 1788886133000,
+          "value": 316.08405
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886133200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886133400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886133600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886133800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886134000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886134200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886134400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886134600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886134800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886135000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886135200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886135400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886135600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886135800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886136000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886136200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886136400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.08499",
+          "timestamp": 1788886136600,
+          "value": 316.08499
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886136800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.081",
+          "timestamp": 1788886137000,
+          "value": 316.081
+        },
+        {
+          "full_accuracy_value": "316.08006",
+          "timestamp": 1788886137200,
+          "value": 316.08006
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886137400,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08006",
+          "timestamp": 1788886137600,
+          "value": 316.08006
+        },
+        {
+          "full_accuracy_value": "316.08002",
+          "timestamp": 1788886137800,
+          "value": 316.08002
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886138000,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886138200,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886138400,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.07929",
+          "timestamp": 1788886138600,
+          "value": 316.07929
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886138800,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.06958",
+          "timestamp": 1788886139000,
+          "value": 316.06958
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886139200,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.08008",
+          "timestamp": 1788886139400,
+          "value": 316.08008
+        },
+        {
+          "full_accuracy_value": "316.08",
+          "timestamp": 1788886139600,
+          "value": 316.08
+        },
+        {
+          "full_accuracy_value": "316.07998",
+          "timestamp": 1788886139800,
+          "value": 316.07998
+        },
+        {
+          "full_accuracy_value": "316.07508",
+          "timestamp": 1788886140000,
+          "value": 316.07508
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886140200,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886140400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07005",
+          "timestamp": 1788886140600,
+          "value": 316.07005
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886140800,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07002",
+          "timestamp": 1788886141000,
+          "value": 316.07002
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886141200,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886141400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07002",
+          "timestamp": 1788886141600,
+          "value": 316.07002
+        },
+        {
+          "full_accuracy_value": "316.07002",
+          "timestamp": 1788886141800,
+          "value": 316.07002
+        },
+        {
+          "full_accuracy_value": "316.07929",
+          "timestamp": 1788886142000,
+          "value": 316.07929
+        },
+        {
+          "full_accuracy_value": "316.07991",
+          "timestamp": 1788886142200,
+          "value": 316.07991
+        },
+        {
+          "full_accuracy_value": "316.07995",
+          "timestamp": 1788886142400,
+          "value": 316.07995
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886142600,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886142800,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886143000,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886143200,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886143400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.06957",
+          "timestamp": 1788886143600,
+          "value": 316.06957
+        },
+        {
+          "full_accuracy_value": "316.06511",
+          "timestamp": 1788886143800,
+          "value": 316.06511
+        },
+        {
+          "full_accuracy_value": "316.06502",
+          "timestamp": 1788886144000,
+          "value": 316.06502
+        },
+        {
+          "full_accuracy_value": "316.06506",
+          "timestamp": 1788886144200,
+          "value": 316.06506
+        },
+        {
+          "full_accuracy_value": "316.06505",
+          "timestamp": 1788886144400,
+          "value": 316.06505
+        },
+        {
+          "full_accuracy_value": "316.06485",
+          "timestamp": 1788886144600,
+          "value": 316.06485
+        },
+        {
+          "full_accuracy_value": "316.06485",
+          "timestamp": 1788886144800,
+          "value": 316.06485
+        },
+        {
+          "full_accuracy_value": "316.06485",
+          "timestamp": 1788886145000,
+          "value": 316.06485
+        },
+        {
+          "full_accuracy_value": "316.06063",
+          "timestamp": 1788886145200,
+          "value": 316.06063
+        },
+        {
+          "full_accuracy_value": "316.0629",
+          "timestamp": 1788886145400,
+          "value": 316.0629
+        },
+        {
+          "full_accuracy_value": "316.06289",
+          "timestamp": 1788886145600,
+          "value": 316.06289
+        },
+        {
+          "full_accuracy_value": "316.06245",
+          "timestamp": 1788886145800,
+          "value": 316.06245
+        },
+        {
+          "full_accuracy_value": "316.06003",
+          "timestamp": 1788886146000,
+          "value": 316.06003
+        },
+        {
+          "full_accuracy_value": "316.0632",
+          "timestamp": 1788886146200,
+          "value": 316.0632
+        },
+        {
+          "full_accuracy_value": "316.0602",
+          "timestamp": 1788886146400,
+          "value": 316.0602
+        },
+        {
+          "full_accuracy_value": "316.0627",
+          "timestamp": 1788886146600,
+          "value": 316.0627
+        },
+        {
+          "full_accuracy_value": "316.06268",
+          "timestamp": 1788886146800,
+          "value": 316.06268
+        },
+        {
+          "full_accuracy_value": "316.06126",
+          "timestamp": 1788886147000,
+          "value": 316.06126
+        },
+        {
+          "full_accuracy_value": "316.06126",
+          "timestamp": 1788886147200,
+          "value": 316.06126
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886147400,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886147600,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886147800,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886148000,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04998",
+          "timestamp": 1788886148200,
+          "value": 316.04998
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886148400,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.04006",
+          "timestamp": 1788886148600,
+          "value": 316.04006
+        },
+        {
+          "full_accuracy_value": "316.04007",
+          "timestamp": 1788886148800,
+          "value": 316.04007
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886149000,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886149200,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04008",
+          "timestamp": 1788886149400,
+          "value": 316.04008
+        },
+        {
+          "full_accuracy_value": "316.04002",
+          "timestamp": 1788886149600,
+          "value": 316.04002
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886149800,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04006",
+          "timestamp": 1788886150000,
+          "value": 316.04006
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886150200,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886150400,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886150600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886150800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886151000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886151200,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886151400,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886151600,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886151800,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.03",
+          "timestamp": 1788886152000,
+          "value": 316.03
+        },
+        {
+          "full_accuracy_value": "316.0401",
+          "timestamp": 1788886152200,
+          "value": 316.0401
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886152400,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.0449",
+          "timestamp": 1788886152600,
+          "value": 316.0449
+        },
+        {
+          "full_accuracy_value": "316.04493",
+          "timestamp": 1788886152800,
+          "value": 316.04493
+        },
+        {
+          "full_accuracy_value": "316.04496",
+          "timestamp": 1788886153000,
+          "value": 316.04496
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886153200,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.04495",
+          "timestamp": 1788886153400,
+          "value": 316.04495
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886153600,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04095",
+          "timestamp": 1788886153800,
+          "value": 316.04095
+        },
+        {
+          "full_accuracy_value": "316.04002",
+          "timestamp": 1788886154000,
+          "value": 316.04002
+        },
+        {
+          "full_accuracy_value": "316.04005",
+          "timestamp": 1788886154200,
+          "value": 316.04005
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886154400,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04002",
+          "timestamp": 1788886154600,
+          "value": 316.04002
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886154800,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04",
+          "timestamp": 1788886155000,
+          "value": 316.04
+        },
+        {
+          "full_accuracy_value": "316.04031",
+          "timestamp": 1788886155200,
+          "value": 316.04031
+        },
+        {
+          "full_accuracy_value": "316.04031",
+          "timestamp": 1788886155400,
+          "value": 316.04031
+        },
+        {
+          "full_accuracy_value": "316.04095",
+          "timestamp": 1788886155600,
+          "value": 316.04095
+        },
+        {
+          "full_accuracy_value": "316.04095",
+          "timestamp": 1788886155800,
+          "value": 316.04095
+        },
+        {
+          "full_accuracy_value": "316.04009",
+          "timestamp": 1788886156000,
+          "value": 316.04009
+        },
+        {
+          "full_accuracy_value": "316.045",
+          "timestamp": 1788886156200,
+          "value": 316.045
+        },
+        {
+          "full_accuracy_value": "316.05435",
+          "timestamp": 1788886156400,
+          "value": 316.05435
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886156600,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886156800,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886157000,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886157200,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.05",
+          "timestamp": 1788886157400,
+          "value": 316.05
+        },
+        {
+          "full_accuracy_value": "316.04998",
+          "timestamp": 1788886157600,
+          "value": 316.04998
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886157800,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886158000,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886158200,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.05504",
+          "timestamp": 1788886158400,
+          "value": 316.05504
+        },
+        {
+          "full_accuracy_value": "316.055",
+          "timestamp": 1788886158600,
+          "value": 316.055
+        },
+        {
+          "full_accuracy_value": "316.05508",
+          "timestamp": 1788886158800,
+          "value": 316.05508
+        },
+        {
+          "full_accuracy_value": "316.05503",
+          "timestamp": 1788886159000,
+          "value": 316.05503
+        },
+        {
+          "full_accuracy_value": "316.05658",
+          "timestamp": 1788886159200,
+          "value": 316.05658
+        },
+        {
+          "full_accuracy_value": "316.05505",
+          "timestamp": 1788886159400,
+          "value": 316.05505
+        },
+        {
+          "full_accuracy_value": "316.05508",
+          "timestamp": 1788886159600,
+          "value": 316.05508
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886159800,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.06002",
+          "timestamp": 1788886160000,
+          "value": 316.06002
+        },
+        {
+          "full_accuracy_value": "316.07213",
+          "timestamp": 1788886160200,
+          "value": 316.07213
+        },
+        {
+          "full_accuracy_value": "316.07186",
+          "timestamp": 1788886160400,
+          "value": 316.07186
+        },
+        {
+          "full_accuracy_value": "316.0749",
+          "timestamp": 1788886160600,
+          "value": 316.0749
+        },
+        {
+          "full_accuracy_value": "316.07501",
+          "timestamp": 1788886160800,
+          "value": 316.07501
+        },
+        {
+          "full_accuracy_value": "316.07501",
+          "timestamp": 1788886161000,
+          "value": 316.07501
+        },
+        {
+          "full_accuracy_value": "316.07681",
+          "timestamp": 1788886161200,
+          "value": 316.07681
+        },
+        {
+          "full_accuracy_value": "316.07681",
+          "timestamp": 1788886161400,
+          "value": 316.07681
+        },
+        {
+          "full_accuracy_value": "316.07995",
+          "timestamp": 1788886161600,
+          "value": 316.07995
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886161800,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.07497",
+          "timestamp": 1788886162000,
+          "value": 316.07497
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886162200,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886162400,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886162600,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.075",
+          "timestamp": 1788886162800,
+          "value": 316.075
+        },
+        {
+          "full_accuracy_value": "316.07498",
+          "timestamp": 1788886163000,
+          "value": 316.07498
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886163200,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.07",
+          "timestamp": 1788886163400,
+          "value": 316.07
+        },
+        {
+          "full_accuracy_value": "316.06992",
+          "timestamp": 1788886163600,
+          "value": 316.06992
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886163800,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.06",
+          "timestamp": 1788886164000,
+          "value": 316.06
+        },
+        {
+          "full_accuracy_value": "316.06006",
+          "timestamp": 1788886164200,
+          "value": 316.06006
+        },
+        {
+          "full_accuracy_value": "316.06063",
+          "timestamp": 1788886164400,
+          "value": 316.06063
+        },
+        {
+          "full_accuracy_value": "316.065",
+          "timestamp": 1788886164600,
+          "value": 316.065
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886164800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.08996",
+          "timestamp": 1788886165000,
+          "value": 316.08996
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886165200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886165400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.08468",
+          "timestamp": 1788886165600,
+          "value": 316.08468
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886165800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886166000,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886166200,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886166400,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886166600,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886166800,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886167000,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886167200,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886167400,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.09083",
+          "timestamp": 1788886167600,
+          "value": 316.09083
+        },
+        {
+          "full_accuracy_value": "316.09007",
+          "timestamp": 1788886167800,
+          "value": 316.09007
+        },
+        {
+          "full_accuracy_value": "316.09004",
+          "timestamp": 1788886168000,
+          "value": 316.09004
+        },
+        {
+          "full_accuracy_value": "316.09007",
+          "timestamp": 1788886168200,
+          "value": 316.09007
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886168400,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886168600,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886168800,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.095",
+          "timestamp": 1788886169000,
+          "value": 316.095
+        },
+        {
+          "full_accuracy_value": "316.09505",
+          "timestamp": 1788886169200,
+          "value": 316.09505
+        },
+        {
+          "full_accuracy_value": "316.09495",
+          "timestamp": 1788886169400,
+          "value": 316.09495
+        },
+        {
+          "full_accuracy_value": "316.09504",
+          "timestamp": 1788886169600,
+          "value": 316.09504
+        },
+        {
+          "full_accuracy_value": "316.0951",
+          "timestamp": 1788886169800,
+          "value": 316.0951
+        },
+        {
+          "full_accuracy_value": "316.09503",
+          "timestamp": 1788886170000,
+          "value": 316.09503
+        },
+        {
+          "full_accuracy_value": "316.098",
+          "timestamp": 1788886170200,
+          "value": 316.098
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886170400,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.08999",
+          "timestamp": 1788886170600,
+          "value": 316.08999
+        },
+        {
+          "full_accuracy_value": "316.0873",
+          "timestamp": 1788886170800,
+          "value": 316.0873
+        },
+        {
+          "full_accuracy_value": "316.08594",
+          "timestamp": 1788886171000,
+          "value": 316.08594
+        },
+        {
+          "full_accuracy_value": "316.08594",
+          "timestamp": 1788886171200,
+          "value": 316.08594
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886171400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886171600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886171800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886172000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886172200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886172400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.08497",
+          "timestamp": 1788886172600,
+          "value": 316.08497
+        },
+        {
+          "full_accuracy_value": "316.08496",
+          "timestamp": 1788886172800,
+          "value": 316.08496
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886173000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886173200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886173400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886173600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886173800,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886174000,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886174200,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886174400,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.085",
+          "timestamp": 1788886174600,
+          "value": 316.085
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886174800,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09007",
+          "timestamp": 1788886175000,
+          "value": 316.09007
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886175200,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09",
+          "timestamp": 1788886175400,
+          "value": 316.09
+        },
+        {
+          "full_accuracy_value": "316.09001",
+          "timestamp": 1788886175600,
+          "value": 316.09001
+        },
+        {
+          "full_accuracy_value": "316.095",
+          "timestamp": 1788886175800,
+          "value": 316.095
+        },
+        {
+          "full_accuracy_value": "316.095",
+          "timestamp": 1788886176000,
+          "value": 316.095
+        },
+        {
+          "full_accuracy_value": "316.09989",
+          "timestamp": 1788886176200,
+          "value": 316.09989
+        },
+        {
+          "full_accuracy_value": "316.1",
+          "timestamp": 1788886176400,
+          "value": 316.1
+        }
+      ],
+      "symbol": "aapl"
+    }
+  },
+  {
+    "op": "subscribed",
+    "channel": "price.polymarket",
+    "rid": "capture"
+  },
+  {
+    "v": 1,
+    "channel": "price.polymarket",
+    "seq": 1,
+    "ts": 1788886176645,
+    "snapshot": true,
+    "payload": []
+  },
+  {
+    "op": "error",
+    "channel": "price.crypto",
+    "rid": "capture",
+    "code": "bad_filter"
+  },
+  {
+    "v": 1,
+    "channel": "price.equity",
+    "seq": 2,
+    "ts": 1788886176600,
+    "payload": {
+      "full_accuracy_value": "316.1",
+      "received_at": 1788886176600,
+      "symbol": "aapl",
+      "timestamp": 1788886176600,
+      "value": 316.1
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto",
+    "seq": 4,
+    "ts": 1788886177000,
+    "payload": {
+      "full_accuracy_value": "2497.38586148",
+      "symbol": "ethusd",
+      "timestamp": 1788886177000,
+      "value": 2497.38586148
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto",
+    "seq": 5,
+    "ts": 1788886177000,
+    "payload": {
+      "full_accuracy_value": "78794.15450441",
+      "symbol": "btcusd",
+      "timestamp": 1788886177000,
+      "value": 78794.15450441
+    }
+  },
+  {
+    "v": 1,
+    "channel": "price.crypto.twap",
+    "seq": 3,
+    "ts": 1788886177000,
+    "payload": {
+      "full_accuracy_value": "78803.715261094101516288",
+      "symbol": "btcusd",
+      "timestamp": 1788886177000,
+      "value": 78803.7152610941,
+      "window_seconds": 60
+    }
+  }
+]
