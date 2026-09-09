@@ -1,7 +1,7 @@
 import { OrderSide } from '@polymarket/bindings';
-import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
   createSecureClient,
+  OrderPostStatus,
   SessionKeyKnownScope,
   SignerType,
 } from '@polymarket/client';
