@@ -21,10 +21,6 @@ export type WebSocketEndpoint = {
   headers?: Record<string, string>;
 };
 
-export type RealtimeEndpoint = WebSocketEndpoint & {
-  protocol?: 'rtds' | 'polybolt';
-};
-
 export type ClobEndpoints = RestEndpoint & {
   market: WebSocketEndpoint;
   user: WebSocketEndpoint;
@@ -83,9 +79,7 @@ export type EnvironmentConfig = {
   /** @internal */
   perps: PerpsEndpoints;
   /** @internal */
-  rtds: RealtimeEndpoint;
-  /** @internal */
-  rtdsLegacy?: WebSocketEndpoint;
+  realtime: WebSocketEndpoint;
   /** @internal */
   sports: WebSocketEndpoint;
   /** @internal */
@@ -114,8 +108,7 @@ export type EnvironmentConfigFork = {
     collateralReturn?: Partial<RestEndpoint>;
   };
   perps?: EnvironmentConfigForkEndpoint;
-  rtds?: Partial<RealtimeEndpoint>;
-  rtdsLegacy?: Partial<WebSocketEndpoint>;
+  realtime?: Partial<WebSocketEndpoint>;
   sports?: Partial<WebSocketEndpoint>;
   relayerMaxPolls?: number;
   relayerPollFrequencyMs?: number;
@@ -219,8 +212,7 @@ export const production: EnvironmentConfig = {
     rest: 'https://api.perpetuals.polymarket.com',
     ws: 'wss://ws.perpetuals.polymarket.com/v1/ws',
   },
-  rtds: { ws: 'wss://ws-live-data.polymarket.com', protocol: 'rtds' },
-  rtdsLegacy: { ws: 'wss://ws-live-data.polymarket.com' },
+  realtime: { ws: 'wss://ws-live-v2.polymarket.com/ws' },
   sports: { ws: 'wss://sports-api.polymarket.com/ws' },
   relayerMaxPolls: 100,
   relayerPollFrequencyMs: 2000,
@@ -267,14 +259,7 @@ export function forkEnvironmentConfig(
       ),
     },
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
-    rtds: {
-      ...forkWebSocketEndpoint(base.rtds, fork.rtds),
-      protocol: fork.rtds?.protocol ?? base.rtds.protocol,
-    },
-    rtdsLegacy: forkWebSocketEndpoint(
-      base.rtdsLegacy ?? production.rtds,
-      fork.rtdsLegacy,
-    ),
+    realtime: forkWebSocketEndpoint(base.realtime, fork.realtime),
     sports: forkWebSocketEndpoint(base.sports, fork.sports),
   };
 }

@@ -3,10 +3,7 @@ export {
   PerpsSessionManager,
   PerpsSubscriptionManager,
 } from './perps';
-export {
-  RealtimeWebSocketManager,
-  RtdsWebSocketManager,
-} from './realtime/manager';
+export { RealtimeWebSocketManager } from './realtime/manager';
 export { RfqQuoterWebSocketManager } from './rfq';
 export { SportsWebSocketManager } from './sports';
 export type {

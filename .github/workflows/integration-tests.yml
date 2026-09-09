@@ -9,7 +9,7 @@ on:
         default: '{}'
         type: string
       realtime_soak:
-        description: Run the 30-minute realtime soak (requires the new transport)
+        description: Run the 30-minute realtime price soak
         required: false
         default: false
         type: boolean
@@ -31,7 +31,7 @@ on:
         default: '{}'
         type: string
       realtime_soak:
-        description: Run the 30-minute realtime soak (requires the new transport)
+        description: Run the 30-minute realtime price soak
         required: false
         default: false
         type: boolean

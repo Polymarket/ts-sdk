@@ -3,10 +3,16 @@
 '@polymarket/bindings': minor
 ---
 
-Add authenticated, source-neutral realtime price subscriptions: `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and `prices.polymarket`, with `webSockets.realtime` and `RealtimeWebSocketManager`.
+Breaking migration: replace RTDS completely with authenticated PolyBolt price streams. The production endpoint is now `wss://ws-live-v2.polymarket.com/ws`, with no legacy fallback. Production price subscriptions require that endpoint to be deployed; use a staging environment fork while deployment is pending.
 
-The new transport is opt-in through an environment fork (`rtds.protocol: 'polybolt'` and its WebSocket URL). Production keeps its existing streams. New topics require a secure client and explicit nonempty symbol or asset filters. When opting into the new transport, source-named price aliases also require a secure client and explicit symbols; their topic literals remain unchanged. Existing production subscriptions retain their current access and optional filters until the default migration release.
+Migration:
 
-New vendor topics include recent-history snapshot events. Crypto aliases include snapshots only with `includeSnapshot: true`; equity retains its existing event types. Events expose optional `seq` and `dropped`, preserve exact decimal prices, and use producer event timestamps. Subscriptions await server acceptance and can throw `SubscriptionRejectedError` or `ConnectionLostError`. Connections authenticate again on reconnect, pool filters beyond 64 keys, and refresh history after reported drops.
+- Use a secure client for all price subscriptions and provide explicit, nonempty symbol or asset filters.
+- Replace `prices.crypto.binance` with `prices.crypto`, `prices.crypto.chainlink.twap` with `prices.crypto.twap`, and `prices.equity.pyth` with `prices.equity`. Feed symbols depend on the deployed source; there is no implicit symbol set.
+- Use `webSockets.realtime` and `RealtimeWebSocketManager`. Remove `webSockets.rtds`, `RtdsWebSocketManager`, and `RtdsWebSocketManagerOptions` references.
+- Move environment overrides from `rtds` to `realtime: { ws, headers? }`. Remove `protocol` and `rtdsLegacy`; there is only one price transport.
+- Remove `comments` and `prices.crypto.chainlink` subscriptions: these streams are unsupported. HTTP comments APIs remain available.
+- Replace legacy comment/reaction event, `CryptoPrices*`, `EquityPrices*`, and `RealtimeEvent` binding imports with the source-neutral price event/spec types. The legacy RTDS schemas and price payload types are removed.
+- Handle both `subscribe` history snapshots and `update` events for crypto, TWAP, and equity. Remove `includeSnapshot`; snapshots are included by default. Use `CryptoPriceEvent`, `CryptoTwapPriceEvent`, and `EquityPriceEvent` with the corresponding subscription types.
 
-Deprecate source-named aliases and `rtds` in favor of the neutral names, with removal two months after the future default migration release. Comments and the chainlink spot topic remain on the legacy stream until its shutdown. The default migration, dated removals, and production rollout remain gated on live feed coverage and production readiness.
+Add secure `prices.polymarket` best-bid-and-offer updates with `PolymarketPriceEvent` and `PolymarketPriceSubscription`. Price values preserve exact decimal precision, timestamps represent producer time, and events expose optional `seq` and `dropped` fields. Subscriptions await server acceptance and can throw `SubscriptionRejectedError` or `ConnectionLostError`. Connections authenticate on reconnect, pool filters beyond 64 keys, and refresh history after reported drops.

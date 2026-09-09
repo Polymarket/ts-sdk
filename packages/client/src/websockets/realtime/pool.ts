@@ -1,27 +1,15 @@
-import type {
-  CommentsEvent,
-  CryptoPricesBinanceSnapshotEvent,
-  CryptoPricesChainlinkTwapSnapshotEvent,
-  CryptoPricesEvent,
-  EquityPricesEvent,
-  PriceEvent,
-} from '@polymarket/bindings/subscriptions';
+import type { PriceEvent } from '@polymarket/bindings/subscriptions';
 import { pushable } from 'it-pushable';
-import type { SubscriptionHandle } from '../../actions/subscriptions';
-import { type PolyboltSpec, subscriptionsFor } from './protocol';
+import type {
+  PriceSubscription,
+  SubscriptionHandle,
+} from '../../actions/subscriptions';
+import { subscriptionsFor } from './protocol';
 import {
   PolyboltSocket,
   type PolyboltSocketOptions,
   type PriceListener,
 } from './socket';
-
-export type RealtimePriceEvent =
-  | PriceEvent
-  | CryptoPricesEvent
-  | EquityPricesEvent
-  | CryptoPricesBinanceSnapshotEvent
-  | CryptoPricesChainlinkTwapSnapshotEvent;
-export type RealtimeManagerEvent = RealtimePriceEvent | CommentsEvent;
 
 /** @internal Keeps each filter on exactly one connection until it is removed. */
 export class SocketPool {
@@ -33,8 +21,8 @@ export class SocketPool {
   }
 
   async subscribe(
-    spec: PolyboltSpec,
-  ): Promise<SubscriptionHandle<RealtimePriceEvent>> {
+    spec: PriceSubscription,
+  ): Promise<SubscriptionHandle<PriceEvent>> {
     const subscriptions = [
       ...new Map(
         subscriptionsFor(spec).map((subscription) => [
@@ -43,7 +31,7 @@ export class SocketPool {
         ]),
       ).values(),
     ];
-    const queue = pushable<RealtimePriceEvent>({ objectMode: true });
+    const queue = pushable<PriceEvent>({ objectMode: true });
     const releases: (() => void)[] = [];
     let closed = false;
     let terminalError: Error | undefined;
@@ -63,14 +51,6 @@ export class SocketPool {
           const listener: PriceListener = {
             event(event) {
               if (closed) return;
-              if (event.type === 'subscribe') {
-                if (
-                  (spec.topic === 'prices.crypto.binance' ||
-                    spec.topic === 'prices.crypto.chainlink.twap') &&
-                  !spec.includeSnapshot
-                )
-                  return;
-              }
               if (
                 'types' in spec &&
                 spec.types !== undefined &&
@@ -85,12 +65,11 @@ export class SocketPool {
                       symbol: subscription.symbol ?? event.payload.symbol,
                     }
                   : event.payload;
-              // Wire payloads are normalized in bindings. Here only caller-owned aliases change.
+              // Echo the caller's normalized symbol spelling, including TWAP slashes.
               queue.push({
                 ...event,
-                topic: spec.topic,
                 payload,
-              } as RealtimePriceEvent);
+              } as PriceEvent);
             },
             end(error) {
               terminalError = error;

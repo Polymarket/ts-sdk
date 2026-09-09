@@ -6,8 +6,8 @@ import {
 import { privateKey } from '@polymarket/client/viem';
 import { requireEnv } from './lib/env';
 
-// Supply the JSON endpoint fork used by the integration suite. The new stream
-// is opt-in until the production migration release.
+// Supply the JSON endpoint fork used by the integration suite, including
+// realtime.ws for the staging price endpoint.
 const fork = JSON.parse(
   requireEnv('POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG'),
 ) as EnvironmentConfigFork;

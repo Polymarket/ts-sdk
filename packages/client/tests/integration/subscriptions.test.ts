@@ -30,7 +30,7 @@ async function collectCryptoSymbols(
   const seen = new Set<string>();
 
   for await (const event of handle) {
-    if (event.topic !== 'prices.crypto.binance') continue;
+    if (event.topic !== 'prices.crypto') continue;
     const symbol = event.payload?.symbol;
     if (symbol !== undefined && expected.has(symbol)) {
       seen.add(symbol);
@@ -44,19 +44,15 @@ async function collectCryptoSymbols(
 describe('Subscriptions', () => {
   it('routes market and price subscriptions and merges their events', async ({
     secureClientWithDepositWallet: client,
-    environment,
   }) => {
     const market = await findHighVolumeLowPriceMarket(publicClient);
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
-    const expectedSymbols =
-      environment.rtds.protocol === 'polybolt'
-        ? ['btcusd', 'ethusd']
-        : ['btcusdt', 'ethusdt'];
+    const expectedSymbols = ['btcusd', 'ethusd'];
 
     const handle = await client.subscribe([
       { tokenIds: [tokenId], topic: 'market' },
       { topic: 'sports' },
-      { symbols: expectedSymbols, topic: 'prices.crypto.binance' },
+      { symbols: expectedSymbols, topic: 'prices.crypto' },
     ]);
 
     try {

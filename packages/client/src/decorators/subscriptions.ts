@@ -15,13 +15,6 @@ export type {
   CryptoPriceEvent,
   CryptoPriceSnapshotEvent,
   CryptoPriceSubscription,
-  CryptoPricesBinanceSnapshotEvent,
-  CryptoPricesChainlinkTwapEvent,
-  CryptoPricesChainlinkTwapSixtyEvent,
-  CryptoPricesChainlinkTwapSnapshotEvent,
-  CryptoPricesChainlinkTwapSubscription,
-  CryptoPricesChainlinkTwapThirtyEvent,
-  CryptoPricesChainlinkTwapWindowSeconds,
   CryptoTwapPriceEvent,
   CryptoTwapPriceSnapshotEvent,
   CryptoTwapPriceSubscription,
@@ -33,10 +26,7 @@ export type {
 } from '../actions';
 export { SubscribeError } from '../actions';
 export type { RealtimeWebSocketManagerOptions } from '../websockets/realtime/manager';
-export {
-  RealtimeWebSocketManager,
-  RtdsWebSocketManager,
-} from '../websockets/realtime/manager';
+export { RealtimeWebSocketManager } from '../websockets/realtime/manager';
 
 export type PublicSubscriptionsActions = {
   /**
@@ -64,6 +54,9 @@ export type PublicSubscriptionsActions = {
 export type SecureSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
+   *
+   * Price subscriptions require explicit filters. Vendor price streams include
+   * recent-history snapshots as well as live updates.
    *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.

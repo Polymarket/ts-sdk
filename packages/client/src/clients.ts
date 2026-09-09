@@ -339,13 +339,6 @@ class BasePublicClient<
           headers: config.environment.sports.headers,
           url: config.environment.sports.ws,
         }),
-        rtds: new RealtimeWebSocketManager({
-          headers: config.environment.rtds.headers,
-          url: config.environment.rtds.ws,
-          protocol: config.environment.rtds.protocol,
-          legacyUrl: config.environment.rtdsLegacy?.ws,
-          legacyHeaders: config.environment.rtdsLegacy?.headers,
-        }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
           url: config.environment.perps.ws,
@@ -397,7 +390,6 @@ class BasePublicClient<
   async closeSubscriptions(): Promise<void> {
     await Promise.all([
       this.webSockets.clobMarket.close(),
-      this.webSockets.rtds.close(),
       this.webSockets.sports.close(),
       this.webSockets.perpsSubscriptions.close(),
     ]).then(() => undefined);
@@ -541,11 +533,8 @@ class BaseSecureClient<
 
   constructor(config: SecureClientConfig) {
     const realtime = new RealtimeWebSocketManager({
-      url: config.environment.rtds.ws,
-      headers: config.environment.rtds.headers,
-      protocol: config.environment.rtds.protocol,
-      legacyUrl: config.environment.rtdsLegacy?.ws,
-      legacyHeaders: config.environment.rtdsLegacy?.headers,
+      url: config.environment.realtime.ws,
+      headers: config.environment.realtime.headers,
       credentials: config.credentials,
     });
     super({
@@ -628,7 +617,6 @@ class BaseSecureClient<
           headers: config.environment.sports.headers,
           url: config.environment.sports.ws,
         }),
-        rtds: realtime,
         realtime,
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
@@ -704,7 +692,7 @@ class BaseSecureClient<
   async closeSubscriptions(): Promise<void> {
     await Promise.allSettled([
       this.webSockets.clobMarket.close(),
-      this.webSockets.rtds.close(),
+      this.webSockets.realtime.close(),
       this.webSockets.sports.close(),
       this.webSockets.perpsSubscriptions.close(),
       this.webSockets.clobUser.close(),

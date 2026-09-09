@@ -1,19 +1,6 @@
 import { PolyboltChannel } from '@polymarket/bindings/subscriptions';
-import { z } from 'zod';
-import type {
-  CryptoPricesChainlinkTwapSubscription,
-  CryptoPricesSubscription,
-  EquityPricesSubscription,
-  PriceSubscription,
-} from '../../actions/subscriptions';
-import { UserInputError } from '../../errors';
-import { parseUserInput } from '../../input';
+import type { PriceSubscription } from '../../actions/subscriptions';
 
-export type PolyboltSpec =
-  | PriceSubscription
-  | CryptoPricesSubscription
-  | CryptoPricesChainlinkTwapSubscription
-  | EquityPricesSubscription;
 export type PolyboltFilter =
   | { symbol: string; window_seconds?: 30 | 60 }
   | { asset_id: string };
@@ -24,53 +11,16 @@ export type PolyboltSubscription = {
   symbol?: string;
 };
 
-const PriceSubscriptionSchema = z.object({
-  symbols: z
-    .array(
-      z
-        .string()
-        .trim()
-        .min(1)
-        .max(64)
-        .regex(/^[a-zA-Z0-9._:/-]+$/),
-    )
-    .min(1),
-  windowSeconds: z.union([z.literal(30), z.literal(60)]).optional(),
-  includeSnapshot: z.boolean().optional(),
-});
-enum PriceEventType {
-  Update = 'update',
-  Subscribe = 'subscribe',
-}
-const EquitySubscriptionSchema = z.object({
-  symbol: z
-    .string()
-    .trim()
-    .min(1)
-    .max(64)
-    .regex(/^[a-zA-Z0-9._:/-]+$/),
-  types: z.array(z.enum(PriceEventType)).optional(),
-});
-const BboSubscriptionSchema = z.object({
-  assetIds: z
-    .array(
-      z
-        .string()
-        .regex(/^\d+$/)
-        .transform((value) => value.replace(/^0+/, '') || '0')
-        .pipe(z.string().max(78)),
-    )
-    .min(1),
-});
-
-export function subscriptionsFor(spec: PolyboltSpec): PolyboltSubscription[] {
+export function subscriptionsFor(
+  spec: PriceSubscription,
+): PolyboltSubscription[] {
   if (spec.topic === 'prices.polymarket') {
-    return parseUserInput(spec, BboSubscriptionSchema).assetIds.map(
-      (asset_id) => entry(PolyboltChannel.Polymarket, { asset_id }),
+    return spec.assetIds.map((asset_id) =>
+      entry(PolyboltChannel.Polymarket, { asset_id }),
     );
   }
-  if (spec.topic === 'prices.equity' || spec.topic === 'prices.equity.pyth') {
-    const { symbol } = parseUserInput(spec, EquitySubscriptionSchema);
+  if (spec.topic === 'prices.equity') {
+    const { symbol } = spec;
     return [
       entry(
         PolyboltChannel.Equity,
@@ -79,26 +29,15 @@ export function subscriptionsFor(spec: PolyboltSpec): PolyboltSubscription[] {
       ),
     ];
   }
-  const params = parseUserInput(spec, PriceSubscriptionSchema);
-  const twap =
-    spec.topic === 'prices.crypto.twap' ||
-    spec.topic === 'prices.crypto.chainlink.twap';
-  if (twap && params.windowSeconds === undefined)
-    throw new UserInputError(
-      'A time-weighted price subscription requires windowSeconds: 30 or 60.',
-    );
-  return params.symbols.map((input) => {
+  const twap = spec.topic === 'prices.crypto.twap';
+  return spec.symbols.map((input) => {
     const symbol = input.toLowerCase();
-    if (twap && symbol.replaceAll('/', '') === '')
-      throw new UserInputError(
-        'A time-weighted price symbol must contain more than slashes.',
-      );
     return entry(
       twap ? PolyboltChannel.Twap : PolyboltChannel.Crypto,
       twap
         ? {
             symbol: symbol.replaceAll('/', ''),
-            window_seconds: params.windowSeconds,
+            window_seconds: spec.windowSeconds,
           }
         : { symbol },
       symbol,

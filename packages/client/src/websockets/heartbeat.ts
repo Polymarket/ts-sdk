@@ -3,8 +3,6 @@ import type { WebSocketHeartbeat } from './lifecycle';
 
 const CLOB_HEARTBEAT_INTERVAL_MS = 10_000;
 const CLOB_HEARTBEAT_STALE_MS = 30_000;
-const RTDS_HEARTBEAT_INTERVAL_MS = 5_000;
-const RTDS_HEARTBEAT_STALE_MS = 10 * 60_000;
 const SPORTS_HEARTBEAT_STALE_MS = 30_000;
 const PERPS_HEARTBEAT_INTERVAL_MS = 25_000;
 const PERPS_HEARTBEAT_STALE_MS = 65_000;
@@ -29,35 +27,6 @@ export class ClobWebSocketHeartbeat implements WebSocketHeartbeat {
 
   isStale(now: number): boolean {
     return now - this.#lastPongAt > CLOB_HEARTBEAT_STALE_MS;
-  }
-
-  stop(): void {
-    if (this.#timer !== undefined) {
-      clearInterval(this.#timer);
-      this.#timer = undefined;
-    }
-  }
-}
-
-export class RtdsWebSocketHeartbeat implements WebSocketHeartbeat {
-  #lastMessageAt = 0;
-  #timer: ReturnType<typeof setInterval> | undefined;
-
-  start(send: (message: string) => void): void {
-    this.stop();
-    this.#lastMessageAt = Date.now();
-    this.#timer = setNonBlockingInterval(() => {
-      send('PING');
-    }, RTDS_HEARTBEAT_INTERVAL_MS);
-  }
-
-  handleMessage(): boolean {
-    this.#lastMessageAt = Date.now();
-    return false;
-  }
-
-  isStale(now: number): boolean {
-    return now - this.#lastMessageAt > RTDS_HEARTBEAT_STALE_MS;
   }
 
   stop(): void {

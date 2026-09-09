@@ -37,7 +37,6 @@ describe('realtime timing boundaries', () => {
     vi.useFakeTimers();
     const manager = new RealtimeWebSocketManager({
       url,
-      protocol: 'polybolt',
       credentials,
     });
     const ops: string[] = [];
@@ -77,7 +76,6 @@ describe('realtime timing boundaries', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.5);
     const manager = new RealtimeWebSocketManager({
       url,
-      protocol: 'polybolt',
       credentials,
     });
     let connections = 0;

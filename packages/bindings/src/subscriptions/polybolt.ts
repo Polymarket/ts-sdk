@@ -156,11 +156,6 @@ export type CryptoPriceSnapshotEvent = Extract<
   CryptoPriceEvent,
   { type: 'subscribe' }
 >;
-export type CryptoPricesBinanceSnapshotEvent = Omit<
-  CryptoPriceSnapshotEvent,
-  'topic'
-> & { topic: 'prices.crypto.binance' };
-
 export const CryptoTwapPriceEventSchema = z.union([
   EventMetadataSchema.extend({
     topic: z.literal('prices.crypto.twap'),
@@ -178,11 +173,6 @@ export type CryptoTwapPriceSnapshotEvent = Extract<
   CryptoTwapPriceEvent,
   { type: 'subscribe' }
 >;
-export type CryptoPricesChainlinkTwapSnapshotEvent = Omit<
-  CryptoTwapPriceSnapshotEvent,
-  'topic'
-> & { topic: 'prices.crypto.chainlink.twap' };
-
 export const EquityPriceEventSchema = z.union([
   EventMetadataSchema.extend({
     topic: z.literal('prices.equity'),
