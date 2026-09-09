@@ -39,6 +39,7 @@ import {
   hasBinaryOutcomes,
   type Market,
   normalizeMarket,
+  ProtocolVersion,
 } from './market';
 
 const BestLineIdSchema = z.string().transform(toBestLineId);
@@ -63,6 +64,7 @@ export const SeriesIdSchema = z
 const SportIdSchema = z.number().int().transform(toSportId);
 const TeamIdSchema = z.number().int().transform(toTeamId);
 const TemplateIdSchema = z.string().transform(toTemplateId);
+const ProtocolVersionSchema = z.enum(ProtocolVersion);
 
 export const CollectionReferenceSchema = z.object({
   id: CollectionIdSchema,
@@ -379,6 +381,8 @@ export type EventPartner = {
 
 export type Event = {
   id: EventId;
+  /** Protocol version shared by every market in this event. */
+  version?: ProtocolVersion | null;
   parentEventId?: EventId | null;
   ticker?: string | null;
   slug?: string | null;
@@ -411,6 +415,7 @@ export type Event = {
 
 export const GammaEventSchema = z.object({
   id: EventIdSchema,
+  version: ProtocolVersionSchema.nullish(),
   ticker: z.string().nullish(),
   slug: z.string().nullish(),
   title: z.string().nullish(),
@@ -569,6 +574,7 @@ export type SportsMetadata = z.infer<typeof SportsMetadataSchema>;
 function normalizeEvent(event: GammaEvent): Event {
   return {
     id: event.id,
+    version: event.version,
     parentEventId: event.parentEventId,
     ticker: event.ticker,
     slug: event.slug,
