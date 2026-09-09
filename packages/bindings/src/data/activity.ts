@@ -91,8 +91,8 @@ export type ClobTradeActivity = TradeActivityBase & {
   tokenId: TokenId | PositionId;
   /** Display label of the outcome traded by the wallet. */
   outcome: string;
-  /** Zero-based index of the outcome in the market's outcome list. */
-  outcomeIndex: number;
+  /** Zero-based index of the outcome in the market's outcome list, when known. */
+  outcomeIndex?: number;
   /** URL slug of the market traded by the wallet. */
   slug: string;
   /** URL slug of the event containing the traded market. */
@@ -610,7 +610,7 @@ function normalizeTradeActivity(
     assetId,
     tokenId: assetId,
     outcome: expectPresent(activity.outcome, 'outcome'),
-    outcomeIndex: expectPresent(activity.outcome_index, 'outcome_index'),
+    outcomeIndex: activity.outcome_index,
     slug: expectPresent(activity.slug, 'slug'),
     eventSlug: expectPresent(activity.event_slug, 'event_slug'),
   };

@@ -59,6 +59,32 @@ describe('ActivitySchema', () => {
     });
   });
 
+  it('omits an unknown outcome index on ordinary trades', () => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.TRADE,
+        side: 'BUY',
+        size: 10,
+        usdc_size: 5,
+        price: 0.5,
+        token_id: '456',
+        condition_id: `0x${'a'.repeat(64)}`,
+        outcome: 'Yes',
+        outcome_index: 999,
+        title: 'Will this normalize?',
+        slug: 'will-this-normalize',
+        event_slug: 'normalization-event',
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: ActivityType.TRADE,
+      isCombo: false,
+      outcome: 'Yes',
+    });
+    expect(activity).toHaveProperty('outcomeIndex', undefined);
+  });
+
   it.each([
     ActivityType.DEPOSIT,
     ActivityType.WITHDRAWAL,
