@@ -33,10 +33,6 @@ import {
   OrderBooksSchema,
   PaginatedCurrentRewardsSchema,
   PaginatedMarketRewardsSchema,
-  type PriceHistoryInterval,
-  PriceHistoryIntervalSchema,
-  type PriceHistoryPoint,
-  PriceHistorySchema,
   PriceSchema,
   type Prices,
   PricesSchema,
@@ -987,99 +983,6 @@ export async function fetchLastTradePrices(
       })
       .andThen(validateWith(LastTradePricesSchema)),
   );
-}
-
-const ListPriceHistoryRequestSchema = exchangeAssetRequestSchema({
-  startTs: z.number().int().optional(),
-  endTs: z.number().int().optional(),
-  fidelity: z.number().int().positive().optional(),
-  interval: PriceHistoryIntervalSchema.optional(),
-});
-
-export type FetchPriceHistoryRequest =
-  | {
-      /** Identifier for a CTF token or Polymarket V2 position. */
-      assetId: string;
-      tokenId?: never;
-      startTs?: number;
-      endTs?: number;
-      fidelity?: number;
-      interval?: PriceHistoryInterval;
-    }
-  | {
-      assetId?: never;
-      /** @deprecated Use `assetId`. */
-      tokenId: string;
-      startTs?: number;
-      endTs?: number;
-      fidelity?: number;
-      interval?: PriceHistoryInterval;
-    };
-
-export type FetchPriceHistoryError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const FetchPriceHistoryError = makeErrorGuard(
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-/**
- * Fetches historical price points for an exchange asset.
- *
- * @remarks
- * This is a low-level function. Most SDK consumers should prefer the client instance API.
- *
- * @throws {@link FetchPriceHistoryError}
- * Thrown on failure.
- *
- * @example
- * ```ts
- * const history = await fetchPriceHistory(client, {
- *   assetId: '0x0122…0000',
- *   interval: PriceHistoryInterval.ONE_DAY,
- *   fidelity: 60,
- * });
- *
- * // history === PriceHistoryPoint[]
- * ```
- *
- */
-export async function fetchPriceHistory(
-  client: BaseClient,
-  request: FetchPriceHistoryRequest,
-): Promise<PriceHistoryPoint[]> {
-  const params = parseUserInput(request, ListPriceHistoryRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/prices-history', {
-        params: toSearchParams(
-          {
-            market: params.assetId ?? params.tokenId,
-            startTs: params.startTs,
-            endTs: params.endTs,
-            fidelity: params.fidelity,
-            interval: params.interval,
-          },
-          {
-            market: 'market',
-            startTs: 'startTs',
-            endTs: 'endTs',
-            fidelity: 'fidelity',
-            interval: 'interval',
-          },
-        ),
-      })
-      .andThen(validateWith(PriceHistorySchema)),
-  );
-
-  return response.history;
 }
 
 const ListCurrentRewardsRequestSchema = z

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { type ConditionId, ConditionIdSchema, toConditionId } from '../shared';
 
 export enum ActivityType {
   TRADE = 'TRADE',
@@ -7,36 +8,66 @@ export enum ActivityType {
   REDEEM = 'REDEEM',
   REWARD = 'REWARD',
   CONVERSION = 'CONVERSION',
+  MIGRATION = 'MIGRATION',
   MAKER_REBATE = 'MAKER_REBATE',
   REFERRAL_REWARD = 'REFERRAL_REWARD',
   YIELD = 'YIELD',
   DEPOSIT = 'DEPOSIT',
   WITHDRAWAL = 'WITHDRAWAL',
   TAKER_REBATE = 'TAKER_REBATE',
+  /** A user-to-user tip, served in the feed like every other type. */
+  TIP = 'TIP',
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);
 
-export const SideSchema = z.enum(['BUY', 'SELL']);
+/** Direction of a TIP from the row wallet's perspective. */
+export enum TipSide {
+  In = 'IN',
+  Out = 'OUT',
+}
 
-export const TimePeriodSchema = z.enum(['DAY', 'WEEK', 'MONTH', 'ALL']);
+export const TipSideSchema = z.enum(TipSide);
 
-export const LeaderboardCategorySchema = z.enum([
-  'OVERALL',
-  'POLITICS',
-  'SPORTS',
-  'CRYPTO',
-  'CULTURE',
-  'MENTIONS',
-  'WEATHER',
-  'ECONOMICS',
-  'TECH',
-  'FINANCE',
-]);
+/** Sort order of a listed feed. */
+export enum SortDirection {
+  Asc = 'ASC',
+  Desc = 'DESC',
+}
 
-export const LeaderboardOrderBySchema = z.enum(['PNL', 'VOL']);
+export const SortDirectionSchema = z.enum(SortDirection);
 
-export type Side = z.infer<typeof SideSchema>;
-export type TimePeriod = z.infer<typeof TimePeriodSchema>;
-export type LeaderboardCategory = z.infer<typeof LeaderboardCategorySchema>;
-export type LeaderboardOrderBy = z.infer<typeof LeaderboardOrderBySchema>;
+/** Unit the trades dust filter applies to. */
+export enum TradeFilterType {
+  Cash = 'CASH',
+  Tokens = 'TOKENS',
+}
+
+export const TradeFilterTypeSchema = z.enum(TradeFilterType);
+
+function toCanonicalMarketConditionId(conditionId: ConditionId): ConditionId {
+  const paddedConditionId =
+    conditionId.length === 64 ? `${conditionId}00` : conditionId;
+
+  return toConditionId(paddedConditionId.toLowerCase());
+}
+
+function isSupportedMarketConditionId(conditionId: ConditionId): boolean {
+  if (conditionId.length === 66) return true;
+
+  const normalizedConditionId = conditionId.toLowerCase();
+  return (
+    normalizedConditionId.startsWith('0x01') ||
+    normalizedConditionId.startsWith('0x02')
+  );
+}
+
+/**
+ * A canonical 32-byte market condition ID. A 31-byte protocol v2 market ID is
+ * right-padded to its canonical representation; combo condition IDs are
+ * rejected.
+ */
+export const CanonicalMarketConditionIdSchema = ConditionIdSchema.refine(
+  isSupportedMarketConditionId,
+  'Expected a 32-byte condition ID or a 31-byte protocol v2 market condition ID',
+).transform(toCanonicalMarketConditionId);

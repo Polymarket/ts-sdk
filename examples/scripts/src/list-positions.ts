@@ -16,10 +16,10 @@ for await (const page of positions) {
     ...page.items.map((position) => ({
       title: position.title ?? position.slug ?? position.conditionId,
       outcome: position.outcome ?? '',
-      size: position.size ?? '0',
+      size: position.currentSize,
       currentValue: position.currentValue ?? '0',
       avgPrice: position.avgPrice ?? '',
-      curPrice: position.curPrice ?? '',
+      curPrice: position.currentPrice,
       redeemable: position.redeemable ?? false,
       mergeable: position.mergeable ?? false,
       assetId: position.assetId ?? '',

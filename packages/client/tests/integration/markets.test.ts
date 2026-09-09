@@ -1,13 +1,20 @@
 import {
   createPublicClient,
+  PriceHistoryInterval,
   UnexpectedResponseError,
   UserInputError,
 } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, environment, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+const HOLDERS_CONDITION_ID =
+  '0xe546672750517f62c45a5a00067481981e62b9c20fa8220203232c9dc8fd2093';
+const OTHER_CONDITION_ID =
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
+const FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS = 253_402_300_800;
 const publicClient = createPublicClient({ environment });
 
 const {
@@ -33,6 +40,10 @@ const {
 const positionConditionId = expectPresent(position.conditionId);
 
 describe('Markets', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe('listMarkets', () => {
     it('fetches markets', async ({ publicClient }) => {
       const paginator = publicClient.listMarkets({
@@ -177,54 +188,206 @@ describe('Markets', () => {
   });
 
   describe('listMarketHolders', () => {
-    it('lists top holders for a market', async ({ publicClient }) => {
-      const result = await publicClient.listMarketHolders({
-        market: [positionConditionId],
-        limit: 1,
+    it('walks normalized holder pages with position economics', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const paginator = publicClient.listMarketHolders({
+        conditionIds: [HOLDERS_CONDITION_ID],
+        includePnl: true,
+        minBalance: 0,
+        pageSize: 1,
       });
+      const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+      const firstGroup = firstPage.items[0];
+      const firstHolder = expectPresent(firstGroup.holders[0]);
 
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toEqual(
+      expect(firstGroup).toEqual(
         expect.objectContaining({
+          assetId: expect.any(String),
           holders: expect.any(Array),
           token: expect.any(String),
         }),
       );
+      expect(firstHolder).toEqual(
+        expect.objectContaining({
+          amount: expect.any(String),
+          assetId: firstGroup.assetId,
+          avgPrice: expect.any(String),
+          currentPrice: expect.any(String),
+          currentValue: expect.any(String),
+          entryCostUsdc: expect.any(String),
+          realizedPnl: expect.any(String),
+          totalPnl: expect.any(String),
+          unrealizedPnl: expect.any(String),
+          verified: expect.any(Boolean),
+          wallet: expect.any(String),
+        }),
+      );
+
+      await paginator
+        .from(firstPage.nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      const requests = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .filter((url) => new URL(url).pathname === '/v2/holders')
+        .map((url) => new URL(url).searchParams);
+
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.get('condition')).toBe(HOLDERS_CONDITION_ID);
+        expect(request.get('include_pnl')).toBe('true');
+        expect(request.get('limit')).toBe('1');
+        expect(request.get('min_balance')).toBe('0');
+        expect(request.has('market')).toBe(false);
+      }
+      expect(requests[0]?.has('cursor')).toBe(false);
+      expect(requests[1]?.get('cursor')).toBe(firstPage.nextCursor);
+    });
+
+    it('rejects invalid PnL requests before transport', ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      expect(() =>
+        publicClient.listMarketHolders({
+          conditionIds: [HOLDERS_CONDITION_ID, OTHER_CONDITION_ID],
+          includePnl: true,
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listMarketHolders({
+          conditionIds: [HOLDERS_CONDITION_ID],
+          includePnl: true,
+          pageSize: 101,
+        }),
+      ).toThrow(UserInputError);
+
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
   });
 
-  describe('listOpenInterest', () => {
-    it('lists open interest for a market', async ({ publicClient }) => {
-      const result = await publicClient.listOpenInterest({
-        market: [positionConditionId],
+  describe('listPriceHistory', () => {
+    it('rejects invalid series windows before requesting them', ({
+      publicClient,
+    }) => {
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
+
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          interval: PriceHistoryInterval.OneWeek,
+          bucketSeconds: 60,
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          start: 1_700_000_000,
+          end: 1_701_296_001,
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listPriceHistory({
+          assetId,
+          asOf: FIRST_UNSUPPORTED_PRICE_HISTORY_TIMESTAMP_SECONDS,
+        }),
+      ).toThrow(UserInputError);
+    });
+
+    it('walks normalized price history pages', async ({ publicClient }) => {
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const paginator = publicClient.listPriceHistory({
+        assetId,
+        interval: PriceHistoryInterval.OneDay,
+        pageSize: 2,
+      });
+
+      const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+
+      const firstPoint = firstPage.items[0];
+      expect(firstPoint).toEqual(
+        expect.objectContaining({
+          price: expect.any(String),
+          resolutionSeconds: expect.any(Number),
+          timestamp: expect.any(Number),
+        }),
+      );
+      expect(firstPoint.timestamp).toBeGreaterThan(1_000_000_000_000);
+
+      const secondPage = await paginator
+        .from(firstPage.nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+      const lastFirstTimestamp = expectPresent(
+        firstPage.items.at(-1),
+      ).timestamp;
+      expect(secondPage.items[0].timestamp).toBeGreaterThan(lastFirstTimestamp);
+
+      const requests = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .filter((url) => new URL(url).pathname === '/v2/prices-history')
+        .map((url) => new URL(url));
+
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(request.searchParams.get('token_id')).toBe(assetId);
+        expect(request.searchParams.has('asset_id')).toBe(false);
+        expect(request.searchParams.get('interval')).toBe('1d');
+        expect(request.searchParams.has('bucket_seconds')).toBe(false);
+      }
+      expect(requests[1]?.searchParams.get('cursor')).toBe(
+        firstPage.nextCursor,
+      );
+    });
+  });
+
+  describe('fetchOpenInterest', () => {
+    it('fetches open interest from the v2 route', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const result = await publicClient.fetchOpenInterest({
+        conditionIds: [positionConditionId],
       });
 
       expect(result).toEqual([
         expect.objectContaining({
-          market: positionConditionId,
+          conditionId: positionConditionId,
           value: expect.any(String),
         }),
       ]);
+
+      const requestUrl = fetchSpy.mock.calls
+        .map(([input]) =>
+          input instanceof Request ? input.url : String(input),
+        )
+        .find((url) => new URL(url).pathname === '/v2/oi');
+
+      expect(
+        new URL(expectPresent(requestUrl)).searchParams.get('condition'),
+      ).toBe(positionConditionId);
     });
-  });
 
-  describe('listMarketPositions', () => {
-    it('lists positions for a market', async ({ publicClient }) => {
-      const result = await publicClient
-        .listMarketPositions({
-          market: positionConditionId,
-          pageSize: 1,
-        })
-        .firstPage()
-        .then(expectNonEmptyPage);
+    it('rejects an invalid condition ID', async ({ publicClient }) => {
+      await expect(
+        publicClient.fetchOpenInterest({ conditionIds: ['not-a-condition'] }),
+      ).rejects.toThrow(UserInputError);
+    });
 
-      expect(result.items.length).toBeGreaterThan(0);
-      expect(result.items[0]).toEqual(
+    it('normalizes the global aggregate', async ({ publicClient }) => {
+      const result = await publicClient.fetchOpenInterest();
+
+      expect(result).toEqual([
         expect.objectContaining({
-          positions: expect.any(Array),
-          token: expect.any(String),
+          conditionId: null,
+          value: expect.any(String),
         }),
-      );
+      ]);
     });
   });
 });
