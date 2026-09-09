@@ -1,4 +1,5 @@
 import {
+  type EpochMilliseconds,
   type PaginationCursor,
   PaginationCursorSchema,
   toPaginationCursor,
@@ -12,6 +13,7 @@ import {
   FetchPerpsStatisticsResponseSchema,
   FetchPerpsTickersResponseSchema,
   FetchPerpsTradesResponseSchema,
+  GetServerTimeResponseSchema,
   type PerpsBook,
   PerpsBookSchema,
   type PerpsCandle,
@@ -791,6 +793,48 @@ export async function fetchPerpsFees(
   );
 
   return response.feeSchedule;
+}
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type GetServerTimeError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const GetServerTimeError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+);
+
+/**
+ * Gets the current Perps server time as a Unix timestamp in milliseconds.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ * This read does not change how the SDK timestamps or signs Perps requests.
+ *
+ * @throws {@link GetServerTimeError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function getServerTime(
+  client: BaseClient,
+): Promise<EpochMilliseconds> {
+  const response = await unwrap(
+    client.perps
+      .get('/v1/info/time')
+      .andThen(validateWith(GetServerTimeResponseSchema)),
+  );
+
+  return response.time;
 }
 
 const PerpsCandlesCursorStateSchema = z.object({

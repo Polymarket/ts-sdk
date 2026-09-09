@@ -470,5 +470,12 @@ export const FetchPerpsFeesResponseSchema = PerpsFeesInfoSchema;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export const GetServerTimeResponseSchema = z.object({
+  time: EpochMillisecondsSchema,
+});
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const FetchPerpsCandlesResponseSchema =
   PerpsDataResponseSchema(PerpsCandleSchema);

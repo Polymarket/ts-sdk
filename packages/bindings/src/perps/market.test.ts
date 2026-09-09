@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  GetServerTimeResponseSchema,
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
@@ -8,6 +9,20 @@ import {
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
+
+describe('GetServerTimeResponseSchema', () => {
+  it('parses an epoch-millisecond server time', () => {
+    expect(
+      GetServerTimeResponseSchema.parse({ time: 1_766_000_000_000 }),
+    ).toEqual({ time: 1_766_000_000_000 });
+  });
+
+  it('rejects a non-integer server time', () => {
+    expect(() =>
+      GetServerTimeResponseSchema.parse({ time: 1_766_000_000_000.5 }),
+    ).toThrow();
+  });
+});
 
 describe('PerpsFundingIntervalSchema', () => {
   it('accepts positive whole-hour funding intervals', () => {

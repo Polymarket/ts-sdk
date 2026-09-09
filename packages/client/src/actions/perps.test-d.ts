@@ -1,3 +1,4 @@
+import type { EpochMilliseconds } from '@polymarket/bindings';
 import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
@@ -28,14 +29,19 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
-import type { FetchPerpsInstrumentsRequest } from './perps';
+import {
+  FetchPerpsTickerError,
+  GetServerTimeError,
+  UpdatePerpsMarginError,
+} from '../index';
+import type { FetchPerpsInstrumentsRequest, getServerTime } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
   it('allows current instrument filters', () => {
@@ -57,6 +63,15 @@ describe('FetchPerpsInstrumentsRequest', () => {
 });
 
 describe('public Perps exports', () => {
+  it('exposes branded server time returns', () => {
+    expectTypeOf<ReturnType<typeof getServerTime>>().toEqualTypeOf<
+      Promise<EpochMilliseconds>
+    >();
+    expectTypeOf<
+      ReturnType<PublicPerpsActions['getServerTime']>
+    >().toEqualTypeOf<Promise<EpochMilliseconds>>();
+  });
+
   it('exports Perps request types from the root entry point', () => {
     expectTypeOf<RootFetchPerpsInstrumentsRequest>().toEqualTypeOf<FetchPerpsInstrumentsRequest>();
     expectTypeOf<FetchPerpsTickerRequest>().toEqualTypeOf<{
@@ -105,6 +120,7 @@ describe('public Perps exports', () => {
 
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
+    void GetServerTimeError;
     void UpdatePerpsMarginError;
   });
 });
