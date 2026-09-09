@@ -15,6 +15,7 @@ import {
   PerpsDecimalInputSchema,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
+  PerpsKnownCancelOrderErrorCode,
   type PerpsOrder,
   type PerpsOrderId,
   PerpsOrderIdSchema,
@@ -31,11 +32,17 @@ import type {
   PerpsOrderUpdateEvent,
   PerpsSessionEvent,
 } from '@polymarket/bindings/subscriptions';
-import { expectPresent, invariant, unwrap } from '@polymarket/types';
+import {
+  expectPresent,
+  invariant,
+  setNonBlockingTimeout,
+  unwrap,
+} from '@polymarket/types';
 import { z } from 'zod';
 import {
   AutoCancelDailyLimitError,
   makeErrorGuard,
+  OperationAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -800,37 +807,106 @@ export async function placePerpsPositionTpSl(
   return { tpSl };
 }
 
+const DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS = 4;
+const DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS = 2_000;
+const PERPS_CANCEL_RETRY_BASE_DELAY_MS = 100;
+const PERPS_CANCEL_RETRY_MAX_DELAY_MS = 1_000;
+
+const PerpsCancelRetryOptionsSchema = z
+  .object({
+    maxAttempts: z
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS),
+    maxElapsedMs: z
+      .number()
+      .int()
+      .positive()
+      .default(DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS),
+  })
+  .default({
+    maxAttempts: DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS,
+    maxElapsedMs: DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS,
+  }) satisfies z.ZodType<PerpsCancelRetryOptions>;
+
+const PerpsCancelOptionsSchema = z.object({
+  expiresAt: z.number().int().positive().optional(),
+  retry: z.union([z.literal(false), PerpsCancelRetryOptionsSchema]).default({
+    maxAttempts: DEFAULT_PERPS_CANCEL_MAX_ATTEMPTS,
+    maxElapsedMs: DEFAULT_PERPS_CANCEL_MAX_ELAPSED_MS,
+  }),
+  signal: z
+    .custom<AbortSignal>(
+      (value) => value instanceof AbortSignal,
+      'Expected an AbortSignal.',
+    )
+    .optional(),
+}) satisfies z.ZodType<PerpsCancelOptions>;
+
+/**
+ * Bounds automatic retries for transient Perps cancellation rejections.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsCancelRetryOptions = {
+  /** Maximum attempts per order, including the initial request. @defaultValue 4 */
+  maxAttempts?: number;
+  /**
+   * Maximum elapsed time before starting a retry, in milliseconds. Retries
+   * also stop at `expiresAt`, whichever limit is reached first.
+   * @defaultValue 2_000
+   */
+  maxElapsedMs?: number;
+};
+
+/**
+ * Shared options for Perps order cancellation.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsCancelOptions = {
+  /**
+   * Optional command expiration timestamp in milliseconds. Automatic retries
+   * stop at this timestamp even when `maxElapsedMs` would allow more time.
+   */
+  expiresAt?: number;
+  /** Automatic retry limits, or `false` to make only one attempt. */
+  retry?: PerpsCancelRetryOptions | false;
+  /**
+   * Signal that prevents the first attempt when already aborted. Aborting after
+   * an attempt stops further retries and returns the results collected so far.
+   */
+  signal?: AbortSignal;
+};
+
 const CancelPerpsOrderRequestSchema = z.union([
-  z.object({
+  PerpsCancelOptionsSchema.extend({
     orderId: PerpsOrderIdSchema,
     clientOrderId: z.undefined().optional(),
-    expiresAt: z.number().int().positive().optional(),
   }),
-  z.object({
+  PerpsCancelOptionsSchema.extend({
     clientOrderId: PerpsClientOrderIdSchema,
     orderId: z.undefined().optional(),
-    expiresAt: z.number().int().positive().optional(),
   }),
 ]) satisfies z.ZodType<CancelPerpsOrderRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type CancelPerpsOrderRequest =
-  | {
-      /** Order identifier to cancel. */
-      orderId: number;
-      clientOrderId?: never;
-      /** Optional command expiration timestamp in milliseconds. */
-      expiresAt?: number;
-    }
-  | {
-      /** Caller-supplied idempotency identifier to cancel. */
-      clientOrderId: string;
-      orderId?: never;
-      /** Optional command expiration timestamp in milliseconds. */
-      expiresAt?: number;
-    };
+export type CancelPerpsOrderRequest = PerpsCancelOptions &
+  (
+    | {
+        /** Order identifier to cancel. */
+        orderId: number;
+        clientOrderId?: never;
+      }
+    | {
+        /** Caller-supplied idempotency identifier to cancel. */
+        clientOrderId: string;
+        orderId?: never;
+      }
+  );
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -845,45 +921,45 @@ export async function cancelPerpsOrder(
       ? await cancelPerpsOrders(client, {
           orderIds: [params.orderId],
           expiresAt: params.expiresAt,
+          retry: params.retry,
+          signal: params.signal,
         })
       : await cancelPerpsOrders(client, {
           clientOrderIds: [params.clientOrderId],
           expiresAt: params.expiresAt,
+          retry: params.retry,
+          signal: params.signal,
         });
   return expectPresent(result, 'Expected Perps cancel order result.');
 }
 
 const CancelPerpsOrdersRequestSchema = z.union([
-  z.object({
+  PerpsCancelOptionsSchema.extend({
     orderIds: z.array(PerpsOrderIdSchema).min(1),
     clientOrderIds: z.undefined().optional(),
-    expiresAt: z.number().int().positive().optional(),
   }),
-  z.object({
+  PerpsCancelOptionsSchema.extend({
     clientOrderIds: z.array(PerpsClientOrderIdSchema).min(1),
     orderIds: z.undefined().optional(),
-    expiresAt: z.number().int().positive().optional(),
   }),
 ]) satisfies z.ZodType<CancelPerpsOrdersRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type CancelPerpsOrdersRequest =
-  | {
-      /** Order identifiers to cancel. */
-      orderIds: number[];
-      clientOrderIds?: never;
-      /** Optional command expiration timestamp in milliseconds. */
-      expiresAt?: number;
-    }
-  | {
-      /** Caller-supplied idempotency identifiers to cancel. */
-      clientOrderIds: string[];
-      orderIds?: never;
-      /** Optional command expiration timestamp in milliseconds. */
-      expiresAt?: number;
-    };
+export type CancelPerpsOrdersRequest = PerpsCancelOptions &
+  (
+    | {
+        /** Order identifiers to cancel. */
+        orderIds: number[];
+        clientOrderIds?: never;
+      }
+    | {
+        /** Caller-supplied idempotency identifiers to cancel. */
+        clientOrderIds: string[];
+        orderIds?: never;
+      }
+  );
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -894,21 +970,165 @@ export async function cancelPerpsOrders(
 ): Promise<PerpsCancelOrderResult[]> {
   const params = parseUserInput(request, CancelPerpsOrdersRequestSchema);
   if (params.orderIds !== undefined) {
-    return await client.executeCommand(
-      {
-        op: ['cancelOrders', params.orderIds],
-        expiresAt: params.expiresAt,
-      },
-      z.array(PerpsCancelOrderResultSchema),
+    return await retryPerpsOrderCancellations(
+      params.orderIds,
+      params,
+      async (orderIds) =>
+        await client.executeCommand(
+          {
+            op: ['cancelOrders', orderIds],
+            expiresAt: params.expiresAt,
+          },
+          z.array(PerpsCancelOrderResultSchema),
+        ),
     );
   }
-  return await client.executeCommand(
-    {
-      op: ['cancelOrdersCOID', params.clientOrderIds],
-      expiresAt: params.expiresAt,
-    },
-    z.array(PerpsCancelOrderResultSchema),
+  return await retryPerpsOrderCancellations(
+    params.clientOrderIds,
+    params,
+    async (clientOrderIds) =>
+      await client.executeCommand(
+        {
+          op: ['cancelOrdersCOID', clientOrderIds],
+          expiresAt: params.expiresAt,
+        },
+        z.array(PerpsCancelOrderResultSchema),
+      ),
   );
+}
+
+type ParsedPerpsCancelOptions = z.output<typeof PerpsCancelOptionsSchema>;
+
+type PendingPerpsCancellation<TIdentifier> = {
+  identifier: TIdentifier;
+  resultIndex: number;
+};
+
+async function retryPerpsOrderCancellations<TIdentifier>(
+  identifiers: TIdentifier[],
+  options: ParsedPerpsCancelOptions,
+  execute: (identifiers: TIdentifier[]) => Promise<PerpsCancelOrderResult[]>,
+): Promise<PerpsCancelOrderResult[]> {
+  const maxAttempts = options.retry === false ? 1 : options.retry.maxAttempts;
+  const retryDeadline =
+    options.retry === false
+      ? Number.POSITIVE_INFINITY
+      : Math.min(
+          Date.now() + options.retry.maxElapsedMs,
+          options.expiresAt ?? Number.POSITIVE_INFINITY,
+        );
+  const finalResults = new Array<PerpsCancelOrderResult | undefined>(
+    identifiers.length,
+  );
+  let pending = identifiers.map((identifier, resultIndex) => ({
+    identifier,
+    resultIndex,
+  }));
+  let attempts = 0;
+
+  assertPerpsCancelNotAborted(options.signal);
+  while (pending.length > 0) {
+    if (attempts > 0) {
+      const remainingMs = retryDeadline - Date.now();
+      const delayMs = perpsCancelRetryDelayMs(attempts);
+      if (remainingMs <= 0 || delayMs >= remainingMs) break;
+      const retry = await waitForPerpsCancelRetry(delayMs, options.signal);
+      if (!retry || options.signal?.aborted || Date.now() >= retryDeadline)
+        break;
+    }
+
+    const attemptResults = await execute(
+      pending.map(({ identifier }) => identifier),
+    );
+    const requestRejection = perpsCancelRequestRejectionFrom(attemptResults);
+    if (requestRejection !== undefined) {
+      throw new RequestRejectedError(requestRejection, { status: 200 });
+    }
+    if (attemptResults.length !== pending.length) {
+      throw new UnexpectedResponseError(
+        'Perps cancel response did not include one result per requested order.',
+      );
+    }
+
+    attempts += 1;
+    const retryable: Array<PendingPerpsCancellation<TIdentifier>> = [];
+    for (const [index, result] of attemptResults.entries()) {
+      const target = expectPresent(
+        pending[index],
+        'Expected a pending Perps cancellation.',
+      );
+      finalResults[target.resultIndex] = result;
+      if (
+        attempts < maxAttempts &&
+        result.status === 'err' &&
+        result.error === PerpsKnownCancelOrderErrorCode.OrderInFlight
+      ) {
+        retryable.push(target);
+      }
+    }
+    pending = retryable;
+  }
+
+  return finalResults.map((result) =>
+    expectPresent(result, 'Expected a final Perps cancel result.'),
+  );
+}
+
+function perpsCancelRequestRejectionFrom(
+  results: PerpsCancelOrderResult[],
+): string | undefined {
+  const [result] = results;
+  if (
+    results.length !== 1 ||
+    result?.status !== 'err' ||
+    result.orderId !== undefined ||
+    result.clientOrderId !== undefined
+  ) {
+    return undefined;
+  }
+  return result.error;
+}
+
+function perpsCancelRetryDelayMs(retryNumber: number): number {
+  const maximumDelayMs = Math.min(
+    PERPS_CANCEL_RETRY_BASE_DELAY_MS * 2 ** (retryNumber - 1),
+    PERPS_CANCEL_RETRY_MAX_DELAY_MS,
+  );
+  return Math.random() * maximumDelayMs;
+}
+
+function waitForPerpsCancelRetry(
+  delayMs: number,
+  signal: AbortSignal | undefined,
+): Promise<boolean> {
+  if (signal?.aborted) return Promise.resolve(false);
+  if (delayMs <= 0) {
+    return Promise.resolve(true);
+  }
+  if (signal === undefined) {
+    return new Promise((resolve) =>
+      setNonBlockingTimeout(() => resolve(true), delayMs),
+    );
+  }
+
+  const abortSignal = signal;
+  return new Promise((resolve) => {
+    const timer = setNonBlockingTimeout(() => {
+      abortSignal.removeEventListener('abort', onAbort);
+      resolve(true);
+    }, delayMs);
+    function onAbort() {
+      clearTimeout(timer);
+      resolve(false);
+    }
+    abortSignal.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function assertPerpsCancelNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw OperationAbortedError.fromReason(signal.reason);
+  }
 }
 
 const CancelAllPerpsOrdersRequestSchema = z

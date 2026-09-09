@@ -28,6 +28,7 @@ import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
+  type OperationAbortedError,
   type RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -181,6 +182,8 @@ export type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
+  PerpsCancelOptions,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
@@ -236,6 +239,7 @@ export type PerpsSessionAccountError =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsSessionTradingError =
+  | OperationAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -686,7 +690,11 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * Cancels one Perps order and returns the cancel result.
    *
    * @remarks
-   * The returned status reflects whether the cancel happened.
+   * The SDK retries only `order_in_flight` rejections with bounded exponential
+   * backoff and jitter. Pass `retry: false` to make one attempt. If the retry
+   * budget is exhausted, the final `order_in_flight` result is returned. A
+   * rejection of the cancellation request throws; an order-specific rejection
+   * is returned in the result.
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
@@ -703,7 +711,12 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * Cancels one or more Perps orders and returns one result per requested order.
    *
    * @remarks
-   * Each returned status reflects whether that cancel happened.
+   * The SDK retries only orders rejected with `order_in_flight`; terminal
+   * results are retained while transient orders are retried as a smaller batch.
+   * Pass `retry: false` to make one attempt. Exhausted transient results retain
+   * their final `order_in_flight` rejection. A rejection of the whole
+   * cancellation request throws; order-specific rejections remain in their
+   * result positions.
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
