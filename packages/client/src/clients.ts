@@ -80,6 +80,8 @@ type PublicContext = {
   /** @internal */
   clob: ServiceClient;
   /** @internal */
+  bridge: ServiceClient;
+  /** @internal */
   relayer: ServiceClient;
   /** @internal */
   rpc: JsonRpcClient;
@@ -144,6 +146,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get clob(): ServiceClient {
     return this.context.clob;
+  }
+
+  /** @internal */
+  get bridge(): ServiceClient {
+    return this.context.bridge;
   }
 
   /** @internal */
@@ -315,6 +322,10 @@ class BasePublicClient<
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
+      }),
+      bridge: new ServiceClient({
+        headers: config.environment.bridge.headers,
+        root: config.environment.bridge.rest,
       }),
       relayer: new ServiceClient({
         headers: config.environment.relayer.headers,
@@ -549,6 +560,10 @@ class BaseSecureClient<
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
+      }),
+      bridge: new ServiceClient({
+        headers: config.environment.bridge.headers,
+        root: config.environment.bridge.rest,
       }),
       relayer: new ServiceClient({
         headers: config.environment.relayer.headers,

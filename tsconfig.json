@@ -7,6 +7,7 @@
     "jsx": "react-jsx",
     "paths": {
       "@polymarket/bindings": ["./packages/bindings/src"],
+      "@polymarket/bindings/bridge": ["./packages/bindings/src/bridge"],
       "@polymarket/bindings/clob": ["./packages/bindings/src/clob"],
       "@polymarket/bindings/combos": ["./packages/bindings/src/combos"],
       "@polymarket/bindings/data": ["./packages/bindings/src/data"],

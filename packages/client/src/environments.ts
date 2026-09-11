@@ -69,6 +69,8 @@ export type EnvironmentConfig = {
   /** @internal */
   clob: ClobEndpoints;
   /** @internal */
+  bridge: RestEndpoint;
+  /** @internal */
   relayer: RestEndpoint;
   /** @internal */
   gamma: RestEndpoint;
@@ -100,6 +102,7 @@ export type EnvironmentConfigFork = {
     market?: Partial<WebSocketEndpoint>;
     user?: Partial<WebSocketEndpoint>;
   };
+  bridge?: Partial<RestEndpoint>;
   relayer?: Partial<RestEndpoint>;
   gamma?: Partial<RestEndpoint>;
   data?: Partial<RestEndpoint>;
@@ -195,6 +198,7 @@ export const production: EnvironmentConfig = {
     market: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/market' },
     user: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/user' },
   },
+  bridge: { rest: 'https://bridge.polymarket.com' },
   relayer: { rest: 'https://relayer-v2.polymarket.com' },
   gamma: { rest: 'https://gamma-api.polymarket.com' },
   data: { rest: 'https://data-api.polymarket.com' },
@@ -244,6 +248,7 @@ export function forkEnvironmentConfig(
       market: forkWebSocketEndpoint(base.clob.market, fork.clob?.market),
       user: forkWebSocketEndpoint(base.clob.user, fork.clob?.user),
     },
+    bridge: forkRestEndpoint(base.bridge, fork.bridge),
     relayer: forkRestEndpoint(base.relayer, fork.relayer),
     gamma: forkRestEndpoint(base.gamma, fork.gamma),
     data: forkRestEndpoint(base.data, fork.data),
@@ -307,6 +312,10 @@ function forkHeaders(
 /** @internal */
 export const preproduction = forkEnvironmentConfig({
   name: 'preproduction',
+  // Account funding intentionally remains on production until a
+  // preproduction Bridge endpoint is available. Keep this explicit because
+  // these APIs create live funding addresses.
+  bridge: { rest: production.bridge.rest },
   clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
   data: { rest: 'https://data-api-preprod-int.polymarket.com' },
   gamma: { rest: 'https://gamma-api-preprod-int.polymarket.com' },

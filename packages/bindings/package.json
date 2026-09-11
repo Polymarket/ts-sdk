@@ -18,6 +18,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./bridge": {
+      "types": "./dist/bridge/index.d.ts",
+      "default": "./dist/bridge/index.js"
+    },
     "./clob": {
       "types": "./dist/clob/index.d.ts",
       "default": "./dist/clob/index.js"
@@ -49,6 +53,9 @@
   },
   "typesVersions": {
     "*": {
+      "bridge": [
+        "./dist/bridge/index.d.ts"
+      ],
       "clob": [
         "./dist/clob/index.d.ts"
       ],
