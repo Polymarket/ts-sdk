@@ -2,7 +2,7 @@ import { PolyboltChannel } from '@polymarket/bindings/subscriptions';
 import type { PriceSubscription } from '../../actions/subscriptions';
 
 export type PolyboltFilter =
-  | { symbol: string; window_seconds?: 30 | 60 }
+  | { symbol: string; window_seconds?: 60 }
   | { asset_id: string };
 export type PolyboltSubscription = {
   key: string;
@@ -31,18 +31,22 @@ export function subscriptionsFor(
   }
   const twap = spec.topic === 'prices.crypto.twap';
   return spec.symbols.map((input) => {
-    const symbol = input.toLowerCase();
+    const symbol = normalizeCryptoSymbol(input);
     return entry(
       twap ? PolyboltChannel.Twap : PolyboltChannel.Crypto,
       twap
         ? {
-            symbol: symbol.replaceAll('/', ''),
+            symbol,
             window_seconds: spec.windowSeconds,
           }
         : { symbol },
       symbol,
     );
   });
+}
+
+function normalizeCryptoSymbol(input: string): string {
+  return input.toLowerCase().replaceAll('/', '').replace(/usdt$/, 'usd');
 }
 
 function entry(

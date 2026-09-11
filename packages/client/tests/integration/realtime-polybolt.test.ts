@@ -178,7 +178,7 @@ describe('realtime price transport', () => {
     realtimeClient: client,
   }) => {
     try {
-      for (const windowSeconds of [30, 60] as const) {
+      for (const windowSeconds of [60] as const) {
         const event = await first(
           await client.subscribe([
             {
@@ -263,23 +263,14 @@ describe('realtime price transport', () => {
     expect(ObservedWebSocket.connections).toHaveLength(0);
   });
 
-  it('rejects retired topics and invalid filters before opening a mixed batch', async ({
+  it('rejects invalid filters before opening a mixed batch', async ({
     realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     const invalid = [
-      { topic: 'comments' },
-      { topic: 'prices.crypto.chainlink', symbols: ['btcusd'] },
-      { topic: 'prices.crypto.binance', symbols: ['btcusd'] },
-      {
-        topic: 'prices.crypto.chainlink.twap',
-        symbols: ['btcusd'],
-        windowSeconds: 60,
-      },
-      { topic: 'prices.equity.pyth', symbol: 'aapl' },
       { topic: 'prices.crypto', symbols: [] },
-      { topic: 'prices.crypto.twap', symbols: ['btcusd'], windowSeconds: 45 },
-      { topic: 'prices.crypto.twap', symbols: ['/'], windowSeconds: 30 },
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'], windowSeconds: 30 },
+      { topic: 'prices.crypto.twap', symbols: ['/'], windowSeconds: 60 },
       { topic: 'prices.crypto', symbols: ['btcusd'], includeSnapshot: false },
     ];
     try {
@@ -300,7 +291,7 @@ describe('realtime price transport', () => {
     }
   });
 
-  it('refreshes a dropped channel and ends policy/auth closures without reconnecting', async ({
+  it('records dropped frames without resubscribing and ends policy/auth closures without reconnecting', async ({
     realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
@@ -323,15 +314,13 @@ describe('realtime price transport', () => {
           }),
         }),
       );
-      await expect
-        .poll(
-          () => socket?.operations.filter((op) => op.op === 'subscribe').length,
-        )
-        .toBe(2);
-      expect(socket?.operations.slice(-2).map((op) => op.op)).toEqual([
-        'unsubscribe',
-        'subscribe',
-      ]);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(
+        socket?.operations.filter((op) => op.op === 'subscribe'),
+      ).toHaveLength(1);
+      expect(socket?.operations.some((op) => op.op === 'unsubscribe')).toBe(
+        false,
+      );
       await handle.close();
       await client.closeSubscriptions();
       for (const code of [4001, 4008]) {

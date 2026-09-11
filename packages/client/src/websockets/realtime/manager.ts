@@ -2,6 +2,7 @@ import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import type { PriceEvent } from '@polymarket/bindings/subscriptions';
 import { parsePriceSubscription } from '../../actions/price-subscriptions';
 import type {
+  EventForSubscriptionSpec,
   PriceSubscription,
   SubscriptionHandle,
 } from '../../actions/subscriptions';
@@ -13,10 +14,10 @@ export type { SubscribeError } from '../../actions/subscriptions';
 export type RealtimeWebSocketManagerOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
 };
 
-/** Manages authenticated realtime prices across shared connections. */
+/** Manages public and authenticated realtime prices across shared connections. */
 export class RealtimeWebSocketManager
   implements WebSocketSubscriptionManager<PriceSubscription, PriceEvent>
 {
@@ -30,10 +31,12 @@ export class RealtimeWebSocketManager
    * Starts a price subscription and awaits server acceptance.
    * @throws {@link SubscribeError} When input is invalid or the subscription fails.
    */
-  async subscribe(
-    spec: PriceSubscription,
-  ): Promise<SubscriptionHandle<PriceEvent>> {
-    return this.#pool.subscribe(parsePriceSubscription(spec));
+  async subscribe<const TSpec extends PriceSubscription>(
+    spec: TSpec,
+  ): Promise<SubscriptionHandle<EventForSubscriptionSpec<TSpec>>> {
+    return this.#pool.subscribe(parsePriceSubscription(spec)) as Promise<
+      SubscriptionHandle<EventForSubscriptionSpec<TSpec>>
+    >;
   }
 
   /** Closes every active price subscription and shared connection. */

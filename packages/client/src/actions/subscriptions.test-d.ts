@@ -2,6 +2,8 @@ import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
 import type * as BindingExports from '@polymarket/bindings/subscriptions';
 import type {
   CryptoPriceEvent,
+  CryptoPricesChainlinkTwapSixtyEvent,
+  CryptoPricesChainlinkTwapThirtyEvent,
   CryptoTwapPriceEvent,
   CustomMarketEvent,
   EquityPriceEvent,
@@ -42,7 +44,7 @@ describe('price subscription contracts', () => {
     expectTypeOf<RootCryptoTwapPriceSubscription>().toMatchTypeOf<{
       topic: 'prices.crypto.twap';
       symbols: readonly string[];
-      windowSeconds: 30 | 60;
+      windowSeconds: 60;
     }>();
     expectTypeOf<RootCryptoTwapPriceEvent>().toEqualTypeOf<CryptoTwapPriceEvent>();
     expectTypeOf<
@@ -77,13 +79,13 @@ describe('price subscription contracts', () => {
     >();
   });
 
-  it('requires authentication and explicit filters, and removes the legacy surface', () => {
+  it('requires authentication for licensed prices and preserves the legacy surface', () => {
     const publicClient = createPublicClient();
     const crypto = { topic: 'prices.crypto', symbols: ['btcusd'] } as const;
     const twap = {
       topic: 'prices.crypto.twap',
       symbols: ['btcusd'],
-      windowSeconds: 30,
+      windowSeconds: 60,
     } as const;
     const equity = { topic: 'prices.equity', symbol: 'aapl' } as const;
     const bbo = { topic: 'prices.polymarket', assetIds: ['1'] } as const;
@@ -93,19 +95,15 @@ describe('price subscription contracts', () => {
     publicClient.subscribe([twap]);
     // @ts-expect-error Equity prices require a secure client.
     publicClient.subscribe([equity]);
-    // @ts-expect-error BBO prices require a secure client.
-    publicClient.subscribe([bbo]);
-    // @ts-expect-error Price connections are not available on public clients.
+    const publicBbo = publicClient.subscribe([bbo]);
+    expectTypeOf(publicBbo).resolves.toEqualTypeOf<
+      SubscriptionHandle<PolymarketPriceEvent>
+    >();
     publicClient.webSockets.realtime;
-    // @ts-expect-error The legacy manager property has been removed.
     secureClient.webSockets.rtds;
-    // @ts-expect-error The legacy configuration key has been removed.
     secureClient.environment.rtds;
-    // @ts-expect-error The legacy manager export has been removed.
     expectTypeOf<ClientExports.RtdsWebSocketManager>();
-    // @ts-expect-error Legacy event exports have been removed.
     expectTypeOf<ClientExports.CryptoPricesChainlinkTwapEvent>();
-    // @ts-expect-error Legacy comment event bindings have been removed.
     expectTypeOf<BindingExports.CommentsEvent>();
     const missingSymbols = { topic: 'prices.crypto' } as const;
     // @ts-expect-error Crypto prices require explicit symbols.
@@ -116,26 +114,44 @@ describe('price subscription contracts', () => {
     } as const;
     // @ts-expect-error TWAP prices require an explicit window.
     secureClient.subscribe([missingWindow]);
-    const invalidWindow = { ...twap, windowSeconds: 45 } as const;
-    // @ts-expect-error Only 30-second and 60-second windows are supported.
+    const invalidWindow = { ...twap, windowSeconds: 30 } as const;
+    // @ts-expect-error Only the 60-second window is supported.
     secureClient.subscribe([invalidWindow]);
     const binance = { ...crypto, topic: 'prices.crypto.binance' } as const;
-    // @ts-expect-error The source-named alias has been removed.
     secureClient.subscribe([binance]);
     const chainlinkTwap = {
       ...twap,
       topic: 'prices.crypto.chainlink.twap',
     } as const;
-    // @ts-expect-error The source-named alias has been removed.
     secureClient.subscribe([chainlinkTwap]);
     const pyth = { ...equity, topic: 'prices.equity.pyth' } as const;
-    // @ts-expect-error The source-named equity alias has been removed.
     secureClient.subscribe([pyth]);
     const chainlink = { ...crypto, topic: 'prices.crypto.chainlink' } as const;
-    // @ts-expect-error The unsupported spot topic has been removed.
     secureClient.subscribe([chainlink]);
-    // @ts-expect-error The comments stream has been removed.
     secureClient.subscribe([{ topic: 'comments' }]);
+  });
+
+  it('preserves deprecated RTDS TWAP window narrowing', () => {
+    type ThirtySecond = EventForSubscriptionSpecs<
+      [
+        {
+          topic: 'prices.crypto.chainlink.twap';
+          symbols: ['btc/usd'];
+          windowSeconds: 30;
+        },
+      ]
+    >;
+    type SixtySecond = EventForSubscriptionSpecs<
+      [
+        {
+          topic: 'prices.crypto.chainlink.twap';
+          symbols: ['btc/usd'];
+          windowSeconds: 60;
+        },
+      ]
+    >;
+    expectTypeOf<ThirtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapThirtyEvent>();
+    expectTypeOf<SixtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapSixtyEvent>();
   });
 });
 

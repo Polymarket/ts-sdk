@@ -3,14 +3,25 @@
 '@polymarket/bindings': minor
 ---
 
-Replace RTDS with authenticated PolyBolt price streams, using the production endpoint by default.
+Add opt-in PolyBolt price streams alongside the existing RTDS transport.
 
-Breaking changes:
+New PolyBolt topics:
 
-- Use a secure client for all price subscriptions and provide explicit, nonempty symbol or asset filters.
-- Replace `prices.crypto.binance` with `prices.crypto`, `prices.crypto.chainlink.twap` with `prices.crypto.twap`, and `prices.equity.pyth` with `prices.equity`. Feed symbols depend on the deployed source; there is no implicit symbol set.
-- Rename `webSockets.rtds` to `webSockets.realtime`, `RtdsWebSocketManager` to `RealtimeWebSocketManager`, and environment overrides from `rtds` to `realtime: { ws, headers? }`.
-- Remove `comments` and `prices.crypto.chainlink` subscriptions: these streams are unsupported. HTTP comments APIs remain available.
-- Replace legacy RTDS binding imports with `CryptoPriceEvent`, `CryptoTwapPriceEvent`, `EquityPriceEvent`, and their corresponding subscription types. Crypto, TWAP, and equity streams include `subscribe` history snapshots and `update` events.
+- `prices.polymarket` is public and delivers current best-bid-and-offer snapshots plus updates.
+- `prices.crypto`, `prices.crypto.twap`, and `prices.equity` require a secure client and explicit, nonempty filters.
+- `prices.crypto.twap` supports the deployed 60-second series only. Crypto symbols use the lowercase `<base>usd` wire spelling, such as `btcusd`; a legacy trailing `usdt` is normalized to `usd`. See the [real-time data catalog](https://docs.polymarket.com/market-data/realtime-data).
+- SDK topic names are plural while PolyBolt wire channels are singular: for example, `prices.crypto` maps to `price.crypto`.
 
-Add `prices.polymarket` best-bid-and-offer updates. Price values preserve decimal precision and timestamps represent producer time. Subscriptions await server acceptance, share connections, spread filters beyond the 64-key connection limit, reconnect automatically, and refresh history after reported drops. A rejected subscribe batch preserves unrelated subscriptions; new subscriptions reject if acceptance cannot complete within 30 seconds.
+The PolyBolt transport is available through `webSockets.realtime` and the
+`realtime: { ws, headers? }` environment entry. Price values preserve decimal
+precision and timestamps represent producer time. Subscriptions await server
+acceptance, share connections, spread filters beyond the 64-key connection
+limit, reconnect automatically, and report slow-reader drops without forcing a
+resubscription. Unambiguously identified per-item batch errors do not terminate
+accepted siblings.
+
+For release compatibility, `webSockets.rtds`, `RtdsWebSocketManager`, the
+`rtds` environment entry, `comments`, and the source-named RTDS price topics
+remain available for one release and are deprecated. Existing applications can
+continue using RTDS while PolyBolt production access and authenticated CLOB
+verification are rolled out.

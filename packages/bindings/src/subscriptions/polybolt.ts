@@ -95,7 +95,7 @@ const SnapshotPayloadSchema = z.object({
   symbol: z.string(),
   data: z.array(PricePointSchema),
 });
-const TwapWindowSchema = z.union([z.literal(30), z.literal(60)]);
+const TwapWindowSchema = z.literal(60);
 const TwapPayloadSchema = z
   .object({
     symbol: z.string(),
@@ -187,12 +187,23 @@ export const EquityPriceEventSchema = z.union([
 ]);
 export type EquityPriceEvent = z.infer<typeof EquityPriceEventSchema>;
 
-export const PolymarketPriceEventSchema = EventMetadataSchema.extend({
-  topic: z.literal('prices.polymarket'),
-  type: z.literal('update'),
-  payload: BboPayloadSchema,
-});
+export const PolymarketPriceEventSchema = z.union([
+  EventMetadataSchema.extend({
+    topic: z.literal('prices.polymarket'),
+    type: z.literal('update'),
+    payload: BboPayloadSchema,
+  }),
+  EventMetadataSchema.extend({
+    topic: z.literal('prices.polymarket'),
+    type: z.literal('subscribe'),
+    payload: BboPayloadSchema,
+  }),
+]);
 export type PolymarketPriceEvent = z.infer<typeof PolymarketPriceEventSchema>;
+export type PolymarketPriceSnapshotEvent = Extract<
+  PolymarketPriceEvent,
+  { type: 'subscribe' }
+>;
 export type PriceEvent =
   | CryptoPriceEvent
   | CryptoTwapPriceEvent

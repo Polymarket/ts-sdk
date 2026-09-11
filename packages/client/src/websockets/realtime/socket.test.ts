@@ -14,7 +14,7 @@ import { SubscriptionRejectedError, TransportError } from '../../errors';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
 import { WebSocketConnection } from '../lifecycle';
 import { RealtimeWebSocketManager } from './manager';
-import { polyboltReconnectDelay } from './protocol';
+import { polyboltReconnectDelay, subscriptionsFor } from './protocol';
 
 const url = 'wss://realtime.test/ws';
 const link = ws.link(url);
@@ -132,6 +132,159 @@ describe('realtime timing boundaries', () => {
         value: { payload: { symbol: 'btcusd' } },
       });
       expect(connections).toBe(1);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('preserves an accepted sibling when a uniquely identified batch item is rejected', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          if (frame.op !== 'subscribe') {
+            acceptControl(client, frame);
+            return;
+          }
+          for (const subscription of frame.subscriptions ?? [])
+            client.send(
+              JSON.stringify({
+                op:
+                  subscription.channel === 'price.crypto'
+                    ? 'error'
+                    : 'subscribed',
+                code:
+                  subscription.channel === 'price.crypto'
+                    ? 'bad_filter'
+                    : undefined,
+                channel: subscription.channel,
+                rid: frame.rid,
+              }),
+            );
+        });
+      }),
+    );
+    try {
+      const rejected = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['unknown'],
+      });
+      const rejection = expect(rejected).rejects.toBeInstanceOf(
+        SubscriptionRejectedError,
+      );
+      const accepted = manager.subscribe({
+        topic: 'prices.polymarket',
+        assetIds: ['1'],
+      });
+      await vi.advanceTimersByTimeAsync(120);
+      await rejection;
+      const handle = await accepted;
+      await handle.close();
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('subscribes to public BBO without sending authentication', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url });
+    const ops: string[] = [];
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          ops.push(frame.op);
+          acceptControl(client, frame);
+        });
+      }),
+    );
+    try {
+      const pending = manager.subscribe({
+        topic: 'prices.polymarket',
+        assetIds: ['1'],
+      });
+      await vi.advanceTimersByTimeAsync(120);
+      const handle = await pending;
+      expect(ops).not.toContain('auth');
+      expect(ops).toContain('subscribe');
+      await handle.close();
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('replays the latest BBO as a snapshot to a shared late joiner', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let publish = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        publish = () => client.send(bboFrame('1'));
+        client.addEventListener('message', ({ data }) =>
+          acceptControl(client, JSON.parse(String(data)) as ControlFrame),
+        );
+      }),
+    );
+    try {
+      const first = manager.subscribe({
+        topic: 'prices.polymarket',
+        assetIds: ['1'],
+      });
+      await vi.advanceTimersByTimeAsync(120);
+      const firstHandle = await first;
+      publish();
+      await expect(
+        firstHandle[Symbol.asyncIterator]().next(),
+      ).resolves.toMatchObject({
+        done: false,
+        value: { topic: 'prices.polymarket', type: 'update' },
+      });
+      const joiningHandle = await manager.subscribe({
+        topic: 'prices.polymarket',
+        assetIds: ['1'],
+      });
+      await expect(
+        joiningHandle[Symbol.asyncIterator]().next(),
+      ).resolves.toMatchObject({
+        done: false,
+        value: {
+          topic: 'prices.polymarket',
+          type: 'subscribe',
+          payload: { assetId: '1', bestBid: '0.4', bestAsk: '0.5' },
+        },
+      });
+      await Promise.all([firstHandle.close(), joiningHandle.close()]);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('normalizes legacy Binance quote symbols to PolyBolt USD symbols', () => {
+    expect(
+      subscriptionsFor({
+        topic: 'prices.crypto',
+        symbols: ['BTC/USDT'],
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        filter: { symbol: 'btcusd' },
+        symbol: 'btcusd',
+      }),
+    ]);
+  });
+
+  it('rejects the unavailable 30-second TWAP series with a migration hint', async () => {
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    try {
+      await expect(
+        manager.subscribe({
+          topic: 'prices.crypto.twap',
+          symbols: ['btcusd'],
+          windowSeconds: 30,
+        } as never),
+      ).rejects.toThrow('60-second');
     } finally {
       await manager.close();
     }
@@ -350,6 +503,7 @@ describe('realtime timing boundaries', () => {
     const manager = new RealtimeWebSocketManager({ url, credentials });
     let connections = 0;
     let drop = () => {};
+    const operations: string[] = [];
     server.use(
       link.addEventListener('connection', ({ client }) => {
         connections++;
@@ -364,9 +518,11 @@ describe('realtime timing boundaries', () => {
               payload: {},
             }),
           );
-        client.addEventListener('message', ({ data }) =>
-          acceptControl(client, JSON.parse(String(data)) as ControlFrame),
-        );
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          operations.push(frame.op);
+          acceptControl(client, frame);
+        });
       }),
     );
     try {
@@ -378,6 +534,9 @@ describe('realtime timing boundaries', () => {
       await vi.advanceTimersByTimeAsync(120);
       await initial;
       drop();
+      await vi.advanceTimersByTimeAsync(120);
+      expect(operations.filter((op) => op === 'subscribe')).toHaveLength(1);
+      expect(operations).not.toContain('unsubscribe');
       await vi.advanceTimersByTimeAsync(60_001);
       const joining = manager.subscribe({
         topic: 'prices.polymarket',
@@ -534,6 +693,23 @@ function priceFrame(symbol: string): string {
       symbol,
       value: 1,
       full_accuracy_value: '1',
+      timestamp: Date.now(),
+    },
+  });
+}
+
+function bboFrame(assetId: string): string {
+  return JSON.stringify({
+    v: 1,
+    channel: 'price.polymarket',
+    seq: 1,
+    ts: Date.now(),
+    payload: {
+      market: `0x${'1'.repeat(64)}`,
+      asset_id: assetId,
+      best_bid: '0.4',
+      best_ask: '0.5',
+      hash: 'hash',
       timestamp: Date.now(),
     },
   });

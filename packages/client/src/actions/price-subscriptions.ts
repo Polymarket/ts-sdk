@@ -26,7 +26,9 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
   z.strictObject({
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(TwapSymbolSchema).min(1),
-    windowSeconds: z.union([z.literal(30), z.literal(60)]),
+    windowSeconds: z.literal(60, {
+      error: 'Only the 60-second time-weighted price series is available.',
+    }),
   }),
   z.strictObject({
     topic: z.literal('prices.equity'),

@@ -67,11 +67,6 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
           {
             topic: 'prices.crypto.twap',
             symbols: ['btcusd'],
-            windowSeconds: 30,
-          },
-          {
-            topic: 'prices.crypto.twap',
-            symbols: ['btcusd'],
             windowSeconds: 60,
           },
         ]);

@@ -31,7 +31,6 @@ type KeyState = {
   subscribed: boolean;
   accepted: boolean;
   snapshot?: PriceEvent;
-  lastResync: number;
 };
 export type PriceListener = {
   event: (event: PriceEvent) => void;
@@ -39,19 +38,24 @@ export type PriceListener = {
 };
 type PendingOp = {
   op: PolyboltAckOp;
-  channels: string[];
-  resolve: () => void;
+  channels: (string | undefined)[];
+  rejections: PendingRejection[];
+  resolve: (rejections: PendingRejection[]) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+};
+type PendingRejection = {
+  index: number;
+  error: SubscriptionRejectedError;
 };
 type QueuedOp = { op: 'subscribe' | 'unsubscribe'; keys: KeyState[] };
 export type PolyboltSocketOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
 };
 
-/** @internal One authenticated connection, with serialized rate-limited operations. */
+/** @internal One connection, optionally authenticated, with serialized rate-limited operations. */
 export class PolyboltSocket {
   readonly #options: PolyboltSocketOptions;
   readonly #connection = new WebSocketConnection({
@@ -110,7 +114,6 @@ export class PolyboltSocket {
         reject,
         subscribed: false,
         accepted: false,
-        lastResync: Number.NEGATIVE_INFINITY,
       };
       this.#keys.set(subscription.key, state);
       if (this.#authenticated) this.#enqueue('subscribe', [state]);
@@ -174,7 +177,13 @@ export class PolyboltSocket {
       onMessage: (message) => this.#message(message),
     });
     if (this.#closed || generation !== this.#generation) return;
-    const { key, secret, passphrase } = this.#options.credentials;
+    const credentials = this.#options.credentials;
+    if (credentials === undefined) {
+      this.#authenticated = true;
+      this.#enqueue('subscribe', [...this.#keys.values()]);
+      return;
+    }
+    const { key, secret, passphrase } = credentials;
     try {
       await this.#request(
         { op: 'auth', auth: { apiKey: key, secret, passphrase } },
@@ -261,7 +270,7 @@ export class PolyboltSocket {
     const generation = this.#generation;
     this.#flushing = true;
     try {
-      await this.#request(
+      const rejections = await this.#request(
         {
           op: next.op,
           subscriptions: batch.map(({ subscription }) => ({
@@ -275,12 +284,24 @@ export class PolyboltSocket {
         batch.map(({ subscription }) => subscription.channel),
       );
       if (generation !== this.#generation || this.#closed) return;
+      if (next.op === 'unsubscribe' && rejections.length > 0) {
+        const rejection = rejections[0];
+        if (rejection !== undefined) throw rejection.error;
+      }
       if (next.op === 'subscribe') {
         this.#scheduler.resetBackoff();
-        for (const key of batch) {
+        const rejectedIndexes = new Set(
+          rejections.map((rejection) => rejection.index),
+        );
+        for (const [index, key] of batch.entries()) {
+          if (rejectedIndexes.has(index)) continue;
           key.subscribed = true;
           key.accepted = true;
           key.resolve();
+        }
+        for (const { index, error } of rejections) {
+          const key = batch[index];
+          if (key !== undefined) this.#rejectKeys([key], error, false);
         }
       }
     } catch (error) {
@@ -306,9 +327,9 @@ export class PolyboltSocket {
     frame: object,
     op: PolyboltAckOp,
     channels: PolyboltChannel[],
-  ): Promise<void> {
+  ): Promise<PendingRejection[]> {
     const rid = String(++this.#requestId);
-    return new Promise<void>((resolve, reject) => {
+    return new Promise<PendingRejection[]>((resolve, reject) => {
       const timer = setNonBlockingTimeout(() => {
         this.#pending.delete(rid);
         reject(
@@ -320,6 +341,7 @@ export class PolyboltSocket {
       this.#pending.set(rid, {
         op,
         channels: [...channels],
+        rejections: [],
         resolve,
         reject,
         timer,
@@ -340,15 +362,38 @@ export class PolyboltSocket {
       const pending = rid === undefined ? undefined : this.#pending.get(rid);
       if (pending === undefined) return;
       if (op === PolyboltAckOp.Error && code !== undefined) {
-        pending.reject(new SubscriptionRejectedError(code, channel));
+        const error = new SubscriptionRejectedError(code, channel);
+        const matches = pending.channels.flatMap((pendingChannel, index) =>
+          pendingChannel === channel ? [index] : [],
+        );
+        if (channel === undefined || matches.length !== 1) {
+          pending.reject(error);
+        } else {
+          const index = matches[0];
+          if (index === undefined) return;
+          pending.channels[index] = undefined;
+          pending.rejections.push({ index, error });
+          if (
+            pending.channels.some(
+              (pendingChannel) => pendingChannel !== undefined,
+            )
+          )
+            return;
+          pending.resolve(pending.rejections);
+        }
       } else if (op === pending.op) {
         if (pending.channels.length > 0) {
           const index = pending.channels.indexOf(channel ?? '');
           if (index < 0) return;
-          pending.channels.splice(index, 1);
-          if (pending.channels.length > 0) return;
+          pending.channels[index] = undefined;
+          if (
+            pending.channels.some(
+              (pendingChannel) => pendingChannel !== undefined,
+            )
+          )
+            return;
         }
-        pending.resolve();
+        pending.resolve(pending.rejections);
       } else return;
       clearTimeout(pending.timer);
       if (rid !== undefined) this.#pending.delete(rid);
@@ -382,21 +427,14 @@ export class PolyboltSocket {
         for (const listener of state.listeners) listener.event(event);
       }
     }
-    if ((envelope.data.dropped ?? 0) > 0) this.#resync(envelope.data.channel);
+    if ((envelope.data.dropped ?? 0) > 0) this.#recordDrop();
   }
 
-  #resync(channel: PolyboltChannel): void {
+  #recordDrop(): void {
     const now = Date.now();
-    const keys = [...this.#keys.values()].filter(
-      (key) =>
-        key.subscription.channel === channel && now - key.lastResync >= 5_000,
-    );
-    if (keys.length === 0) return;
-    for (const key of keys) key.lastResync = now;
+    if (now - this.#lastDropAt < 5_000) return;
     this.#keyTarget = Math.max(1, Math.floor(this.keyTarget / 2));
     this.#lastDropAt = now;
-    this.#enqueue('unsubscribe', keys);
-    this.#enqueue('subscribe', keys);
   }
 
   #reset(error: Error): void {
@@ -458,7 +496,7 @@ export class PolyboltSocket {
     void this.close();
   }
 
-  #rejectKeys(keys: KeyState[], error: Error): void {
+  #rejectKeys(keys: KeyState[], error: Error, unsubscribe = true): void {
     const current = keys.filter(
       (key) => this.#keys.get(key.subscription.key) === key,
     );
@@ -469,7 +507,8 @@ export class PolyboltSocket {
       this.#keys.delete(key.subscription.key);
       key.reject(error);
     }
-    if (this.#authenticated) this.#enqueue('unsubscribe', current);
+    if (unsubscribe && this.#authenticated)
+      this.#enqueue('unsubscribe', current);
     for (const listener of listeners) listener.end(error);
     if (this.#keys.size === 0) {
       this.#idleTimer = setNonBlockingTimeout(() => {
@@ -522,8 +561,12 @@ function refreshSnapshot(
   event: PriceEvent,
 ): PriceEvent | undefined {
   if (event.type === 'subscribe') return event;
-  if (event.topic === 'prices.polymarket') return undefined;
-  const history = previous?.type === 'subscribe' ? previous.payload.data : [];
+  if (event.topic === 'prices.polymarket')
+    return { ...event, type: 'subscribe' };
+  const history =
+    previous?.type === 'subscribe' && previous.topic !== 'prices.polymarket'
+      ? previous.payload.data
+      : [];
   const { symbol, timestamp, value } = event.payload;
   if ((history.at(-1)?.timestamp ?? 0) > timestamp) return previous;
   const data = [

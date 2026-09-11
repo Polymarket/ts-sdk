@@ -61,6 +61,7 @@ import {
   type PublicWebSocketManagers,
   RealtimeWebSocketManager,
   RfqQuoterWebSocketManager,
+  RtdsWebSocketManager,
   type SecureWebSocketManagers,
   SportsWebSocketManager,
 } from './websockets';
@@ -339,6 +340,14 @@ class BasePublicClient<
           headers: config.environment.sports.headers,
           url: config.environment.sports.ws,
         }),
+        realtime: new RealtimeWebSocketManager({
+          headers: config.environment.realtime.headers,
+          url: config.environment.realtime.ws,
+        }),
+        rtds: new RtdsWebSocketManager({
+          headers: config.environment.rtds.headers,
+          url: config.environment.rtds.ws,
+        }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
           url: config.environment.perps.ws,
@@ -390,6 +399,8 @@ class BasePublicClient<
   async closeSubscriptions(): Promise<void> {
     await Promise.all([
       this.webSockets.clobMarket.close(),
+      this.webSockets.realtime.close(),
+      this.webSockets.rtds.close(),
       this.webSockets.sports.close(),
       this.webSockets.perpsSubscriptions.close(),
     ]).then(() => undefined);
@@ -618,6 +629,10 @@ class BaseSecureClient<
           url: config.environment.sports.ws,
         }),
         realtime,
+        rtds: new RtdsWebSocketManager({
+          headers: config.environment.rtds.headers,
+          url: config.environment.rtds.ws,
+        }),
         perpsSubscriptions: new PerpsSubscriptionManager({
           headers: config.environment.perps.headers,
           url: config.environment.perps.ws,
@@ -693,6 +708,7 @@ class BaseSecureClient<
     await Promise.allSettled([
       this.webSockets.clobMarket.close(),
       this.webSockets.realtime.close(),
+      this.webSockets.rtds.close(),
       this.webSockets.sports.close(),
       this.webSockets.perpsSubscriptions.close(),
       this.webSockets.clobUser.close(),

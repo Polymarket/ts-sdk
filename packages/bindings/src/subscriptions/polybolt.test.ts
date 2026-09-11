@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import polymarketSnapshot from './__fixtures__/polybolt/asyncapi-price-polymarket-snapshot.json';
 import captured from './__fixtures__/polybolt/staging.json';
 import {
   PolyboltAckSchema,
@@ -15,7 +16,21 @@ describe('realtime frame normalization', () => {
       }
       const envelope = PolyboltEnvelopeSchema.parse(frame);
       const event = parsePolyboltEvent(envelope);
-      if (envelope.channel === 'price.polymarket' && envelope.snapshot) {
+      if (
+        envelope.channel === 'price.crypto.twap' &&
+        typeof envelope.payload === 'object' &&
+        envelope.payload !== null &&
+        'window_seconds' in envelope.payload &&
+        envelope.payload.window_seconds === 30
+      ) {
+        expect(event).toBeUndefined();
+        continue;
+      }
+      if (
+        envelope.channel === 'price.polymarket' &&
+        envelope.snapshot &&
+        Array.isArray(envelope.payload)
+      ) {
         expect(event).toBeUndefined();
         continue;
       }
@@ -25,12 +40,45 @@ describe('realtime frame normalization', () => {
     }
   });
 
+  it('delivers the AsyncAPI warm BBO snapshot and skips only the cold barrier', () => {
+    expect(
+      parsePolyboltEvent(PolyboltEnvelopeSchema.parse(polymarketSnapshot)),
+    ).toMatchObject({
+      topic: 'prices.polymarket',
+      type: 'subscribe',
+      payload: {
+        conditionId:
+          '0x9deb0baac40648821f96f01339229a422e2f5c877de55dc4dbf981f95a1e709c',
+        assetId:
+          '21742633143463906290569050155826241533067272736897614950488156847949938836455',
+        bestBid: '0.51',
+        bestAsk: '0.53',
+      },
+    });
+    expect(
+      parsePolyboltEvent(
+        PolyboltEnvelopeSchema.parse({
+          ...polymarketSnapshot,
+          payload: [],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+
   it('preserves the actual TWAP decimal encoding in live updates and history', () => {
     for (const frame of captured.filter(
       (frame) => frame.channel === 'price.crypto.twap',
     )) {
       if ('op' in frame) continue;
       const event = parsePolyboltEvent(PolyboltEnvelopeSchema.parse(frame));
+      if (
+        frame.payload &&
+        'window_seconds' in frame.payload &&
+        frame.payload.window_seconds === 30
+      ) {
+        expect(event).toBeUndefined();
+        continue;
+      }
       expect(event?.topic).toBe('prices.crypto.twap');
       if (
         event?.type === 'update' &&
