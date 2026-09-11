@@ -11,6 +11,7 @@
     "order:create-limit": "tsx src/create-limit-order.ts",
     "order:create-market": "tsx src/create-market-order.ts",
     "stream:public": "tsx src/public-streams.ts",
+    "stream:realtime": "tsx src/realtime-prices.ts",
     "pagination": "tsx src/pagination.ts",
     "positions:list": "tsx src/list-positions.ts",
     "search": "tsx src/search.ts",

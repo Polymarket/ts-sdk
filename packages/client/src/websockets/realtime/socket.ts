@@ -29,6 +29,7 @@ type KeyState = {
   resolve: () => void;
   reject: (error: Error) => void;
   subscribed: boolean;
+  accepted: boolean;
   snapshot?: PriceEvent;
   lastResync: number;
 };
@@ -67,11 +68,13 @@ export class PolyboltSocket {
   #requestId = 0;
   #authenticated = false;
   #closed = false;
-  #started = false;
+  #flushing = false;
+  #restarting = false;
   #connecting: Promise<void> | undefined;
   #lastSent = 0;
   #generation = 0;
-  keyTarget = 64;
+  #keyTarget = 64;
+  #lastDropAt = Number.NEGATIVE_INFINITY;
 
   constructor(options: PolyboltSocketOptions) {
     this.#options = options;
@@ -84,6 +87,9 @@ export class PolyboltSocket {
   }
   get closed(): boolean {
     return this.#closed;
+  }
+  get keyTarget(): number {
+    return Date.now() - this.#lastDropAt >= 60_000 ? 64 : this.#keyTarget;
   }
 
   add(
@@ -103,6 +109,7 @@ export class PolyboltSocket {
         resolve,
         reject,
         subscribed: false,
+        accepted: false,
         lastResync: Number.NEGATIVE_INFINITY,
       };
       this.#keys.set(subscription.key, state);
@@ -110,11 +117,17 @@ export class PolyboltSocket {
     }
     state.listeners.add(listener);
     if (state.snapshot !== undefined) listener.event(state.snapshot);
-    if (!this.#started) {
-      this.#started = true;
-      void this.#connect().catch(() => this.#schedule(1006));
+    if (
+      !this.#authenticated &&
+      !this.#restarting &&
+      this.#connecting === undefined &&
+      !this.#scheduler.isScheduled
+    ) {
+      void this.#connect();
     }
-    return state.ready;
+    // A joining caller does not own a handle until acceptance. Bound its wait
+    // independently so an existing listener can continue reconnecting.
+    return awaitAcceptance(state.ready);
   }
 
   remove(key: string, listener: PriceListener): void {
@@ -133,11 +146,19 @@ export class PolyboltSocket {
   }
 
   #connect(): Promise<void> {
-    if (this.#closed) return Promise.resolve();
+    if (this.#closed || this.#restarting) return Promise.resolve();
     if (this.#connecting !== undefined) return this.#connecting;
-    const connecting = this.#open().finally(() => {
-      if (this.#connecting === connecting) this.#connecting = undefined;
-    });
+    const connecting = this.#open()
+      .catch((cause: unknown) => {
+        this.#rejectKeys(
+          [...this.#keys.values()].filter((key) => !key.accepted),
+          TransportError.fromError(cause),
+        );
+      })
+      .finally(() => {
+        if (this.#connecting === connecting) this.#connecting = undefined;
+        if (!this.#authenticated) this.#schedule(1006);
+      });
     this.#connecting = connecting;
     return connecting;
   }
@@ -185,7 +206,12 @@ export class PolyboltSocket {
   }
 
   #scheduleFlush(): void {
-    if (this.#flushTimer !== undefined || !this.#authenticated || this.#closed)
+    if (
+      this.#flushTimer !== undefined ||
+      this.#flushing ||
+      !this.#authenticated ||
+      this.#closed
+    )
       return;
     // A leaky bucket with capacity one: at most 10 operation frames/s, auth included.
     this.#flushTimer = setNonBlockingTimeout(
@@ -233,6 +259,7 @@ export class PolyboltSocket {
       return;
     }
     const generation = this.#generation;
+    this.#flushing = true;
     try {
       await this.#request(
         {
@@ -252,17 +279,27 @@ export class PolyboltSocket {
         this.#scheduler.resetBackoff();
         for (const key of batch) {
           key.subscribed = true;
+          key.accepted = true;
           key.resolve();
         }
       }
     } catch (error) {
       if (generation !== this.#generation || this.#closed) return;
-      if (error instanceof SubscriptionRejectedError) this.#fail(error);
-      else if (error instanceof Error) {
-        this.#fail(error);
+      if (
+        error instanceof SubscriptionRejectedError &&
+        next.op === 'subscribe'
+      ) {
+        this.#rejectKeys(batch, error);
+      } else {
+        // Acceptance is uncertain after an ack timeout or send failure. A new
+        // connection clears upstream state and replays the remaining keys.
+        // Rejected unsubscriptions need the same cleanup for orphaned filters.
+        await this.#restart(1006);
       }
+    } finally {
+      this.#flushing = false;
+      this.#scheduleFlush();
     }
-    this.#scheduleFlush();
   }
 
   #request(
@@ -354,8 +391,10 @@ export class PolyboltSocket {
       (key) =>
         key.subscription.channel === channel && now - key.lastResync >= 5_000,
     );
+    if (keys.length === 0) return;
     for (const key of keys) key.lastResync = now;
-    this.keyTarget = Math.max(1, Math.floor(this.keyTarget / 2));
+    this.#keyTarget = Math.max(1, Math.floor(this.keyTarget / 2));
+    this.#lastDropAt = now;
     this.#enqueue('unsubscribe', keys);
     this.#enqueue('subscribe', keys);
   }
@@ -391,9 +430,14 @@ export class PolyboltSocket {
   }
 
   async #restart(code: number): Promise<void> {
+    this.#restarting = true;
     this.#reset(new TransportError('Realtime connection restarting.'));
-    await this.#connection.close();
-    this.#schedule(code);
+    try {
+      await this.#connection.close();
+    } finally {
+      this.#restarting = false;
+      this.#schedule(code);
+    }
   }
 
   #schedule(code: number): void {
@@ -414,6 +458,26 @@ export class PolyboltSocket {
     void this.close();
   }
 
+  #rejectKeys(keys: KeyState[], error: Error): void {
+    const current = keys.filter(
+      (key) => this.#keys.get(key.subscription.key) === key,
+    );
+    // Listener teardown can remove several keys. Capture the fanout before
+    // notifying anyone and never reject a replacement state for the same key.
+    const listeners = new Set(current.flatMap((key) => [...key.listeners]));
+    for (const key of current) {
+      this.#keys.delete(key.subscription.key);
+      key.reject(error);
+    }
+    if (this.#authenticated) this.#enqueue('unsubscribe', current);
+    for (const listener of listeners) listener.end(error);
+    if (this.#keys.size === 0) {
+      this.#idleTimer = setNonBlockingTimeout(() => {
+        void this.close();
+      }, 1_000);
+    }
+  }
+
   async close(): Promise<void> {
     if (this.#closed) return;
     this.#closed = true;
@@ -427,6 +491,28 @@ export class PolyboltSocket {
     this.#keys.clear();
     await this.#connection.close();
   }
+}
+
+function awaitAcceptance(ready: Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timer = setNonBlockingTimeout(() => {
+      reject(
+        new TransportError(
+          'Realtime subscription was not accepted within 30 seconds.',
+        ),
+      );
+    }, 30_000);
+    void ready.then(
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 // A handle joining a shared key needs current history, not the barrier from

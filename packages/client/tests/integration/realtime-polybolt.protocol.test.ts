@@ -1,5 +1,6 @@
 import { describe, expect } from 'vitest';
-import { environment, it } from './fixtures';
+import { environment } from './fixtures';
+import { it } from './realtime-fixtures';
 
 type Frame = {
   op?: string;
@@ -9,9 +10,9 @@ type Frame = {
   snapshot?: boolean;
 };
 
-describe('staging realtime protocol', () => {
+describe('realtime protocol', () => {
   it('pins authentication, heartbeat exclusion, invalid filters, barriers and the connection limit', async ({
-    secureClientWithDepositWallet,
+    realtimeClient,
   }) => {
     const socket = new WebSocket(environment.realtime.ws);
     const frames: Frame[] = [];
@@ -26,12 +27,11 @@ describe('staging realtime protocol', () => {
         socket.addEventListener('open', () => resolve(), { once: true });
         socket.addEventListener(
           'error',
-          () => reject(new Error('Staging websocket upgrade failed.')),
+          () => reject(new Error('Realtime websocket upgrade failed.')),
           { once: true },
         );
       });
-      const { key, secret, passphrase } =
-        secureClientWithDepositWallet.credentials;
+      const { key, secret, passphrase } = realtimeClient.credentials;
       socket.send(
         JSON.stringify({
           op: 'auth',
@@ -76,7 +76,7 @@ describe('staging realtime protocol', () => {
       expect(frames.filter((frame) => frame.snapshot).length).toBe(64);
     } finally {
       socket.close();
-      await secureClientWithDepositWallet.closeSubscriptions();
+      await realtimeClient.closeSubscriptions();
     }
   });
 });

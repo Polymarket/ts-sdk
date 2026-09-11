@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, vi } from 'vitest';
 import type { SubscriptionHandle } from '../../src/actions/subscriptions';
 import { ConnectionLostError, UserInputError } from '../../src/errors';
-import { it } from './fixtures';
+import { it } from './realtime-fixtures';
 
 type SentOperation = {
   op?: string;
@@ -43,14 +43,14 @@ async function first<T>(
   }
 }
 
-describe('realtime staging transport', () => {
+describe('realtime price transport', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     ObservedWebSocket.connections = [];
   });
 
   it('discards buffered prices when closed before iteration starts', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     try {
@@ -70,7 +70,7 @@ describe('realtime staging transport', () => {
   });
 
   it('delivers each update once for duplicate canonical symbols', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     const handle = await client.subscribe([
       { topic: 'prices.crypto', symbols: ['btcusd', 'BTCUSD'] },
@@ -94,7 +94,7 @@ describe('realtime staging transport', () => {
   });
 
   it('authenticates, shares keys, batches filters and grows beyond 64 keys', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     try {
@@ -141,7 +141,7 @@ describe('realtime staging transport', () => {
   });
 
   it('delivers source-neutral live events with producer precision', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     try {
       const specs = [
@@ -175,7 +175,7 @@ describe('realtime staging transport', () => {
   });
 
   it('delivers snapshot barriers and isolates TWAP windows', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     try {
       for (const windowSeconds of [30, 60] as const) {
@@ -203,7 +203,7 @@ describe('realtime staging transport', () => {
   });
 
   it('seeds a joining handle with current shared history', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     const initial = await client.subscribe([
@@ -245,7 +245,7 @@ describe('realtime staging transport', () => {
 
   it('rejects missing filters and public access before opening a socket', async ({
     publicClient,
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     await expect(
@@ -264,7 +264,7 @@ describe('realtime staging transport', () => {
   });
 
   it('rejects retired topics and invalid filters before opening a mixed batch', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     const invalid = [
@@ -301,7 +301,7 @@ describe('realtime staging transport', () => {
   });
 
   it('refreshes a dropped channel and ends policy/auth closures without reconnecting', async ({
-    secureClientWithDepositWallet: client,
+    realtimeClient: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     try {
@@ -310,7 +310,7 @@ describe('realtime staging transport', () => {
       ]);
       const socket = ObservedWebSocket.connections[0];
       expect(socket).toBeDefined();
-      // Staging cannot be induced to drop on demand: inject only the loss signal.
+      // Inject only the loss signal; subsequent recovery uses the real server.
       socket?.dispatchEvent(
         new MessageEvent('message', {
           data: JSON.stringify({
@@ -347,7 +347,7 @@ describe('realtime staging transport', () => {
         const assertion =
           expect(consuming).rejects.toBeInstanceOf(ConnectionLostError);
         // The edge does not echo client close codes. Inject the terminal code
-        // at the transport boundary, then close the actual staging connection.
+        // at the transport boundary, then close the actual connection.
         current?.dispatchEvent(
           new CloseEvent('close', {
             code,

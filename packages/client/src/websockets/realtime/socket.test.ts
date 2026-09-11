@@ -10,8 +10,9 @@ import {
   it,
   vi,
 } from 'vitest';
-import { TransportError } from '../../errors';
+import { SubscriptionRejectedError, TransportError } from '../../errors';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
+import { WebSocketConnection } from '../lifecycle';
 import { RealtimeWebSocketManager } from './manager';
 import { polyboltReconnectDelay } from './protocol';
 
@@ -33,7 +34,7 @@ describe('realtime timing boundaries', () => {
     vi.restoreAllMocks();
   });
 
-  it('times out a missing subscribe acknowledgement and releases its connection', async () => {
+  it('bounds initial acceptance when acknowledgements never arrive', async () => {
     vi.useFakeTimers();
     const manager = new RealtimeWebSocketManager({
       url,
@@ -56,8 +57,335 @@ describe('realtime timing boundaries', () => {
       });
       const rejected = expect(pending).rejects.toBeInstanceOf(TransportError);
       await vi.waitFor(() => expect(ops).toContain('subscribe'));
-      await vi.advanceTimersByTimeAsync(10_001);
+      await vi.advanceTimersByTimeAsync(30_001);
       await rejected;
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('rejects an initial connection failure instead of retrying an unreachable subscription forever', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({
+      url: 'not a websocket URL',
+      credentials,
+    });
+    let failure: unknown;
+    const pending = manager
+      .subscribe({ topic: 'prices.crypto', symbols: ['btcusd'] })
+      .catch((error: unknown) => {
+        failure = error;
+      });
+    try {
+      await vi.waitFor(() => expect(failure).toBeInstanceOf(TransportError));
+      await pending;
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('rejects a bad batch without ending an established sibling stream', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let connections = 0;
+    let publish = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        connections++;
+        publish = () => client.send(priceFrame('btcusd'));
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          if (
+            frame.op === 'subscribe' &&
+            frame.subscriptions?.some((item) => item.filter.symbol === 'ethusd')
+          ) {
+            client.send(
+              JSON.stringify({
+                op: 'error',
+                code: 'bad_filter',
+                channel: 'price.crypto',
+                rid: frame.rid,
+              }),
+            );
+          } else acceptControl(client, frame);
+        });
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(connections).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      const handle = await initial;
+      const next = handle[Symbol.asyncIterator]().next();
+      void next.catch(() => undefined);
+      const rejected = expect(
+        manager.subscribe({ topic: 'prices.crypto', symbols: ['ethusd'] }),
+      ).rejects.toBeInstanceOf(SubscriptionRejectedError);
+      await vi.advanceTimersByTimeAsync(120);
+      await rejected;
+      publish();
+      await expect(next).resolves.toMatchObject({
+        done: false,
+        value: { payload: { symbol: 'btcusd' } },
+      });
+      expect(connections).toBe(1);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it.each([
+    'ack timeout',
+    'send failure',
+  ] as const)('recovers from %s without ending sibling streams', async (failure) => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let connections = 0;
+    let failed = false;
+    let publish = () => {};
+    if (failure === 'send failure') {
+      const send = WebSocketConnection.prototype.send;
+      vi.spyOn(WebSocketConnection.prototype, 'send').mockImplementation(
+        function (this: WebSocketConnection, message) {
+          const frame = message as ControlFrame;
+          if (
+            !failed &&
+            frame.op === 'subscribe' &&
+            frame.subscriptions?.some((item) => item.filter.symbol === 'ethusd')
+          ) {
+            failed = true;
+            return false;
+          }
+          return send.call(this, message);
+        },
+      );
+    }
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        connections++;
+        publish = () => client.send(priceFrame('btcusd'));
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          if (
+            failure === 'ack timeout' &&
+            !failed &&
+            frame.op === 'subscribe' &&
+            frame.subscriptions?.some((item) => item.filter.symbol === 'ethusd')
+          ) {
+            failed = true;
+            return;
+          }
+          acceptControl(client, frame);
+        });
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(connections).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      const handle = await initial;
+      const next = handle[Symbol.asyncIterator]().next();
+      void next.catch(() => undefined);
+      const joining = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['ethusd'],
+      });
+      void joining.catch(() => undefined);
+      await vi.advanceTimersByTimeAsync(
+        failure === 'ack timeout' ? 11_000 : 1_000,
+      );
+      await joining;
+      publish();
+      await expect(next).resolves.toMatchObject({
+        done: false,
+        value: { payload: { symbol: 'btcusd' } },
+      });
+      expect(connections).toBe(2);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('waits for restart teardown before connecting a joining subscription', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    const teardown = Promise.withResolvers<void>();
+    const close = WebSocketConnection.prototype.close;
+    let closing = false;
+    vi.spyOn(WebSocketConnection.prototype, 'close').mockImplementationOnce(
+      async function (this: WebSocketConnection) {
+        closing = true;
+        await close.call(this);
+        await teardown.promise;
+      },
+    );
+    let connections = 0;
+    let auths = 0;
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        const connection = ++connections;
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          if (frame.op === 'auth') auths++;
+          if (connection === 1 && frame.op === 'subscribe') return;
+          acceptControl(client, frame);
+        });
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(auths).toBe(1));
+      await vi.advanceTimersByTimeAsync(10_200);
+      expect(closing).toBe(true);
+      const joining = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['ethusd'],
+      });
+      await vi.advanceTimersByTimeAsync(200);
+      expect(connections).toBe(1);
+      teardown.resolve();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await Promise.all([initial, joining]);
+      expect(connections).toBe(2);
+      expect(auths).toBe(2);
+    } finally {
+      teardown.resolve();
+      await manager.close();
+    }
+  });
+
+  it('reopens after a drop during the last-key idle grace period', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let connections = 0;
+    let drop = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        connections++;
+        drop = () => client.close(4002);
+        client.addEventListener('message', ({ data }) =>
+          acceptControl(client, JSON.parse(String(data)) as ControlFrame),
+        );
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(connections).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      await (await initial).close();
+      drop();
+      await vi.advanceTimersByTimeAsync(0);
+      let accepted = false;
+      const joining = manager
+        .subscribe({ topic: 'prices.crypto', symbols: ['ethusd'] })
+        .then(() => {
+          accepted = true;
+        });
+      await vi.waitFor(() => expect(accepted).toBe(true));
+      await joining;
+      expect(connections).toBe(2);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('waits for unsubscribe acceptance before resubscribing the same filter', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let subscriptions = 0;
+    let auths = 0;
+    let release = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        client.addEventListener('message', ({ data }) => {
+          const frame = JSON.parse(String(data)) as ControlFrame;
+          if (frame.op === 'auth') auths++;
+          if (frame.op === 'subscribe') subscriptions++;
+          if (frame.op === 'unsubscribe')
+            release = () => acceptControl(client, frame);
+          else acceptControl(client, frame);
+        });
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(auths).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      await (await initial).close();
+      await vi.advanceTimersByTimeAsync(120);
+      const joining = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.advanceTimersByTimeAsync(120);
+      expect(subscriptions).toBe(1);
+      release();
+      await vi.advanceTimersByTimeAsync(120);
+      await joining;
+      expect(subscriptions).toBe(2);
+    } finally {
+      await manager.close();
+    }
+  });
+
+  it('uses the full connection capacity again after drop recovery stays quiet', async () => {
+    vi.useFakeTimers();
+    const manager = new RealtimeWebSocketManager({ url, credentials });
+    let connections = 0;
+    let drop = () => {};
+    server.use(
+      link.addEventListener('connection', ({ client }) => {
+        connections++;
+        drop = () =>
+          client.send(
+            JSON.stringify({
+              v: 1,
+              channel: 'price.crypto',
+              seq: 1,
+              ts: Date.now(),
+              dropped: 1,
+              payload: {},
+            }),
+          );
+        client.addEventListener('message', ({ data }) =>
+          acceptControl(client, JSON.parse(String(data)) as ControlFrame),
+        );
+      }),
+    );
+    try {
+      const initial = manager.subscribe({
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+      });
+      await vi.waitFor(() => expect(connections).toBe(1));
+      await vi.advanceTimersByTimeAsync(120);
+      await initial;
+      drop();
+      await vi.advanceTimersByTimeAsync(60_001);
+      const joining = manager.subscribe({
+        topic: 'prices.polymarket',
+        assetIds: Array.from({ length: 63 }, (_, index) => String(index + 1)),
+      });
+      await vi.advanceTimersByTimeAsync(120);
+      await joining;
+      expect(connections).toBe(1);
     } finally {
       await manager.close();
     }
@@ -163,3 +491,50 @@ describe('realtime timing boundaries', () => {
     heartbeat.stop();
   });
 });
+
+type ControlFrame = {
+  op: string;
+  rid: string;
+  subscriptions?: {
+    channel: string;
+    filter: { symbol?: string; asset_id?: string };
+  }[];
+};
+
+function acceptControl(
+  peer: { send(data: string): void },
+  frame: ControlFrame,
+): void {
+  if (frame.op === 'auth' || frame.op === 'ping') {
+    peer.send(
+      JSON.stringify({
+        op: frame.op === 'auth' ? 'authed' : 'pong',
+        rid: frame.rid,
+      }),
+    );
+  } else {
+    for (const subscription of frame.subscriptions ?? [])
+      peer.send(
+        JSON.stringify({
+          op: frame.op === 'subscribe' ? 'subscribed' : 'unsubscribed',
+          channel: subscription.channel,
+          rid: frame.rid,
+        }),
+      );
+  }
+}
+
+function priceFrame(symbol: string): string {
+  return JSON.stringify({
+    v: 1,
+    channel: 'price.crypto',
+    seq: 1,
+    ts: Date.now(),
+    payload: {
+      symbol,
+      value: 1,
+      full_accuracy_value: '1',
+      timestamp: Date.now(),
+    },
+  });
+}

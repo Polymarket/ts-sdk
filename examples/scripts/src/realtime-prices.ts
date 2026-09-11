@@ -1,20 +1,11 @@
-import {
-  createSecureClient,
-  type EnvironmentConfigFork,
-  forkEnvironmentConfig,
-} from '@polymarket/client';
+import { createSecureClient } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { requireEnv } from './lib/env';
 
-// Supply the JSON endpoint fork used by the integration suite, including
-// realtime.ws for the staging price endpoint.
-const fork = JSON.parse(
-  requireEnv('POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG'),
-) as EnvironmentConfigFork;
+const signer = privateKey(requireEnv('POLYMARKET_PRIVATE_KEY'));
 const client = await createSecureClient({
-  environment: forkEnvironmentConfig(fork),
-  wallet: requireEnv('POLYMARKET_DEPOSIT_WALLET'),
-  signer: privateKey(requireEnv('POLYMARKET_PRIVATE_KEY')),
+  signer,
+  wallet: await signer.getAddress(),
 });
 
 try {

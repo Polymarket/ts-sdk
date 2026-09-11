@@ -54,6 +54,10 @@ export class ReconnectScheduler {
   #timer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
 
+  get isScheduled(): boolean {
+    return this.#timer !== undefined;
+  }
+
   schedule(options: ScheduleReconnectOptions): void {
     if (this.#timer !== undefined || !options.shouldReconnect()) {
       return;
