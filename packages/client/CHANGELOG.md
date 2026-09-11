@@ -1,5 +1,44 @@
 # @polymarket/client
 
+## 0.10.0
+
+### Minor Changes
+
+- 6e3ae8d: **Breaking**: migrate `listBuilderLeaderboard` and `fetchBuilderVolume` to their v2 contracts. Builder rankings now use server cursors and normalized `BuilderStanding` rows; builder volume returns complete date buckets as `BuilderVolumePoint` rows. Replace `timePeriod` with `window` or `interval`, and use `bucketLimit` to bound volume buckets.
+- 8befd1f: Add the core pieces for the data `/v2` surface: `/v2` envelope schemas (paginated list with server-minted branded cursors, and single-object including null answers), a `withRateLimitRetry` pipeline helper that honors server-requested delays, and the `MIGRATION` activity type with its `MigrationActivity` variant. All additive — no existing API shape changes.
+- 7b68c7a: **Breaking**: the feed surfaces are fully replaced — same names, new contracts. `listActivity`, `listComboActivity`, `listPositions`, and `listComboPositions` now serve exact cursor pagination with automatic rate-limit retry and the `condition`-id vocabulary. `conditionId` filters validate the service's shared selector cap client-side: at most 20 distinct ids per request (case-insensitive dedupe first), so an oversized list fails typed instead of as a service 400. `listPositions` bundles the whole lifecycle behind `status` (`OPEN`/`REDEEMABLE`/`CLOSED`) with `redeemable`/`mergeable` flags and fee-exclusive entry economics on every row — `listClosedPositions` and `listMarketPositions` are removed (use `listPositions` with `status`/a `conditionId` anchor). Every windowed method takes one `window` option (`'full' | { start?, end? }`, epoch seconds or `Date`) replacing raw `start`/`end`. Money, size, price, and PnL fields normalize to `DecimalString` (the wire's JSON numbers are stringified without loss at their 6-decimal grain, matching the v1 SDK surface), `endDate` is a typed `IsoCalendarDateString`, and `ComboPositionStatus` gains `Redeemable` (sole-value filter, also tolerated on rows); the `Activity` union, `Position`, `ComboPosition`, and `ComboActivity` rows are strict and normalized (epoch ms, empty-string/999-sentinel absence as `undefined`, `assetId` canonical with deprecated `tokenId` alias). Combo activity rows carry `positionId` on every row while dropping `transactionAt`/`logIndex`/`moduleId`. Request vocabularies are exported enums: trade direction reuses `OrderSide` (the standalone `Side` type is removed), and `SortDirection`, `TradeFilterType`, `PositionFilterType`, `PositionSortBy`, `ComboPositionSortBy`, and `TipSide` join `PositionStatus`/`ComboPositionStatus`. On the secure client, `listPositions` always binds the authenticated wallet (the `user: null` opt-out is removed); list a market's holders through a public client instead.
+- 12935c4: **Breaking**: migrate `listMarketHolders` to its cursor-paginated `/v2` contract, using condition IDs, normalized holder fields, and optional position economics.
+- d64f383: **Breaking**: migrate open-interest and live-volume reads to their v2 contracts. Replace `listOpenInterest` with `fetchOpenInterest`, use condition and event identifiers, and expose cumulative taker volume explicitly.
+- 0df4f2b: **Breaking**: migrate `fetchPortfolioValue` to its `/v2` contract, returning one `PortfolioValue` with a decimal-string value and accepting `conditionIds` instead of the legacy `market` filter. Add `fetchUserStats` with decimal-string money, size, and PnL fields, and remove `fetchTradedMarketCount`; use `fetchUserStats().tradedMarketCount` for the exact distinct-market count. The accounting snapshot download remains available unchanged.
+- 454c772: **Breaking**: replace `fetchPriceHistory` with cursor-paginated `listPriceHistory`, using token IDs, strict time selections, second-based bucket widths, and normalized price points.
+- cb664fb: Add `fetchResolutions` for non-paginated resolution lifecycle lookups by question, condition, or event. Resolution rows normalize identity, lifecycle, oracle, payout, and finality fields, while unset wire sentinels become omitted SDK fields.
+- 7992375: **Breaking**: migrate trader leaderboard reads to the cursor-paginated v2 contract, add a separate by-wallet standing method, and add biggest-winner pagination with explicit market and Combo variants.
+- 7ed1af9: **Breaking**: `listTrades` is fully replaced — same name, new contract. It now serves exact continuation signals (`hasMore`/server-minted `nextCursor` — no page-size probing), re-sends the original filters with every page, has no offset vocabulary (`pageSize` default 100, max 1000 rejected-not-clamped), retries transient rate limits after the server-requested delay, and accepts partial `filterType`/`filterAmount` (the service fills the other half in). The `Trade` row is strict and normalized (numbers for `size`/`price`, epoch milliseconds, empty-string and unknown-sentinel absence as `undefined`). Following the service's naming remap, the request filter is `conditionId` (the wire's `condition`/`condition_id` — the old `market` key no longer exists upstream) and the row field parsed is `condition_id`. Bindings gain the reusable data envelope parsers (`dataPageSchema`, `dataEnvelopeSchema`) that turn the service's paginated envelope straight into the SDK page shape.
+- d320dfa: Add `fetchUserPnl` and `fetchUserVolume` with normalized decimal-string amounts, cumulative PnL metadata, shared time-window inputs, and authenticated-wallet defaults.
+
+### Patch Changes
+
+- 5bdc101: Expose the yearly builder-volume bucket as `BuilderVolumeInterval.Year` while preserving the wire value `all`.
+- b56a0a8: Normalize resolution timestamps, transaction metadata, and payout values into canonical SDK types.
+- 6e5c293: Expose question, groupItemTitle, sportsMarketType, line, and outcomes on combo leg markets returned by listComboPositions and listComboActivity.
+- e7882e8: Normalize protocol v2 market condition IDs for position and portfolio-value reads, share canonicalization in bindings, and clarify activity and trade history windows.
+- Updated dependencies [5bdc101]
+- Updated dependencies [b56a0a8]
+- Updated dependencies [6e3ae8d]
+- Updated dependencies [6e5c293]
+- Updated dependencies [8befd1f]
+- Updated dependencies [7b68c7a]
+- Updated dependencies [12935c4]
+- Updated dependencies [d64f383]
+- Updated dependencies [e7882e8]
+- Updated dependencies [0df4f2b]
+- Updated dependencies [454c772]
+- Updated dependencies [cb664fb]
+- Updated dependencies [7992375]
+- Updated dependencies [7ed1af9]
+- Updated dependencies [d320dfa]
+  - @polymarket/bindings@0.10.0
+
 ## 0.9.0
 
 ### Minor Changes

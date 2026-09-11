@@ -88,24 +88,30 @@ describe('Activity', () => {
       expect(item).toEqual(
         expect.objectContaining({
           conditionId: expect.any(String),
+          positionId: expect.any(String),
           timestamp: expect.any(Number),
-          transactionAt: expect.any(String),
           transactionHash: expect.any(String),
+          blockNumber: expect.any(Number),
           type: expect.any(String),
           wallet: TEST_USER,
         }),
       );
 
+      const market = expectPresent(expectPresent(item.legs[0]).market);
+      expect(market).toMatchObject({
+        question: expect.any(String),
+        groupItemTitle: expect.any(String),
+        sportsMarketType: expect.any(String),
+        outcomes: expect.any(Array),
+      });
+      expect(market.line === null || typeof market.line === 'number').toBe(
+        true,
+      );
+
       if (item.type === ComboActivityType.Redeem) {
         expect(item).toHaveProperty('payout');
-        expect(item).toEqual(
-          expect.objectContaining({
-            positionId: expect.any(String),
-          }),
-        );
       } else {
         expect(item).not.toHaveProperty('payout');
-        expect(item).not.toHaveProperty('positionId');
       }
     });
   });

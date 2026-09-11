@@ -4,7 +4,6 @@ export type * from '@polymarket/bindings/clob';
 export {
   NotificationType,
   OrderResponseErrorCode,
-  PriceHistoryInterval,
   SignatureType,
 } from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';

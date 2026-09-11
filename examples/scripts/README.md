@@ -5,6 +5,7 @@ This private workspace package contains runnable TypeScript scripts that demonst
 Run an example from the repository root:
 
 ```bash
+pnpm --filter @polymarket/examples analytics:builders
 pnpm --filter @polymarket/examples list:markets
 pnpm --filter @polymarket/examples fetch:market
 pnpm --filter @polymarket/examples pagination
