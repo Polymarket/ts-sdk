@@ -1,5 +1,8 @@
+import { Wallet } from 'ethers-v5';
 import { describe, expect, it } from 'vitest';
+import { createApiKeyAuthTypedDataPayload } from './authentication';
 import { UserInputError } from './errors';
+import { signerFrom } from './ethers-v5';
 import { privateKey } from './viem';
 
 const TEST_PRIVATE_KEY =
@@ -32,6 +35,32 @@ describe('viem', () => {
           },
         }),
       ).resolves.toMatch(/^0x[0-9a-f]+$/i);
+    });
+
+    it('signs explicit authentication domains consistently across wallet adapters', async () => {
+      const signer = privateKey(TEST_PRIVATE_KEY);
+      const payload = createApiKeyAuthTypedDataPayload({
+        address: await signer.getAddress(),
+        chainId: 137,
+        timestamp: 1_739_491_200,
+      });
+
+      const { EIP712Domain, ...types } = payload.types;
+      expect(EIP712Domain).toEqual([
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+      ]);
+      const signature = await signer.signTypedData(payload);
+      await expect(
+        signer.signTypedData({
+          ...payload,
+          types,
+        }),
+      ).resolves.toBe(signature);
+      await expect(
+        signerFrom(new Wallet(TEST_PRIVATE_KEY)).signTypedData(payload),
+      ).resolves.toBe(signature);
     });
 
     it('rejects invalid private keys', () => {

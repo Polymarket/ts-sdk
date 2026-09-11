@@ -139,6 +139,7 @@ export function createExchangeOrderTypedDataPayload(
     },
     primaryType: 'TypedDataSign',
     types: {
+      EIP712Domain: EIP712_DOMAIN,
       Order: ORDER_STRUCTURE,
       TypedDataSign: TYPED_DATA_SIGN_STRUCTURE,
     },
