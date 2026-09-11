@@ -60,12 +60,14 @@ export function signPerpsOp(request: SignPerpsOpRequest): EvmSignature {
 export function createPerpsOpTypedDataPayload(
   request: CreatePerpsOpTypedDataPayloadRequest,
 ): TypedDataPayload {
+  const domain = {
+    chainId: request.chainId,
+    name: 'Polymarket',
+    version: '1',
+  };
+
   return {
-    domain: {
-      chainId: request.chainId,
-      name: 'Polymarket',
-      version: '1',
-    },
+    domain,
     message: {
       data: Hash.keccak256(encode(compactSignableValue(request.op)), {
         as: 'Hex',
@@ -75,6 +77,7 @@ export function createPerpsOpTypedDataPayload(
     },
     primaryType: 'Op',
     types: {
+      EIP712Domain: TypedData.extractEip712DomainTypes(domain),
       Op: [
         { name: 'data', type: 'bytes32' },
         { name: 'salt', type: 'uint64' },
