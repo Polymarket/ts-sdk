@@ -3,6 +3,16 @@ name: Integration Tests
 on:
   workflow_call:
     inputs:
+      environment_config:
+        description: JSON environment fork for integration endpoints
+        required: false
+        default: '{}'
+        type: string
+      realtime_soak:
+        description: Run the 30-minute realtime price soak
+        required: false
+        default: false
+        type: boolean
       test_file_pattern:
         description: Optional integration test file pattern
         required: false
@@ -15,6 +25,16 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      environment_config:
+        description: JSON environment fork for integration endpoints
+        required: false
+        default: '{}'
+        type: string
+      realtime_soak:
+        description: Run the 30-minute realtime price soak
+        required: false
+        default: false
+        type: boolean
       test_file_pattern:
         description: Optional integration test file pattern
         required: false
@@ -61,6 +81,8 @@ jobs:
             pnpm test:client:integration
           fi
         env:
+          POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG: ${{ inputs.environment_config }}
+          POLYMARKET_REALTIME_SOAK: ${{ inputs.realtime_soak && '1' || '0' }}
           POLYMARKET_RUN_METERED_TESTS: '1'
           PRIVY_TEST_APP_ID: ${{ vars.PRIVY_TEST_APP_ID }}
           PRIVY_TEST_APP_SECRET: ${{ secrets.PRIVY_TEST_APP_SECRET }}

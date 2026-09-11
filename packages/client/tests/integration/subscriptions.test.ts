@@ -30,7 +30,7 @@ async function collectCryptoSymbols(
   const seen = new Set<string>();
 
   for await (const event of handle) {
-    if (event.topic !== 'prices.crypto.binance') continue;
+    if (event.topic !== 'prices.crypto') continue;
     const symbol = event.payload?.symbol;
     if (symbol !== undefined && expected.has(symbol)) {
       seen.add(symbol);
@@ -42,29 +42,29 @@ async function collectCryptoSymbols(
 }
 
 describe('Subscriptions', () => {
-  it('routes public subscriptions and merges their events', async ({
-    publicClient,
+  it('routes market and price subscriptions and merges their events', async ({
+    secureClientWithDepositWallet: client,
   }) => {
     const market = await findHighVolumeLowPriceMarket(publicClient);
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
+    const expectedSymbols = ['btcusd', 'ethusd'];
 
-    const handle = await publicClient.subscribe([
+    const handle = await client.subscribe([
       { tokenIds: [tokenId], topic: 'market' },
       { topic: 'sports' },
-      { symbols: ['btcusdt'], topic: 'prices.crypto.binance' },
-      { symbols: ['ethusdt'], topic: 'prices.crypto.binance' },
+      { symbols: expectedSymbols, topic: 'prices.crypto' },
     ]);
 
     try {
       const symbols = await collectCryptoSymbols(
         handle as AsyncIterable<EventWithOptionalSymbol>,
-        ['btcusdt', 'ethusdt'],
+        expectedSymbols,
       );
 
-      expect(symbols).toEqual(new Set(['btcusdt', 'ethusdt']));
+      expect(symbols).toEqual(new Set(expectedSymbols));
     } finally {
       await handle.close();
-      await publicClient.closeSubscriptions();
+      await client.closeSubscriptions();
     }
   });
 

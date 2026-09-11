@@ -1,3 +1,7 @@
+import type { RealtimeErrorCode } from '@polymarket/bindings/subscriptions';
+
+export { RealtimeErrorCode } from '@polymarket/bindings/subscriptions';
+
 import { PolymarketError } from '@polymarket/types';
 import type { ZodError } from 'zod';
 import type { RateLimitUpdate } from './rate-limit';
@@ -326,4 +330,16 @@ export function makeErrorGuard<
       return classes.some((c) => error instanceof c);
     },
   };
+}
+
+/** A realtime subscription was rejected by the server. */
+export class SubscriptionRejectedError extends PolymarketError {
+  override name = 'SubscriptionRejectedError' as const;
+  readonly code: RealtimeErrorCode;
+  readonly channel?: string;
+  constructor(code: RealtimeErrorCode, channel?: string) {
+    super(`Realtime subscription rejected: ${code}`);
+    this.code = code;
+    this.channel = channel;
+  }
 }
