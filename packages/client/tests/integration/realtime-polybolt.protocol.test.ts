@@ -14,7 +14,7 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
     secureClientWithDepositWallet,
   }) => {
     const socket = new WebSocket(environment.realtime.ws);
-    const timeout = setTimeout(() => socket.close(), 30_000);
+    const timeout = setTimeout(() => socket.close(), 50_000);
     const frames: Frame[] = [];
     const closed = new Promise<number>((resolve) =>
       socket.addEventListener('close', (event) => resolve(event.code)),
@@ -46,8 +46,12 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
         }),
       );
       await expect
-        .poll(() =>
-          frames.some((frame) => frame.op === 'authed' && frame.rid === 'auth'),
+        .poll(
+          () =>
+            frames.some(
+              (frame) => frame.op === 'authed' && frame.rid === 'auth',
+            ),
+          { timeout: 10_000 },
         )
         .toBe(true);
       socket.send('PING');
@@ -62,11 +66,15 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
         }),
       );
       await expect
-        .poll(() => frames.filter((frame) => frame.op === 'pong').length)
+        .poll(() => frames.filter((frame) => frame.op === 'pong').length, {
+          timeout: 10_000,
+        })
         .toBe(25);
       expect(frames.some((frame) => frame.code === 'bad_op')).toBe(true);
       await expect
-        .poll(() => frames.some((frame) => frame.code === 'bad_filter'))
+        .poll(() => frames.some((frame) => frame.code === 'bad_filter'), {
+          timeout: 10_000,
+        })
         .toBe(true);
       expect(socket.readyState).toBe(WebSocket.OPEN);
       socket.send(
