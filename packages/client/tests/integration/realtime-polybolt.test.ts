@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, vi } from 'vitest';
 import type { SubscriptionHandle } from '../../src/actions/subscriptions';
 import { UserInputError } from '../../src/errors';
-import { it } from './fixtures';
+import { it, runMeteredTests } from './fixtures';
 
 type SentOperation = {
   op?: string;
@@ -43,7 +43,7 @@ async function first<T>(
   }
 }
 
-describe('realtime price transport', () => {
+describe.runIf(runMeteredTests)('realtime price transport', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     ObservedWebSocket.connections = [];
@@ -169,6 +169,45 @@ describe('realtime price transport', () => {
         }),
       );
     } finally {
+      await client.closeSubscriptions();
+    }
+  });
+
+  it('keeps live prices flowing across 100 filters on shared connections', async ({
+    secureClientWithDepositWallet: client,
+  }) => {
+    vi.stubGlobal('WebSocket', ObservedWebSocket);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Known feeds prove delivery; additional keys exercise connection capacity.
+      const stream = await client.subscribe([
+        {
+          topic: 'prices.crypto',
+          symbols: [
+            'btcusd',
+            'ethusd',
+            ...Array.from({ length: 98 }, (_, index) => `asset${index}usd`),
+          ],
+        },
+      ]);
+      expect(ObservedWebSocket.connections).toHaveLength(2);
+      let updates = 0;
+      let intervalCompleted = false;
+      timer = setTimeout(() => {
+        intervalCompleted = true;
+        void stream.close();
+      }, 15_000);
+      for await (const event of stream) {
+        if (event.type === 'update') {
+          expect(['btcusd', 'ethusd']).toContain(event.payload.symbol);
+          updates++;
+        }
+      }
+      expect(intervalCompleted).toBe(true);
+      expect(updates).toBeGreaterThan(1);
+      expect(ObservedWebSocket.connections).toHaveLength(2);
+    } finally {
+      clearTimeout(timer);
       await client.closeSubscriptions();
     }
   });
