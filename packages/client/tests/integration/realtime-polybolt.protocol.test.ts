@@ -1,6 +1,5 @@
 import { describe, expect } from 'vitest';
-import { environment } from './fixtures';
-import { it } from './realtime-fixtures';
+import { environment, it } from './fixtures';
 
 type Frame = {
   op?: string;
@@ -14,7 +13,7 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
   'realtime protocol',
   () => {
     it('pins authentication, heartbeat exclusion, invalid filters, barriers and the connection limit', async ({
-      realtimeClient,
+      secureClientWithDepositWallet,
     }) => {
       const socket = new WebSocket(environment.realtime.ws);
       const frames: Frame[] = [];
@@ -33,7 +32,8 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
             { once: true },
           );
         });
-        const { key, secret, passphrase } = realtimeClient.credentials;
+        const { key, secret, passphrase } =
+          secureClientWithDepositWallet.credentials;
         socket.send(
           JSON.stringify({
             op: 'auth',
@@ -80,7 +80,7 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
         expect(frames.filter((frame) => frame.snapshot).length).toBe(64);
       } finally {
         socket.close();
-        await realtimeClient.closeSubscriptions();
+        await secureClientWithDepositWallet.closeSubscriptions();
       }
     });
   },

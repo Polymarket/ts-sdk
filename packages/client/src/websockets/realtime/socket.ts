@@ -10,7 +10,7 @@ import {
 import { setNonBlockingTimeout } from '@polymarket/types';
 import {
   ConnectionLostError,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   TransportError,
 } from '../../errors';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
@@ -23,7 +23,7 @@ import {
   type PriceSubscriptionRejection,
 } from './session';
 
-type PendingRejection = { index: number; error: SubscriptionRejectedError };
+type PendingRejection = { index: number; error: RequestRejectedError };
 type PendingOp = {
   op: PolyboltAckOp;
   channels: (string | undefined)[];
@@ -176,7 +176,10 @@ export class PolyboltConnection implements PriceSessionConnection {
       const pending = rid === undefined ? undefined : this.#pending.get(rid);
       if (pending === undefined) return;
       if (op === PolyboltAckOp.Error && code !== undefined) {
-        const error = new SubscriptionRejectedError(code, channel);
+        const error = new RequestRejectedError(
+          `Realtime subscription rejected: ${code}`,
+          { status: 200, code },
+        );
         const matches = pending.channels.flatMap((pendingChannel, index) =>
           pendingChannel === channel ? [index] : [],
         );

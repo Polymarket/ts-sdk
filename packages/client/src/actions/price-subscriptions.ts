@@ -8,12 +8,13 @@ const SymbolSchema = z
   .min(1)
   .max(64)
   .regex(/^[a-zA-Z0-9._:/-]+$/);
-const TwapSymbolSchema = SymbolSchema.refine(
-  (value) => value.replaceAll('/', '').length > 0,
-  {
-    message: 'A time-weighted price symbol must contain more than slashes.',
-  },
-);
+const CryptoSymbolSchema = z
+  .string()
+  .max(64)
+  .regex(/^[a-z0-9]+usd$/, {
+    error:
+      'Use a canonical lowercase USD pair such as btcusd. Slash-separated symbols and USDT pairs are not supported.',
+  });
 enum PriceEventType {
   Update = 'update',
   Subscribe = 'subscribe',
@@ -21,14 +22,11 @@ enum PriceEventType {
 const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
   z.strictObject({
     topic: z.literal('prices.crypto'),
-    symbols: z.array(SymbolSchema).min(1),
+    symbols: z.array(CryptoSymbolSchema).min(1),
   }),
   z.strictObject({
     topic: z.literal('prices.crypto.twap'),
-    symbols: z.array(TwapSymbolSchema).min(1),
-    windowSeconds: z.literal(60, {
-      error: 'Only the 60-second time-weighted price series is available.',
-    }),
+    symbols: z.array(CryptoSymbolSchema).min(1),
   }),
   z.strictObject({
     topic: z.literal('prices.equity'),

@@ -36,10 +36,6 @@ export type {
   PriceSubscription,
 } from '../actions';
 export { SubscribeError } from '../actions';
-export type { RealtimeWebSocketManagerOptions } from '../websockets/realtime/manager';
-export { RealtimeWebSocketManager } from '../websockets/realtime/manager';
-export type { RtdsWebSocketManagerOptions } from '../websockets/rtds';
-export { RtdsWebSocketManager } from '../websockets/rtds';
 
 export type PublicSubscriptionsActions = {
   /**

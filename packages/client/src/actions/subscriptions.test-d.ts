@@ -15,7 +15,7 @@ import type {
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
   ConnectionLostError,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   TransportError,
   UserInputError,
 } from '../errors';
@@ -39,86 +39,93 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('price subscription contracts', () => {
-  it('exports source-neutral prices and includes recent history', () => {
-    expectTypeOf<RootCryptoTwapPriceSubscription>().toMatchTypeOf<{
+  it('infers each price topic and only the requested mixed topics through the client', async () => {
+    expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<{
       topic: 'prices.crypto.twap';
       symbols: readonly string[];
-      windowSeconds: 60;
     }>();
     expectTypeOf<RootCryptoTwapPriceEvent>().toEqualTypeOf<CryptoTwapPriceEvent>();
-    expectTypeOf<
-      EventForSubscriptionSpecs<
-        [{ topic: 'prices.crypto'; symbols: ['btcusd'] }]
-      >
-    >().toEqualTypeOf<CryptoPriceEvent>();
-    expectTypeOf<
-      EventForSubscriptionSpecs<
-        [
-          {
-            topic: 'prices.crypto.twap';
-            symbols: ['btc/usd'];
-            windowSeconds: 60;
-          },
-        ]
-      >
-    >().toEqualTypeOf<CryptoTwapPriceEvent>();
-    expectTypeOf<
-      EventForSubscriptionSpecs<[{ topic: 'prices.equity'; symbol: 'aapl' }]>
-    >().toEqualTypeOf<EquityPriceEvent>();
-    const pending = secureClient.subscribe([
+    const crypto = secureClient.subscribe([
       { topic: 'prices.crypto', symbols: ['btcusd'] },
     ]);
-    expectTypeOf(pending).resolves.toEqualTypeOf<
+    expectTypeOf(crypto).resolves.toEqualTypeOf<
       SubscriptionHandle<CryptoPriceEvent>
     >();
+    const twap = secureClient.subscribe([
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+    ]);
+    expectTypeOf(twap).resolves.toEqualTypeOf<
+      SubscriptionHandle<CryptoTwapPriceEvent>
+    >();
+    const equity = secureClient.subscribe([
+      { topic: 'prices.equity', symbol: 'aapl' },
+    ]);
+    expectTypeOf(equity).resolves.toEqualTypeOf<
+      SubscriptionHandle<EquityPriceEvent>
+    >();
+    const mixed = secureClient.subscribe([
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+      { topic: 'prices.equity', symbol: 'aapl' },
+    ]);
+    expectTypeOf(mixed).resolves.toEqualTypeOf<
+      SubscriptionHandle<CryptoTwapPriceEvent | EquityPriceEvent>
+    >();
+
+    for await (const event of await twap) {
+      if (event.type === 'subscribe') {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<CryptoTwapPriceEvent, { type: 'subscribe' }>
+        >();
+      } else {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<CryptoTwapPriceEvent, { type: 'update' }>
+        >();
+      }
+    }
+    for await (const event of await equity) {
+      if (event.type === 'subscribe') {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<EquityPriceEvent, { type: 'subscribe' }>
+        >();
+      } else {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<EquityPriceEvent, { type: 'update' }>
+        >();
+      }
+    }
   });
 
-  it('requires authentication for licensed prices and preserves the legacy surface', () => {
+  it('requires authentication and explicit symbols while preserving deprecated topics', () => {
     const publicClient = createPublicClient();
-    const crypto = { topic: 'prices.crypto', symbols: ['btcusd'] } as const;
-    const twap = {
-      topic: 'prices.crypto.twap',
-      symbols: ['btcusd'],
-      windowSeconds: 60,
-    } as const;
-    const equity = { topic: 'prices.equity', symbol: 'aapl' } as const;
-    // @ts-expect-error All price topics require a secure client.
-    publicClient.subscribe([crypto]);
-    // @ts-expect-error TWAP prices require a secure client.
-    publicClient.subscribe([twap]);
+    // @ts-expect-error Crypto prices require a secure client.
+    publicClient.subscribe([{ topic: 'prices.crypto', symbols: ['btcusd'] }]);
+    publicClient.subscribe([
+      // @ts-expect-error TWAP prices require a secure client.
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+    ]);
     // @ts-expect-error Equity prices require a secure client.
-    publicClient.subscribe([equity]);
-    // @ts-expect-error Realtime vendor prices are unavailable on public clients.
-    publicClient.webSockets.realtime;
-    secureClient.webSockets.rtds;
-    secureClient.environment.rtds;
-    expectTypeOf<ClientExports.RtdsWebSocketManager>();
-    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapEvent>();
-    expectTypeOf<BindingExports.CommentsEvent>();
-    const missingSymbols = { topic: 'prices.crypto' } as const;
+    publicClient.subscribe([{ topic: 'prices.equity', symbol: 'aapl' }]);
     // @ts-expect-error Crypto prices require explicit symbols.
-    secureClient.subscribe([missingSymbols]);
-    const missingWindow = {
-      topic: 'prices.crypto.twap',
-      symbols: ['btcusd'],
-    } as const;
-    // @ts-expect-error TWAP prices require an explicit window.
-    secureClient.subscribe([missingWindow]);
-    const invalidWindow = { ...twap, windowSeconds: 30 } as const;
-    // @ts-expect-error Only the 60-second window is supported.
-    secureClient.subscribe([invalidWindow]);
-    const binance = { ...crypto, topic: 'prices.crypto.binance' } as const;
-    secureClient.subscribe([binance]);
-    const chainlinkTwap = {
-      ...twap,
-      topic: 'prices.crypto.chainlink.twap',
-    } as const;
-    secureClient.subscribe([chainlinkTwap]);
-    const pyth = { ...equity, topic: 'prices.equity.pyth' } as const;
-    secureClient.subscribe([pyth]);
-    const chainlink = { ...crypto, topic: 'prices.crypto.chainlink' } as const;
-    secureClient.subscribe([chainlink]);
-    secureClient.subscribe([{ topic: 'comments' }]);
+    secureClient.subscribe([{ topic: 'prices.crypto' }]);
+    // @ts-expect-error TWAP prices require explicit symbols.
+    secureClient.subscribe([{ topic: 'prices.crypto.twap' }]);
+    expectTypeOf<BindingExports.CommentsEvent>();
+    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapEvent>();
+    // @ts-expect-error Managers are implementation details, not root exports.
+    expectTypeOf<ClientExports.RealtimeWebSocketManager>();
+    // @ts-expect-error Managers are implementation details, not root exports.
+    expectTypeOf<ClientExports.RtdsWebSocketManager>();
+    publicClient.subscribe([
+      { topic: 'prices.crypto.binance', symbols: ['btcusdt'] },
+      { topic: 'prices.crypto.chainlink', symbols: ['btc/usd'] },
+      {
+        topic: 'prices.crypto.chainlink.twap',
+        symbols: ['btc/usd'],
+        windowSeconds: 60,
+      },
+      { topic: 'prices.equity.pyth', symbol: 'aapl', types: ['update'] },
+      { topic: 'comments' },
+    ]);
   });
 
   it('preserves deprecated RTDS TWAP window narrowing', () => {
@@ -228,7 +235,7 @@ describe('SubscribeError', () => {
       | UserInputError
       | TransportError
       | ConnectionLostError
-      | SubscriptionRejectedError
+      | RequestRejectedError
     >();
   });
 });

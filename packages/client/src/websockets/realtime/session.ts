@@ -5,7 +5,7 @@ import {
 import { setNonBlockingTimeout } from '@polymarket/types';
 import {
   ConnectionLostError,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   TransportError,
 } from '../../errors';
 import { ReconnectScheduler, type WebSocketCloseInfo } from '../lifecycle';
@@ -31,7 +31,7 @@ export enum PriceSubscriptionOperation {
 }
 export type PriceSubscriptionRejection = {
   key: string;
-  error: SubscriptionRejectedError;
+  error: RequestRejectedError;
 };
 export type PriceSessionEvents = {
   event: (event: PriceEvent) => void;
@@ -170,7 +170,7 @@ export class PriceSession {
     } catch (error) {
       if (this.#closed || generation !== this.#generation) return;
       if (
-        error instanceof SubscriptionRejectedError &&
+        error instanceof RequestRejectedError &&
         error.code !== RealtimeErrorCode.AuthUnavailable
       ) {
         this.#fail(error);
@@ -252,7 +252,7 @@ export class PriceSession {
     } catch (error) {
       if (generation !== this.#generation || this.#closed) return;
       if (
-        error instanceof SubscriptionRejectedError &&
+        error instanceof RequestRejectedError &&
         next.op === PriceSubscriptionOperation.Subscribe
       ) {
         this.#rejectKeys(batch, error);

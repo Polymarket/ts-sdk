@@ -39,7 +39,7 @@ import type {
 import {
   ConnectionLostError,
   makeErrorGuard,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   TransportError,
   UserInputError,
 } from '../errors';
@@ -145,20 +145,89 @@ export type CommentsSubscription = {
   parentEntityType?: 'Event' | 'Market';
 };
 
-/** @deprecated Use {@link CryptoPriceSubscription}. */
+/**
+ * @deprecated Use `prices.crypto` with a secure client and explicit canonical
+ * USD symbols. Events include history snapshots. Removal is planned one month
+ * after the 0.11.0 release.
+ *
+ * Binance USDT prices and PolyBolt USD prices have different quote currencies
+ * and feed sources; this is not a like-for-like replacement. Chainlink spot
+ * consumers must also assess the change in feed source.
+ *
+ * @example
+ * ```ts
+ * // Before: Chainlink USD or Binance USDT prices.
+ * const legacyPrices = await publicClient.subscribe([
+ *   { topic: 'prices.crypto.chainlink', symbols: ['btc/usd'] },
+ *   { topic: 'prices.crypto.binance', symbols: ['btcusdt'] },
+ * ]);
+ *
+ * // After: secureClient is already authenticated; choose USD prices explicitly.
+ * const prices = await secureClient.subscribe([
+ *   { topic: 'prices.crypto', symbols: ['btcusd'] },
+ * ]);
+ * for await (const event of prices) {
+ *   if (event.type !== 'update') continue;
+ *   console.log(event.payload.symbol, event.payload.value);
+ * }
+ * ```
+ */
 export type CryptoPricesSubscription = {
   topic: CryptoPricesTopic;
   symbols?: readonly string[];
 };
 
-/** @deprecated Use {@link CryptoTwapPriceSubscription}. */
+/**
+ * @deprecated Use `prices.crypto.twap` with a secure client and explicit
+ * canonical USD symbols. The replacement provides 60-second TWAP prices and
+ * history snapshots. There is no replacement for the 30-second window.
+ * Removal is planned one month after the 0.11.0 release.
+ *
+ * @example
+ * ```ts
+ * // Before
+ * const legacyPrices = await publicClient.subscribe([
+ *   {
+ *     topic: 'prices.crypto.chainlink.twap',
+ *     symbols: ['btc/usd'],
+ *     windowSeconds: 60,
+ *   },
+ * ]);
+ *
+ * // After: secureClient is already authenticated.
+ * const prices = await secureClient.subscribe([
+ *   { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+ * ]);
+ * for await (const event of prices) {
+ *   if (event.type !== 'update') continue;
+ *   console.log(event.payload.symbol, event.payload.value);
+ * }
+ * ```
+ */
 export type CryptoPricesChainlinkTwapSubscription = {
   topic: CryptoPricesChainlinkTwapTopic;
   windowSeconds: CryptoPricesChainlinkTwapWindowSeconds;
   symbols?: readonly string[];
 };
 
-/** @deprecated Use {@link EquityPriceSubscription}. */
+/**
+ * @deprecated Use `prices.equity` with a secure client. The existing symbol
+ * and event-type filters remain available. Removal is planned one month after
+ * the 0.11.0 release.
+ *
+ * @example
+ * ```ts
+ * // Before
+ * const legacyPrices = await publicClient.subscribe([
+ *   { topic: 'prices.equity.pyth', symbol: 'aapl', types: ['update'] },
+ * ]);
+ *
+ * // After: secureClient is already authenticated.
+ * const prices = await secureClient.subscribe([
+ *   { topic: 'prices.equity', symbol: 'aapl', types: ['update'] },
+ * ]);
+ * ```
+ */
 export type EquityPricesSubscription = {
   topic: EquityPricesTopic;
   symbol: string;
@@ -236,18 +305,21 @@ export type PublicSubscriptionSpec =
 
 /**
  * Symbol-filtered cryptocurrency updates and recent history. Requires a secure
- * client. Symbols are normalized to lowercase `<base>usd` pairs; slashes
- * are removed and a trailing `usdt` is migrated to `usd`.
+ * client and canonical lowercase USD pairs such as `btcusd`.
+ * Slash-separated symbols and USDT pairs are rejected.
  */
 export type CryptoPriceSubscription = {
   topic: 'prices.crypto';
   symbols: readonly string[];
 };
-/** 60-second time-weighted prices and recent history. Requires a secure client. */
+/**
+ * 60-second time-weighted prices and recent history. Requires a secure client
+ * and canonical lowercase USD pairs such as `btcusd`. The window is fixed;
+ * returned events include `windowSeconds: 60` as metadata.
+ */
 export type CryptoTwapPriceSubscription = {
   topic: 'prices.crypto.twap';
   symbols: readonly string[];
-  windowSeconds: 60;
 };
 /** Equity updates and recent history. Requires a secure client. */
 export type EquityPriceSubscription = {
@@ -351,12 +423,12 @@ export type SubscriptionHandle<TEvent> = {
 export type SubscribeError =
   | TransportError
   | UserInputError
-  | SubscriptionRejectedError
+  | RequestRejectedError
   | ConnectionLostError;
 export const SubscribeError = makeErrorGuard(
   TransportError,
   UserInputError,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   ConnectionLostError,
 );
 

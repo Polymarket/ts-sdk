@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, vi } from 'vitest';
 import type { SubscriptionHandle } from '../../src/actions/subscriptions';
 import { UserInputError } from '../../src/errors';
-import { it } from './realtime-fixtures';
+import { it } from './fixtures';
 
 type SentOperation = {
   op?: string;
@@ -50,7 +50,7 @@ describe('realtime price transport', () => {
   });
 
   it('discards buffered prices when closed before iteration starts', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     try {
@@ -70,10 +70,10 @@ describe('realtime price transport', () => {
   });
 
   it('delivers each update once for duplicate canonical symbols', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     const handle = await client.subscribe([
-      { topic: 'prices.crypto', symbols: ['btcusd', 'BTCUSD'] },
+      { topic: 'prices.crypto', symbols: ['btcusd', 'btcusd'] },
     ]);
     const sequences: (number | undefined)[] = [];
     const timer = setTimeout(() => {
@@ -94,7 +94,7 @@ describe('realtime price transport', () => {
   });
 
   it('authenticates, shares keys, batches filters and grows beyond 64 keys', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     try {
@@ -116,7 +116,7 @@ describe('realtime price transport', () => {
           .sort(),
       ).toEqual([6, 64]);
       const duplicate = await client.subscribe([
-        { topic: 'prices.crypto', symbols: ['ASSET0USD'] },
+        { topic: 'prices.crypto', symbols: ['asset0usd'] },
       ]);
       expect(ObservedWebSocket.connections).toHaveLength(2);
       await duplicate.close();
@@ -141,15 +141,14 @@ describe('realtime price transport', () => {
   });
 
   it('delivers source-neutral live events with producer precision', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     try {
       const specs = [
-        { topic: 'prices.crypto', symbols: ['btcusd', 'BTCUSD', 'ethusd'] },
+        { topic: 'prices.crypto', symbols: ['btcusd', 'btcusd', 'ethusd'] },
         {
           topic: 'prices.crypto.twap',
-          symbols: ['btc/usd'],
-          windowSeconds: 60,
+          symbols: ['btcusd'],
         },
         { topic: 'prices.equity', symbol: 'aapl' },
       ] as const;
@@ -174,24 +173,21 @@ describe('realtime price transport', () => {
     }
   });
 
-  it('delivers snapshot barriers and isolates TWAP windows', async ({
-    realtimeClient: client,
+  it('delivers 60-second TWAP and equity snapshot barriers', async ({
+    secureClientWithDepositWallet: client,
   }) => {
     try {
-      for (const windowSeconds of [60] as const) {
-        const event = await first(
-          await client.subscribe([
-            {
-              topic: 'prices.crypto.twap',
-              symbols: ['btc/usd'],
-              windowSeconds,
-            },
-          ]),
-          (event) => event.type === 'subscribe',
-        );
-        expect(event.type).toBe('subscribe');
-        expect(event.payload.windowSeconds).toBe(windowSeconds);
-      }
+      const event = await first(
+        await client.subscribe([
+          {
+            topic: 'prices.crypto.twap',
+            symbols: ['btcusd'],
+          },
+        ]),
+        (event) => event.type === 'subscribe',
+      );
+      expect(event.type).toBe('subscribe');
+      expect(event.payload.windowSeconds).toBe(60);
       const equity = await first(
         await client.subscribe([{ topic: 'prices.equity', symbol: 'aapl' }]),
         (event) => event.type === 'subscribe',
@@ -203,7 +199,7 @@ describe('realtime price transport', () => {
   });
 
   it('seeds a joining handle with current shared history', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     const initial = await client.subscribe([
@@ -245,7 +241,7 @@ describe('realtime price transport', () => {
 
   it('rejects missing filters and public access before opening a socket', async ({
     publicClient,
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     await expect(
@@ -264,13 +260,19 @@ describe('realtime price transport', () => {
   });
 
   it('rejects invalid filters before opening a mixed batch', async ({
-    realtimeClient: client,
+    secureClientWithDepositWallet: client,
   }) => {
     vi.stubGlobal('WebSocket', ObservedWebSocket);
     const invalid = [
       { topic: 'prices.crypto', symbols: [] },
       { topic: 'prices.crypto.twap', symbols: ['btcusd'], windowSeconds: 30 },
-      { topic: 'prices.crypto.twap', symbols: ['/'], windowSeconds: 60 },
+      { topic: 'prices.crypto.twap', symbols: ['/'] },
+      ...['prices.crypto', 'prices.crypto.twap'].flatMap((topic) =>
+        ['btc/usd', 'btcusdt', 'BTCUSD', ' btcusd '].map((symbol) => ({
+          topic,
+          symbols: [symbol],
+        })),
+      ),
       { topic: 'prices.crypto', symbols: ['btcusd'], includeSnapshot: false },
     ];
     try {
@@ -280,9 +282,6 @@ describe('realtime price transport', () => {
             { topic: 'prices.crypto', symbols: ['btcusd'] },
             spec as never,
           ]),
-        ).rejects.toBeInstanceOf(UserInputError);
-        await expect(
-          client.webSockets.realtime.subscribe(spec as never),
         ).rejects.toBeInstanceOf(UserInputError);
       }
       expect(ObservedWebSocket.connections).toHaveLength(0);

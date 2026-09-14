@@ -18,17 +18,13 @@ export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
       { key: JSON.stringify([spec.topic, symbol]), topic: spec.topic, symbol },
     ];
   }
-  return spec.symbols.map((input) => {
-    const symbol = input
-      .toLowerCase()
-      .replaceAll('/', '')
-      .replace(/usdt$/, 'usd');
+  return spec.symbols.map((symbol) => {
     if (spec.topic === 'prices.crypto.twap') {
       return {
-        key: JSON.stringify([spec.topic, symbol, spec.windowSeconds]),
+        key: JSON.stringify([spec.topic, symbol, 60]),
         topic: spec.topic,
         symbol,
-        windowSeconds: spec.windowSeconds,
+        windowSeconds: 60,
       };
     }
     return {

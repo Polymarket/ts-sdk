@@ -1,11 +1,11 @@
 import { describe, expect, vi } from 'vitest';
-import { it } from './realtime-fixtures';
+import { it } from './fixtures';
 
 describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
   'realtime price soak',
   () => {
     it('streams 100 filters for 30 minutes', async ({
-      realtimeClient: client,
+      secureClientWithDepositWallet: client,
     }) => {
       const NativeWebSocket = globalThis.WebSocket;
       const closes: number[] = [];
@@ -67,7 +67,6 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
           {
             topic: 'prices.crypto.twap',
             symbols: ['btcusd'],
-            windowSeconds: 60,
           },
         ]);
         expect(connections).toBe(2);

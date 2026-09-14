@@ -177,7 +177,7 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return this.context.perps;
   }
 
-  /** Shared managers for realtime subscriptions. */
+  /** @internal Shared managers for realtime subscriptions. */
   get webSockets(): PublicWebSocketManagers {
     return this.context.webSockets;
   }
@@ -681,7 +681,7 @@ class BaseSecureClient<
     return this.context.builderGateway;
   }
 
-  /** Shared managers for public and authenticated realtime subscriptions. */
+  /** @internal Shared managers for public and authenticated realtime subscriptions. */
   override get webSockets(): SecureWebSocketManagers {
     return this.context.webSockets;
   }

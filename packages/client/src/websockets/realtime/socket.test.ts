@@ -1,20 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
-import { polyboltReconnectDelay, subscriptionsFor } from './protocol';
+import { polyboltReconnectDelay } from './protocol';
 
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
-describe('price subscription normalization and heartbeat', () => {
-  it('normalizes crypto aliases to the same shared subscription key', () => {
-    const aliases = subscriptionsFor({
-      topic: 'prices.crypto',
-      symbols: ['BTC/USDT', 'btcusd'],
-    });
-    expect(aliases[0]).toEqual(aliases[1]);
-    expect(aliases[0]).toMatchObject({ symbol: 'btcusd' });
-  });
+describe('price reconnect timing and heartbeat', () => {
   it('uses draining jitter independently of the exponential retry count', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0.999);
     expect(polyboltReconnectDelay(4003, 0)).toBe(9990);

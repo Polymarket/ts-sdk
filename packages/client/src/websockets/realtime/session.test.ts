@@ -6,7 +6,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ConnectionLostError,
-  SubscriptionRejectedError,
+  RequestRejectedError,
   TransportError,
 } from '../../errors';
 import type { PriceKey } from './protocol';
@@ -134,9 +134,10 @@ describe('price subscription policy', () => {
     const harness = setup();
     const { session, connection } = harness;
     const existing = await accept(session);
-    const rejection = new SubscriptionRejectedError(
-      RealtimeErrorCode.BadFilter,
-    );
+    const rejection = new RequestRejectedError('Realtime request rejected.', {
+      status: 200,
+      code: RealtimeErrorCode.BadFilter,
+    });
     connection.change.mockRejectedValueOnce(rejection);
     const newcomer = listener();
     const assertion = expect(
@@ -155,7 +156,10 @@ describe('price subscription policy', () => {
     const { session, connection } = setup();
     const rejected = listener();
     const accepted = listener();
-    const error = new SubscriptionRejectedError(RealtimeErrorCode.BadFilter);
+    const error = new RequestRejectedError('Realtime request rejected.', {
+      status: 200,
+      code: RealtimeErrorCode.BadFilter,
+    });
     connection.change.mockResolvedValueOnce([{ key: 'ethusd', error }]);
     const bad = expect(session.add(crypto('ethusd'), rejected)).rejects.toBe(
       error,
@@ -294,15 +298,21 @@ describe('price subscription policy', () => {
   it('treats invalid authorization as terminal but retries temporary unavailability', async () => {
     const terminal = setup();
     terminal.connection.authorize.mockRejectedValueOnce(
-      new SubscriptionRejectedError(RealtimeErrorCode.AuthInvalid),
+      new RequestRejectedError('Realtime request rejected.', {
+        status: 200,
+        code: RealtimeErrorCode.AuthInvalid,
+      }),
     );
     await expect(
       terminal.session.add(crypto(), listener()),
-    ).rejects.toBeInstanceOf(SubscriptionRejectedError);
+    ).rejects.toBeInstanceOf(RequestRejectedError);
     expect(terminal.session.closed).toBe(true);
     const temporary = setup();
     temporary.connection.authorize.mockRejectedValueOnce(
-      new SubscriptionRejectedError(RealtimeErrorCode.AuthUnavailable),
+      new RequestRejectedError('Realtime request rejected.', {
+        status: 200,
+        code: RealtimeErrorCode.AuthUnavailable,
+      }),
     );
     const pending = temporary.session.add(crypto(), listener());
     await vi.advanceTimersByTimeAsync(1_000);

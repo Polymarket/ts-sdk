@@ -11,7 +11,7 @@ const client = await createSecureClient({
 try {
   const prices = await client.subscribe([
     { topic: 'prices.crypto', symbols: ['btcusd', 'ethusd'] },
-    { topic: 'prices.crypto.twap', symbols: ['btc/usd'], windowSeconds: 60 },
+    { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
     { topic: 'prices.equity', symbol: 'aapl' },
   ]);
   let count = 0;
