@@ -1,3 +1,4 @@
+import type { EpochMilliseconds } from '@polymarket/bindings';
 import type {
   PerpsBook,
   PerpsCandle,
@@ -20,6 +21,7 @@ import {
   fetchPerpsInstruments,
   fetchPerpsTicker,
   fetchPerpsTickers,
+  getServerTime,
   type ListPerpsCandlesRequest,
   type ListPerpsFundingHistoryRequest,
   type ListPerpsTradesRequest,
@@ -108,6 +110,7 @@ export {
   FetchPerpsInstrumentsError,
   FetchPerpsTickerError,
   FetchPerpsTickersError,
+  GetServerTimeError,
   ListPerpsCandlesError,
   ListPerpsFundingHistoryError,
   ListPerpsTradesError,
@@ -258,6 +261,24 @@ export type PublicPerpsActions = {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   fetchPerpsFees(): Promise<PerpsFeeScheduleEntry[]>;
+
+  /**
+   * Gets the current Perps server time as a Unix timestamp in milliseconds.
+   *
+   * @remarks
+   * This read does not change how the SDK timestamps or signs Perps requests.
+   *
+   * @example
+   * ```ts
+   * const serverTime = await client.getServerTime();
+   * ```
+   *
+   * @throws {@link GetServerTimeError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  getServerTime(): Promise<EpochMilliseconds>;
 };
 
 /**
@@ -361,6 +382,7 @@ export function perpsActions(
     fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),
     fetchPerpsTicker: (request) => fetchPerpsTicker(client, request),
     fetchPerpsTickers: (request) => fetchPerpsTickers(client, request),
+    getServerTime: () => getServerTime(client),
     listPerpsCandles: (request) => listPerpsCandles(client, request),
     listPerpsFundingHistory: (request) =>
       listPerpsFundingHistory(client, request),

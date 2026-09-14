@@ -22,6 +22,7 @@ import {
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 const MAX_PERPS_PRICE_SIGNIFICANT_FIGURES = 5;
+const MAX_SERVER_CLOCK_SKEW_MS = 60_000;
 
 const [instrument] = await publicClient
   .fetchPerpsInstruments()
@@ -31,6 +32,21 @@ const [ticker] = await publicClient
   .then(expectNonEmptyArray);
 
 describe('Perps integration', () => {
+  it('fetches the Perps server time in epoch milliseconds', async ({
+    publicClient,
+  }) => {
+    const startedAt = Date.now();
+    const serverTime = await publicClient.getServerTime();
+    const completedAt = Date.now();
+
+    expect(serverTime).toBeGreaterThanOrEqual(
+      startedAt - MAX_SERVER_CLOCK_SKEW_MS,
+    );
+    expect(serverTime).toBeLessThanOrEqual(
+      completedAt + MAX_SERVER_CLOCK_SKEW_MS,
+    );
+  });
+
   it.runIf(runMeteredTests)(
     'deposits and withdraws the same Perps amount',
     async ({ secureClientWithDepositWallet }) => {
