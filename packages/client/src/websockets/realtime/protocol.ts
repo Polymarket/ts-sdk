@@ -1,60 +1,50 @@
-import { PolyboltChannel } from '@polymarket/bindings/subscriptions';
 import type { PriceSubscription } from '../../actions/subscriptions';
 
-export type PolyboltFilter =
-  | { symbol: string; window_seconds?: 60 }
-  | { asset_id: string };
-export type PolyboltSubscription = {
-  key: string;
-  channel: PolyboltChannel;
-  filter: PolyboltFilter;
-  symbol?: string;
-};
+/** @internal A single canonical price subscription shared by listeners. */
+export type PriceKey =
+  | { key: string; topic: 'prices.crypto'; symbol: string }
+  | {
+      key: string;
+      topic: 'prices.crypto.twap';
+      symbol: string;
+      windowSeconds: 60;
+    }
+  | { key: string; topic: 'prices.equity'; symbol: string }
+  | { key: string; topic: 'prices.polymarket'; assetId: string };
 
-export function subscriptionsFor(
-  spec: PriceSubscription,
-): PolyboltSubscription[] {
+export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
   if (spec.topic === 'prices.polymarket') {
-    return spec.assetIds.map((asset_id) =>
-      entry(PolyboltChannel.Polymarket, { asset_id }),
-    );
+    return spec.assetIds.map((assetId) => ({
+      key: JSON.stringify([spec.topic, assetId]),
+      topic: spec.topic,
+      assetId,
+    }));
   }
   if (spec.topic === 'prices.equity') {
-    const { symbol } = spec;
+    const symbol = spec.symbol.toLowerCase();
     return [
-      entry(
-        PolyboltChannel.Equity,
-        { symbol: symbol.toLowerCase() },
-        symbol.toLowerCase(),
-      ),
+      { key: JSON.stringify([spec.topic, symbol]), topic: spec.topic, symbol },
     ];
   }
-  const twap = spec.topic === 'prices.crypto.twap';
   return spec.symbols.map((input) => {
-    const symbol = normalizeCryptoSymbol(input);
-    return entry(
-      twap ? PolyboltChannel.Twap : PolyboltChannel.Crypto,
-      twap
-        ? {
-            symbol,
-            window_seconds: spec.windowSeconds,
-          }
-        : { symbol },
+    const symbol = input
+      .toLowerCase()
+      .replaceAll('/', '')
+      .replace(/usdt$/, 'usd');
+    if (spec.topic === 'prices.crypto.twap') {
+      return {
+        key: JSON.stringify([spec.topic, symbol, spec.windowSeconds]),
+        topic: spec.topic,
+        symbol,
+        windowSeconds: spec.windowSeconds,
+      };
+    }
+    return {
+      key: JSON.stringify([spec.topic, symbol]),
+      topic: spec.topic,
       symbol,
-    );
+    };
   });
-}
-
-function normalizeCryptoSymbol(input: string): string {
-  return input.toLowerCase().replaceAll('/', '').replace(/usdt$/, 'usd');
-}
-
-function entry(
-  channel: PolyboltChannel,
-  filter: PolyboltFilter,
-  symbol?: string,
-): PolyboltSubscription {
-  return { key: JSON.stringify([channel, filter]), channel, filter, symbol };
 }
 
 export function polyboltReconnectDelay(code: number, attempt: number): number {

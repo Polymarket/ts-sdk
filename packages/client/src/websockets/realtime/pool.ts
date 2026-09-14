@@ -5,18 +5,15 @@ import type {
   SubscriptionHandle,
 } from '../../actions/subscriptions';
 import { subscriptionsFor } from './protocol';
-import {
-  PolyboltSocket,
-  type PolyboltSocketOptions,
-  type PriceListener,
-} from './socket';
+import { type PriceListener, PriceSession } from './session';
+import { PolyboltConnection, type PolyboltConnectionOptions } from './socket';
 
 /** @internal Keeps each filter on exactly one connection until it is removed. */
 export class SocketPool {
-  readonly #options: PolyboltSocketOptions;
-  readonly #sockets = new Set<PolyboltSocket>();
+  readonly #options: PolyboltConnectionOptions;
+  readonly #sockets = new Set<PriceSession>();
   readonly #closers = new Set<() => Promise<void>>();
-  constructor(options: PolyboltSocketOptions) {
+  constructor(options: PolyboltConnectionOptions) {
     this.#options = options;
   }
 
@@ -62,10 +59,13 @@ export class SocketPool {
                 'symbol' in event.payload
                   ? {
                       ...event.payload,
-                      symbol: subscription.symbol ?? event.payload.symbol,
+                      symbol:
+                        'symbol' in subscription
+                          ? subscription.symbol
+                          : event.payload.symbol,
                     }
                   : event.payload;
-              // Echo the caller's normalized symbol spelling, including TWAP slashes.
+              // Each shared key uses the same canonical symbol spelling.
               queue.push({
                 ...event,
                 payload,
@@ -97,14 +97,14 @@ export class SocketPool {
     };
   }
 
-  #place(key: string): PolyboltSocket {
+  #place(key: string): PriceSession {
     for (const socket of this.#sockets) {
       if (socket.closed) this.#sockets.delete(socket);
       else if (socket.has(key)) return socket;
     }
     for (const socket of this.#sockets)
       if (socket.size < socket.keyTarget) return socket;
-    const socket = new PolyboltSocket(this.#options);
+    const socket = new PriceSession(new PolyboltConnection(this.#options));
     this.#sockets.add(socket);
     return socket;
   }

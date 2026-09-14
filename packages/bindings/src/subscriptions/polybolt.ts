@@ -28,6 +28,17 @@ export enum PolyboltChannel {
   Polymarket = 'price.polymarket',
 }
 
+/** A filter sent to a PolyBolt price channel. */
+export type PolyboltFilter =
+  | { symbol: string; window_seconds?: 60 }
+  | { asset_id: string };
+
+/** One item in a PolyBolt subscription operation. */
+export type PolyboltSubscription = {
+  channel: PolyboltChannel;
+  filter: PolyboltFilter;
+};
+
 export enum PolyboltAckOp {
   Subscribed = 'subscribed',
   Unsubscribed = 'unsubscribed',

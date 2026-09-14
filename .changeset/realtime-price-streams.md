@@ -3,7 +3,7 @@
 '@polymarket/bindings': minor
 ---
 
-Add opt-in PolyBolt price streams alongside the existing RTDS transport.
+Add PolyBolt price streams through `client.subscribe()`, using production automatically for the new topics.
 
 New PolyBolt topics:
 
@@ -12,8 +12,9 @@ New PolyBolt topics:
 - `prices.crypto.twap` supports the deployed 60-second series only. Crypto symbols use the lowercase `<base>usd` wire spelling, such as `btcusd`; a legacy trailing `usdt` is normalized to `usd`. See the [real-time data catalog](https://docs.polymarket.com/market-data/realtime-data).
 - SDK topic names are plural while PolyBolt wire channels are singular: for example, `prices.crypto` maps to `price.crypto`.
 
-The PolyBolt transport is available through `webSockets.realtime` and the
-`realtime: { ws, headers? }` environment entry. Price values preserve decimal
+No environment override or direct `webSockets.realtime` call is required.
+Advanced integrations can use `webSockets.realtime` directly or override the
+connection through the `realtime: { ws, headers? }` environment entry. Price values preserve decimal
 precision and timestamps represent producer time. Subscriptions await server
 acceptance, share connections, spread filters beyond the 64-key connection
 limit, reconnect automatically, and report slow-reader drops without forcing a

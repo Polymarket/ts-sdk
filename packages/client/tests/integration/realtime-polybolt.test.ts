@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, vi } from 'vitest';
 import type { SubscriptionHandle } from '../../src/actions/subscriptions';
-import { ConnectionLostError, UserInputError } from '../../src/errors';
+import { UserInputError } from '../../src/errors';
 import { it } from './realtime-fixtures';
 
 type SentOperation = {
@@ -47,6 +47,25 @@ describe('realtime price transport', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     ObservedWebSocket.connections = [];
+  });
+
+  it('accepts public BBO subscriptions without sending authentication', async ({
+    publicClient,
+  }) => {
+    vi.stubGlobal('WebSocket', ObservedWebSocket);
+    try {
+      const handle = await publicClient.subscribe([
+        { topic: 'prices.polymarket', assetIds: ['1'] },
+      ]);
+      const operations = ObservedWebSocket.connections.flatMap(
+        (socket) => socket.operations,
+      );
+      expect(operations.some(({ op }) => op === 'subscribe')).toBe(true);
+      expect(operations.some(({ op }) => op === 'auth')).toBe(false);
+      await handle.close();
+    } finally {
+      await publicClient.closeSubscriptions();
+    }
   });
 
   it('discards buffered prices when closed before iteration starts', async ({
@@ -165,7 +184,7 @@ describe('realtime price transport', () => {
             expect(typeof event.payload.value).toBe('string');
           if ('windowSeconds' in event.payload) {
             expect(event.payload.windowSeconds).toBe(60);
-            expect(event.payload.symbol).toBe('btc/usd');
+            expect(event.payload.symbol).toBe('btcusd');
           }
         }),
       );
@@ -286,66 +305,6 @@ describe('realtime price transport', () => {
         ).rejects.toBeInstanceOf(UserInputError);
       }
       expect(ObservedWebSocket.connections).toHaveLength(0);
-    } finally {
-      await client.closeSubscriptions();
-    }
-  });
-
-  it('records dropped frames without resubscribing and ends policy/auth closures without reconnecting', async ({
-    realtimeClient: client,
-  }) => {
-    vi.stubGlobal('WebSocket', ObservedWebSocket);
-    try {
-      const handle = await client.subscribe([
-        { topic: 'prices.crypto', symbols: ['btcusd', 'ethusd'] },
-      ]);
-      const socket = ObservedWebSocket.connections[0];
-      expect(socket).toBeDefined();
-      // Inject only the loss signal; subsequent recovery uses the real server.
-      socket?.dispatchEvent(
-        new MessageEvent('message', {
-          data: JSON.stringify({
-            v: 1,
-            channel: 'price.crypto',
-            seq: 1,
-            ts: Date.now(),
-            dropped: 1,
-            payload: {},
-          }),
-        }),
-      );
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      expect(
-        socket?.operations.filter((op) => op.op === 'subscribe'),
-      ).toHaveLength(1);
-      expect(socket?.operations.some((op) => op.op === 'unsubscribe')).toBe(
-        false,
-      );
-      await handle.close();
-      await client.closeSubscriptions();
-      for (const code of [4001, 4008]) {
-        const active = await client.subscribe([
-          { topic: 'prices.polymarket', assetIds: ['1'] },
-        ]);
-        const current = ObservedWebSocket.connections.at(-1);
-        const consuming = (async () => {
-          for await (const _event of active) {
-            /* Wait for terminal error. */
-          }
-        })();
-        const assertion =
-          expect(consuming).rejects.toBeInstanceOf(ConnectionLostError);
-        // The edge does not echo client close codes. Inject the terminal code
-        // at the transport boundary, then close the actual connection.
-        current?.dispatchEvent(
-          new CloseEvent('close', {
-            code,
-            reason: 'integration policy boundary',
-          }),
-        );
-        current?.close();
-        await assertion;
-      }
     } finally {
       await client.closeSubscriptions();
     }

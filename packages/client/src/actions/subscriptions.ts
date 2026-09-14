@@ -417,8 +417,9 @@ const MarketSubscriptionSchema = z.union([
 /**
  * Starts one or more realtime subscriptions on this client.
  *
- * Licensed vendor price subscriptions require a secure client and explicit
- * filters.
+ * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+ * require a secure client and explicit filters, and include history snapshots
+ * and live updates. Legacy source-named topics retain their existing behavior.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

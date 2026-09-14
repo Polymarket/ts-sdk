@@ -71,8 +71,9 @@ export type SecureSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
    *
-   * Price subscriptions require explicit filters. Vendor price streams include
-   * recent-history snapshots as well as live updates.
+   * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+   * require explicit filters and include history snapshots and live updates.
+   * Legacy source-named topics retain their existing filter and event behavior.
    *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.
