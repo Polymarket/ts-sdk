@@ -1,6 +1,7 @@
 import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
   type PerpsCredentials,
+  PerpsKnownInternalTransferType,
   PerpsPnlInterval,
   PerpsSortDirection,
   PerpsTimeInForce,
@@ -1719,6 +1720,60 @@ describe('PerpsSession', () => {
       ]);
     });
 
+    it('lists normalized internal transfers and dedupes timestamp boundaries', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/internal-transfers`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+
+            if (params.get('end_timestamp') === '3000') {
+              return HttpResponse.json({
+                data: [
+                  internalTransfer(3, 3000, 'transfer'),
+                  internalTransfer(2, 2000, 'referral_payout'),
+                ],
+                more: true,
+              });
+            }
+
+            return HttpResponse.json({
+              data: [
+                internalTransfer(2, 2000, 'referral_payout'),
+                internalTransfer(1, 1000, 'future_transfer_type'),
+              ],
+              more: false,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: number[][] = [];
+      const types: string[] = [];
+      for await (const page of session.listInternalTransfers({
+        end: 3000,
+        start: 0,
+      })) {
+        pages.push(page.items.map((transfer) => transfer.transferId));
+        types.push(...page.items.map((transfer) => transfer.type));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages).toEqual([[3, 2], [1]]);
+      expect(types).toEqual([
+        PerpsKnownInternalTransferType.Transfer,
+        PerpsKnownInternalTransferType.ReferralPayout,
+        'future_transfer_type',
+      ]);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+      ]);
+    });
+
     it('stops paging at the requested start timestamp', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
@@ -2123,6 +2178,23 @@ function accountFill(tradeId: number, timestamp: number) {
     taker: true,
     timestamp,
     trade_id: tradeId,
+  };
+}
+
+function internalTransfer(
+  transferId: number,
+  createdTimestamp: number,
+  type: string,
+) {
+  return {
+    transfer_id: transferId,
+    type,
+    asset: 'USDC',
+    amount: '100.00',
+    direction: 'out',
+    counterparty: '0x0000000000000000000000000000000000000002',
+    label: `transfer-${transferId}`,
+    created_timestamp: createdTimestamp,
   };
 }
 

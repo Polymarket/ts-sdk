@@ -306,9 +306,19 @@ export class ServiceClient {
         .json()
         .catch(() => ({}));
       if (error) {
+        const explicitCode =
+          typeof code === 'string' && code !== '' ? code : undefined;
+        const inferredCode =
+          explicitCode === undefined &&
+          response.status !== 400 &&
+          typeof error === 'string' &&
+          /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(error)
+            ? error
+            : undefined;
+        const responseCode = explicitCode ?? inferredCode;
         return {
           message: `${String(error)} (${response.url})`,
-          ...(typeof code === 'string' && code !== '' ? { code } : {}),
+          ...(responseCode !== undefined ? { code: responseCode } : {}),
           ...(typeof retryAfterSeconds === 'number' &&
           Number.isFinite(retryAfterSeconds) &&
           retryAfterSeconds >= 0
