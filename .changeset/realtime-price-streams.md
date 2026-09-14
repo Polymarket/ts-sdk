@@ -7,7 +7,6 @@ Add PolyBolt price streams through `client.subscribe()`, using production automa
 
 New PolyBolt topics:
 
-- `prices.polymarket` is public and delivers current best-bid-and-offer snapshots plus updates.
 - `prices.crypto`, `prices.crypto.twap`, and `prices.equity` require a secure client and explicit, nonempty filters.
 - `prices.crypto.twap` supports the deployed 60-second series only. Crypto symbols use the lowercase `<base>usd` wire spelling, such as `btcusd`; a legacy trailing `usdt` is normalized to `usd`. See the [real-time data catalog](https://docs.polymarket.com/market-data/realtime-data).
 - SDK topic names are plural while PolyBolt wire channels are singular: for example, `prices.crypto` maps to `price.crypto`.

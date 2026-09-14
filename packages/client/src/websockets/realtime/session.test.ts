@@ -1,12 +1,6 @@
-import {
-  toConditionId,
-  toDecimalString,
-  toEpochMilliseconds,
-  toTokenId,
-} from '@polymarket/bindings';
+import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
-  type PolymarketPriceEvent,
   RealtimeErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -332,32 +326,5 @@ describe('price subscription policy', () => {
         },
       }),
     );
-  });
-
-  it('replays the latest BBO as a snapshot to a shared late joiner', async () => {
-    const harness = setup();
-    const { session } = harness;
-    const subscription: PriceKey = {
-      key: 'asset-1',
-      topic: 'prices.polymarket',
-      assetId: '1',
-    };
-    await accept(session, subscription);
-    const event: PolymarketPriceEvent = {
-      topic: 'prices.polymarket',
-      type: 'update',
-      timestamp: toEpochMilliseconds(Date.now()),
-      payload: {
-        conditionId: toConditionId(`0x${'1'.repeat(64)}`),
-        assetId: toTokenId('1'),
-        bestBid: toDecimalString('0.4'),
-        bestAsk: toDecimalString('0.5'),
-        hash: 'hash',
-        timestamp: toEpochMilliseconds(Date.now()),
-      },
-    };
-    harness.events.event(event);
-    const joining = await accept(session, subscription);
-    expect(joining.event).toHaveBeenCalledWith({ ...event, type: 'subscribe' });
   });
 });

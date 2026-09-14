@@ -36,7 +36,7 @@ type PendingOp = {
 export type PolyboltConnectionOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials?: ApiKeyCreds;
+  credentials: ApiKeyCreds;
 };
 
 /** @internal Adapts price operations and events to the PolyBolt wire protocol. */
@@ -79,9 +79,7 @@ export class PolyboltConnection implements PriceSessionConnection {
   }
 
   async authorize(): Promise<void> {
-    const credentials = this.#options.credentials;
-    if (credentials === undefined) return;
-    const { key, secret, passphrase } = credentials;
+    const { key, secret, passphrase } = this.#options.credentials;
     await this.#request(
       { op: 'auth', auth: { apiKey: key, secret, passphrase } },
       PolyboltAckOp.Authed,
@@ -258,11 +256,6 @@ function toWireSubscription(subscription: PriceKey): PolyboltSubscription {
       return {
         channel: PolyboltChannel.Equity,
         filter: { symbol: subscription.symbol },
-      };
-    case 'prices.polymarket':
-      return {
-        channel: PolyboltChannel.Polymarket,
-        filter: { asset_id: subscription.assetId },
       };
   }
 }

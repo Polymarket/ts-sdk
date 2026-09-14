@@ -9,17 +9,9 @@ export type PriceKey =
       symbol: string;
       windowSeconds: 60;
     }
-  | { key: string; topic: 'prices.equity'; symbol: string }
-  | { key: string; topic: 'prices.polymarket'; assetId: string };
+  | { key: string; topic: 'prices.equity'; symbol: string };
 
 export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
-  if (spec.topic === 'prices.polymarket') {
-    return spec.assetIds.map((assetId) => ({
-      key: JSON.stringify([spec.topic, assetId]),
-      topic: spec.topic,
-      assetId,
-    }));
-  }
   if (spec.topic === 'prices.equity') {
     const symbol = spec.symbol.toLowerCase();
     return [

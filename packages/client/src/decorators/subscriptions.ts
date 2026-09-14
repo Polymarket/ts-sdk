@@ -33,9 +33,6 @@ export type {
   EquityPriceSubscription,
   EquityPricesEvent,
   EquityPricesSubscription,
-  PolymarketPriceEvent,
-  PolymarketPriceSnapshotEvent,
-  PolymarketPriceSubscription,
   PriceSubscription,
 } from '../actions';
 export { SubscribeError } from '../actions';

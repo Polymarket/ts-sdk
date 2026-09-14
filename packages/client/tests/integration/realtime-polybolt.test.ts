@@ -49,25 +49,6 @@ describe('realtime price transport', () => {
     ObservedWebSocket.connections = [];
   });
 
-  it('accepts public BBO subscriptions without sending authentication', async ({
-    publicClient,
-  }) => {
-    vi.stubGlobal('WebSocket', ObservedWebSocket);
-    try {
-      const handle = await publicClient.subscribe([
-        { topic: 'prices.polymarket', assetIds: ['1'] },
-      ]);
-      const operations = ObservedWebSocket.connections.flatMap(
-        (socket) => socket.operations,
-      );
-      expect(operations.some(({ op }) => op === 'subscribe')).toBe(true);
-      expect(operations.some(({ op }) => op === 'auth')).toBe(false);
-      await handle.close();
-    } finally {
-      await publicClient.closeSubscriptions();
-    }
-  });
-
   it('discards buffered prices when closed before iteration starts', async ({
     realtimeClient: client,
   }) => {
@@ -120,7 +101,7 @@ describe('realtime price transport', () => {
       const handles = await Promise.all(
         Array.from({ length: 70 }, (_, index) =>
           client.subscribe([
-            { topic: 'prices.polymarket', assetIds: [String(index + 1)] },
+            { topic: 'prices.crypto', symbols: [`asset${index}usd`] },
           ]),
         ),
       );
@@ -135,7 +116,7 @@ describe('realtime price transport', () => {
           .sort(),
       ).toEqual([6, 64]);
       const duplicate = await client.subscribe([
-        { topic: 'prices.polymarket', assetIds: ['0001'] },
+        { topic: 'prices.crypto', symbols: ['ASSET0USD'] },
       ]);
       expect(ObservedWebSocket.connections).toHaveLength(2);
       await duplicate.close();

@@ -24,7 +24,6 @@ import type {
   PerpsStatisticEvent,
   PerpsTickerEvent,
   PerpsTradeEvent,
-  PolymarketPriceEvent,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
@@ -62,8 +61,6 @@ export type {
   CryptoTwapPriceSnapshotEvent,
   EquityPriceEvent,
   EquityPricesEvent,
-  PolymarketPriceEvent,
-  PolymarketPriceSnapshotEvent,
 } from '@polymarket/bindings/subscriptions';
 
 // Event types — re-exported from bindings for consumer convenience.
@@ -235,7 +232,6 @@ export type PublicSubscriptionSpec =
   | CryptoPricesSubscription
   | CryptoPricesChainlinkTwapSubscription
   | EquityPricesSubscription
-  | PolymarketPriceSubscription
   | PerpsMarketDataSubscription;
 
 /**
@@ -259,20 +255,14 @@ export type EquityPriceSubscription = {
   symbol: string;
   types?: readonly ('subscribe' | 'update')[];
 };
-/** Public best bid and offer snapshots and updates. */
-export type PolymarketPriceSubscription = {
-  topic: 'prices.polymarket';
-  assetIds: readonly string[];
-};
 export type PriceSubscription =
   | CryptoPriceSubscription
   | CryptoTwapPriceSubscription
-  | EquityPriceSubscription
-  | PolymarketPriceSubscription;
+  | EquityPriceSubscription;
 export type SecureSubscriptionSpec =
   | PublicSubscriptionSpec
   | UserSubscription
-  | Exclude<PriceSubscription, PolymarketPriceSubscription>;
+  | PriceSubscription;
 
 // Event unions, aligned with subscription specs.
 export type PublicRealtimeEvent =
@@ -281,7 +271,6 @@ export type PublicRealtimeEvent =
   | CommentsEvent
   | CryptoPricesEvent
   | EquityPricesEvent
-  | PolymarketPriceEvent
   | PerpsMarketDataEvent;
 
 export type SecureRealtimeEvent =
@@ -307,7 +296,6 @@ type EventByTopic = {
   'prices.crypto': CryptoPriceEvent;
   'prices.crypto.twap': CryptoTwapPriceEvent;
   'prices.equity': EquityPriceEvent;
-  'prices.polymarket': PolymarketPriceEvent;
   comments: CommentsEvent;
   'prices.crypto.binance': CryptoPricesBinanceEvent;
   'prices.crypto.chainlink': CryptoPricesChainlinkEvent;
@@ -379,7 +367,6 @@ enum SubscriptionTopic {
   Crypto = 'prices.crypto',
   Twap = 'prices.crypto.twap',
   Equity = 'prices.equity',
-  Polymarket = 'prices.polymarket',
   Comments = 'comments',
   LegacyBinance = 'prices.crypto.binance',
   LegacyChainlink = 'prices.crypto.chainlink',
@@ -465,8 +452,6 @@ export async function subscribe(
             'This subscription requires a secure client.',
           );
         return parsePriceSubscription(subscription);
-      case 'prices.polymarket':
-        return parsePriceSubscription(subscription);
       case 'prices.crypto.chainlink.twap':
         parseUserInput(subscription, LegacyTwapSubscriptionSchema);
         break;
@@ -505,8 +490,6 @@ function subscribeOne(
     case 'prices.equity':
       if (!client.isSecureClient())
         throw new UserInputError('This subscription requires a secure client.');
-      return client.webSockets.realtime.subscribe(spec);
-    case 'prices.polymarket':
       return client.webSockets.realtime.subscribe(spec);
     case 'comments':
     case 'prices.crypto.binance':

@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import polymarketSnapshot from './__fixtures__/polybolt/asyncapi-price-polymarket-snapshot.json';
 import captured from './__fixtures__/polybolt/staging.json';
 import {
   PolyboltAckSchema,
@@ -26,43 +25,10 @@ describe('realtime frame normalization', () => {
         expect(event).toBeUndefined();
         continue;
       }
-      if (
-        envelope.channel === 'price.polymarket' &&
-        envelope.snapshot &&
-        Array.isArray(envelope.payload)
-      ) {
-        expect(event).toBeUndefined();
-        continue;
-      }
       expect(event).toBeDefined();
       expect(event?.timestamp).toBe(frame.ts);
       expect(event?.seq).toBe(frame.seq);
     }
-  });
-
-  it('delivers the AsyncAPI warm BBO snapshot and skips only the cold barrier', () => {
-    expect(
-      parsePolyboltEvent(PolyboltEnvelopeSchema.parse(polymarketSnapshot)),
-    ).toMatchObject({
-      topic: 'prices.polymarket',
-      type: 'subscribe',
-      payload: {
-        conditionId:
-          '0x9deb0baac40648821f96f01339229a422e2f5c877de55dc4dbf981f95a1e709c',
-        assetId:
-          '21742633143463906290569050155826241533067272736897614950488156847949938836455',
-        bestBid: '0.51',
-        bestAsk: '0.53',
-      },
-    });
-    expect(
-      parsePolyboltEvent(
-        PolyboltEnvelopeSchema.parse({
-          ...polymarketSnapshot,
-          payload: [],
-        }),
-      ),
-    ).toBeUndefined();
   });
 
   it('preserves the actual TWAP decimal encoding in live updates and history', () => {
@@ -120,32 +86,7 @@ describe('realtime frame normalization', () => {
     });
   });
 
-  it('normalizes BBO identifiers and ignores malformed or unsupported frames', () => {
-    const event = parsePolyboltEvent(
-      PolyboltEnvelopeSchema.parse({
-        v: 1,
-        channel: 'price.polymarket',
-        seq: 1,
-        ts: 123456,
-        payload: {
-          market: `0x${'1'.repeat(64)}`,
-          asset_id: '123',
-          best_bid: '0.4',
-          best_ask: '0.5',
-          hash: 'abc',
-          timestamp: 123456,
-        },
-      }),
-    );
-    expect(event).toMatchObject({
-      topic: 'prices.polymarket',
-      payload: {
-        assetId: '123',
-        conditionId: `0x${'1'.repeat(64)}`,
-        bestBid: '0.4',
-        bestAsk: '0.5',
-      },
-    });
+  it('ignores malformed or unsupported frames', () => {
     expect(
       PolyboltEnvelopeSchema.safeParse({ v: 2, channel: 'price.crypto' })
         .success,
@@ -161,28 +102,5 @@ describe('realtime frame normalization', () => {
         }),
       ),
     ).toBeUndefined();
-  });
-
-  it('delivers BBO updates when either book side is empty', () => {
-    const event = parsePolyboltEvent(
-      PolyboltEnvelopeSchema.parse({
-        v: 1,
-        channel: 'price.polymarket',
-        seq: 2,
-        ts: 123456,
-        payload: {
-          market: `0x${'1'.repeat(64)}`,
-          asset_id: '123',
-          best_bid: '',
-          best_ask: '0.5',
-          hash: 'abc',
-          timestamp: 123456,
-        },
-      }),
-    );
-    expect(event).toMatchObject({
-      topic: 'prices.polymarket',
-      payload: { bestBid: null, bestAsk: '0.5' },
-    });
   });
 });

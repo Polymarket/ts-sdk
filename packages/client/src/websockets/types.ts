@@ -4,7 +4,6 @@ import type {
   EquityPricesEvent,
   MarketEvent,
   PerpsMarketDataEvent,
-  PolymarketPriceEvent,
   PriceEvent,
   SportsEvent,
   UserEvent,
@@ -16,7 +15,6 @@ import type {
   EquityPricesSubscription,
   MarketSubscription,
   PerpsMarketDataSubscription,
-  PolymarketPriceSubscription,
   PriceSubscription,
   SportsSubscription,
   SubscriptionHandle,
@@ -66,11 +64,6 @@ export interface WebSocketSubscriptionManager<TSpec, TEvent> {
   close(): Promise<void>;
 }
 
-type PublicRealtimeWebSocketManager = WebSocketSubscriptionManager<
-  PolymarketPriceSubscription,
-  PolymarketPriceEvent
->;
-
 // Surfaces available on the public client.
 export type PublicWebSocketManagers = {
   readonly clobMarket: WebSocketSubscriptionManager<
@@ -89,7 +82,6 @@ export type PublicWebSocketManagers = {
     | EquityPricesSubscription,
     CommentsEvent | CryptoPricesEvent | EquityPricesEvent
   >;
-  readonly realtime: PublicRealtimeWebSocketManager;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
@@ -101,8 +93,10 @@ export type PublicWebSocketManagers = {
 
 // Secure client additionally exposes the user surface.
 export type SecureWebSocketManagers = PublicWebSocketManagers & {
-  readonly realtime: PublicRealtimeWebSocketManager &
-    WebSocketSubscriptionManager<PriceSubscription, PriceEvent>;
+  readonly realtime: WebSocketSubscriptionManager<
+    PriceSubscription,
+    PriceEvent
+  >;
   readonly clobUser: WebSocketSubscriptionManager<UserSubscription, UserEvent>;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.

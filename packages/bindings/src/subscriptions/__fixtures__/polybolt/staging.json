@@ -4845,19 +4845,6 @@
     }
   },
   {
-    "op": "subscribed",
-    "channel": "price.polymarket",
-    "rid": "capture"
-  },
-  {
-    "v": 1,
-    "channel": "price.polymarket",
-    "seq": 1,
-    "ts": 1788886176645,
-    "snapshot": true,
-    "payload": []
-  },
-  {
     "op": "error",
     "channel": "price.crypto",
     "rid": "capture",

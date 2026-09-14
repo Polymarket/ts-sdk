@@ -8,7 +8,6 @@ import type {
   CustomMarketEvent,
   EquityPriceEvent,
   MarketEvent,
-  PolymarketPriceEvent,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
@@ -66,11 +65,6 @@ describe('price subscription contracts', () => {
     expectTypeOf<
       EventForSubscriptionSpecs<[{ topic: 'prices.equity'; symbol: 'aapl' }]>
     >().toEqualTypeOf<EquityPriceEvent>();
-    expectTypeOf<
-      EventForSubscriptionSpecs<
-        [{ topic: 'prices.polymarket'; assetIds: ['1'] }]
-      >
-    >().toEqualTypeOf<PolymarketPriceEvent>();
     const pending = secureClient.subscribe([
       { topic: 'prices.crypto', symbols: ['btcusd'] },
     ]);
@@ -88,17 +82,13 @@ describe('price subscription contracts', () => {
       windowSeconds: 60,
     } as const;
     const equity = { topic: 'prices.equity', symbol: 'aapl' } as const;
-    const bbo = { topic: 'prices.polymarket', assetIds: ['1'] } as const;
     // @ts-expect-error All price topics require a secure client.
     publicClient.subscribe([crypto]);
     // @ts-expect-error TWAP prices require a secure client.
     publicClient.subscribe([twap]);
     // @ts-expect-error Equity prices require a secure client.
     publicClient.subscribe([equity]);
-    const publicBbo = publicClient.subscribe([bbo]);
-    expectTypeOf(publicBbo).resolves.toEqualTypeOf<
-      SubscriptionHandle<PolymarketPriceEvent>
-    >();
+    // @ts-expect-error Realtime vendor prices are unavailable on public clients.
     publicClient.webSockets.realtime;
     secureClient.webSockets.rtds;
     secureClient.environment.rtds;

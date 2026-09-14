@@ -14,10 +14,10 @@ export type { SubscribeError } from '../../actions/subscriptions';
 export type RealtimeWebSocketManagerOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials?: ApiKeyCreds;
+  credentials: ApiKeyCreds;
 };
 
-/** Manages public and authenticated realtime prices across shared connections. */
+/** Manages authenticated realtime prices across shared connections. */
 export class RealtimeWebSocketManager
   implements WebSocketSubscriptionManager<PriceSubscription, PriceEvent>
 {

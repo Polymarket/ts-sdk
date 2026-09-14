@@ -35,18 +35,6 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
   }),
-  z.strictObject({
-    topic: z.literal('prices.polymarket'),
-    assetIds: z
-      .array(
-        z
-          .string()
-          .regex(/^\d+$/)
-          .transform((value) => value.replace(/^0+/, '') || '0')
-          .pipe(z.string().max(78)),
-      )
-      .min(1),
-  }),
 ]);
 
 /** @internal Validates the complete price subscription before allocating connections. */

@@ -1,11 +1,8 @@
 import { z } from 'zod';
 import {
-  ClobAssetIdSchema,
-  ConditionIdSchema,
   DecimalishSchema,
   DecimalStringSchema,
   EpochMillisecondsSchema,
-  OptionalDecimalStringSchema,
 } from '../shared';
 
 export enum RealtimeErrorCode {
@@ -25,7 +22,6 @@ export enum PolyboltChannel {
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
   Equity = 'price.equity',
-  Polymarket = 'price.polymarket',
 }
 
 /** A filter sent to a PolyBolt price channel. */
@@ -128,23 +124,6 @@ const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
   data,
   windowSeconds: window_seconds,
 }));
-const BboPayloadSchema = z
-  .object({
-    market: ConditionIdSchema,
-    asset_id: ClobAssetIdSchema,
-    best_bid: OptionalDecimalStringSchema,
-    best_ask: OptionalDecimalStringSchema,
-    hash: z.string(),
-    timestamp: EpochMillisecondsSchema,
-  })
-  .transform(({ market, asset_id, best_bid, best_ask, ...rest }) => ({
-    ...rest,
-    conditionId: market,
-    assetId: asset_id,
-    bestBid: best_bid,
-    bestAsk: best_ask,
-  }));
-
 const EventMetadataSchema = z.object({
   timestamp: EpochMillisecondsSchema,
   seq: z.number().optional(),
@@ -197,31 +176,12 @@ export const EquityPriceEventSchema = z.union([
   }),
 ]);
 export type EquityPriceEvent = z.infer<typeof EquityPriceEventSchema>;
-
-export const PolymarketPriceEventSchema = z.union([
-  EventMetadataSchema.extend({
-    topic: z.literal('prices.polymarket'),
-    type: z.literal('update'),
-    payload: BboPayloadSchema,
-  }),
-  EventMetadataSchema.extend({
-    topic: z.literal('prices.polymarket'),
-    type: z.literal('subscribe'),
-    payload: BboPayloadSchema,
-  }),
-]);
-export type PolymarketPriceEvent = z.infer<typeof PolymarketPriceEventSchema>;
-export type PolymarketPriceSnapshotEvent = Extract<
-  PolymarketPriceEvent,
-  { type: 'subscribe' }
->;
 export type PriceEvent =
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
-  | EquityPriceEvent
-  | PolymarketPriceEvent;
+  | EquityPriceEvent;
 
-/** @internal Normalizes validated envelopes, dropping unknown payloads and empty BBO barriers. */
+/** @internal Normalizes validated envelopes, dropping unknown payloads. */
 export function parsePolyboltEvent(
   envelope: PolyboltEnvelope,
 ): PriceEvent | undefined {
@@ -247,11 +207,6 @@ export function parsePolyboltEvent(
       return EquityPriceEventSchema.safeParse({
         ...event,
         topic: 'prices.equity',
-      }).data;
-    case PolyboltChannel.Polymarket:
-      return PolymarketPriceEventSchema.safeParse({
-        ...event,
-        topic: 'prices.polymarket',
       }).data;
   }
 }

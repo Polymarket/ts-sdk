@@ -69,8 +69,8 @@ describe.skipIf(process.env.POLYMARKET_REALTIME_SOAK !== '1')(
           JSON.stringify({
             op: 'subscribe',
             subscriptions: Array.from({ length: 65 }, (_, index) => ({
-              channel: 'price.polymarket',
-              filter: { asset_id: String(index + 1) },
+              channel: 'price.crypto',
+              filter: { symbol: `asset${index}usd` },
             })),
             rid: 'limit',
           }),
