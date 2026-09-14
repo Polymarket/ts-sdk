@@ -31,9 +31,8 @@ describe('Activity actions', () => {
     expect(requests.map((params) => Object.fromEntries(params))).toEqual([
       {
         user,
-        excludeDepositsWithdrawals: 'false',
-        limit: '20',
-        offset: '0',
+        exclude_deposits_withdrawals: 'false',
+        limit: '100',
       },
     ]);
   });
@@ -50,9 +49,8 @@ describe('Activity actions', () => {
       {
         user,
         type: 'TRADE,DEPOSIT',
-        excludeDepositsWithdrawals: 'false',
-        limit: '20',
-        offset: '0',
+        exclude_deposits_withdrawals: 'false',
+        limit: '100',
       },
     ]);
   });
@@ -62,9 +60,17 @@ function interceptActivityRequests(): URLSearchParams[] {
   const requests: URLSearchParams[] = [];
 
   server.use(
-    http.get(`${root}/activity`, ({ request }) => {
+    http.get(`${root}/v2/activity`, ({ request }) => {
       requests.push(new URL(request.url).searchParams);
-      return HttpResponse.json([]);
+      return HttpResponse.json({
+        data: [],
+        pagination: {
+          limit: 100,
+          offset: 0,
+          has_more: false,
+          next_cursor: null,
+        },
+      });
     }),
   );
 

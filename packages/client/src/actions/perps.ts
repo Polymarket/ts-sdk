@@ -48,7 +48,7 @@ import {
   type PrivateKey,
   unwrap,
 } from '@polymarket/types';
-import { Address, Secp256k1 } from 'ox';
+import { Address, Secp256k1, TypedData } from 'ox';
 import { z } from 'zod';
 import { MAX_UINT256, perpsDepositCall } from '../abis';
 import type { BaseClient, BaseSecureClient } from '../clients';
@@ -1678,13 +1678,15 @@ type CreatePerpsWithdrawTypedDataPayloadRequest =
 function createPerpsWithdrawTypedDataPayload(
   request: CreatePerpsWithdrawTypedDataPayloadRequest,
 ): TypedDataPayload {
+  const domain = {
+    chainId: request.chainId,
+    name: 'Polymarket',
+    verifyingContract: request.contract,
+    version: '1',
+  };
+
   return {
-    domain: {
-      chainId: request.chainId,
-      name: 'Polymarket',
-      verifyingContract: request.contract,
-      version: '1',
-    },
+    domain,
     message: {
       account: request.account,
       amount: request.amount,
@@ -1696,6 +1698,7 @@ function createPerpsWithdrawTypedDataPayload(
     },
     primaryType: 'Withdraw',
     types: {
+      EIP712Domain: TypedData.extractEip712DomainTypes(domain),
       Withdraw: [
         { name: 'account', type: 'address' },
         { name: 'token', type: 'address' },
@@ -1717,12 +1720,14 @@ type CreatePerpsCreateProxyTypedDataPayloadRequest =
 function createPerpsCreateProxyTypedDataPayload(
   request: CreatePerpsCreateProxyTypedDataPayloadRequest,
 ): TypedDataPayload {
+  const domain = {
+    chainId: request.chainId,
+    name: 'Polymarket',
+    version: '1',
+  };
+
   return {
-    domain: {
-      chainId: request.chainId,
-      name: 'Polymarket',
-      version: '1',
-    },
+    domain,
     message: {
       addr: request.proxy,
       exp: request.expiresAt,
@@ -1737,6 +1742,7 @@ function createPerpsCreateProxyTypedDataPayload(
         { name: 'salt', type: 'uint64' },
         { name: 'ts', type: 'uint64' },
       ],
+      EIP712Domain: TypedData.extractEip712DomainTypes(domain),
     },
   };
 }

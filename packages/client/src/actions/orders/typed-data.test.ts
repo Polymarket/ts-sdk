@@ -1,6 +1,7 @@
 import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import type { EvmAddress, EvmSignature, HexString } from '@polymarket/types';
+import { TypedData } from 'ox';
 import { describe, expect, it } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import {
@@ -38,6 +39,19 @@ describe('createOrderTypedDataPayload', () => {
       version: '1',
     });
     expect(payload.primaryType).toBe('TypedDataSign');
+    const { EIP712Domain, ...types } = payload.types;
+    expect(EIP712Domain).toEqual([
+      { name: 'name', type: 'string' },
+      { name: 'version', type: 'string' },
+      { name: 'chainId', type: 'uint256' },
+      { name: 'verifyingContract', type: 'address' },
+    ]);
+    expect(TypedData.getSignPayload(payload)).toBe(
+      TypedData.getSignPayload({
+        ...payload,
+        types,
+      }),
+    );
   });
 
   it('signs non-POLY_1271 orders directly against the app domain', () => {

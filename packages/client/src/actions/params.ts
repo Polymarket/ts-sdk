@@ -1,3 +1,6 @@
+import { EventIdSchema } from '@polymarket/bindings';
+import { z } from 'zod';
+
 export type SearchParamPrimitive = boolean | number | string;
 
 export type SearchParamValue =
@@ -58,9 +61,11 @@ export function snakeCase<TParams extends SearchParamsInput>(
 }
 
 /**
- * Data endpoints use camelCase query keys and comma-separated arrays.
+ * Legacy data endpoints use camelCase query keys and comma-separated arrays.
+ * Dies with the last legacy data action; new data actions use
+ * {@link toDataSearchParams}.
  */
-export function toDataSearchParams<TParams extends SearchParamsInput>(
+export function toLegacyDataSearchParams<TParams extends SearchParamsInput>(
   params: TParams,
 ): URLSearchParams {
   const searchParams = new URLSearchParams();
@@ -76,6 +81,97 @@ export function toDataSearchParams<TParams extends SearchParamsInput>(
     }
 
     searchParams.append(key, toSearchParamValue(value as SearchParamPrimitive));
+  }
+
+  return searchParams;
+}
+
+/**
+ * An instant accepted as epoch seconds or a `Date` (floored to seconds) —
+ * the wire's time vocabulary.
+ */
+export const EpochSecondsLikeSchema = z
+  .union([z.number().int().min(0), z.date()])
+  .transform((value) =>
+    value instanceof Date ? Math.floor(value.getTime() / 1000) : value,
+  );
+
+/**
+ * The time window of a history request, normalized to the wire's epoch-second
+ * `start`/`end` bounds.
+ *
+ * `'full'` requests the complete history. An omitted window serves the
+ * service's default range, and an omitted bound leaves that side open.
+ * Bounds accept epoch seconds or `Date` values.
+ */
+export const TimeWindowSchema = z
+  .union([
+    z.literal('full'),
+    z
+      .object({
+        start: EpochSecondsLikeSchema.optional(),
+        end: EpochSecondsLikeSchema.optional(),
+      })
+      // A zero bound means unbounded on the wire, mirroring the service.
+      .refine(
+        (value) => !value.end || value.end >= (value.start ?? 0),
+        'end must not precede start',
+      ),
+  ])
+  // `start=1` is the wire's full-history request.
+  .transform((value) => (value === 'full' ? { start: 1 } : value));
+
+export type TimeWindow = z.input<typeof TimeWindowSchema>;
+
+/** A positive event ID that fits the platform's signed 32-bit identifier. */
+export const PositiveInt32EventIdSchema = EventIdSchema.refine(
+  (eventId) => /^[1-9]\d*$/.test(eventId) && BigInt(eventId) <= 2_147_483_647n,
+  'Expected a positive 32-bit event ID',
+);
+
+/**
+ * A list of ids deduplicated case-insensitively (first-seen casing kept) and
+ * capped at `max` DISTINCT entries — mirroring the service's dedupe-then-count
+ * selector semantics so a duplicate-heavy list is neither rejected early nor
+ * sent redundantly.
+ */
+export function distinctIdList<TId extends string>(
+  item: z.ZodType<TId, string>,
+  max: number,
+) {
+  return z
+    .array(item)
+    .min(1)
+    .transform((ids) => [
+      ...new Map(ids.map((id) => [id.toLowerCase(), id])).values(),
+    ])
+    .refine((ids) => ids.length <= max, `At most ${max} distinct ids`);
+}
+
+/**
+ * Data endpoints use snake_case query keys and comma-separated arrays.
+ */
+export function toDataSearchParams<TParams extends SearchParamsInput>(
+  params: TParams,
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) {
+      continue;
+    }
+
+    const searchParamKey = toSnakeCase(key);
+
+    if (isSearchParamArray(value)) {
+      searchParams.append(
+        searchParamKey,
+        value.map(toSearchParamValue).join(','),
+      );
+      continue;
+    }
+
+    searchParams.append(searchParamKey, toSearchParamValue(value));
   }
 
   return searchParams;
