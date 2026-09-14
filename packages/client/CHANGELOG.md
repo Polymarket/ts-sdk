@@ -1,5 +1,11 @@
 # @polymarket/client
 
+## 0.10.1
+
+### Patch Changes
+
+- 43409a7: Include explicit EIP712Domain types in authentication, deposit wallet order and batch, and Perps signing payloads for wallets that require complete typed data.
+
 ## 0.10.0
 
 ### Minor Changes
