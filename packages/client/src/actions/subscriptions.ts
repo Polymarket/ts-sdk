@@ -137,7 +137,25 @@ export type SportsSubscription = {
   topic: 'sports';
 };
 
-/** @deprecated Compatibility stream. Prefer HTTP comment APIs for new integrations. */
+/**
+ * @deprecated The comments stream is being discontinued.
+ * Use `client.listComments()` to retrieve comments. This method does not
+ * provide live comment or reaction events.
+ *
+ * @example
+ * ```ts
+ * const pages = client.listComments({
+ *   parentEntityId: '123',
+ *   parentEntityType: CommentParentEntityType.Event,
+ *   pageSize: 20,
+ * });
+ * const page = await pages.firstPage();
+ *
+ * for (const comment of page.items) {
+ *   console.log(comment);
+ * }
+ * ```
+ */
 export type CommentsSubscription = {
   topic: 'comments';
   types?: readonly CommentsEventType[];
