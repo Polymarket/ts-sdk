@@ -140,7 +140,7 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
     }
   });
 
-  it('delivers source-neutral live events with producer precision', async ({
+  it('delivers source-neutral live events with connection-local sequences', async ({
     secureClientWithDepositWallet: client,
   }) => {
     try {
@@ -152,6 +152,8 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
         },
         { topic: 'prices.equity', symbol: 'aapl' },
       ] as const;
+      // Keep sequence assertions below the 64-filter connection limit. Larger
+      // subscriptions span sockets whose independent sequences may interleave.
       await Promise.all(
         specs.map(async (spec) => {
           const event = await first(
@@ -191,6 +193,7 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
         },
       ]);
       expect(ObservedWebSocket.connections).toHaveLength(2);
+      // Do not assert global sequence ordering: this stream merges two sockets.
       let updates = 0;
       let intervalCompleted = false;
       timer = setTimeout(() => {

@@ -7,6 +7,9 @@ Add authenticated PolyBolt price streams through `client.subscribe()`, using
 production automatically: `prices.crypto`, `prices.crypto.twap`, and
 `prices.equity`. Subscriptions include history snapshots and live updates with
 exact decimal prices, share connections, and reconnect automatically.
+Event `seq` values are scoped to one channel on one WebSocket connection and
+reset after reconnecting. Subscriptions with more than 64 filters use multiple
+connections, so their sequence values may interleave in the merged stream.
 
 Crypto topics require explicit canonical USD symbols such as `btcusd`;
 `btc/usd` and `btcusdt` are rejected. TWAP uses a fixed 60-second window with

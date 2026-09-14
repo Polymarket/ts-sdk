@@ -67,6 +67,9 @@ export type SecureSubscriptionsActions = {
    * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
    * require explicit filters and include history snapshots and live updates.
    * Legacy source-named topics retain their existing filter and event behavior.
+   * Event `seq` values are scoped to one channel on one WebSocket connection
+   * and reset after reconnecting. Subscriptions with more than 64 filters use
+   * multiple connections, so their sequence values may interleave.
    *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.

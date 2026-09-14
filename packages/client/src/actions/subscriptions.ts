@@ -497,6 +497,9 @@ const MarketSubscriptionSchema = z.union([
  * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
  * require a secure client and explicit filters, and include history snapshots
  * and live updates. Legacy source-named topics retain their existing behavior.
+ * Event `seq` values are scoped to one channel on one WebSocket connection and
+ * reset after reconnecting. Subscriptions with more than 64 filters use
+ * multiple connections, so their sequence values may interleave.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

@@ -141,6 +141,13 @@ export const CryptoPriceEventSchema = z.union([
     payload: SnapshotPayloadSchema,
   }),
 ]);
+/**
+ * A cryptocurrency price event.
+ *
+ * `seq` is scoped to one channel on one WebSocket connection and resets after
+ * reconnecting. When an SDK subscription spans multiple connections, sequence
+ * values from those connections may interleave.
+ */
 export type CryptoPriceEvent = z.infer<typeof CryptoPriceEventSchema>;
 export type CryptoPriceSnapshotEvent = Extract<
   CryptoPriceEvent,
@@ -158,6 +165,13 @@ export const CryptoTwapPriceEventSchema = z.union([
     payload: TwapSnapshotSchema,
   }),
 ]);
+/**
+ * A cryptocurrency TWAP event.
+ *
+ * `seq` is scoped to one channel on one WebSocket connection and resets after
+ * reconnecting. When an SDK subscription spans multiple connections, sequence
+ * values from those connections may interleave.
+ */
 export type CryptoTwapPriceEvent = z.infer<typeof CryptoTwapPriceEventSchema>;
 export type CryptoTwapPriceSnapshotEvent = Extract<
   CryptoTwapPriceEvent,
@@ -175,6 +189,13 @@ export const EquityPriceEventSchema = z.union([
     payload: SnapshotPayloadSchema,
   }),
 ]);
+/**
+ * An equity price event.
+ *
+ * `seq` is scoped to one channel on one WebSocket connection and resets after
+ * reconnecting. When an SDK subscription spans multiple connections, sequence
+ * values from those connections may interleave.
+ */
 export type EquityPriceEvent = z.infer<typeof EquityPriceEventSchema>;
 export type PriceEvent =
   | CryptoPriceEvent
