@@ -4,6 +4,7 @@ import type {
   PerpsOrderId,
   PerpsSession,
   TxHash,
+  UpdatePerpsLeverageRequest,
 } from '@polymarket/client';
 import {
   OrderSide,
@@ -23,9 +24,10 @@ import {
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 const MAX_PERPS_PRICE_SIGNIFICANT_FIGURES = 5;
 
-const [instrument] = await publicClient
+const instruments = await publicClient
   .fetchPerpsInstruments()
   .then(expectNonEmptyArray);
+const [instrument] = instruments;
 const [ticker] = await publicClient
   .fetchPerpsTickers({ instrumentId: instrument.id })
   .then(expectNonEmptyArray);
@@ -244,6 +246,98 @@ describe('Perps integration', () => {
   );
 
   it.runIf(runMeteredTests)(
+    'updates and restores an ordered Perps leverage batch',
+    async ({ secureClientWithDepositWallet, skip }) => {
+      const session = await secureClientWithDepositWallet.openPerpsSession({
+        expiresIn: 30 * 60_000,
+      });
+      const snapshots: UpdatePerpsLeverageRequest[] = [];
+
+      try {
+        const [configs, openOrders, portfolio] = await Promise.all([
+          session.fetchAccountConfig(),
+          session.fetchOpenOrders(),
+          session.fetchPortfolio(),
+        ]);
+        const usedInstrumentIds = new Set([
+          ...openOrders.map((order) => order.instrumentId),
+          ...portfolio.positions.map((position) => position.instrumentId),
+        ]);
+        const selected = configs
+          .map((config) => ({
+            config,
+            instrument: instruments.find(
+              (candidate) => candidate.id === config.instrumentId,
+            ),
+          }))
+          .filter(
+            (entry) =>
+              entry.instrument !== undefined &&
+              entry.instrument.maxLeverage >= 2 &&
+              !usedInstrumentIds.has(entry.config.instrumentId),
+          )
+          .slice(0, 2);
+
+        if (selected.length < 2) {
+          skip(
+            'Expected at least two unused Perps instruments with configurable leverage',
+          );
+        }
+        snapshots.push(
+          ...selected.map(({ config }) => ({
+            crossMargin: config.cross,
+            instrumentId: config.instrumentId,
+            leverage: config.leverage,
+          })),
+        );
+        const updates = selected.map(({ config }) => ({
+          crossMargin: config.cross,
+          instrumentId: config.instrumentId,
+          leverage: config.leverage === 1 ? 2 : 1,
+        }));
+
+        const results = await session.updateLeverages({ updates });
+        expect(results).toHaveLength(updates.length);
+        for (const [index, update] of updates.entries()) {
+          expect(results[index]).toEqual({
+            status: 'ok',
+            instrumentId: update.instrumentId,
+            leverage: update.leverage,
+            crossMargin: update.crossMargin,
+          });
+        }
+        await expectPerpsLeverageConfigs(session, updates);
+      } finally {
+        try {
+          if (snapshots.length > 0) {
+            const restoration = await session.updateLeverages({
+              updates: snapshots,
+            });
+            for (const [index, snapshot] of snapshots.entries()) {
+              expect(restoration[index]).toEqual({
+                status: 'ok',
+                instrumentId: snapshot.instrumentId,
+                leverage: snapshot.leverage,
+                crossMargin: snapshot.crossMargin,
+              });
+            }
+            await expectPerpsLeverageConfigs(session, snapshots);
+          }
+        } finally {
+          try {
+            await session.close();
+          } finally {
+            await secureClientWithDepositWallet.revokePerpsCredentials({
+              proxy: session.credentials.proxy,
+            });
+          }
+        }
+      }
+    },
+    6 * 60_000,
+  );
+
+  it.runIf(runMeteredTests)(
     'resumes existing delegated Perps credentials',
     async ({ secureClientWithDepositWallet }) => {
       const initialSession =
@@ -329,6 +423,27 @@ async function waitForConfirmedDeposit(
   }
 
   throw new Error(`Timed out waiting for Perps deposit ${hash} to confirm`);
+}
+
+async function expectPerpsLeverageConfigs(
+  session: PerpsSession,
+  expected: UpdatePerpsLeverageRequest[],
+): Promise<void> {
+  await vi.waitFor(
+    async () => {
+      const configs = await session.fetchAccountConfig();
+      for (const update of expected) {
+        expect(
+          configs.find((config) => config.instrumentId === update.instrumentId),
+        ).toMatchObject({
+          instrumentId: update.instrumentId,
+          leverage: update.leverage,
+          cross: update.crossMargin,
+        });
+      }
+    },
+    { interval: 1_000, timeout: 30_000 },
+  );
 }
 
 function delay(ms: number): Promise<void> {
