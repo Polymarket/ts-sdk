@@ -43,6 +43,7 @@ import {
   AutoCancelDailyLimitError,
   makeErrorGuard,
   OperationAbortedError,
+  PerpsCancelRetryError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -874,8 +875,9 @@ export type PerpsCancelOptions = {
   /** Automatic retry limits, or `false` to make only one attempt. */
   retry?: PerpsCancelRetryOptions | false;
   /**
-   * Signal that prevents the first attempt when already aborted. Aborting after
-   * an attempt stops further retries and returns the results collected so far.
+   * Signal that prevents the first attempt when already aborted and stops
+   * further retries after the current attempt settles. Does not cancel an
+   * in-flight command or suppress its failure.
    */
   signal?: AbortSignal;
 };
@@ -909,6 +911,11 @@ export type CancelPerpsOrderRequest = PerpsCancelOptions &
   );
 
 /**
+ * @remarks
+ * First-attempt failures propagate unchanged. A later attempt failure throws
+ * {@link PerpsCancelRetryError} with the last received results, the original
+ * request positions retried in the failed attempt, and the original cause.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelPerpsOrder(
@@ -962,6 +969,11 @@ export type CancelPerpsOrdersRequest = PerpsCancelOptions &
   );
 
 /**
+ * @remarks
+ * First-attempt failures propagate unchanged. A later attempt failure throws
+ * {@link PerpsCancelRetryError} with the last received results, the original
+ * request positions retried in the failed attempt, and the original cause.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export async function cancelPerpsOrders(
@@ -1037,17 +1049,29 @@ async function retryPerpsOrderCancellations<TIdentifier>(
         break;
     }
 
-    const attemptResults = await execute(
-      pending.map(({ identifier }) => identifier),
-    );
-    const requestRejection = perpsCancelRequestRejectionFrom(attemptResults);
-    if (requestRejection !== undefined) {
-      throw new RequestRejectedError(requestRejection, { status: 200 });
-    }
-    if (attemptResults.length !== pending.length) {
-      throw new UnexpectedResponseError(
-        'Perps cancel response did not include one result per requested order.',
+    let attemptResults: PerpsCancelOrderResult[];
+    try {
+      attemptResults = await execute(
+        pending.map(({ identifier }) => identifier),
       );
+      const requestRejection = perpsCancelRequestRejectionFrom(attemptResults);
+      if (requestRejection !== undefined) {
+        throw new RequestRejectedError(requestRejection, { status: 200 });
+      }
+      if (attemptResults.length !== pending.length) {
+        throw new UnexpectedResponseError(
+          'Perps cancel response did not include one result per requested order.',
+        );
+      }
+    } catch (cause) {
+      if (attempts === 0) throw cause;
+      throw new PerpsCancelRetryError('Perps cancellation retry failed.', {
+        cause,
+        results: finalResults.map((result) =>
+          expectPresent(result, 'Expected a previous Perps cancel result.'),
+        ),
+        pendingIndexes: pending.map(({ resultIndex }) => resultIndex),
+      });
     }
 
     attempts += 1;
