@@ -40,6 +40,7 @@ import type {
 } from '../index';
 import {
   FetchPerpsTickerError,
+  PerpsCancelRetryError,
   PerpsKnownCancelOrderErrorCode,
   UpdatePerpsMarginError,
 } from '../index';
@@ -127,5 +128,22 @@ describe('public Perps exports', () => {
       expectTypeOf(result.error).toEqualTypeOf<undefined>();
     }
     void PerpsKnownCancelOrderErrorCode.OrderInFlight;
+  });
+
+  it('exposes retry failures with typed historical results for reconciliation', () => {
+    const error = new PerpsCancelRetryError('Retry failed', {
+      results: [],
+      pendingIndexes: [],
+      cause: new Error('Connection lost'),
+    });
+
+    expectTypeOf(error.results).toEqualTypeOf<
+      readonly PerpsCancelOrderResult[]
+    >();
+    expectTypeOf(error.pendingIndexes).toEqualTypeOf<readonly number[]>();
+    expectTypeOf(error.cause).toEqualTypeOf<unknown>();
+    expectTypeOf<
+      Extract<PerpsSessionTradingError, PerpsCancelRetryError>
+    >().toEqualTypeOf<PerpsCancelRetryError>();
   });
 });

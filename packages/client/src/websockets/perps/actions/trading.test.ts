@@ -1,16 +1,20 @@
 import { OrderSide } from '@polymarket/bindings';
 import {
+  PerpsCancelOrderResultSchema,
   PerpsKnownCancelOrderErrorCode,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   OperationAbortedError,
+  PerpsCancelRetryError,
   RequestRejectedError,
+  TransportError,
   UnexpectedResponseError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
+  cancelPerpsOrder,
   cancelPerpsOrders,
   type PerpsCommandExecutor,
   type PerpsCommandRequest,
@@ -188,6 +192,192 @@ describe('Perps trading actions', () => {
     });
 
     it.each([
+      {
+        failure: 'request-level rejection',
+        response: [{ error: 'invalid_request', status: 'err' }],
+        cause: expect.objectContaining({
+          name: RequestRejectedError.name,
+          message: 'invalid_request',
+          status: 200,
+        }),
+      },
+      {
+        failure: 'transport failure',
+        response: { error: new TransportError('Connection lost.') },
+        cause: expect.any(TransportError),
+      },
+      {
+        failure: 'missing result',
+        response: [{ oid: 22, status: 'ok' }],
+        cause: expect.any(UnexpectedResponseError),
+      },
+      {
+        failure: 'extra result',
+        response: [
+          { oid: 22, status: 'ok' },
+          { oid: 44, status: 'ok' },
+          { oid: 55, status: 'ok' },
+        ],
+        cause: expect.any(UnexpectedResponseError),
+      },
+    ])('preserves collected results after a later $failure', async ({
+      response,
+      cause,
+    }) => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const firstResults = [
+        { oid: 11, status: 'ok' },
+        { error: 'order_in_flight', oid: 22, status: 'err' },
+        { error: 'unknown_error_code_18', oid: 33, status: 'err' },
+        { error: 'order_in_flight', oid: 44, status: 'err' },
+      ];
+      const { client, requests } = cancelExecutor([firstResults, response]);
+
+      const error = await cancelPerpsOrders(client, {
+        orderIds: [11, 22, 33, 44],
+      }).catch((error: unknown) => error);
+
+      expect(error).toBeInstanceOf(PerpsCancelRetryError);
+      expect(error).toMatchObject({
+        cause,
+        pendingIndexes: [1, 3],
+        results: firstResults.map((result) =>
+          PerpsCancelOrderResultSchema.parse(result),
+        ),
+      });
+      if (!Array.isArray(response)) {
+        if (!(error instanceof PerpsCancelRetryError)) throw error;
+        expect(error.cause).toBe(response.error);
+      }
+      expect(requests.map((request) => request.op)).toEqual([
+        ['cancelOrders', [11, 22, 33, 44]],
+        ['cancelOrders', [22, 44]],
+      ]);
+    });
+
+    it('keeps second-attempt updates when the third client-ID attempt fails', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const firstId = 'a'.repeat(32);
+      const secondId = 'b'.repeat(32);
+      const thirdId = 'c'.repeat(32);
+      const fourthId = 'd'.repeat(32);
+      const firstResults = [
+        { coid: firstId, status: 'ok' },
+        { error: 'order_in_flight', coid: secondId, status: 'err' },
+        { error: 'order_in_flight', coid: thirdId, status: 'err' },
+        { error: 'order_in_flight', coid: fourthId, status: 'err' },
+      ];
+      const secondResults = [
+        { coid: secondId, status: 'ok' },
+        { error: 'unknown_error_code_18', coid: thirdId, status: 'err' },
+        { error: 'order_in_flight', coid: fourthId, status: 'err' },
+      ];
+      const cause = new TransportError('Connection lost.');
+      const { client, requests } = cancelExecutor([
+        firstResults,
+        secondResults,
+        { error: cause },
+      ]);
+
+      const error = await cancelPerpsOrders(client, {
+        clientOrderIds: [firstId, secondId, thirdId, fourthId],
+      }).catch((error: unknown) => error);
+
+      expect(error).toBeInstanceOf(PerpsCancelRetryError);
+      if (!(error instanceof PerpsCancelRetryError)) throw error;
+      expect(error.cause).toBe(cause);
+      expect(error.pendingIndexes).toEqual([3]);
+      expect(error.results).toEqual(
+        [firstResults[0], ...secondResults].map((result) =>
+          PerpsCancelOrderResultSchema.parse(result),
+        ),
+      );
+      expect(requests.map((request) => request.op)).toEqual([
+        ['cancelOrdersCOID', [firstId, secondId, thirdId, fourthId]],
+        ['cancelOrdersCOID', [secondId, thirdId, fourthId]],
+        ['cancelOrdersCOID', [fourthId]],
+      ]);
+    });
+
+    it.each([
+      {
+        request: { orderId: 7 },
+        response: { oid: 7, status: 'err', error: 'order_in_flight' },
+      },
+      {
+        request: { clientOrderId: 'a'.repeat(32) },
+        response: {
+          coid: 'a'.repeat(32),
+          status: 'err',
+          error: 'order_in_flight',
+        },
+      },
+    ])('preserves retry failure details through the single-order wrapper for $request', async ({
+      request,
+      response,
+    }) => {
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      const cause = { message: 'Non-Error executor failure.' };
+      const { client, requests } = cancelExecutor([
+        [response],
+        { error: cause },
+      ]);
+
+      const error = await cancelPerpsOrder(client, request).catch(
+        (error: unknown) => error,
+      );
+
+      expect(error).toBeInstanceOf(PerpsCancelRetryError);
+      if (!(error instanceof PerpsCancelRetryError)) throw error;
+      expect(error.cause).toBe(cause);
+      expect(error.pendingIndexes).toEqual([0]);
+      expect(error.results).toEqual([
+        PerpsCancelOrderResultSchema.parse(response),
+      ]);
+      expect(requests).toHaveLength(2);
+    });
+
+    it.each([
+      new TransportError('Connection lost.'),
+      { message: 'Executor failure.' },
+    ])('propagates a first-attempt throwable unchanged', async (cause) => {
+      const { client, requests } = cancelExecutor([{ error: cause }]);
+
+      await expect(cancelPerpsOrders(client, { orderIds: [1] })).rejects.toBe(
+        cause,
+      );
+      expect(requests).toHaveLength(1);
+    });
+
+    it('snapshots the retry error result and pending-index arrays', () => {
+      const results = [
+        PerpsCancelOrderResultSchema.parse({
+          error: 'order_in_flight',
+          oid: 1,
+          status: 'err',
+        }),
+      ];
+      const pendingIndexes = [0];
+      const error = new PerpsCancelRetryError('Retry failed.', {
+        results,
+        pendingIndexes,
+      });
+
+      results.length = 0;
+      pendingIndexes[0] = 2;
+
+      expect(error.results).toEqual([
+        {
+          clientOrderId: undefined,
+          error: 'order_in_flight',
+          orderId: 1,
+          status: 'err',
+        },
+      ]);
+      expect(error.pendingIndexes).toEqual([0]);
+    });
+
+    it.each([
       PerpsKnownCancelOrderErrorCode.OrderUnknown,
       PerpsKnownCancelOrderErrorCode.OrderNotInOrderbook,
       PerpsKnownCancelOrderErrorCode.OrderNotPendingEngine,
@@ -304,6 +494,62 @@ describe('Perps trading actions', () => {
           error: PerpsKnownCancelOrderErrorCode.OrderInFlight,
           status: 'err',
         },
+      ]);
+      expect(requests).toHaveLength(1);
+    });
+
+    it('does not retry when expiresAt cuts the elapsed-time budget short', async () => {
+      vi.useFakeTimers({ now: 1_000 });
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const { client, requests } = cancelExecutor([
+        [{ error: 'order_in_flight', oid: 1, status: 'err' }],
+      ]);
+
+      await expect(
+        cancelPerpsOrders(client, {
+          orderIds: [1],
+          expiresAt: 1_040,
+          retry: { maxAttempts: 4, maxElapsedMs: 2_000 },
+        }),
+      ).resolves.toMatchObject([
+        { error: 'order_in_flight', orderId: 1, status: 'err' },
+      ]);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]?.expiresAt).toBe(1_040);
+    });
+
+    it('returns received results when aborted during the first attempt', async () => {
+      vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const controller = new AbortController();
+      let completeAttempt: () => void = () => {
+        throw new Error('Expected the first attempt to be pending.');
+      };
+      const firstAttempt = new Promise<void>((resolve) => {
+        completeAttempt = resolve;
+      });
+      const requests: PerpsCommandRequest[] = [];
+      const client: PerpsCommandExecutor = {
+        async executeCommand(request, responseSchema) {
+          requests.push(request);
+          await firstAttempt;
+          return responseSchema.parse([
+            { oid: 1, status: 'ok' },
+            { error: 'order_in_flight', oid: 2, status: 'err' },
+          ]);
+        },
+      };
+
+      const result = cancelPerpsOrders(client, {
+        orderIds: [1, 2],
+        signal: controller.signal,
+      });
+      expect(requests).toHaveLength(1);
+      controller.abort(new Error('Stop retrying.'));
+      completeAttempt();
+
+      await expect(result).resolves.toMatchObject([
+        { orderId: 1, status: 'ok' },
+        { error: 'order_in_flight', orderId: 2, status: 'err' },
       ]);
       expect(requests).toHaveLength(1);
     });
@@ -428,7 +674,7 @@ describe('Perps trading actions', () => {
   });
 });
 
-function cancelExecutor(responses: unknown[][]): {
+function cancelExecutor(responses: Array<unknown[] | { error: unknown }>): {
   client: PerpsCommandExecutor;
   requests: PerpsCommandRequest[];
 } {
@@ -442,6 +688,7 @@ function cancelExecutor(responses: unknown[][]): {
         if (response === undefined) {
           throw new Error('Unexpected Perps cancel attempt.');
         }
+        if (!Array.isArray(response)) throw response.error;
         return responseSchema.parse(response);
       },
     },
