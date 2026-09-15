@@ -1151,19 +1151,9 @@ export async function updatePerpsLeverage(
   );
 }
 
-const MAX_UINT32 = 4_294_967_295;
-const BatchPerpsLeverageUpdateSchema = z.object({
-  instrumentId: PerpsInstrumentIdSchema.refine(
-    (instrumentId) => instrumentId <= MAX_UINT32,
-    'Expected instrumentId to be at most 4294967295',
-  ),
-  leverage: z.number().int().positive().max(MAX_UINT32),
-  crossMargin: z.boolean(),
-}) satisfies z.ZodType<UpdatePerpsLeverageRequest>;
-
 const UpdatePerpsLeveragesRequestSchema = z.object({
   updates: z
-    .array(BatchPerpsLeverageUpdateSchema)
+    .array(UpdatePerpsLeverageRequestSchema)
     .min(1)
     .max(100)
     .superRefine((updates, context) => {

@@ -1,12 +1,13 @@
 import { OrderSide } from '@polymarket/bindings';
 import { PerpsTimeInForce } from '@polymarket/bindings/perps';
 import { describe, expect, it } from 'vitest';
-import { UserInputError } from '../../../errors';
+import { RequestRejectedError, UserInputError } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
   type PerpsCommandExecutor,
   postPerpsOrders,
   toPerpsCommandBodyOp,
+  updatePerpsLeverage,
   updatePerpsLeverages,
   updatePerpsMargin,
 } from './trading';
@@ -208,6 +209,45 @@ describe('Perps trading actions', () => {
   });
 
   describe('updatePerpsLeverages', () => {
+    it.each([
+      {
+        field: 'instrument id',
+        update: {
+          crossMargin: true,
+          instrumentId: 4_294_967_296,
+          leverage: 1,
+        },
+      },
+      {
+        field: 'leverage',
+        update: {
+          crossMargin: true,
+          instrumentId: 1,
+          leverage: 4_294_967_296,
+        },
+      },
+    ])('defers $field bounds consistently for single and batch updates', async ({
+      field,
+      update,
+    }) => {
+      const rejection = new RequestRejectedError(`${field} is out of range`, {
+        status: 400,
+      });
+      let executions = 0;
+      const client: PerpsCommandExecutor = {
+        async executeCommand() {
+          executions++;
+          throw rejection;
+        },
+      };
+
+      await expect(updatePerpsLeverage(client, update)).rejects.toBe(rejection);
+      await expect(
+        updatePerpsLeverages(client, { updates: [update] }),
+      ).rejects.toBe(rejection);
+      expect(executions).toBe(2);
+    });
+
     it.each([1, 100])('accepts the %i-item boundary', async (size) => {
       let executions = 0;
       const client: PerpsCommandExecutor = {
@@ -255,22 +295,22 @@ describe('Perps trading actions', () => {
         ],
       ],
       [
-        'an instrument id above u32',
+        'a negative instrument id',
         [
           {
             crossMargin: true,
-            instrumentId: 4_294_967_296,
+            instrumentId: -1,
             leverage: 1,
           },
         ],
       ],
       [
-        'leverage above u32',
+        'zero leverage',
         [
           {
             crossMargin: true,
             instrumentId: 1,
-            leverage: 4_294_967_296,
+            leverage: 0,
           },
         ],
       ],
