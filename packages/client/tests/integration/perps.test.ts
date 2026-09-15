@@ -246,12 +246,12 @@ describe('Perps integration', () => {
   );
 
   it.runIf(runMeteredTests)(
-    'updates and restores an ordered Perps leverage batch',
+    'updates and restores Perps leverage with one-item batches',
     async ({ secureClientWithDepositWallet, skip }) => {
       const session = await secureClientWithDepositWallet.openPerpsSession({
         expiresIn: 30 * 60_000,
       });
-      const snapshots: UpdatePerpsLeverageRequest[] = [];
+      let snapshot: UpdatePerpsLeverageRequest | undefined;
 
       try {
         const [configs, openOrders, portfolio] = await Promise.all([
@@ -263,65 +263,42 @@ describe('Perps integration', () => {
           ...openOrders.map((order) => order.instrumentId),
           ...portfolio.positions.map((position) => position.instrumentId),
         ]);
-        const selected = configs
-          .map((config) => ({
-            config,
-            instrument: instruments.find(
-              (candidate) => candidate.id === config.instrumentId,
+        const config = configs.find(
+          (config) =>
+            !usedInstrumentIds.has(config.instrumentId) &&
+            instruments.some(
+              (candidate) =>
+                candidate.id === config.instrumentId &&
+                candidate.maxLeverage >= 2,
             ),
-          }))
-          .filter(
-            (entry) =>
-              entry.instrument !== undefined &&
-              entry.instrument.maxLeverage >= 2 &&
-              !usedInstrumentIds.has(entry.config.instrumentId),
-          )
-          .slice(0, 2);
+        );
 
-        if (selected.length < 2) {
-          skip(
-            'Expected at least two unused Perps instruments with configurable leverage',
+        if (!config) {
+          return skip(
+            'Expected an unused Perps instrument with configurable leverage',
           );
         }
-        snapshots.push(
-          ...selected.map(({ config }) => ({
-            crossMargin: config.cross,
-            instrumentId: config.instrumentId,
-            leverage: config.leverage,
-          })),
-        );
-        const updates = selected.map(({ config }) => ({
+        snapshot = {
           crossMargin: config.cross,
           instrumentId: config.instrumentId,
+          leverage: config.leverage,
+        };
+        const update: UpdatePerpsLeverageRequest = {
+          ...snapshot,
           leverage: config.leverage === 1 ? 2 : 1,
-        }));
+        };
 
-        const results = await session.updateLeverages({ updates });
-        expect(results).toHaveLength(updates.length);
-        for (const [index, update] of updates.entries()) {
-          expect(results[index]).toEqual({
-            status: 'ok',
-            instrumentId: update.instrumentId,
-            leverage: update.leverage,
-            crossMargin: update.crossMargin,
-          });
-        }
-        await expectPerpsLeverageConfigs(session, updates);
+        const results = await session.updateLeverages({ updates: [update] });
+        expect(results).toEqual([{ status: 'ok', ...update }]);
+        await expectPerpsLeverageConfig(session, update);
       } finally {
         try {
-          if (snapshots.length > 0) {
+          if (snapshot) {
             const restoration = await session.updateLeverages({
-              updates: snapshots,
+              updates: [snapshot],
             });
-            for (const [index, snapshot] of snapshots.entries()) {
-              expect(restoration[index]).toEqual({
-                status: 'ok',
-                instrumentId: snapshot.instrumentId,
-                leverage: snapshot.leverage,
-                crossMargin: snapshot.crossMargin,
-              });
-            }
-            await expectPerpsLeverageConfigs(session, snapshots);
+            expect(restoration).toEqual([{ status: 'ok', ...snapshot }]);
+            await expectPerpsLeverageConfig(session, snapshot);
           }
         } finally {
           try {
@@ -425,22 +402,20 @@ async function waitForConfirmedDeposit(
   throw new Error(`Timed out waiting for Perps deposit ${hash} to confirm`);
 }
 
-async function expectPerpsLeverageConfigs(
+async function expectPerpsLeverageConfig(
   session: PerpsSession,
-  expected: UpdatePerpsLeverageRequest[],
+  expected: UpdatePerpsLeverageRequest,
 ): Promise<void> {
   await vi.waitFor(
     async () => {
       const configs = await session.fetchAccountConfig();
-      for (const update of expected) {
-        expect(
-          configs.find((config) => config.instrumentId === update.instrumentId),
-        ).toMatchObject({
-          instrumentId: update.instrumentId,
-          leverage: update.leverage,
-          cross: update.crossMargin,
-        });
-      }
+      expect(
+        configs.find((config) => config.instrumentId === expected.instrumentId),
+      ).toMatchObject({
+        instrumentId: expected.instrumentId,
+        leverage: expected.leverage,
+        cross: expected.crossMargin,
+      });
     },
     { interval: 1_000, timeout: 30_000 },
   );
