@@ -3,6 +3,11 @@ name: Integration Tests
 on:
   workflow_call:
     inputs:
+      environment_config:
+        description: JSON environment fork for integration endpoints
+        required: false
+        default: '{}'
+        type: string
       test_file_pattern:
         description: Optional integration test file pattern
         required: false
@@ -15,6 +20,11 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      environment_config:
+        description: JSON environment fork for integration endpoints
+        required: false
+        default: '{}'
+        type: string
       test_file_pattern:
         description: Optional integration test file pattern
         required: false
@@ -61,6 +71,7 @@ jobs:
             pnpm test:client:integration
           fi
         env:
+          POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG: ${{ inputs.environment_config }}
           POLYMARKET_RUN_METERED_TESTS: '1'
           PRIVY_TEST_APP_ID: ${{ vars.PRIVY_TEST_APP_ID }}
           PRIVY_TEST_APP_SECRET: ${{ secrets.PRIVY_TEST_APP_SECRET }}

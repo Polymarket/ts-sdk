@@ -53,6 +53,8 @@ export type RtdsWebSocketManagerOptions = {
 /**
  * Realtime Data Service (RTDS) WebSocket manager.
  *
+ * @deprecated Retained temporarily for legacy price and comment streams.
+ *
  * Implements {@link WebSocketSubscriptionManager} for the comments, crypto prices, and
  * equity prices topics multiplexed over a single shared upstream socket
  * opened lazily on the first subscribe.

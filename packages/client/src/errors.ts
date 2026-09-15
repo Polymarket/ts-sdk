@@ -1,3 +1,5 @@
+export { RealtimeErrorCode } from '@polymarket/bindings/subscriptions';
+
 import { PolymarketError } from '@polymarket/types';
 import type { ZodError } from 'zod';
 import type { RateLimitUpdate } from './rate-limit';

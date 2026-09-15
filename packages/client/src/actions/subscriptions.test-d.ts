@@ -1,46 +1,158 @@
 import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
+import type * as BindingExports from '@polymarket/bindings/subscriptions';
 import type {
-  CryptoPricesBinanceEvent,
-  CryptoPricesChainlinkEvent,
-  CryptoPricesChainlinkTwapEvent,
+  CryptoPriceEvent,
   CryptoPricesChainlinkTwapSixtyEvent,
   CryptoPricesChainlinkTwapThirtyEvent,
+  CryptoTwapPriceEvent,
   CustomMarketEvent,
+  EquityPriceEvent,
   MarketEvent,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
 import { describe, expectTypeOf, it } from 'vitest';
-import type { TransportError, UserInputError } from '../errors';
+import type {
+  ConnectionLostError,
+  RequestRejectedError,
+  TransportError,
+  UserInputError,
+} from '../errors';
+import type * as ClientExports from '../index';
 import {
   createPublicClient,
-  type CryptoPricesChainlinkTwapEvent as RootCryptoPricesChainlinkTwapEvent,
-  type CryptoPricesChainlinkTwapSubscription as RootCryptoPricesChainlinkTwapSubscription,
-  type CryptoPricesChainlinkTwapWindowSeconds as RootCryptoPricesChainlinkTwapWindowSeconds,
+  type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
+  type CryptoTwapPriceSubscription as RootCryptoTwapPriceSubscription,
+  type SecureClient,
 } from '../index';
+
 import type {
-  EquityPricesEvent,
   EventForSubscriptionSpecs,
   MarketSubscription,
   SubscribeError,
   SubscriptionHandle,
 } from './subscriptions';
 
+declare const secureClient: SecureClient;
+
 const ASSET_ID = toTokenId('123');
 
-describe('EventForSubscriptionSpecs', () => {
-  it('exports the TWAP public surface from the package root', () => {
-    expectTypeOf<RootCryptoPricesChainlinkTwapSubscription>().toMatchTypeOf<{
-      topic: 'prices.crypto.chainlink.twap';
-      windowSeconds: 30 | 60;
+describe('price subscription contracts', () => {
+  it('infers each price topic and only the requested mixed topics through the client', async () => {
+    expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<{
+      topic: 'prices.crypto.twap';
+      symbols: readonly string[];
     }>();
-    expectTypeOf<RootCryptoPricesChainlinkTwapEvent>().toEqualTypeOf<CryptoPricesChainlinkTwapEvent>();
-    expectTypeOf<RootCryptoPricesChainlinkTwapWindowSeconds>().toEqualTypeOf<
-      30 | 60
+    expectTypeOf<RootCryptoTwapPriceEvent>().toEqualTypeOf<CryptoTwapPriceEvent>();
+    const crypto = secureClient.subscribe([
+      { topic: 'prices.crypto', symbols: ['btcusd'] },
+    ]);
+    expectTypeOf(crypto).resolves.toEqualTypeOf<
+      SubscriptionHandle<CryptoPriceEvent>
     >();
+    const twap = secureClient.subscribe([
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+    ]);
+    expectTypeOf(twap).resolves.toEqualTypeOf<
+      SubscriptionHandle<CryptoTwapPriceEvent>
+    >();
+    const equity = secureClient.subscribe([
+      { topic: 'prices.equity', symbol: 'aapl' },
+    ]);
+    expectTypeOf(equity).resolves.toEqualTypeOf<
+      SubscriptionHandle<EquityPriceEvent>
+    >();
+    const mixed = secureClient.subscribe([
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+      { topic: 'prices.equity', symbol: 'aapl' },
+    ]);
+    expectTypeOf(mixed).resolves.toEqualTypeOf<
+      SubscriptionHandle<CryptoTwapPriceEvent | EquityPriceEvent>
+    >();
+
+    for await (const event of await twap) {
+      if (event.type === 'subscribe') {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<CryptoTwapPriceEvent, { type: 'subscribe' }>
+        >();
+      } else {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<CryptoTwapPriceEvent, { type: 'update' }>
+        >();
+      }
+    }
+    for await (const event of await equity) {
+      if (event.type === 'subscribe') {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<EquityPriceEvent, { type: 'subscribe' }>
+        >();
+      } else {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<EquityPriceEvent, { type: 'update' }>
+        >();
+      }
+    }
   });
 
+  it('requires authentication and explicit symbols while preserving deprecated topics', () => {
+    const publicClient = createPublicClient();
+    // @ts-expect-error Crypto prices require a secure client.
+    publicClient.subscribe([{ topic: 'prices.crypto', symbols: ['btcusd'] }]);
+    publicClient.subscribe([
+      // @ts-expect-error TWAP prices require a secure client.
+      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+    ]);
+    // @ts-expect-error Equity prices require a secure client.
+    publicClient.subscribe([{ topic: 'prices.equity', symbol: 'aapl' }]);
+    // @ts-expect-error Crypto prices require explicit symbols.
+    secureClient.subscribe([{ topic: 'prices.crypto' }]);
+    // @ts-expect-error TWAP prices require explicit symbols.
+    secureClient.subscribe([{ topic: 'prices.crypto.twap' }]);
+    expectTypeOf<BindingExports.CommentsEvent>();
+    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapEvent>();
+    // @ts-expect-error Managers are implementation details, not root exports.
+    expectTypeOf<ClientExports.RealtimeWebSocketManager>();
+    // @ts-expect-error Managers are implementation details, not root exports.
+    expectTypeOf<ClientExports.RtdsWebSocketManager>();
+    publicClient.subscribe([
+      { topic: 'prices.crypto.binance', symbols: ['btcusdt'] },
+      { topic: 'prices.crypto.chainlink', symbols: ['btc/usd'] },
+      {
+        topic: 'prices.crypto.chainlink.twap',
+        symbols: ['btc/usd'],
+        windowSeconds: 60,
+      },
+      { topic: 'prices.equity.pyth', symbol: 'aapl', types: ['update'] },
+      { topic: 'comments' },
+    ]);
+  });
+
+  it('preserves deprecated RTDS TWAP window narrowing', () => {
+    type ThirtySecond = EventForSubscriptionSpecs<
+      [
+        {
+          topic: 'prices.crypto.chainlink.twap';
+          symbols: ['btc/usd'];
+          windowSeconds: 30;
+        },
+      ]
+    >;
+    type SixtySecond = EventForSubscriptionSpecs<
+      [
+        {
+          topic: 'prices.crypto.chainlink.twap';
+          symbols: ['btc/usd'];
+          windowSeconds: 60;
+        },
+      ]
+    >;
+    expectTypeOf<ThirtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapThirtyEvent>();
+    expectTypeOf<SixtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapSixtyEvent>();
+  });
+});
+
+describe('EventForSubscriptionSpecs', () => {
   it('narrows a standard market spec to standard market events', () => {
     type MarketOnly = EventForSubscriptionSpecs<
       readonly [
@@ -95,78 +207,6 @@ describe('EventForSubscriptionSpecs', () => {
     expectTypeOf<MarketOnly>().toEqualTypeOf<MarketEvent>();
   });
 
-  it('narrows `prices.crypto.binance` to the Binance event type', () => {
-    type BinanceOnly = EventForSubscriptionSpecs<
-      readonly [{ topic: 'prices.crypto.binance' }]
-    >;
-    expectTypeOf<BinanceOnly>().toEqualTypeOf<CryptoPricesBinanceEvent>();
-  });
-
-  it('narrows `prices.crypto.chainlink` to the Chainlink event type', () => {
-    type ChainlinkOnly = EventForSubscriptionSpecs<
-      readonly [{ topic: 'prices.crypto.chainlink' }]
-    >;
-    expectTypeOf<ChainlinkOnly>().toEqualTypeOf<CryptoPricesChainlinkEvent>();
-  });
-
-  it('narrows each Chainlink TWAP window to its exact event type', () => {
-    type ThirtySecondTwap = EventForSubscriptionSpecs<
-      readonly [{ topic: 'prices.crypto.chainlink.twap'; windowSeconds: 30 }]
-    >;
-    type SixtySecondTwap = EventForSubscriptionSpecs<
-      readonly [{ topic: 'prices.crypto.chainlink.twap'; windowSeconds: 60 }]
-    >;
-
-    expectTypeOf<ThirtySecondTwap>().toEqualTypeOf<CryptoPricesChainlinkTwapThirtyEvent>();
-    expectTypeOf<SixtySecondTwap>().toEqualTypeOf<CryptoPricesChainlinkTwapSixtyEvent>();
-  });
-
-  it('keeps both TWAP event variants when the window is dynamic', () => {
-    type DynamicTwap = EventForSubscriptionSpecs<
-      readonly [
-        {
-          topic: 'prices.crypto.chainlink.twap';
-          windowSeconds: 30 | 60;
-        },
-      ]
-    >;
-
-    expectTypeOf<DynamicTwap>().toEqualTypeOf<CryptoPricesChainlinkTwapEvent>();
-  });
-
-  it('unions exact events when subscribing to both TWAP windows', () => {
-    type BothWindows = EventForSubscriptionSpecs<
-      readonly [
-        { topic: 'prices.crypto.chainlink.twap'; windowSeconds: 30 },
-        { topic: 'prices.crypto.chainlink.twap'; windowSeconds: 60 },
-      ]
-    >;
-
-    expectTypeOf<BothWindows>().toEqualTypeOf<
-      CryptoPricesChainlinkTwapThirtyEvent | CryptoPricesChainlinkTwapSixtyEvent
-    >();
-  });
-
-  it('unions spot and exact-window TWAP events', () => {
-    type SpotAndTwap = EventForSubscriptionSpecs<
-      readonly [
-        { topic: 'prices.crypto.chainlink' },
-        { topic: 'prices.crypto.chainlink.twap'; windowSeconds: 60 },
-      ]
-    >;
-
-    expectTypeOf<SpotAndTwap>().toEqualTypeOf<
-      CryptoPricesChainlinkEvent | CryptoPricesChainlinkTwapSixtyEvent
-    >();
-  });
-
-  it('maps equity prices to the equity event union', () => {
-    type EquityOnly = EventForSubscriptionSpecs<
-      readonly [{ topic: 'prices.equity.pyth'; symbol: string }]
-    >;
-    expectTypeOf<EquityOnly>().toEqualTypeOf<EquityPricesEvent>();
-  });
-
   it('unions the event types of a multi-topic spec', () => {
     type Mixed = EventForSubscriptionSpecs<
       readonly [
@@ -192,7 +232,10 @@ describe('EventForSubscriptionSpecs', () => {
 describe('SubscribeError', () => {
   it('includes invalid input and transport failures', () => {
     expectTypeOf<SubscribeError>().toEqualTypeOf<
-      UserInputError | TransportError
+      | UserInputError
+      | TransportError
+      | ConnectionLostError
+      | RequestRejectedError
     >();
   });
 });
@@ -229,35 +272,6 @@ describe('PublicClient.subscribe', () => {
     expectTypeOf(pending).resolves.toEqualTypeOf<
       SubscriptionHandle<MarketEvent>
     >();
-  });
-
-  it('infers the exact TWAP event from the requested window', async () => {
-    const client = createPublicClient();
-
-    const pending = client.subscribe([
-      {
-        topic: 'prices.crypto.chainlink.twap',
-        windowSeconds: 30,
-        symbols: ['btc/usd'],
-      },
-    ]);
-    expectTypeOf(pending).resolves.toEqualTypeOf<
-      SubscriptionHandle<CryptoPricesChainlinkTwapThirtyEvent>
-    >();
-  });
-
-  it('requires a supported TWAP window', () => {
-    const client = createPublicClient();
-
-    // @ts-expect-error TWAP subscriptions require an explicit window.
-    client.subscribe([{ topic: 'prices.crypto.chainlink.twap' }]);
-    client.subscribe([
-      {
-        topic: 'prices.crypto.chainlink.twap',
-        // @ts-expect-error Only the published 30s and 60s feeds are supported.
-        windowSeconds: 45,
-      },
-    ]);
   });
 
   it('excludes secure-only events from a public subscription', async () => {
