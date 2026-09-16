@@ -86,6 +86,8 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -97,6 +99,7 @@ export type {
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
@@ -114,6 +117,7 @@ export {
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
