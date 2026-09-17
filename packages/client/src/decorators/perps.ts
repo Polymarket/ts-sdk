@@ -407,8 +407,7 @@ export function perpsActions(
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>
       revokePerpsCredentials(client, request),
-    transferPerpsCollateral: (request) =>
-      transferPerpsCollateral(client, request),
+    transferPerpsCollateral: transferPerpsCollateral.bind(null, client),
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }
