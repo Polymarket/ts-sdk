@@ -1,4 +1,5 @@
 import {
+  EvmAddressSchema,
   type PaginationCursor,
   PaginationCursorSchema,
   toPaginationCursor,
@@ -1067,7 +1068,7 @@ const PerpsInternalTransferLabelSchema = z
   );
 
 const TransferPerpsCollateralRequestSchema = z.object({
-  recipient: z.string().transform((value) => expectEvmAddress(value)),
+  recipient: EvmAddressSchema,
   amount: PositivePerpsDecimalInputSchema,
   label: PerpsInternalTransferLabelSchema.optional(),
 }) satisfies z.ZodType<TransferPerpsCollateralRequest>;
