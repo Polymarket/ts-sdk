@@ -141,6 +141,7 @@ export {
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
   | RateLimitError
@@ -1455,43 +1456,50 @@ export async function transferPerpsCollateral(
     );
   }
 
-  const account = client.account.signer;
-  const token = client.environment.contracts.collateralToken;
-  const op = {
-    type: 'internalTransfer' as const,
-    args: {
-      account,
-      token,
-      amount: params.amount,
-      to: params.recipient,
+  return executePerpsCollateralTransfer(
+    {
+      signTransfer({ account, token, amount, recipient, salt, timestamp }) {
+        return signPerpsOwnerOp(client, {
+          salt,
+          signedOp: ['internalTransfer', [account, token, amount, recipient]],
+          timestamp,
+        });
+      },
+      async submitTransfer(transfer) {
+        const body: Record<string, unknown> = {
+          op: {
+            type: 'internalTransfer',
+            args: {
+              account: transfer.account,
+              token: transfer.token,
+              amount: transfer.amount,
+              to: transfer.recipient,
+            },
+          },
+          salt: transfer.salt,
+          sig: transfer.signature,
+          ts: transfer.timestamp,
+        };
+        if (transfer.label !== undefined) body.label = transfer.label;
+
+        const response = await unwrap(
+          client.perps
+            .post('/v1/account/internal-transfer', { json: body })
+            .andThen(validateWith(PerpsInternalTransferResponseSchema)),
+        );
+        return response.transferId;
+      },
     },
-  };
-  const signedOp = [
-    'internalTransfer',
-    [account, token, params.amount, params.recipient],
-  ] as const satisfies PerpsSignedOp;
-  const salt = randomUint32();
-  const timestamp = Date.now();
-  const signature = await signPerpsOwnerOp(client, {
-    salt,
-    signedOp,
-    timestamp,
-  });
-  const body: Record<string, unknown> = {
-    op,
-    salt,
-    sig: signature,
-    ts: timestamp,
-  };
-  if (params.label !== undefined) body.label = params.label;
-
-  const response = await unwrap(
-    client.perps
-      .post('/v1/account/internal-transfer', { json: body })
-      .andThen(validateWith(PerpsInternalTransferResponseSchema)),
+    {
+      account: client.account.signer,
+      token: client.environment.contracts.collateralToken,
+      amount: params.amount,
+      recipient: params.recipient,
+      label: params.label,
+      salt: randomUint32(),
+      timestamp: Date.now(),
+    },
   );
-
-  return response.transferId;
 }
 
 async function createPerpsCredentials(

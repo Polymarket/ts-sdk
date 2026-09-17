@@ -92,6 +92,24 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('does not retry POST requests after a server error', async () => {
+    let requests = 0;
+    server.use(
+      http.post(`${root}/single-attempt`, () => {
+        requests += 1;
+        return HttpResponse.json({ error: 'internal_error' }, { status: 500 });
+      }),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(unwrap(client.post('/single-attempt'))).rejects.toMatchObject({
+      code: 'internal_error',
+      name: 'RequestRejectedError',
+      status: 500,
+    });
+    expect(requests).toBe(1);
+  });
+
   it('keeps explicit JSON error codes authoritative', async () => {
     server.use(
       http.get(`${root}/json-explicit-error-code`, () =>

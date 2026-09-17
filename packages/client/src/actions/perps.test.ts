@@ -1,5 +1,7 @@
-import { WalletType } from '@polymarket/bindings/gamma';
-import { PerpsKlineInterval } from '@polymarket/bindings/perps';
+import {
+  PerpsInternalTransferIdSchema,
+  PerpsKlineInterval,
+} from '@polymarket/bindings/perps';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
@@ -12,18 +14,20 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BaseClient, BaseSecureClient } from '../clients';
-import { production } from '../environments';
-import { RequestRejectedError, UserInputError } from '../errors';
+import type { BaseClient } from '../clients';
+import { RequestRejectedError, SigningError, TransportError } from '../errors';
 import { ServiceClient } from '../ServiceClient';
-import { SignerType } from '../wallet';
-import { createPerpsOpTypedDataPayload } from '../websockets/perps/signing';
 import {
   listPerpsCandles,
   listPerpsFundingHistory,
   listPerpsTrades,
-  transferPerpsCollateral,
 } from './perps';
+import {
+  executePerpsCollateralTransfer,
+  type PerpsCollateralTransfer,
+  type PerpsCollateralTransferOperation,
+  type SignedPerpsCollateralTransfer,
+} from './perps/internal-transfer';
 
 const root = 'http://localhost:4017';
 const server = setupServer();
@@ -35,6 +39,16 @@ const recipientAddress = expectEvmAddress(
   '0x0000000000000000000000000000000000000002',
 );
 const signature = expectEvmSignature(`0x${'1'.repeat(130)}`);
+const transferId = PerpsInternalTransferIdSchema.parse(42);
+const transfer: PerpsCollateralTransfer = {
+  account: signerAddress,
+  token: expectEvmAddress('0x0000000000000000000000000000000000000003'),
+  recipient: recipientAddress,
+  amount: '100.00',
+  label: 'treasury-rebalance-42',
+  salt: 123,
+  timestamp: 1_789_704_000_000,
+};
 
 describe('Perps actions', () => {
   beforeAll(() => {
@@ -213,120 +227,73 @@ describe('Perps actions', () => {
     ]);
   });
 
-  it('signs and sends an owner internal transfer with the exact decimal amount', async () => {
-    const bodies: Array<Record<string, unknown>> = [];
-    server.use(
-      http.post(`${root}/v1/account/internal-transfer`, async ({ request }) => {
-        bodies.push((await request.json()) as Record<string, unknown>);
-        return HttpResponse.json({ status: 'ok', transfer_id: 42 });
-      }),
-    );
-    const { client, signTypedData } = createSecureClient();
-
-    await expect(
-      transferPerpsCollateral(client, {
-        amount: '100.00',
-        label: 'treasury-rebalance-42',
-        recipient: recipientAddress,
-      }),
-    ).resolves.toBe(42);
-
-    expect(bodies).toHaveLength(1);
-    const body = bodies[0] as { salt: number; ts: number };
-    expect(body).toEqual({
-      label: 'treasury-rebalance-42',
-      op: {
-        args: {
-          account: signerAddress,
-          amount: '100.00',
-          to: recipientAddress,
-          token: production.contracts.collateralToken,
-        },
-        type: 'internalTransfer',
+  it('signs and submits the exact transfer once, keeping the label unsigned', async () => {
+    const { label, ...operation } = transfer;
+    const calls: string[] = [];
+    const signTransfer = vi.fn(
+      async (request: PerpsCollateralTransferOperation) => {
+        calls.push('sign');
+        expect(request).toEqual(operation);
+        return signature;
       },
-      salt: expect.any(Number),
-      sig: signature,
-      ts: expect.any(Number),
-    });
-    expect(signTypedData).toHaveBeenCalledWith(
-      createPerpsOpTypedDataPayload({
-        chainId: production.chainId,
-        op: [
-          'internalTransfer',
-          [
-            signerAddress,
-            production.contracts.collateralToken,
-            '100.00',
-            recipientAddress,
-          ],
-        ],
-        salt: body.salt,
-        timestamp: body.ts,
-      }),
     );
-  });
+    const submitTransfer = vi.fn(
+      async (request: SignedPerpsCollateralTransfer) => {
+        calls.push('submit');
+        expect(request).toEqual({ ...operation, label, signature });
+        return transferId;
+      },
+    );
 
-  it('rejects session-key and self transfers before signing or transport', async () => {
-    const sessionKeyClient = createSecureClient(SignerType.SESSION_KEY);
     await expect(
-      transferPerpsCollateral(sessionKeyClient.client, {
-        amount: '1',
-        recipient: recipientAddress,
-      }),
-    ).rejects.toBeInstanceOf(UserInputError);
-    expect(sessionKeyClient.signTypedData).not.toHaveBeenCalled();
-
-    const ownerClient = createSecureClient();
-    await expect(
-      transferPerpsCollateral(ownerClient.client, {
-        amount: '1',
-        recipient: signerAddress,
-      }),
-    ).rejects.toBeInstanceOf(UserInputError);
-    expect(ownerClient.signTypedData).not.toHaveBeenCalled();
-  });
-
-  it('surfaces owner-signing rejection identifiers', async () => {
-    server.use(
-      http.post(`${root}/v1/account/internal-transfer`, () =>
-        HttpResponse.json(
-          { status: 'err', error: 'signer_does_not_match_account' },
-          { status: 422 },
-        ),
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
       ),
-    );
-
-    await expect(
-      transferPerpsCollateral(createSecureClient().client, {
-        amount: '1',
-        recipient: recipientAddress,
-      }),
-    ).rejects.toMatchObject({
-      code: 'signer_does_not_match_account',
-      name: RequestRejectedError.name,
-      status: 422,
-    });
+    ).resolves.toBe(transferId);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['sign', 'submit']);
   });
 
-  it('attempts an internal transfer only once on an unknown outcome', async () => {
-    let requests = 0;
-    server.use(
-      http.post(`${root}/v1/account/internal-transfer`, () => {
-        requests += 1;
-        return HttpResponse.json(
-          { status: 'err', error: 'internal_error' },
-          { status: 500 },
-        );
-      }),
-    );
+  it('does not submit when transfer signing fails', async () => {
+    const error = new SigningError('Signing declined.');
+    const signTransfer = vi.fn(async () => {
+      throw error;
+    });
+    const submitTransfer = vi.fn(async () => transferId);
 
     await expect(
-      transferPerpsCollateral(createSecureClient().client, {
-        amount: '1',
-        recipient: recipientAddress,
-      }),
-    ).rejects.toBeInstanceOf(RequestRejectedError);
-    expect(requests).toBe(1);
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
+      ),
+    ).rejects.toBe(error);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new RequestRejectedError('Owner signing rejected.', {
+      code: 'signer_does_not_match_account',
+      status: 422,
+    }),
+    new RequestRejectedError('Unknown transfer outcome.', { status: 500 }),
+    new TransportError('Connection lost after submission.'),
+  ])('does not retry a transfer after $name ($message)', async (error) => {
+    const signTransfer = vi.fn(async () => signature);
+    const submitTransfer = vi.fn(async () => {
+      throw error;
+    });
+
+    await expect(
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
+      ),
+    ).rejects.toBe(error);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -334,26 +301,6 @@ function createClient(): BaseClient {
   return {
     perps: new ServiceClient({ root }),
   } as unknown as BaseClient;
-}
-
-function createSecureClient(signerType: SignerType = SignerType.OWNER): {
-  client: BaseSecureClient;
-  signTypedData: ReturnType<typeof vi.fn>;
-} {
-  const signTypedData = vi.fn(async () => signature);
-  const client = {
-    account: {
-      signer: signerAddress,
-      signerType,
-      wallet: signerAddress,
-      walletType: WalletType.EOA,
-    },
-    environment: production,
-    perps: new ServiceClient({ root }),
-    signer: { signTypedData },
-  } as unknown as BaseSecureClient;
-
-  return { client, signTypedData };
 }
 
 function candle(timestamp: number) {
