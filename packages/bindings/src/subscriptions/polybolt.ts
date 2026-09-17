@@ -5,7 +5,7 @@ import {
   EpochMillisecondsSchema,
 } from '../shared';
 
-export enum RealtimeErrorCode {
+export enum RealtimeKnownErrorCode {
   BadOp = 'bad_op',
   BadChannel = 'bad_channel',
   BadFilter = 'bad_filter',
@@ -17,6 +17,13 @@ export enum RealtimeErrorCode {
   AuthAttempts = 'auth_attempts',
   AuthInvalid = 'auth_invalid',
 }
+
+/**
+ * A realtime error code. Known codes are enumerated in {@link RealtimeKnownErrorCode};
+ * newly introduced codes flow through as plain strings so they can be handled
+ * before a client release that enumerates them.
+ */
+export type RealtimeErrorCode = RealtimeKnownErrorCode | (string & {});
 
 export enum PolyboltChannel {
   Crypto = 'price.crypto',
@@ -47,7 +54,10 @@ export const PolyboltAckSchema = z.object({
   op: z.enum(PolyboltAckOp),
   channel: z.string().optional(),
   rid: z.string().optional(),
-  code: z.enum(RealtimeErrorCode).optional(),
+  code: z
+    .string()
+    .transform((value): RealtimeErrorCode => value)
+    .optional(),
 });
 export type PolyboltAck = z.infer<typeof PolyboltAckSchema>;
 

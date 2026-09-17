@@ -1,6 +1,6 @@
 import {
   type PriceEvent,
-  RealtimeErrorCode,
+  RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { setNonBlockingTimeout } from '@polymarket/types';
 import {
@@ -171,7 +171,7 @@ export class PriceSession {
       if (this.#closed || generation !== this.#generation) return;
       if (
         error instanceof RequestRejectedError &&
-        error.code !== RealtimeErrorCode.AuthUnavailable
+        error.code !== RealtimeKnownErrorCode.AuthUnavailable
       ) {
         this.#fail(error);
       } else {
@@ -273,22 +273,13 @@ export class PriceSession {
       const subscription = state.subscription;
       if (subscription.topic !== event.topic) continue;
       const payload = event.payload;
-      if ('assetId' in subscription) {
-        if (!('assetId' in payload) || payload.assetId !== subscription.assetId)
-          continue;
-      } else {
-        if (
-          !('symbol' in payload) ||
-          payload.symbol.toLowerCase() !== subscription.symbol
-        )
-          continue;
-        if (
-          subscription.topic === 'prices.crypto.twap' &&
-          (!('windowSeconds' in payload) ||
-            payload.windowSeconds !== subscription.windowSeconds)
-        )
-          continue;
-      }
+      if (payload.symbol.toLowerCase() !== subscription.symbol) continue;
+      if (
+        subscription.topic === 'prices.crypto.twap' &&
+        (!('windowSeconds' in payload) ||
+          payload.windowSeconds !== subscription.windowSeconds)
+      )
+        continue;
       state.snapshot = refreshSnapshot(state.snapshot, event);
       for (const listener of state.listeners) listener.event(event);
     }

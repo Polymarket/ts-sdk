@@ -22,6 +22,8 @@ import type {
 import type * as ClientExports from '../index';
 import {
   createPublicClient,
+  type RealtimeErrorCode,
+  RealtimeKnownErrorCode,
   type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
   type CryptoTwapPriceSubscription as RootCryptoTwapPriceSubscription,
   type SecureClient,
@@ -39,6 +41,16 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('price subscription contracts', () => {
+  it('exports known realtime error codes while accepting future codes', () => {
+    expectTypeOf(
+      RealtimeKnownErrorCode.BadFilter,
+    ).toExtend<RealtimeErrorCode>();
+    expectTypeOf<'future_error_code'>().toExtend<RealtimeErrorCode>();
+    expectTypeOf<BindingExports.PolyboltAck>()
+      .toHaveProperty('code')
+      .toEqualTypeOf<RealtimeErrorCode | undefined>();
+  });
+
   it('infers each price topic and only the requested mixed topics through the client', async () => {
     expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<{
       topic: 'prices.crypto.twap';

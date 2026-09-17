@@ -7,7 +7,7 @@ import {
 
 // Representative frames captured from the staging edge on 2026-09-08; history
 // is reduced to two points. Auth was captured in shadow mode, not enforcement.
-// The precision/drop case below is synthetic.
+// The unknown-code and precision/drop cases below are synthetic.
 describe('realtime frame normalization', () => {
   it.each([
     {
@@ -48,6 +48,15 @@ describe('realtime frame normalization', () => {
       rid: 'capture-auth-ping',
     },
   ])('accepts the captured $op acknowledgement', (frame) => {
+    expect(PolyboltAckSchema.parse(frame)).toEqual(frame);
+  });
+  it('preserves unknown rejection codes and request correlation', () => {
+    const frame = {
+      op: 'error',
+      channel: 'price.crypto',
+      rid: 'future-rejection',
+      code: 'future_error_code',
+    };
     expect(PolyboltAckSchema.parse(frame)).toEqual(frame);
   });
   it('normalizes price.crypto btcusd history', () => {

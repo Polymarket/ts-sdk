@@ -1,7 +1,7 @@
 import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
-  RealtimeErrorCode,
+  RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -130,13 +130,16 @@ describe('price subscription policy', () => {
     );
   });
 
-  it('rejects an ambiguous batch without ending an established sibling', async () => {
+  it.each([
+    RealtimeKnownErrorCode.BadFilter,
+    'future_error_code',
+  ])('rejects an ambiguous batch with %s without ending an established sibling', async (code) => {
     const harness = setup();
     const { session, connection } = harness;
     const existing = await accept(session);
     const rejection = new RequestRejectedError('Realtime request rejected.', {
       status: 200,
-      code: RealtimeErrorCode.BadFilter,
+      code,
     });
     connection.change.mockRejectedValueOnce(rejection);
     const newcomer = listener();
@@ -149,6 +152,8 @@ describe('price subscription policy', () => {
     expect(existing.event).toHaveBeenCalledOnce();
     expect(existing.end).not.toHaveBeenCalled();
     expect(newcomer.end).toHaveBeenCalledWith(rejection);
+    await vi.advanceTimersByTimeAsync(10_001);
+    expect(connection.close).not.toHaveBeenCalled();
     expect(connection.open).toHaveBeenCalledOnce();
   });
 
@@ -158,7 +163,7 @@ describe('price subscription policy', () => {
     const accepted = listener();
     const error = new RequestRejectedError('Realtime request rejected.', {
       status: 200,
-      code: RealtimeErrorCode.BadFilter,
+      code: RealtimeKnownErrorCode.BadFilter,
     });
     connection.change.mockResolvedValueOnce([{ key: 'ethusd', error }]);
     const bad = expect(session.add(crypto('ethusd'), rejected)).rejects.toBe(
@@ -300,7 +305,7 @@ describe('price subscription policy', () => {
     terminal.connection.authorize.mockRejectedValueOnce(
       new RequestRejectedError('Realtime request rejected.', {
         status: 200,
-        code: RealtimeErrorCode.AuthInvalid,
+        code: RealtimeKnownErrorCode.AuthInvalid,
       }),
     );
     await expect(
@@ -311,7 +316,7 @@ describe('price subscription policy', () => {
     temporary.connection.authorize.mockRejectedValueOnce(
       new RequestRejectedError('Realtime request rejected.', {
         status: 200,
-        code: RealtimeErrorCode.AuthUnavailable,
+        code: RealtimeKnownErrorCode.AuthUnavailable,
       }),
     );
     const pending = temporary.session.add(crypto(), listener());

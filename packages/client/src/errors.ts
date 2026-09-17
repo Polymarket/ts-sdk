@@ -1,4 +1,7 @@
-export { RealtimeErrorCode } from '@polymarket/bindings/subscriptions';
+export {
+  type RealtimeErrorCode,
+  RealtimeKnownErrorCode,
+} from '@polymarket/bindings/subscriptions';
 
 import { PolymarketError } from '@polymarket/types';
 import type { ZodError } from 'zod';
