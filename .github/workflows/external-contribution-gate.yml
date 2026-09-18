@@ -1,0 +1,130 @@
+name: External Contribution Gate
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, synchronize]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate:
+    name: Validate approved issue
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      # This privileged workflow must never check out or execute pull request code.
+      - name: Check contribution approval
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const marker = '<!-- external-contribution-gate -->';
+            const pullRequest = context.payload.pull_request;
+            const { data: access } =
+              await github.rest.repos.getCollaboratorPermissionLevel({
+                ...context.repo,
+                username: pullRequest.user.login,
+              });
+
+            if (['admin', 'write'].includes(access.permission)) {
+              core.info(`${pullRequest.user.login} has write access; skipping.`);
+              return;
+            }
+
+            const match = (pullRequest.body ?? '').match(
+              /^Approved issue:\s*#([1-9][0-9]*)\s*$/im,
+            );
+
+            let issueNumber;
+            let rejectionReason;
+
+            if (!match) {
+              rejectionReason =
+                'the pull request description does not contain `Approved issue: #123`';
+            } else {
+              issueNumber = Number(match[1]);
+
+              try {
+                const { data: issue } = await github.rest.issues.get({
+                  ...context.repo,
+                  issue_number: issueNumber,
+                });
+
+                if (issue.pull_request) {
+                  rejectionReason = `#${issueNumber} is a pull request, not an issue`;
+                } else {
+                  const labels = issue.labels.map((label) =>
+                    typeof label === 'string' ? label : label.name,
+                  );
+
+                  if (!labels.includes('contribution-approved')) {
+                    rejectionReason =
+                      `#${issueNumber} does not have the \`contribution-approved\` label`;
+                  } else {
+                    const contributor = pullRequest.user.login.toLowerCase();
+                    const isAssigned = (issue.assignees ?? []).some(
+                      (assignee) => assignee.login.toLowerCase() === contributor,
+                    );
+
+                    if (!isAssigned) {
+                      rejectionReason =
+                        `${pullRequest.user.login} is not assigned to #${issueNumber}`;
+                    }
+                  }
+                }
+              } catch (error) {
+                if (error.status === 404) {
+                  rejectionReason = `#${issueNumber} does not exist in this repository`;
+                } else {
+                  throw error;
+                }
+              }
+            }
+
+            if (!rejectionReason) {
+              core.info(
+                `Contribution by ${pullRequest.user.login} approved in issue #${issueNumber}.`,
+              );
+              return;
+            }
+
+            const body = `${marker}
+            Thanks for taking the time to contribute. This pull request is being closed because ${rejectionReason}.
+
+            We discuss and approve external contributions before implementation so contributors do not spend time on changes that may not fit the SDK direction. Please read [CONTRIBUTING.md](https://github.com/${context.repo.owner}/${context.repo.repo}/blob/main/CONTRIBUTING.md), discuss the proposal in an issue, and wait for a maintainer to assign you and add the \`contribution-approved\` label.
+
+            Once the linked issue is approved, update this description and reopen the pull request.`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: pullRequest.number,
+              per_page: 100,
+            });
+            const previousComment = comments.find(
+              (comment) =>
+                comment.user?.type === 'Bot' && comment.body?.includes(marker),
+            );
+
+            if (previousComment) {
+              await github.rest.issues.updateComment({
+                ...context.repo,
+                comment_id: previousComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: pullRequest.number,
+                body,
+              });
+            }
+
+            await github.rest.pulls.update({
+              ...context.repo,
+              pull_number: pullRequest.number,
+              state: 'closed',
+            });
+
+            core.setFailed(rejectionReason);
