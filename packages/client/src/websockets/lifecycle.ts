@@ -20,6 +20,7 @@ const RECONNECT_BASE_DELAY_MS = 250;
 const RECONNECT_MAX_DELAY_MS = 30_000;
 
 export type ScheduleReconnectOptions = {
+  delayPolicy?: (attempt: number) => number;
   shouldReconnect: () => boolean;
   reconnect: () => Promise<unknown>;
 };
@@ -45,21 +46,29 @@ export type WebSocketConnectionResult = {
 
 export type WebSocketConnectionConstructorOptions = {
   heartbeat?: WebSocketHeartbeat;
+  connectTimeoutMs?: number;
+  closeTimeoutMs?: number;
 };
 
 export class ReconnectScheduler {
   #timer: ReturnType<typeof setTimeout> | undefined;
   #attempt = 0;
 
+  get isScheduled(): boolean {
+    return this.#timer !== undefined;
+  }
+
   schedule(options: ScheduleReconnectOptions): void {
     if (this.#timer !== undefined || !options.shouldReconnect()) {
       return;
     }
 
-    const delay = reconnectDelay(this.#attempt, {
-      baseMs: RECONNECT_BASE_DELAY_MS,
-      maxMs: RECONNECT_MAX_DELAY_MS,
-    });
+    const delay =
+      options.delayPolicy?.(this.#attempt) ??
+      reconnectDelay(this.#attempt, {
+        baseMs: RECONNECT_BASE_DELAY_MS,
+        maxMs: RECONNECT_MAX_DELAY_MS,
+      });
     this.#attempt += 1;
     this.#timer = setNonBlockingTimeout(() => {
       this.#timer = undefined;
@@ -91,12 +100,17 @@ export class ReconnectScheduler {
 
 export class WebSocketConnection {
   readonly #heartbeat: WebSocketHeartbeat | undefined;
+  readonly #connectTimeoutMs: number | undefined;
+  readonly #closeTimeoutMs: number | undefined;
+  #cancelOpen: (() => void) | undefined;
   #socket: WebSocket | undefined;
   #connecting: Promise<WebSocketConnectionResult> | undefined;
   #watchdog: ReturnType<typeof setInterval> | undefined;
 
   constructor(options: WebSocketConnectionConstructorOptions = {}) {
     this.#heartbeat = options.heartbeat;
+    this.#connectTimeoutMs = options.connectTimeoutMs;
+    this.#closeTimeoutMs = options.closeTimeoutMs;
   }
 
   connect<TContext = undefined>(
@@ -134,12 +148,24 @@ export class WebSocketConnection {
   }
 
   async close(): Promise<void> {
+    this.#cancelOpen?.();
     const socket = await this.#takeCurrent();
     this.#stopHeartbeat();
     if (socket === undefined || socket.readyState === WebSocket.CLOSED) return;
 
     await new Promise<void>((resolve) => {
-      socket.addEventListener('close', () => resolve(), { once: true });
+      const timer =
+        this.#closeTimeoutMs === undefined
+          ? undefined
+          : setNonBlockingTimeout(resolve, this.#closeTimeoutMs);
+      socket.addEventListener(
+        'close',
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
       if (socket.readyState !== WebSocket.CLOSING) {
         socket.close();
       }
@@ -153,8 +179,18 @@ export class WebSocketConnection {
 
     return new Promise<WebSocket>((resolve, reject) => {
       const socket = createWebSocket(options.url, options.headers);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const cancel = () => {
+        socket.removeEventListener('open', onOpen);
+        clearTimeout(timer);
+        this.#cancelOpen = undefined;
+        reject(new TransportError('WebSocket connection did not open.'));
+        socket.close();
+      };
 
       const onOpen = () => {
+        clearTimeout(timer);
+        this.#cancelOpen = undefined;
         socket.removeEventListener('error', onOpenError);
         this.#markOpen(socket);
         this.#startHeartbeat();
@@ -162,6 +198,8 @@ export class WebSocketConnection {
         resolve(socket);
       };
       const onOpenError = (event: Event) => {
+        clearTimeout(timer);
+        this.#cancelOpen = undefined;
         socket.removeEventListener('open', onOpen);
         reject(
           new TransportError(`WebSocket connection failed: ${options.url}`, {
@@ -171,6 +209,10 @@ export class WebSocketConnection {
       };
 
       socket.addEventListener('open', onOpen, { once: true });
+      if (this.#connectTimeoutMs !== undefined) {
+        this.#cancelOpen = cancel;
+        timer = setNonBlockingTimeout(cancel, this.#connectTimeoutMs);
+      }
       socket.addEventListener('error', onOpenError, { once: true });
       socket.addEventListener('message', (event) => {
         if (this.#socket !== socket) return;
