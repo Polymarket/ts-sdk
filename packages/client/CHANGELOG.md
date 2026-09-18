@@ -1,5 +1,12 @@
 # @polymarket/client
 
+## 0.10.1
+
+### Patch Changes
+
+- d7ee164: Re-export the `OrderPostStatus` enum from `@polymarket/client`, so consumers can compare `AcceptedOrderResponse.status` without importing from `@polymarket/bindings/clob`.
+- 43409a7: Include explicit EIP712Domain types in authentication, deposit wallet order and batch, and Perps signing payloads for wallets that require complete typed data.
+
 ## 0.10.0
 
 ### Minor Changes
