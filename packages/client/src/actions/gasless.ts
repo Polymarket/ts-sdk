@@ -823,13 +823,15 @@ function toDepositWalletCall(call: TransactionCall): DepositWalletCall {
 function createDepositWalletBatchTypedDataPayload(
   request: CreateDepositWalletBatchTypedDataPayloadRequest,
 ): TypedDataPayload {
+  const domain = {
+    chainId: request.chainId,
+    name: DEPOSIT_WALLET_DOMAIN_NAME,
+    verifyingContract: request.wallet,
+    version: DEPOSIT_WALLET_DOMAIN_VERSION,
+  };
+
   return {
-    domain: {
-      chainId: request.chainId,
-      name: DEPOSIT_WALLET_DOMAIN_NAME,
-      verifyingContract: request.wallet,
-      version: DEPOSIT_WALLET_DOMAIN_VERSION,
-    },
+    domain,
     message: {
       calls: request.calls.map((call) => ({
         data: call.data,
@@ -844,6 +846,7 @@ function createDepositWalletBatchTypedDataPayload(
     types: {
       Batch: DEPOSIT_WALLET_BATCH,
       Call: DEPOSIT_WALLET_CALL,
+      EIP712Domain: OxTypedData.extractEip712DomainTypes(domain),
     },
   };
 }

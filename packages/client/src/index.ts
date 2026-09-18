@@ -5,7 +5,6 @@ export {
   NotificationType,
   OrderPostStatus,
   OrderResponseErrorCode,
-  PriceHistoryInterval,
   SignatureType,
 } from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';
@@ -13,6 +12,7 @@ export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
 export {
   ComboKnownStatus,
+  ProtocolVersion,
   TeamOrdering,
   WalletType,
 } from '@polymarket/bindings/gamma';

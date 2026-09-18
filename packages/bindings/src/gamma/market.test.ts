@@ -4,6 +4,7 @@ import {
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
+  ProtocolVersion,
 } from './market';
 
 const rawBinaryMarket = {
@@ -61,39 +62,50 @@ describe('MarketSchema', () => {
 
   it.each([
     {
-      name: 'legacy market',
-      identifiers: { clobTokenIds: '["11", "12"]' },
+      name: 'CTF market',
+      identifiers: {
+        clobTokenIds: '["11", "12"]',
+        version: ProtocolVersion.V1,
+      },
       expected: {
         yes: { tokenId: '11', positionId: null },
         no: { tokenId: '12', positionId: null },
       },
       marketPositionIds: [],
+      protocolVersion: ProtocolVersion.V1,
     },
     {
       name: 'PolyV2 market',
-      identifiers: { positionIds: '["21", "22"]' },
+      identifiers: {
+        positionIds: '["21", "22"]',
+        version: ProtocolVersion.V2,
+      },
       expected: {
         yes: { tokenId: null, positionId: '21' },
         no: { tokenId: null, positionId: '22' },
       },
       marketPositionIds: ['21', '22'],
+      protocolVersion: ProtocolVersion.V2,
     },
     {
       name: 'CTF market with Combos',
       identifiers: {
         clobTokenIds: '["11", "12"]',
         positionIds: '["21", "22"]',
+        version: ProtocolVersion.V1,
       },
       expected: {
         yes: { tokenId: '11', positionId: '21' },
         no: { tokenId: '12', positionId: '22' },
       },
       marketPositionIds: ['21', '22'],
+      protocolVersion: ProtocolVersion.V1,
     },
   ])('normalizes outcome identifiers for a $name', ({
     identifiers,
     expected,
     marketPositionIds,
+    protocolVersion,
   }) => {
     const market = MarketSchema.parse({
       ...rawBinaryMarket,
@@ -103,6 +115,25 @@ describe('MarketSchema', () => {
     expect(market.outcomes.yes).toEqual(expect.objectContaining(expected.yes));
     expect(market.outcomes.no).toEqual(expect.objectContaining(expected.no));
     expect(market.positionIds).toEqual(marketPositionIds);
+    expect(market.version).toBe(protocolVersion);
+  });
+
+  it('rejects unknown protocol versions', () => {
+    const result = MarketSchema.safeParse({
+      ...rawBinaryMarket,
+      version: 'v3',
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts a null protocol version', () => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      version: null,
+    });
+
+    expect(market.version).toBeNull();
   });
 
   it.each([

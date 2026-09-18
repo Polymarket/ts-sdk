@@ -1,5 +1,6 @@
 import { OrderSide } from '@polymarket/bindings';
 import { PerpsTimeInForce } from '@polymarket/bindings/perps';
+import { TypedData } from 'ox';
 import { describe, expect, it } from 'vitest';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
@@ -31,6 +32,18 @@ describe('Perps trading actions', () => {
             salt: 1n,
             ts: 1_739_491_200_000n,
           });
+          const { EIP712Domain, ...types } = payload.types;
+          expect(EIP712Domain).toEqual([
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+          ]);
+          expect(TypedData.getSignPayload(payload)).toBe(
+            TypedData.getSignPayload({
+              ...payload,
+              types,
+            }),
+          );
           expect(toPerpsCommandBodyOp(request.op)).toEqual({
             args: [
               {
