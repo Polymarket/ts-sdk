@@ -30,9 +30,18 @@ export enum ComboPositionStatus {
 
 export const ComboPositionStatusSchema = z.enum(ComboPositionStatus);
 
+/** Lifecycle filter for a positions listing. */
 export enum PositionStatus {
   Open = 'OPEN',
   Redeemable = 'REDEEMABLE',
+  /** Still-held, zero-payout (lost) positions, ranked on frozen values. */
+  RedeemableLost = 'REDEEMABLE_LOST',
+  /**
+   * Live complementary pairs the wallet can merge back to collateral (holds >= 2
+   * live outcome tokens of a condition). Settled pairs are excluded; they are a
+   * redeem, not a merge.
+   */
+  Mergeable = 'MERGEABLE',
   Closed = 'CLOSED',
 }
 
