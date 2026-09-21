@@ -7,6 +7,7 @@ export {
 export type * from '@polymarket/bindings/clob';
 export {
   NotificationType,
+  OrderPostStatus,
   OrderResponseErrorCode,
   SignatureType,
 } from '@polymarket/bindings/clob';
