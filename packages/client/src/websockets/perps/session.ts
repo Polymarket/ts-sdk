@@ -476,6 +476,11 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   /**
    * Lists settled Perps internal transfers with SDK-owned pagination.
    *
+   * @remarks
+   * Overlapping timestamp boundaries are deduplicated. Throws
+   * `UnexpectedResponseError` if a full millisecond cannot be paged without
+   * risking omitted transfers.
+   *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
    *

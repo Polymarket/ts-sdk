@@ -1770,7 +1770,7 @@ describe('PerpsSession', () => {
       ]);
       expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
         '3000',
-        '2000',
+        '2001',
       ]);
     });
 

@@ -57,6 +57,10 @@ import { parseUserInput } from '../../../input';
 import { type Page, type Paginated, paginate } from '../../../pagination';
 import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
+import {
+  type PerpsInternalTransfersCursorState,
+  toPerpsInternalTransfersPage,
+} from './internal-transfer-history';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const NINETY_DAYS_MS = 90 * ONE_DAY_MS;
@@ -90,7 +94,6 @@ const PerpsIntervalHistoryRequestBaseSchema = z.object({
 const PerpsDescendingAccountHistoryKindSchema = z.enum([
   'perpsFundingPayments',
   'perpsDeposits',
-  'perpsInternalTransfers',
   'perpsWithdrawals',
 ]);
 
@@ -643,6 +646,13 @@ const ListPerpsInternalTransfersInitialRequestSchema =
     Exclude<ListPerpsInternalTransfersRequest, { cursor: PaginationCursor }>
   >;
 
+const PerpsInternalTransfersCursorStateSchema = z.object({
+  kind: z.literal('perpsInternalTransfers'),
+  startTimestamp: TimestampInputSchema,
+  endTimestamp: TimestampInputSchema,
+  seenKeys: z.array(z.string()),
+}) satisfies z.ZodType<PerpsInternalTransfersCursorState>;
+
 const ListPerpsInternalTransfersCursorRequestSchema = z.object({
   cursor: PaginationCursorSchema,
 }) satisfies z.ZodType<
@@ -682,6 +692,11 @@ export type ListPerpsInternalTransfersRequest =
 /**
  * Lists settled internal transfers with SDK-owned pagination.
  *
+ * @remarks
+ * Overlapping timestamp boundaries are deduplicated. Throws
+ * `UnexpectedResponseError` if a full millisecond cannot be paged without
+ * risking omitted transfers.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function listPerpsInternalTransfers(
@@ -693,7 +708,7 @@ export function listPerpsInternalTransfers(
     ListPerpsInternalTransfersRequestSchema,
   );
   return paginate((pageCursor) => {
-    let state: PerpsDescendingAccountCursorState;
+    let state: PerpsInternalTransfersCursorState;
     if (pageCursor === undefined) {
       invariant(
         params !== undefined,
@@ -703,30 +718,19 @@ export function listPerpsInternalTransfers(
     } else {
       state = decodePerpsAccountCursor(
         pageCursor,
-        PerpsDescendingAccountCursorStateSchema,
+        PerpsInternalTransfersCursorStateSchema,
       );
     }
     const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
-    const seenKeys = new Set(state.seenKeys);
 
     return api
       .get('/v1/account/internal-transfers', {
         params: toPerpsSearchParams(searchParams),
       })
       .andThen(validateWith(ListPerpsInternalTransfersResponseSchema))
-      .map((response): Page<PerpsInternalTransfer[]> => {
-        const items = response.data.filter(
-          (transfer) => !seenKeys.has(String(transfer.transferId)),
-        );
-        return toPerpsDescendingAccountPage({
-          getKey: (transfer) => String(transfer.transferId),
-          getTimestamp: (transfer) => transfer.createdTimestamp,
-          items,
-          responseData: response.data,
-          responseMore: response.more,
-          state,
-        });
-      });
+      .map((response) =>
+        toPerpsInternalTransfersPage(response.data, response.more, state),
+      );
   }, cursor);
 }
 
