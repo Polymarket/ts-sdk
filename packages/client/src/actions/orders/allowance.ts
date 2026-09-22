@@ -1,13 +1,13 @@
-import { OrderSide, type TokenId } from '@polymarket/bindings';
+import { type ClobAssetId, OrderSide } from '@polymarket/bindings';
 import { AssetType } from '@polymarket/bindings/clob';
 import { type EvmAddress, isSameEvmAddress } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
 import { fetchBalanceAllowance } from '../account';
 
 export type ResolveCurrentAllowanceParams = {
+  assetId: ClobAssetId;
   spenderAddress: EvmAddress;
   side: OrderSide;
-  tokenId: TokenId;
 };
 
 /* @internal */
@@ -27,7 +27,7 @@ export async function resolveCurrentAllowance(
         }
       : {
           assetType,
-          tokenId: params.tokenId,
+          assetId: params.assetId,
         },
   );
 

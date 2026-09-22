@@ -1,0 +1,175 @@
+import { z } from 'zod';
+import {
+  type ConditionId,
+  ConditionIdSchema,
+  type DecimalString,
+  DecimalStringSchema,
+  E6BigIntStringToDecimalStringSchema,
+  EpochLikeToIsoDateTimeStringSchema,
+  emptyStringToNull,
+  type IsoDateTimeString,
+  IsoDateTimeStringSchema,
+  type QuestionId,
+  QuestionIdSchema,
+  type TxHash,
+  TxHashSchema,
+} from '../shared';
+import { dataEnvelopeSchema } from './envelope';
+
+/** Lifecycle state of a market resolution. */
+export enum ResolutionStatus {
+  Initialized = 'initialized',
+  Posed = 'posed',
+  Proposed = 'proposed',
+  Challenged = 'challenged',
+  Reproposed = 'reproposed',
+  Disputed = 'disputed',
+  Active = 'active',
+  Arbitration = 'arbitration',
+  Resolved = 'resolved',
+}
+
+export const ResolutionStatusSchema = z.enum(ResolutionStatus);
+
+/** Market structure associated with a condition-keyed resolution. */
+export enum ResolutionMarketType {
+  Binary = 'BINARY',
+  IncrementalNegRisk = 'INCREMENTAL_NEGRISK',
+  AtomicNegRisk = 'ATOMIC_NEGRISK',
+}
+
+export const ResolutionMarketTypeSchema = z.enum(ResolutionMarketType);
+
+/** How a condition's final payout was obtained. */
+export enum ResolutionSource {
+  Reported = 'reported',
+  Derived = 'derived',
+}
+
+export const ResolutionSourceSchema = z.enum(ResolutionSource);
+
+/** Reporter family that supplied a condition's resolution. */
+export enum ResolutionReporter {
+  UmaOptimisticOracle = 'UMA_OO',
+  Chainlink = 'CHAINLINK',
+  Eoa = 'EOA',
+}
+
+export const ResolutionReporterSchema = z.enum(ResolutionReporter);
+
+export type Resolution = {
+  /** Oracle question identifier, when the resolution has one. */
+  questionId?: QuestionId;
+  /** Market condition identifier, when selected by condition or event. */
+  conditionId?: ConditionId;
+  status: ResolutionStatus;
+  /** Whether a managed proposal is in extended review. */
+  extendedReview: boolean;
+  /** Whether the resolution was disputed at any point. */
+  wasDisputed: boolean;
+  /** Whether the question rules were updated after the question was posed. */
+  questionRulesUpdated: boolean;
+  /** First proposed oracle price, omitted until set. */
+  proposedPrice?: DecimalString;
+  /** Second proposed oracle price, omitted until set. */
+  reproposedPrice?: DecimalString;
+  /** Final oracle settlement price, omitted until set. */
+  price?: DecimalString;
+  /** Transaction for the latest lifecycle event, or `null` when unavailable. */
+  transactionHash: TxHash | null;
+  /** Log index for `transactionHash`, or `null` when unavailable. */
+  logIndex: number | null;
+  /** Latest lifecycle change as an ISO 8601 datetime. */
+  lastUpdatedAt: IsoDateTimeString;
+  marketType?: ResolutionMarketType;
+  /** Per-outcome payout in collateral units per share. */
+  payouts?: [outcome0: DecimalString, outcome1: DecimalString];
+  resolutionSource?: ResolutionSource;
+  reporter?: ResolutionReporter;
+  wasArbitrated?: boolean;
+  resolvedBlock?: number;
+  resolvedAt?: IsoDateTimeString;
+};
+
+const PayoutSchema = z
+  .number()
+  .int()
+  .min(0)
+  .transform(String)
+  .pipe(E6BigIntStringToDecimalStringSchema);
+
+export const ResolutionSchema = z
+  .object({
+    question_id: QuestionIdSchema.optional(),
+    condition_id: ConditionIdSchema.optional(),
+    status: ResolutionStatusSchema,
+    extended_review: z.boolean(),
+    was_disputed: z.boolean(),
+    new_version_q: z.boolean(),
+    proposed_price: DecimalStringSchema.optional(),
+    reproposed_price: DecimalStringSchema.optional(),
+    price: DecimalStringSchema.optional(),
+    transaction_hash: z.preprocess(emptyStringToNull, TxHashSchema.nullable()),
+    log_index: z.preprocess(
+      emptyStringToNull,
+      z.string().regex(/^\d+$/).transform(Number).nullable(),
+    ),
+    last_update_timestamp: EpochLikeToIsoDateTimeStringSchema,
+    market_type: ResolutionMarketTypeSchema.optional(),
+    payouts: z.tuple([PayoutSchema, PayoutSchema]).optional(),
+    resolution_source: ResolutionSourceSchema.optional(),
+    reporter: ResolutionReporterSchema.optional(),
+    was_arbitrated: z.boolean().optional(),
+    resolved_block: z.number().int().min(0).optional(),
+    resolved_at: IsoDateTimeStringSchema.optional(),
+  })
+  .transform((wire): Resolution => {
+    const resolution: Resolution = {
+      status: wire.status,
+      extendedReview: wire.extended_review,
+      wasDisputed: wire.was_disputed,
+      questionRulesUpdated: wire.new_version_q,
+      transactionHash: wire.transaction_hash,
+      logIndex: wire.log_index,
+      lastUpdatedAt: wire.last_update_timestamp,
+    };
+
+    if (wire.question_id !== undefined)
+      resolution.questionId = wire.question_id;
+    if (wire.condition_id !== undefined)
+      resolution.conditionId = wire.condition_id;
+    if (wire.proposed_price !== undefined && wire.proposed_price !== '69') {
+      resolution.proposedPrice = wire.proposed_price;
+    }
+    if (wire.reproposed_price !== undefined && wire.reproposed_price !== '69') {
+      resolution.reproposedPrice = wire.reproposed_price;
+    }
+    if (wire.price !== undefined && wire.price !== '69') {
+      resolution.price = wire.price;
+    }
+    if (wire.market_type !== undefined)
+      resolution.marketType = wire.market_type;
+    if (wire.payouts !== undefined) resolution.payouts = wire.payouts;
+    if (wire.resolution_source !== undefined) {
+      resolution.resolutionSource = wire.resolution_source;
+    }
+    if (wire.reporter !== undefined) resolution.reporter = wire.reporter;
+    if (wire.was_arbitrated !== undefined) {
+      resolution.wasArbitrated = wire.was_arbitrated;
+    }
+    if (wire.resolved_block !== undefined) {
+      resolution.resolvedBlock = wire.resolved_block;
+    }
+    if (wire.resolved_at !== undefined)
+      resolution.resolvedAt = wire.resolved_at;
+
+    return resolution;
+  }) satisfies z.ZodType<Resolution>;
+
+export const FetchResolutionsResponseSchema = dataEnvelopeSchema(
+  z.array(ResolutionSchema),
+);
+
+export type FetchResolutionsResponse = z.infer<
+  typeof FetchResolutionsResponseSchema
+>;

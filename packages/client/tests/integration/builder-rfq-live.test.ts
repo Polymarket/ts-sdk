@@ -34,7 +34,9 @@ async function discoverComboLegPositionIds(
   for (const market of page.items) {
     const price = Number(market.outcomes.yes.price);
 
-    if (price < 0.05 || price > 0.95 || market.volume <= 0) continue;
+    if (market.pending || price < 0.05 || price > 0.95 || market.volume <= 0) {
+      continue;
+    }
     if (
       picked.some(
         (other) =>

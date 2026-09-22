@@ -1,5 +1,7 @@
+import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
   type ComboActivityId,
   ComboActivityIdSchema,
   type ComboConditionId,
@@ -10,25 +12,22 @@ import {
   type DecimalString,
   type EpochMilliseconds,
   EpochSecondsToMillisecondsSchema,
-  emptyStringToNull,
-  type IsoDateTimeString,
-  IsoDateTimeStringSchema,
-  PaginationCursorSchema,
+  EvmAddressSchema,
+  type OrderSide,
+  OrderSideSchema,
   type PositionId,
   PositionIdSchema,
   type TokenId,
-  TokenIdSchema,
   type TxHash,
   TxHashSchema,
 } from '../shared';
 import {
   ActivityType,
   ActivityTypeSchema,
-  type Address,
-  AddressSchema,
-  type Side,
-  SideSchema,
+  type TipSide,
+  TipSideSchema,
 } from './common';
+import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
 
 export enum ComboActivityType {
@@ -45,7 +44,7 @@ const ComboActivityTypeSchema = z.enum(ComboActivityType);
 
 export type ActivityBase = {
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Polygon transaction hash that produced or records this activity. */
@@ -63,12 +62,12 @@ export type ActivityBase = {
 };
 
 type TradeActivityBase = ActivityBase & {
-  /** A directional outcome-token trade. */
+  /** A directional outcome trade. */
   type: ActivityType.TRADE;
-  /** Whether this trade is for a Combo position instead of a binary market token. */
+  /** Whether this trade is for a Combo position instead of an ordinary market. */
   isCombo: boolean;
   /** Direction of the wallet's trade. */
-  side: Side;
+  side: OrderSide;
   /** Number of shares traded by the wallet. */
   shares: DecimalString;
   /** The notional value of the traded shares in USD. */
@@ -82,16 +81,18 @@ type TradeActivityBase = ActivityBase & {
 };
 
 export type ClobTradeActivity = TradeActivityBase & {
-  /** CLOB market trades are binary market outcome-token trades. */
+  /** Ordinary market trades are distinct from Combo position trades. */
   isCombo: false;
   /** Condition id of the market traded by the wallet. */
   conditionId: ConditionId;
-  /** Outcome token id bought or sold by the wallet. */
-  tokenId: TokenId;
-  /** Display label of the outcome token traded by the wallet. */
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  /** Display label of the outcome traded by the wallet. */
   outcome: string;
-  /** Zero-based index of the outcome token in the market's outcome list. */
-  outcomeIndex: number;
+  /** Zero-based index of the outcome in the market's outcome list, when known. */
+  outcomeIndex?: number;
   /** URL slug of the market traded by the wallet. */
   slug: string;
   /** URL slug of the event containing the traded market. */
@@ -177,6 +178,13 @@ export type ConversionActivity = ActivityBase & {
   eventSlug: string;
 };
 
+export type MigrationActivity = ActivityBase & {
+  /** A position migrated from the legacy protocol to protocol v2. */
+  type: 'MIGRATION';
+  /** The migrated position value in USD. */
+  amount: DecimalString;
+};
+
 export type RewardActivity = ActivityBase & {
   /** An account-level reward credit. */
   type: 'REWARD';
@@ -226,19 +234,33 @@ export type TakerRebateActivity = ActivityBase & {
   amount: DecimalString;
 };
 
+export type TipActivity = ActivityBase & {
+  /** A user-to-user tip. */
+  type: 'TIP';
+  /** The tipped amount in USD. */
+  amount: DecimalString;
+  /**
+   * Direction from this wallet's perspective: `IN` received, `OUT` sent.
+   * `null` on rows served before the wire carried a direction.
+   */
+  side: TipSide | null;
+};
+
 export type Activity =
   | TradeActivity
   | SplitActivity
   | MergeActivity
   | RedeemActivity
   | ConversionActivity
+  | MigrationActivity
   | RewardActivity
   | MakerRebateActivity
   | ReferralRewardActivity
   | YieldActivity
   | DepositActivity
   | WithdrawalActivity
-  | TakerRebateActivity;
+  | TakerRebateActivity
+  | TipActivity;
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -246,21 +268,17 @@ type ComboActivityBase = {
   /** Normalized lifecycle activity type. */
   type: ComboActivityType;
   /** Wallet address whose account history contains this activity. */
-  wallet: Address;
+  wallet: EvmAddress;
   /** Combo condition id involved in this activity. */
   conditionId: ComboConditionId;
-  /** Combo module id. */
-  moduleId: number;
+  /** Combo position id involved in this activity. */
+  positionId: PositionId;
   /** Amount associated with the lifecycle event in USD. */
   amount: DecimalString | null;
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
-  /** Activity transaction time as an ISO date-time string. */
-  transactionAt: IsoDateTimeString;
   /** Polygon transaction hash that produced this activity. */
   transactionHash: TxHash;
-  /** Log index within the transaction. */
-  logIndex: number;
   /** Polygon block number. */
   blockNumber: number;
   /** Combo legs enriched with market metadata at read time. */
@@ -293,8 +311,6 @@ export type ComboUnwrapActivity = ComboActivityBase & {
 
 export type ComboRedeemActivity = ComboActivityBase & {
   type: ComboActivityType.Redeem;
-  /** Redeemed Combo position id. Only redeem rows carry a source position id. */
-  positionId: PositionId;
   /** Payout from the redemption in USD. Only redeem rows carry payout semantics. */
   payout: DecimalString | null;
 };
@@ -311,16 +327,13 @@ export type ComboActivity =
 const RawComboActivitySchema = z.object({
   id: ComboActivityIdSchema,
   type: ComboActivityTypeSchema,
-  user_address: AddressSchema,
+  proxy_wallet: EvmAddressSchema,
   combo_condition_id: ComboConditionIdSchema,
   combo_position_id: PositionIdSchema,
-  module_id: z.number().int(),
-  amount_usdc: DecimalishSchema.nullable(),
-  payout_usdc: DecimalishSchema.nullable(),
+  amount_usdc: DecimalishSchema.nullish(),
+  payout_usdc: DecimalishSchema.nullish(),
   timestamp: EpochSecondsToMillisecondsSchema,
-  tx_dttm: IsoDateTimeStringSchema,
-  tx_hash: TxHashSchema,
-  log_index: z.number().int(),
+  transaction_hash: TxHashSchema,
   block_number: z.number().int(),
   legs: z.array(ComboPositionLegSchema),
 });
@@ -333,103 +346,136 @@ const OptionalTextSchema = z.preprocess(
   z.string().optional(),
 );
 
+const UnknownOutcomeIndexToUndefinedSchema = z.preprocess(
+  (value) => (value === 999 ? undefined : value),
+  z.number().int().optional(),
+);
+
+export type Trade = {
+  wallet: EvmAddress;
+  side: OrderSide;
+  /** Outcome identifier for a CTF token or Polymarket V2 position. */
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  conditionId: ConditionId;
+  size: DecimalString;
+  price: DecimalString;
+  timestamp: EpochMilliseconds;
+  title?: string;
+  slug?: string;
+  icon?: string;
+  eventSlug?: string;
+  outcome?: string;
+  outcomeIndex?: number;
+  name?: string;
+  pseudonym?: string;
+  bio?: string;
+  profileImage?: string;
+  profileImageOptimized?: string;
+  transactionHash: TxHash;
+};
+
+/**
+ * A trades-feed row, normalized to the SDK vocabulary.
+ *
+ * The wire is strict snake_case with every field present: absence arrives
+ * as an empty string (normalized to `undefined` here) and an unknown outcome
+ * index arrives as the sentinel `999` (also normalized to `undefined` —
+ * missing is never `0`). Timestamps arrive as epoch seconds and normalize to
+ * epoch milliseconds. `size` is a share count and `price` is USD per share.
+ * The asset is a CTF token id or a Polymarket V2 position id.
+ */
 export const TradeSchema = z
   .object({
-    proxyWallet: AddressSchema.nullish(),
-    side: SideSchema.nullish(),
-    asset: TokenIdSchema.nullish(),
-    conditionId: ConditionIdSchema.nullish(),
-    size: DecimalishSchema.nullish(),
-    price: DecimalishSchema.nullish(),
-    timestamp: EpochSecondsToMillisecondsSchema.nullish(),
-    title: z.string().nullish(),
-    slug: z.string().nullish(),
-    icon: z.preprocess(emptyStringToNull, z.string().nullish()),
-    eventSlug: z.string().nullish(),
-    outcome: z.string().nullish(),
-    outcomeIndex: z.number().int().nullish(),
-    name: z.string().nullish(),
-    pseudonym: z.string().nullish(),
-    bio: z.string().nullish(),
-    profileImage: z.string().nullish(),
-    profileImageOptimized: z.string().nullish(),
-    transactionHash: z.string().nullish(),
+    proxy_wallet: EvmAddressSchema,
+    side: OrderSideSchema,
+    token_id: ClobAssetIdSchema,
+    condition_id: ConditionIdSchema,
+    size: DecimalishSchema,
+    price: DecimalishSchema,
+    timestamp: EpochSecondsToMillisecondsSchema,
+    title: OptionalTextSchema,
+    slug: OptionalTextSchema,
+    icon: OptionalTextSchema,
+    event_slug: OptionalTextSchema,
+    outcome: OptionalTextSchema,
+    outcome_index: UnknownOutcomeIndexToUndefinedSchema,
+    name: OptionalTextSchema,
+    pseudonym: OptionalTextSchema,
+    bio: OptionalTextSchema,
+    profile_image: OptionalTextSchema,
+    profile_image_optimized: OptionalTextSchema,
+    transaction_hash: TxHashSchema,
   })
-  .transform(({ asset, proxyWallet, ...rest }) => ({
-    ...rest,
-    wallet: proxyWallet,
-    tokenId: asset,
-  }));
+  .transform((trade) => ({
+    wallet: trade.proxy_wallet,
+    side: trade.side,
+    assetId: trade.token_id,
+    tokenId: trade.token_id,
+    conditionId: trade.condition_id,
+    size: trade.size,
+    price: trade.price,
+    timestamp: trade.timestamp,
+    title: trade.title,
+    slug: trade.slug,
+    icon: trade.icon,
+    eventSlug: trade.event_slug,
+    outcome: trade.outcome,
+    outcomeIndex: trade.outcome_index,
+    name: trade.name,
+    pseudonym: trade.pseudonym,
+    bio: trade.bio,
+    profileImage: trade.profile_image,
+    profileImageOptimized: trade.profile_image_optimized,
+    transactionHash: trade.transaction_hash,
+  })) satisfies z.ZodType<Trade>;
 
 const RawActivitySchema = z.object({
-  proxyWallet: AddressSchema.nullish(),
-  timestamp: EpochSecondsToMillisecondsSchema.nullish(),
-  conditionId: z.preprocess(
+  proxy_wallet: EvmAddressSchema,
+  timestamp: EpochSecondsToMillisecondsSchema,
+  condition_id: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().optional(),
+    ConditionIdSchema.optional(),
   ),
   type: ActivityTypeSchema,
-  size: DecimalishSchema.nullish(),
-  usdcSize: DecimalishSchema.nullish(),
-  transactionHash: TxHashSchema.nullish(),
-  price: DecimalishSchema.nullish(),
-  asset: z.preprocess(
+  size: DecimalishSchema,
+  usdc_size: DecimalishSchema,
+  transaction_hash: TxHashSchema,
+  price: DecimalishSchema,
+  token_id: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    z.string().optional(),
+    ClobAssetIdSchema.optional(),
   ),
+  // Trade rows carry BUY/SELL; TIP rows carry IN/OUT. The per-variant
+  // normalizers narrow to the vocabulary their type allows.
   side: z.preprocess(
     (value) => (value === '' ? undefined : value),
-    SideSchema.nullish(),
+    z.union([OrderSideSchema, TipSideSchema]).optional(),
   ),
-  isCombo: z.boolean().optional(),
-  outcomeIndex: z.preprocess(
-    (value) => (value === 999 ? undefined : value),
-    z.number().int().optional(),
-  ),
+  // Flag only, present on V2/V3 combo trade rows and omitted otherwise.
+  is_combo: z.boolean().optional(),
+  outcome_index: UnknownOutcomeIndexToUndefinedSchema,
   title: OptionalTextSchema,
   slug: OptionalTextSchema,
   icon: OptionalTextSchema,
-  eventSlug: OptionalTextSchema,
+  event_slug: OptionalTextSchema,
   outcome: OptionalTextSchema,
   name: OptionalTextSchema,
   pseudonym: OptionalTextSchema,
   bio: OptionalTextSchema,
-  profileImage: OptionalTextSchema,
-  profileImageOptimized: OptionalTextSchema,
+  profile_image: OptionalTextSchema,
+  profile_image_optimized: OptionalTextSchema,
 });
 
 export const ActivitySchema: z.ZodType<Activity> =
   RawActivitySchema.transform(normalizeActivity);
 
-export const TradedSchema = z.object({
-  user: AddressSchema.nullish(),
-  traded: z.number().int().nullish(),
-});
+export const ListTradesResponseSchema = dataPageSchema(TradeSchema);
+export const ListActivityResponseSchema = dataPageSchema(ActivitySchema);
+export const ListComboActivityResponseSchema =
+  dataPageSchema(ComboActivitySchema);
 
-export const ListTradesResponseSchema = z.array(TradeSchema);
-export const ListActivityResponseSchema = z.array(ActivitySchema);
-export const ListComboActivityResponseSchema = z
-  .object({
-    activity: z.array(ComboActivitySchema),
-    pagination: z.object({
-      limit: z.number().int(),
-      offset: z.number().int(),
-      has_more: z.boolean(),
-      next_cursor: PaginationCursorSchema.nullish(),
-    }),
-  })
-  .transform(({ pagination, ...rest }) => ({
-    ...rest,
-    pagination: {
-      limit: pagination.limit,
-      offset: pagination.offset,
-      hasMore: pagination.has_more,
-      nextCursor: pagination.next_cursor,
-    },
-  }));
-
-export type Trade = z.infer<typeof TradeSchema>;
-export type Traded = z.infer<typeof TradedSchema>;
 export type ListTradesResponse = z.infer<typeof ListTradesResponseSchema>;
 export type ListActivityResponse = z.infer<typeof ListActivityResponseSchema>;
 export type ListComboActivityResponse = z.infer<
@@ -459,8 +505,7 @@ function normalizeComboActivity(activity: RawComboActivity): ComboActivity {
       return {
         ...base,
         type: ComboActivityType.Redeem,
-        positionId: activity.combo_position_id,
-        payout: activity.payout_usdc,
+        payout: activity.payout_usdc ?? null,
       };
   }
 }
@@ -471,14 +516,12 @@ function normalizeComboActivityBase(
   return {
     id: activity.id,
     type: activity.type,
-    wallet: activity.user_address,
+    wallet: activity.proxy_wallet,
     conditionId: activity.combo_condition_id,
-    moduleId: activity.module_id,
-    amount: activity.amount_usdc,
+    positionId: activity.combo_position_id,
+    amount: activity.amount_usdc ?? null,
     timestamp: activity.timestamp,
-    transactionAt: activity.tx_dttm,
-    transactionHash: activity.tx_hash,
-    logIndex: activity.log_index,
+    transactionHash: activity.transaction_hash,
     blockNumber: activity.block_number,
     legs: activity.legs,
   };
@@ -497,15 +540,14 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        conditionId: ConditionIdSchema.parse(
-          expectPresent(activity.conditionId, 'conditionId'),
-        ),
-        amount: inferAmount(activity),
+        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        amount: activity.usdc_size,
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
+        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
       };
+    case ActivityType.MIGRATION:
     case ActivityType.REWARD:
     case ActivityType.MAKER_REBATE:
     case ActivityType.REFERRAL_REWARD:
@@ -516,7 +558,17 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        amount: inferAmount(activity),
+        amount: activity.usdc_size,
+      };
+    case ActivityType.TIP:
+      return {
+        ...base,
+        type: activity.type,
+        amount: activity.usdc_size,
+        side:
+          activity.side === undefined
+            ? null
+            : TipSideSchema.parse(activity.side),
       };
   }
 }
@@ -528,56 +580,53 @@ function normalizeTradeActivity(
   const trade = {
     ...base,
     type: ActivityType.TRADE as ActivityType.TRADE,
-    side: expectPresent(activity.side, 'side'),
-    shares: expectPresent(activity.size, 'size'),
-    amount: inferAmount(activity),
-    price: expectPresent(activity.price, 'price'),
+    side: OrderSideSchema.parse(expectPresent(activity.side, 'side')),
+    shares: activity.size,
+    amount: activity.usdc_size,
+    price: activity.price,
     title: expectPresent(activity.title, 'title'),
     icon: activity.icon ?? null,
   };
 
-  if (activity.isCombo === true) {
+  if (activity.is_combo === true) {
     return {
       ...trade,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        expectPresent(activity.conditionId, 'conditionId'),
+        expectPresent(activity.condition_id, 'condition_id'),
       ),
       positionId: PositionIdSchema.parse(
-        expectPresent(activity.asset, 'asset'),
+        expectPresent(activity.token_id, 'token_id'),
       ),
     };
   }
 
+  const assetId = expectPresent(activity.token_id, 'token_id');
+
   return {
     ...trade,
     isCombo: false,
-    conditionId: ConditionIdSchema.parse(
-      expectPresent(activity.conditionId, 'conditionId'),
-    ),
-    tokenId: TokenIdSchema.parse(expectPresent(activity.asset, 'asset')),
+    conditionId: expectPresent(activity.condition_id, 'condition_id'),
+    assetId,
+    tokenId: assetId,
     outcome: expectPresent(activity.outcome, 'outcome'),
-    outcomeIndex: expectPresent(activity.outcomeIndex, 'outcomeIndex'),
+    outcomeIndex: activity.outcome_index,
     slug: expectPresent(activity.slug, 'slug'),
-    eventSlug: expectPresent(activity.eventSlug, 'eventSlug'),
+    eventSlug: expectPresent(activity.event_slug, 'event_slug'),
   };
 }
 
 function normalizeActivityBase(activity: RawActivity): ActivityBase {
   return {
-    wallet: expectPresent(activity.proxyWallet, 'proxyWallet'),
-    timestamp: expectPresent(activity.timestamp, 'timestamp'),
-    transactionHash: expectPresent(activity.transactionHash, 'transactionHash'),
+    wallet: activity.proxy_wallet,
+    timestamp: activity.timestamp,
+    transactionHash: activity.transaction_hash,
     name: activity.name ?? null,
     pseudonym: activity.pseudonym ?? null,
     bio: activity.bio ?? null,
-    profileImage: activity.profileImage ?? null,
-    profileImageOptimized: activity.profileImageOptimized ?? null,
+    profileImage: activity.profile_image ?? null,
+    profileImageOptimized: activity.profile_image_optimized ?? null,
   };
-}
-
-function inferAmount(activity: RawActivity): DecimalString {
-  return expectPresent(activity.usdcSize ?? activity.size, 'usdcSize');
 }
 
 function expectPresent<T>(value: T | null | undefined, field: string): T {

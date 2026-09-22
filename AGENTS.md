@@ -52,6 +52,7 @@
 - When you discover a real boundary inconsistency between underlying CLOB, Gamma, Data, and relayer APIs, append a concise note to `../api-gateway/docs/api-boundary-notes.md`.
 - Future work includes `@polymarket/react`, which should build on the same core model with a higher-level frontend-oriented surface.
 - Each action in `packages/client/src/actions/` has a corresponding bound method in a decorator under `packages/client/src/decorators/`. When you change an action — its signature, parameter types, TSDoc, or examples — verify the matching decorator method is also updated. The decorator method is the public surface most consumers see.
+- Client actions should use flat signatures with the client as the first parameter, such as `action(client, request)`, and decorators should bind them with `action.bind(null, client)`. Do not curry an action only to bind it into a decorator. Curry only when partial application is a concrete implementation requirement, such as reusing or passing the partially applied function; keep that exception local and evident at its call sites.
 - The `@polymarket/client` root entry point exports decorators, so new public client additions must be re-exported by the corresponding decorator module.
 - Perps is experimental. Every public Perps surface—including actions, decorator methods, websocket classes and methods, request and response types, bindings, subscription types, and re-exports—must carry an `@experimental` TSDoc tag stating that the API may change in a breaking way in any release, including patch releases. Apply the tag at the original declaration and verify that generated `.d.ts` output retains it.
 - Do not leak `ky` details outside of `ServiceClient`. Keep `ky` instances, types, and option shapes internal, and expose Polymarket-specific abstractions instead.
@@ -61,6 +62,7 @@
 
 - A market's minimum tick size may become finer, such as `0.01` to `0.001`, but it cannot become coarser, such as `0.001` to `0.01`. SDK caching and recovery logic may rely on this monotonic behavior and should not add defensive handling for tick-size coarsening.
 - When a Perps order is submitted with a client order ID, every corresponding private order update echoes that same client order ID. SDK order-placement workflows may rely on this invariant for pre-acknowledgement correlation.
+- Polymarket V2 position IDs reserve bits 40 through 103 as zero. SDK order routing may classify a valid uint256 asset identifier as Polymarket V2 when all 64 reserved bits are zero; registered CTF token IDs do not occupy this structured-ID namespace. Treat this as a routing invariant, not full position-ID validation, and continue to let CLOB validate that the asset exists.
 
 ## TypeScript config
 
@@ -88,6 +90,8 @@
 - Treat property-access-derived types like `SecureClient['signatureType']` as a code smell in most cases. Prefer a named domain type when the value is part of the public or shared model.
 - Do not use indexed-access-derived types like `SomeType['field']` in implementation code, public APIs, examples, TSDoc, or docs. This is non-negotiable; define and use a named type instead.
 - Prefer simple, local code. Accept small duplication when it keeps logic easier to read.
+- Prioritize clear generated declarations, autocomplete, and IDE hovers for public object and event types. Use intersections or mapped types when they represent a meaningful public abstraction and remain readable in the generated API. Avoid composition used only to remove field repetition—especially schema-inferred types overlaid with identity helpers—and inspect generated declarations when changing exported types. Keep construction-only helpers internal.
+- Use branded primitive types selectively for meaningful SDK domain values. Keep action request types developer-friendly by accepting the underlying primitive—such as `string` or `number`—unless stricter input typing has a concrete benefit; consumers should not need to construct or assert SDK brands for values originating outside the SDK. Validate and brand those inputs internally, while normalized returned models may expose branded types.
 - Introduce helpers only when they meaningfully improve reuse, safety, or readability. Helper names should reflect their real behavior; otherwise inline or rename them.
 - Shape implementation abstractions around real supported workflows and current platform behavior, not generic completeness. Add breadth only when a concrete use case requires it.
 - When translating one public error into another at an action boundary, prefer `ResultAsync.mapErr(...)` on the request pipeline over `try`/`catch` around `unwrap(...)` when the remap can stay inside the result chain.

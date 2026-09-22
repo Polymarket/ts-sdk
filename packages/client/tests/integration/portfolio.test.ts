@@ -1,15 +1,61 @@
 import {
-  ComboPositionOutcome,
-  ComboPositionSort,
+  ComboPositionSortBy,
+  ComboPositionStatus,
+  PositionStatus,
   UserInputError,
+  UserPnlFidelity,
+  UserPnlInterval,
 } from '@polymarket/client';
-import { isSameEvmAddress } from '@polymarket/types';
+import { expectPresent, isSameEvmAddress } from '@polymarket/types';
+import { afterEach, type MockInstance, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const TEST_USER = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
+const UNKNOWN_WALLET = '0x00000000000000000000000000000000000000aa';
+const TEST_CONDITION_ID =
+  '0x7ad403c3508f8e3912940fd1a913f227591145ca0614074208e0b962d5fcc422';
 
 describe('Portfolio', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  for (const prefix of ['01', '02']) {
+    it(`normalizes v2 portfolio condition IDs (${prefix})`, async ({
+      publicClient,
+    }) => {
+      const structuralId = `0x${prefix}${'ab'.repeat(30)}`;
+      const canonicalId = `${structuralId}00`;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient
+        .listPositions({ conditionId: structuralId, pageSize: 1 })
+        .firstPage();
+      await publicClient
+        .listPositions({
+          user: TEST_USER,
+          conditionId: [structuralId, canonicalId],
+          pageSize: 1,
+        })
+        .firstPage();
+      const value = await publicClient.fetchPortfolioValue({
+        user: TEST_USER,
+        conditionIds: [structuralId, canonicalId],
+      });
+
+      expect(value.wallet).toBe(TEST_USER);
+      const positionsRequests = dataRequests(fetchSpy, '/v2/positions');
+      expect(positionsRequests).toHaveLength(2);
+      for (const request of positionsRequests) {
+        expect(request.get('condition_id')).toBe(canonicalId);
+      }
+      const valueRequests = dataRequests(fetchSpy, '/v2/value');
+      expect(valueRequests).toHaveLength(1);
+      expect(valueRequests[0]?.get('condition')).toBe(canonicalId);
+    });
+  }
+
   describe('listPositions', () => {
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({
@@ -41,50 +87,34 @@ describe('Portfolio', () => {
         isSameEvmAddress(wallet, depositWalletAddress),
       );
     });
-  });
 
-  describe('listClosedPositions', () => {
-    it('lists closed positions for a wallet', async ({ publicClient }) => {
-      // 50 is the largest allowed pageSize, matching the upstream limit cap.
-      const paginator = publicClient.listClosedPositions({
-        user: TEST_USER,
-        pageSize: 50,
-      });
-      const result = await paginator.firstPage().then(expectNonEmptyPage);
-
-      expect(result.items.length).toBeGreaterThan(0);
-      await expectPageWindow(paginator, result, 99);
-      expect(result.items[0]).toEqual(
-        expect.objectContaining({
-          conditionId: expect.any(String),
-          wallet: TEST_USER,
-        }),
-      );
-    });
-
-    it('rejects page sizes above the upstream limit cap', ({
-      publicClient,
-    }) => {
-      expect(() =>
-        publicClient.listClosedPositions({
-          user: TEST_USER,
-          pageSize: 51,
-        }),
-      ).toThrow(UserInputError);
-    });
-
-    it('defaults secure clients to the authenticated wallet', async ({
-      depositWalletAddress,
+    it('rejects invalid secure client input', ({
       secureClientWithDepositWallet,
     }) => {
-      const result = await secureClientWithDepositWallet
-        .listClosedPositions({ pageSize: 1 })
+      for (const request of [null, [], 'invalid', { user: null }]) {
+        expect(() =>
+          secureClientWithDepositWallet.listPositions(request as never),
+        ).toThrow(UserInputError);
+      }
+    });
+  });
+
+  describe('listPositions status arms', () => {
+    it('lists closed positions via status', async ({ publicClient }) => {
+      const result = await publicClient
+        .listPositions({
+          user: TEST_USER,
+          status: PositionStatus.Closed,
+          pageSize: 50,
+        })
         .firstPage()
         .then(expectNonEmptyPage);
 
-      expect(result.items[0]?.wallet).toSatisfy((wallet) =>
-        isSameEvmAddress(wallet, depositWalletAddress),
-      );
+      expect(result.items.length).toBeGreaterThan(0);
+      for (const position of result.items) {
+        expect(position.status).toBe(PositionStatus.Closed);
+        expect(position.wallet).toBe(TEST_USER);
+      }
     });
   });
 
@@ -93,23 +123,35 @@ describe('Portfolio', () => {
       const paginator = publicClient.listComboPositions({
         user: TEST_USER,
         pageSize: 1,
-        sort: ComboPositionSort.FirstEntryDesc,
+        sortBy: ComboPositionSortBy.FirstEntry,
       });
       const result = await paginator.firstPage().then(expectNonEmptyPage);
 
       await expectPageWindow(paginator, result, 1);
-      expect(Object.values(ComboPositionOutcome)).toContain(
-        result.items[0].outcome,
-      );
       expect(result.items[0]).toEqual(
         expect.objectContaining({
           conditionId: expect.any(String),
           positionId: expect.any(String),
+          outcomeLabel: expect.any(String),
           redeemable: expect.any(Boolean),
           wallet: TEST_USER,
           realizedPayoutUsdc: expect.any(String),
-          totalCostUsdc: expect.any(String),
+          grossEntryCostUsdc: expect.any(String),
+          entryFeesUsdc: expect.any(String),
         }),
+      );
+
+      const market = expectPresent(
+        expectPresent(expectPresent(result.items[0]).legs[0]).market,
+      );
+      expect(market).toMatchObject({
+        question: expect.any(String),
+        groupItemTitle: expect.any(String),
+        sportsMarketType: expect.any(String),
+        outcomes: expect.any(Array),
+      });
+      expect(market.line === null || typeof market.line === 'number').toBe(
+        true,
       );
 
       const filtered = await publicClient
@@ -123,6 +165,89 @@ describe('Portfolio', () => {
 
       expect(filtered.items[0].conditionId).toBe(result.items[0].conditionId);
     });
+
+    it('filters by one status', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const result = await publicClient
+        .listComboPositions({
+          user: TEST_USER,
+          pageSize: 10,
+          status: ComboPositionStatus.ResolvedWin,
+        })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      for (const position of result.items) {
+        expect(position.status).toBe(ComboPositionStatus.ResolvedWin);
+      }
+
+      const requests = comboPositionRequests(fetchSpy);
+      expect(requests).toHaveLength(1);
+      expect(expectPresent(requests[0]).getAll('status')).toEqual([
+        ComboPositionStatus.ResolvedWin,
+      ]);
+    });
+
+    it('serializes multiple statuses once and retains them across pages', async ({
+      publicClient,
+    }) => {
+      const statuses = [
+        ComboPositionStatus.ResolvedWin,
+        ComboPositionStatus.ResolvedPartial,
+        ComboPositionStatus.ResolvedLoss,
+      ] as const;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const paginator = publicClient.listComboPositions({
+        user: TEST_USER,
+        pageSize: 1,
+        status: statuses,
+      });
+      const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+      const secondPage = await paginator
+        .from(firstPage.nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      for (const position of [...firstPage.items, ...secondPage.items]) {
+        expect(statuses).toContain(position.status);
+      }
+
+      const requests = comboPositionRequests(fetchSpy);
+      expect(requests).toHaveLength(2);
+
+      for (const request of requests) {
+        expect(request.getAll('status')).toEqual([statuses.join(',')]);
+      }
+
+      expect(expectPresent(requests[0]).get('cursor')).toBeNull();
+      expect(expectPresent(requests[1]).get('cursor')).toBe(
+        firstPage.nextCursor,
+      );
+    });
+
+    it('rejects invalid status filters before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const invalidStatuses = [
+        `${ComboPositionStatus.Open},${ComboPositionStatus.Partial}`,
+        [],
+        [ComboPositionStatus.Open, 'UNKNOWN'],
+      ];
+
+      for (const status of invalidStatuses) {
+        expect(() =>
+          publicClient.listComboPositions({
+            user: TEST_USER,
+            status: status as never,
+          }),
+        ).toThrow(UserInputError);
+      }
+
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('fetchPortfolioValue', () => {
@@ -131,12 +256,28 @@ describe('Portfolio', () => {
         user: TEST_USER,
       });
 
-      expect(result).toEqual([
+      expect(result).toEqual(
         expect.objectContaining({
-          user: TEST_USER,
+          wallet: TEST_USER,
           value: expect.any(String),
         }),
-      ]);
+      );
+    });
+
+    it('sends condition filters with the canonical query key', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.fetchPortfolioValue({
+        user: TEST_USER,
+        conditionIds: [TEST_CONDITION_ID],
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/value');
+      expect(request?.get('condition')).toBe(TEST_CONDITION_ID);
+      expect(request?.has('condition_id')).toBe(false);
+      expect(request?.has('market')).toBe(false);
     });
 
     it('defaults secure clients to the authenticated wallet', async ({
@@ -145,24 +286,91 @@ describe('Portfolio', () => {
     }) => {
       const result = await secureClientWithDepositWallet.fetchPortfolioValue();
 
-      expect(result[0]?.user).toSatisfy((user) =>
-        isSameEvmAddress(user, depositWalletAddress),
+      expect(result.wallet).toSatisfy((wallet) =>
+        isSameEvmAddress(wallet, depositWalletAddress),
       );
     });
   });
 
-  describe('fetchTradedMarketCount', () => {
-    it('fetches total traded market count for a wallet', async ({
+  describe('fetchUserStats', () => {
+    it('fetches profile and lifetime trading stats', async ({
       publicClient,
     }) => {
-      const result = await publicClient.fetchTradedMarketCount({
+      const result = await publicClient
+        .fetchUserStats({
+          user: TEST_USER,
+        })
+        .then(expectPresent);
+      const pnl = expectPresent(result.allTimePnl);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          wallet: TEST_USER,
+          tradedMarketCount: expect.any(Number),
+          biggestWin: expect.any(String),
+          views: expect.any(Number),
+          joinDate: expect.any(Number),
+        }),
+      );
+      expect(pnl).toEqual(
+        expect.objectContaining({
+          timestamp: expect.any(Number),
+          sourceBlock: expect.any(Number),
+          realizedPnl: expect.any(String),
+          volume: expect.any(String),
+          volumeUsdc: expect.any(String),
+          tradeCount: expect.any(Number),
+        }),
+      );
+    });
+
+    it('keeps an unknown user as null', async ({ publicClient }) => {
+      const result = await publicClient.fetchUserStats({
+        user: UNKNOWN_WALLET,
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it('defaults secure clients to the authenticated wallet', async ({
+      depositWalletAddress,
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await secureClientWithDepositWallet.fetchUserStats();
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-stats');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
+      );
+    });
+  });
+
+  describe('fetchUserPnl', () => {
+    it('fetches a cumulative PnL series', async ({ publicClient }) => {
+      const result = await publicClient.fetchUserPnl({
         user: TEST_USER,
+        interval: UserPnlInterval.OneWeek,
+        fidelity: UserPnlFidelity.ThreeHours,
       });
 
       expect(result).toEqual(
         expect.objectContaining({
-          traded: expect.any(Number),
-          user: TEST_USER,
+          wallet: TEST_USER,
+          interval: UserPnlInterval.OneWeek,
+          fidelity: UserPnlFidelity.ThreeHours,
+          sourceFidelity: expect.any(String),
+          points: expect.any(Array),
+        }),
+      );
+      expect(result.points.length).toBeGreaterThan(0);
+      expect(result.points[0]).toEqual(
+        expect.objectContaining({
+          timestamp: expect.any(Number),
+          realizedPnl: expect.any(String),
+          volume: expect.any(String),
+          tradeCount: expect.any(Number),
         }),
       );
     });
@@ -171,11 +379,51 @@ describe('Portfolio', () => {
       depositWalletAddress,
       secureClientWithDepositWallet,
     }) => {
-      const result =
-        await secureClientWithDepositWallet.fetchTradedMarketCount();
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-      expect(result.user).toSatisfy((user) =>
-        isSameEvmAddress(user, depositWalletAddress),
+      await secureClientWithDepositWallet.fetchUserPnl({
+        interval: UserPnlInterval.OneDay,
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-pnl');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
+      );
+    });
+  });
+
+  describe('fetchUserVolume', () => {
+    it('fetches volume for a window using canonical query keys', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const result = await publicClient.fetchUserVolume({
+        user: TEST_USER,
+        window: { start: 1_788_134_400, end: 1_788_220_800 },
+      });
+
+      expect(result).toEqual({
+        volume: expect.any(String),
+        volumeUsdc: expect.any(String),
+        tradeCount: expect.any(Number),
+      });
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
+      expect(request?.get('start')).toBe('1788134400');
+      expect(request?.get('end')).toBe('1788220800');
+    });
+
+    it('defaults secure clients to the authenticated wallet', async ({
+      depositWalletAddress,
+      secureClientWithDepositWallet,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await secureClientWithDepositWallet.fetchUserVolume();
+
+      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
+      expect(request?.get('user')).toSatisfy(
+        (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );
     });
   });
@@ -205,3 +453,19 @@ describe('Portfolio', () => {
     });
   });
 });
+
+function comboPositionRequests(
+  fetchSpy: MockInstance<typeof fetch>,
+): URLSearchParams[] {
+  return dataRequests(fetchSpy, '/v2/positions/combos');
+}
+
+function dataRequests(
+  fetchSpy: MockInstance<typeof fetch>,
+  pathname: string,
+): URLSearchParams[] {
+  return fetchSpy.mock.calls
+    .map(([input]) => (input instanceof Request ? input.url : String(input)))
+    .filter((url) => new URL(url).pathname === pathname)
+    .map((url) => new URL(url).searchParams);
+}

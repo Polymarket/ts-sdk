@@ -12,11 +12,28 @@ import type {
 } from '../clients';
 
 export type {
+  CommentsEvent,
+  CommentsSubscription,
+  CryptoPriceEvent,
+  CryptoPriceSnapshotEvent,
+  CryptoPriceSubscription,
+  CryptoPricesBinanceEvent,
+  CryptoPricesChainlinkEvent,
   CryptoPricesChainlinkTwapEvent,
   CryptoPricesChainlinkTwapSixtyEvent,
   CryptoPricesChainlinkTwapSubscription,
   CryptoPricesChainlinkTwapThirtyEvent,
   CryptoPricesChainlinkTwapWindowSeconds,
+  CryptoPricesEvent,
+  CryptoPricesSubscription,
+  CryptoTwapPriceEvent,
+  CryptoTwapPriceSnapshotEvent,
+  CryptoTwapPriceSubscription,
+  EquityPriceEvent,
+  EquityPriceSubscription,
+  EquityPricesEvent,
+  EquityPricesSubscription,
+  PriceSubscription,
 } from '../actions';
 export { SubscribeError } from '../actions';
 
@@ -30,7 +47,7 @@ export type PublicSubscriptionsActions = {
    * @example
    * ```ts
    * const handle = await client.subscribe([
-   *   { topic: 'market', tokenIds: ['123'] },
+   *   { topic: 'market', assetIds: ['123'] },
    * ]);
    *
    * for await (const event of handle) {
@@ -47,6 +64,13 @@ export type SecureSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
    *
+   * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+   * require explicit filters and include history snapshots and live updates.
+   * Legacy source-named topics retain their existing filter and event behavior.
+   * Event `seq` values are scoped to one channel on one WebSocket connection
+   * and reset after reconnecting. Subscriptions with more than 64 filters use
+   * multiple connections, so their sequence values may interleave.
+   *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.
    *
@@ -54,7 +78,7 @@ export type SecureSubscriptionsActions = {
    * ```ts
    * const handle = await client.subscribe([
    *   { topic: 'user' },
-   *   { topic: 'market', tokenIds: ['123'] },
+   *   { topic: 'market', assetIds: ['123'] },
    * ]);
    *
    * for await (const event of handle) {

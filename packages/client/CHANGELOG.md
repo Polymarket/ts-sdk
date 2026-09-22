@@ -1,5 +1,123 @@
 # @polymarket/client
 
+## 0.10.0
+
+### Minor Changes
+
+- 6e3ae8d: **Breaking**: migrate `listBuilderLeaderboard` and `fetchBuilderVolume` to their v2 contracts. Builder rankings now use server cursors and normalized `BuilderStanding` rows; builder volume returns complete date buckets as `BuilderVolumePoint` rows. Replace `timePeriod` with `window` or `interval`, and use `bucketLimit` to bound volume buckets.
+- 8befd1f: Add the core pieces for the data `/v2` surface: `/v2` envelope schemas (paginated list with server-minted branded cursors, and single-object including null answers), a `withRateLimitRetry` pipeline helper that honors server-requested delays, and the `MIGRATION` activity type with its `MigrationActivity` variant. All additive — no existing API shape changes.
+- 7b68c7a: **Breaking**: the feed surfaces are fully replaced — same names, new contracts. `listActivity`, `listComboActivity`, `listPositions`, and `listComboPositions` now serve exact cursor pagination with automatic rate-limit retry and the `condition`-id vocabulary. `conditionId` filters validate the service's shared selector cap client-side: at most 20 distinct ids per request (case-insensitive dedupe first), so an oversized list fails typed instead of as a service 400. `listPositions` bundles the whole lifecycle behind `status` (`OPEN`/`REDEEMABLE`/`CLOSED`) with `redeemable`/`mergeable` flags and fee-exclusive entry economics on every row — `listClosedPositions` and `listMarketPositions` are removed (use `listPositions` with `status`/a `conditionId` anchor). Every windowed method takes one `window` option (`'full' | { start?, end? }`, epoch seconds or `Date`) replacing raw `start`/`end`. Money, size, price, and PnL fields normalize to `DecimalString` (the wire's JSON numbers are stringified without loss at their 6-decimal grain, matching the v1 SDK surface), `endDate` is a typed `IsoCalendarDateString`, and `ComboPositionStatus` gains `Redeemable` (sole-value filter, also tolerated on rows); the `Activity` union, `Position`, `ComboPosition`, and `ComboActivity` rows are strict and normalized (epoch ms, empty-string/999-sentinel absence as `undefined`, `assetId` canonical with deprecated `tokenId` alias). Combo activity rows carry `positionId` on every row while dropping `transactionAt`/`logIndex`/`moduleId`. Request vocabularies are exported enums: trade direction reuses `OrderSide` (the standalone `Side` type is removed), and `SortDirection`, `TradeFilterType`, `PositionFilterType`, `PositionSortBy`, `ComboPositionSortBy`, and `TipSide` join `PositionStatus`/`ComboPositionStatus`. On the secure client, `listPositions` always binds the authenticated wallet (the `user: null` opt-out is removed); list a market's holders through a public client instead.
+- 12935c4: **Breaking**: migrate `listMarketHolders` to its cursor-paginated `/v2` contract, using condition IDs, normalized holder fields, and optional position economics.
+- d64f383: **Breaking**: migrate open-interest and live-volume reads to their v2 contracts. Replace `listOpenInterest` with `fetchOpenInterest`, use condition and event identifiers, and expose cumulative taker volume explicitly.
+- 0df4f2b: **Breaking**: migrate `fetchPortfolioValue` to its `/v2` contract, returning one `PortfolioValue` with a decimal-string value and accepting `conditionIds` instead of the legacy `market` filter. Add `fetchUserStats` with decimal-string money, size, and PnL fields, and remove `fetchTradedMarketCount`; use `fetchUserStats().tradedMarketCount` for the exact distinct-market count. The accounting snapshot download remains available unchanged.
+- 454c772: **Breaking**: replace `fetchPriceHistory` with cursor-paginated `listPriceHistory`, using token IDs, strict time selections, second-based bucket widths, and normalized price points.
+- cb664fb: Add `fetchResolutions` for non-paginated resolution lifecycle lookups by question, condition, or event. Resolution rows normalize identity, lifecycle, oracle, payout, and finality fields, while unset wire sentinels become omitted SDK fields.
+- 7992375: **Breaking**: migrate trader leaderboard reads to the cursor-paginated v2 contract, add a separate by-wallet standing method, and add biggest-winner pagination with explicit market and Combo variants.
+- 7ed1af9: **Breaking**: `listTrades` is fully replaced — same name, new contract. It now serves exact continuation signals (`hasMore`/server-minted `nextCursor` — no page-size probing), re-sends the original filters with every page, has no offset vocabulary (`pageSize` default 100, max 1000 rejected-not-clamped), retries transient rate limits after the server-requested delay, and accepts partial `filterType`/`filterAmount` (the service fills the other half in). The `Trade` row is strict and normalized (numbers for `size`/`price`, epoch milliseconds, empty-string and unknown-sentinel absence as `undefined`). Following the service's naming remap, the request filter is `conditionId` (the wire's `condition`/`condition_id` — the old `market` key no longer exists upstream) and the row field parsed is `condition_id`. Bindings gain the reusable data envelope parsers (`dataPageSchema`, `dataEnvelopeSchema`) that turn the service's paginated envelope straight into the SDK page shape.
+- d320dfa: Add `fetchUserPnl` and `fetchUserVolume` with normalized decimal-string amounts, cumulative PnL metadata, shared time-window inputs, and authenticated-wallet defaults.
+
+### Patch Changes
+
+- 5bdc101: Expose the yearly builder-volume bucket as `BuilderVolumeInterval.Year` while preserving the wire value `all`.
+- b56a0a8: Normalize resolution timestamps, transaction metadata, and payout values into canonical SDK types.
+- 6e5c293: Expose question, groupItemTitle, sportsMarketType, line, and outcomes on combo leg markets returned by listComboPositions and listComboActivity.
+- e7882e8: Normalize protocol v2 market condition IDs for position and portfolio-value reads, share canonicalization in bindings, and clarify activity and trade history windows.
+- Updated dependencies [5bdc101]
+- Updated dependencies [b56a0a8]
+- Updated dependencies [6e3ae8d]
+- Updated dependencies [6e5c293]
+- Updated dependencies [8befd1f]
+- Updated dependencies [7b68c7a]
+- Updated dependencies [12935c4]
+- Updated dependencies [d64f383]
+- Updated dependencies [e7882e8]
+- Updated dependencies [0df4f2b]
+- Updated dependencies [454c772]
+- Updated dependencies [cb664fb]
+- Updated dependencies [7992375]
+- Updated dependencies [7ed1af9]
+- Updated dependencies [d320dfa]
+  - @polymarket/bindings@0.10.0
+
+## 0.9.0
+
+### Minor Changes
+
+- 8a26d28: Accept protocol-neutral `assetId` inputs when estimating, preparing, creating, and placing market and limit orders, infer Polymarket V2 routing from the structured position-ID namespace, and retain `tokenId` as a deprecated input alias.
+- 1fb4dd9: Add `fetchTradingApprovalsState` for reading a wallet's missing trading approvals without a signer or transaction workflow. Export the approval requirement types, and report malformed approval-check results as `UnexpectedResponseError` in both read and setup workflows.
+
+  Secure account read methods now reject invalid request values—including `null`, arrays, primitives, and `user: null`—with `UserInputError` instead of silently defaulting the wallet or throwing a raw error.
+
+- 4486dee: Expose each market's Combo eligibility status as `market.state.comboStatus`,
+  while passing newly introduced status values through as strings.
+- 74ad47b: Expose protocol versions on markets and events.
+- 01438a1: Remove legacy AMM-era fields that the API no longer returns: `marketMakerAddress`, `ammType`, `fpmmLive`, `volumeAmm`, `volume24hrAmm`, `volume1wkAmm`, `volume1moAmm`, `volume1yrAmm`, and `liquidityAmm` from the raw market schema, `liquidityAmm` from the raw event schema, `volumeAmm` from `MarketMetrics`, and `liquidityAmm` from `EventMetrics`. Also remove the internal `pagerDutyNotificationEnabled` market field and `requiresTranslation` from market, event, series, and tag models, and drop the `marketMakerAddresses` filter from `listMarkets`. Responses that still carry any of these fields keep parsing; the values are ignored.
+- 1a47d73: Return from `revokeSessionKey` once the session key is removed from the active-key registry instead of waiting for on-chain confirmation. The method now returns `Promise<void>`, and `RevokeSessionKeyResult` has been removed.
+
+### Patch Changes
+
+- 6558f22: Allow session-key authorization and revocation relayer submissions up to five minutes to accommodate synchronous validation and broadcast processing.
+- 663d79b: Preserve each team's `ordering` value on event and team-list responses.
+- Updated dependencies [8a26d28]
+- Updated dependencies [663d79b]
+- Updated dependencies [4486dee]
+- Updated dependencies [74ad47b]
+- Updated dependencies [01438a1]
+  - @polymarket/bindings@0.9.0
+
+## 0.8.1
+
+### Patch Changes
+
+- 4fa74dc: Fix session-key authorization expiry at 180 days and remove `validUntil` from the public request.
+
+## 0.8.0
+
+### Minor Changes
+
+- a8dba73: Expose pending Combo market status and avoid using pending markets when discovering live RFQ legs.
+- a1959b6: Add protocol-neutral `assetId` fields across CLOB reads, filters, and realtime events, and `conditionId` fields across CLOB reads and realtime events, while retaining deprecated `tokenId`, `tokenIds`, and `market` compatibility aliases.
+- 5c18246: Add protocol-neutral `assetId` and `conditionId` fields to Data API responses while retaining deprecated identifier aliases.
+- efbd77b: Support splitting, merging, and redeeming ordinary Polymarket V2 positions through the existing market position lifecycle APIs; allow position-ID redemption for binary, negative-risk, and Combo positions; and consistently name low-level CTF and Router transaction builders.
+- 851bff4: Include the PolyV2 binary and negative-risk modules in the protocol-neutral trading approval workflow.
+
+### Patch Changes
+
+- 2fd5cc5: Normalize empty live-volume market identifiers to null.
+- Updated dependencies [a8dba73]
+- Updated dependencies [a1959b6]
+- Updated dependencies [5c18246]
+- Updated dependencies [2fd5cc5]
+  - @polymarket/bindings@0.8.0
+
+## 0.7.0
+
+### Minor Changes
+
+- dda4398: Support filtering combo positions by one or multiple statuses.
+- d754986: Type notification payloads: `Notification` is now a discriminated union on the new `NotificationType` enum, `owner` is the branded `ApiKey`, and each notification kind carries a typed `payload` instead of `unknown`.
+
+  At runtime, notification kinds unknown to this SDK version are omitted from `fetchNotifications`, while recognized kinds whose payloads do not match their schemas reject the entire response.
+
+  Malformed combo condition IDs, question IDs, EVM addresses, and transaction hashes now report schema validation failures instead of escaping parsing as raw errors.
+
+- 6e4f59b: RateLimitError now exposes the Poly-RateLimit-\* state reported with a rejection, and clients accept an onRateLimitUpdate listener that receives per-signer rate-limit state (bucket, remaining, reset, tier, warning) whenever a response reports it.
+- e3d2fba: Accept position IDs when estimating, preparing, creating, and placing market and limit orders, routing position-backed orders through Exchange V3 signing and trading approvals while preserving token-ID order compatibility.
+- 0db340d: Add scoped Deposit Wallet session-key authorization, active-key fetching, revocation, and ordinary SecureClient support for authorized session signers. Known scopes have enum members, while newer scope strings remain accepted and preserved for forward compatibility. Authorizations default to `ALL` when scopes are omitted.
+
+### Patch Changes
+
+- aae2882: RequestRejectedError now exposes a typed restriction distinguishing matching-engine restarts (HTTP 425) from post-only mode (HTTP 503), its retryAfter value falls back to the retry_after_seconds response field when the Retry-After header is absent, and batch post-only rejections map to the post_only_mode order error code instead of unknown. The SDK still does not retry automatically.
+- f02c309: Keep unrestricted RFQ salt generation local and reject CLOB order salts that
+  cannot be serialized exactly as JavaScript numbers.
+- 625fc27: Accept order prices with insignificant floating-point drift from a valid tick-grid value, while continuing to reject materially off-grid prices. Calculate limit and market order amounts with exact fixed-point arithmetic to avoid unintended rounding caused by floating-point noise.
+- Updated dependencies [aae2882]
+- Updated dependencies [d754986]
+- Updated dependencies [ccd6ef4]
+- Updated dependencies [0db340d]
+  - @polymarket/bindings@0.7.0
+  - @polymarket/types@0.2.0
+
 ## 0.6.0
 
 ### Minor Changes

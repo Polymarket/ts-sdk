@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MarketEventSchema, TradeStatus, UserEventSchema } from './clob';
 
+const CONDITION_ID = `0x${'ab'.repeat(32)}`;
+
 describe('UserEventSchema', () => {
   it('accepts short trade statuses from the user websocket and normalizes them', () => {
     const result = UserEventSchema.safeParse({
@@ -10,7 +12,7 @@ describe('UserEventSchema', () => {
       id: 'trade-1',
       last_update: '1710000000',
       maker_address: '0x0000000000000000000000000000000000000001',
-      market: 'market-1',
+      market: CONDITION_ID,
       match_time: '1710000000',
       owner: 'owner-1',
       price: '0.5',
@@ -31,7 +33,10 @@ describe('UserEventSchema', () => {
 
     expect(result.data).toMatchObject({
       payload: {
+        assetId: '1',
+        conditionId: CONDITION_ID,
         status: TradeStatus.Confirmed,
+        tokenId: '1',
       },
       topic: 'user',
       type: 'trade',
@@ -46,7 +51,7 @@ describe('UserEventSchema', () => {
       id: 'trade-2',
       last_update: '1710000000',
       maker_address: '0x0000000000000000000000000000000000000001',
-      market: 'market-1',
+      market: CONDITION_ID,
       match_time: '1710000000',
       owner: 'owner-1',
       price: '0.5',
@@ -81,7 +86,7 @@ describe('UserEventSchema', () => {
           side: 'SELL',
         },
       ],
-      market: 'market-1',
+      market: CONDITION_ID,
       match_time: '1710000000',
       owner: 'owner-1',
       price: '0.5',
@@ -113,7 +118,7 @@ describe('MarketEventSchema', () => {
   it('normalizes empty-string best_bid and best_ask to null on price changes', () => {
     const result = MarketEventSchema.safeParse({
       event_type: 'price_change',
-      market: 'market-1',
+      market: CONDITION_ID,
       price_changes: [
         {
           asset_id: '1',
@@ -136,7 +141,10 @@ describe('MarketEventSchema', () => {
 
     expect(result.data).toMatchObject({
       payload: {
-        priceChanges: [{ bestAsk: null, bestBid: null }],
+        conditionId: CONDITION_ID,
+        priceChanges: [
+          { assetId: '1', bestAsk: null, bestBid: null, tokenId: '1' },
+        ],
       },
     });
   });
@@ -147,7 +155,7 @@ describe('MarketEventSchema', () => {
       best_ask: '0.51',
       best_bid: '0.49',
       event_type: 'best_bid_ask',
-      market: 'market-1',
+      market: CONDITION_ID,
       spread: '',
       timestamp: '1710000000000',
     });

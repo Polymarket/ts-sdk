@@ -12,6 +12,7 @@ import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig, production } from '../environments';
 import { RequestRejectedError, UserInputError } from '../errors';
 import type { Signer } from '../types';
+import { SignerType } from '../wallet';
 import {
   executeCollateralReturnPlan,
   planCollateralReturn,
@@ -328,6 +329,7 @@ function createClient(options: CreateClientOptions = {}) {
   const client = {
     account: {
       signer: SIGNER,
+      signerType: SignerType.OWNER,
       wallet: WALLET,
       walletType: options.walletType ?? WalletType.DEPOSIT_WALLET,
     },
