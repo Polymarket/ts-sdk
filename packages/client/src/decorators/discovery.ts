@@ -533,6 +533,11 @@ export type DiscoveryActions = {
   /**
    * Lists comments for an event or series.
    *
+   * @remarks
+   * Pages starting past offset 200 are not served. Following a cursor past
+   * that point throws {@link PaginationLimitError} before any request is
+   * sent; the pages already returned stay valid.
+   *
    * @throws {@link ListCommentsError}
    * Thrown on failure.
    *
@@ -587,6 +592,11 @@ export type DiscoveryActions = {
 
   /**
    * Lists comments written by a wallet address.
+   *
+   * @remarks
+   * Pages starting past offset 200 are not served. Following a cursor past
+   * that point throws {@link PaginationLimitError} before any request is
+   * sent; the pages already returned stay valid.
    *
    * @throws {@link ListCommentsByUserAddressError}
    * Thrown on failure.

@@ -4,7 +4,7 @@ import {
 } from '@polymarket/bindings';
 import { type ResultAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
-import { UserInputError } from './errors';
+import { PaginationLimitError, UserInputError } from './errors';
 
 export const PageSizeSchema = z.number().int().positive();
 
@@ -16,6 +16,10 @@ export type Page<T> = {
    * On methods without a server-provided continuation signal, a full page
    * reports `true` and the follow-up request returns an empty final page when
    * the collection ended exactly on a page boundary.
+   *
+   * On lists with a depth limit, the deepest served page still reports `true`
+   * when it is full; following its cursor throws
+   * {@link PaginationLimitError} instead of sending a request.
    */
   hasMore: boolean;
   nextCursor?: PaginationCursor;
@@ -102,7 +106,39 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
 }
 
 /** @internal */
+export type OffsetCursorLimits = {
+  /** Deepest offset the service serves; a cursor past it fails before any request. */
+  maxOffset?: number;
+  /** Largest page size the service serves; a cursor carrying more fails before any request. */
+  maxPageSize?: number;
+};
+
+/** @internal */
 export function decodeOffsetCursor(
+  cursor: PaginationCursor | undefined,
+  pageSize: number,
+  limits: OffsetCursorLimits = {},
+): OffsetCursorState {
+  const state = decodeOffsetCursorState(cursor, pageSize);
+
+  // A cursor carries the offset and page size it was minted with, so both are
+  // re-checked here rather than trusting the request's page size alone.
+  if (limits.maxPageSize !== undefined && state.pageSize > limits.maxPageSize) {
+    throw new UserInputError(
+      `Pagination cursor page size must be at most ${limits.maxPageSize}`,
+    );
+  }
+
+  if (limits.maxOffset !== undefined && state.offset > limits.maxOffset) {
+    throw new PaginationLimitError(
+      `Pagination reached the deepest page served (offset ${limits.maxOffset}); whether more items exist cannot be established. Narrow the query to read further.`,
+    );
+  }
+
+  return state;
+}
+
+function decodeOffsetCursorState(
   cursor: PaginationCursor | undefined,
   pageSize: number,
 ): OffsetCursorState {
