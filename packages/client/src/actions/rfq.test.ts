@@ -23,6 +23,7 @@ import {
   UserInputError,
 } from '../errors';
 import type { Signer } from '../types';
+import { SignerType } from '../wallet';
 import {
   type AcceptComboQuoteParams,
   acceptComboQuote,
@@ -643,6 +644,7 @@ function createClient(options: CreateClientOptions = {}) {
   const client = {
     account: {
       signer: SIGNER,
+      signerType: SignerType.OWNER,
       wallet: SIGNER,
       walletType: WalletType.EOA,
     },

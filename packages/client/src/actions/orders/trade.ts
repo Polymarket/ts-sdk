@@ -15,12 +15,13 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
+import { isV2PositionId } from '../../protocol';
 import { completeWith } from '../../workflow';
 import { updateBalanceAllowance } from '../account';
 import { approveErc20, approveErc1155ForAll } from '../approvals';
 import { resolveCurrentAllowance } from './allowance';
 import { resolveOrderMarketMetadata } from './cache';
-import { resolveExchangeAddress } from './context';
+import { resolveOrderExchangeAddress } from './context';
 import { type PostOrderError, postOrder } from './post';
 import {
   type PrepareLimitOrderError,
@@ -60,10 +61,10 @@ export const CreateMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const order = await createMarketOrder(client, {
+ *   assetId: '0x0122…0000',
  *   amount: '100',
  *   maxPrice: '0.55',
  *   side: OrderSide.BUY,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -104,10 +105,10 @@ export const PlaceMarketOrderError = makeErrorGuard(
  * @example
  * ```ts
  * const response = await placeMarketOrder(client, {
+ *   assetId: '0x0122…0000',
  *   minPrice: '0.54',
  *   shares: '180',
  *   side: OrderSide.SELL,
- *   tokenId: '123',
  * });
  * ```
  */
@@ -243,13 +244,18 @@ async function ensureOrderApproval(
   client: BaseSecureClient,
   order: SignedOrder,
 ): Promise<boolean> {
-  const metadata = await resolveOrderMarketMetadata(client, order.tokenId);
-  const exchangeAddress = resolveExchangeAddress(client, metadata.negRisk);
+  const assetId = order.tokenId;
+  const metadata = await resolveOrderMarketMetadata(client, assetId);
+  const exchangeAddress = resolveOrderExchangeAddress(
+    client,
+    assetId,
+    metadata.negRisk,
+  );
   const requiredAllowance = BigInt(order.makerAmount);
   const currentAllowance = await resolveCurrentAllowance(client, {
+    assetId,
     spenderAddress: exchangeAddress,
     side: order.side,
-    tokenId: order.tokenId,
   });
 
   if (currentAllowance >= requiredAllowance) {
@@ -265,7 +271,9 @@ async function ensureOrderApproval(
         })
       : await approveErc1155ForAll(client, {
           operatorAddress: exchangeAddress,
-          tokenAddress: client.environment.contracts.conditionalTokens,
+          tokenAddress: isV2PositionId(assetId)
+            ? client.environment.contracts.positionManager
+            : client.environment.contracts.conditionalTokens,
         });
 
   await handle.wait();
@@ -275,7 +283,7 @@ async function ensureOrderApproval(
       order.side === OrderSide.BUY
         ? AssetType.COLLATERAL
         : AssetType.CONDITIONAL,
-    tokenId: order.side === OrderSide.SELL ? order.tokenId : undefined,
+    tokenId: order.side === OrderSide.SELL ? assetId : undefined,
   });
 
   return true;

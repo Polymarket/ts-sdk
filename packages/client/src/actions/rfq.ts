@@ -70,11 +70,10 @@ import {
   createExchangeOrderTypedDataPayload,
   createExchangeV3OrderDomain,
   encodeExchangeOrderSide,
-  generateExchangeOrderSalt,
 } from '../exchange';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
-import { resolveOrderIdentity } from '../wallet';
+import { resolveOrderIdentity, SignerType } from '../wallet';
 
 export {
   ComboAcceptFailureReason,
@@ -396,10 +395,14 @@ export interface RfqSession extends AsyncIterable<RfqEvent> {
   close(): Promise<void>;
 }
 
-export type OpenRfqSessionError = ConnectionLostError | TransportError;
+export type OpenRfqSessionError =
+  | ConnectionLostError
+  | TransportError
+  | UserInputError;
 export const OpenRfqSessionError = makeErrorGuard(
   ConnectionLostError,
   TransportError,
+  UserInputError,
 );
 
 /**
@@ -416,6 +419,8 @@ export const OpenRfqSessionError = makeErrorGuard(
 export async function openRfqSession(
   client: BaseSecureClient,
 ): Promise<RfqSession> {
+  assertCombosSupportedForAccount(client);
+
   return client.webSockets.rfqQuoter.connect();
 }
 
@@ -747,6 +752,8 @@ export async function requestComboQuote(
   client: BaseSecureClient,
   params: RequestComboQuoteParams,
 ): Promise<RequestComboQuoteResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, RequestComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
 
@@ -1056,6 +1063,8 @@ export async function acceptComboQuote(
   client: BaseSecureClient,
   params: AcceptComboQuoteParams,
 ): Promise<AcceptComboQuoteResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, AcceptComboQuoteParamsSchema);
   assertBuilderAuthorization(client);
 
@@ -1186,7 +1195,7 @@ function createComboAcceptanceOrder(
     maker: identity.maker,
     makerAmount: input.makerAmount,
     metadata: BYTES32_ZERO,
-    salt: generateExchangeOrderSalt().toString(),
+    salt: generateComboAcceptanceOrderSalt().toString(),
     side: encodeExchangeOrderSide(input.direction),
     signatureType: identity.signatureType,
     signer: identity.signer,
@@ -1194,6 +1203,16 @@ function createComboAcceptanceOrder(
     timestamp: Math.floor(Date.now() / 1000).toString(),
     tokenId: input.positionId,
   };
+}
+
+function generateComboAcceptanceOrderSalt(): bigint {
+  const bytes = new Uint8Array(8);
+  globalThis.crypto.getRandomValues(bytes);
+
+  // RFQ salts stay strings on the wire, so the full 64-bit value is lossless.
+  return BigInt(
+    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  );
 }
 
 async function signComboAcceptanceOrder(
@@ -1302,6 +1321,8 @@ export async function waitForComboFill(
   client: BaseSecureClient,
   params: WaitForComboFillParams,
 ): Promise<WaitForComboFillResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, WaitForComboFillParamsSchema);
   const timeoutMs = input.timeoutMs ?? DEFAULT_FILL_TIMEOUT_MS;
   const pollingIntervalMs =
@@ -1401,6 +1422,8 @@ export function fetchRfqStatus(
   client: BaseSecureClient,
   params: FetchRfqStatusParams,
 ): Promise<RfqStatusResult> {
+  assertCombosSupportedForAccount(client);
+
   const input = parseUserInput(params, FetchRfqStatusParamsSchema);
 
   return unwrap(
@@ -1409,4 +1432,10 @@ export function fetchRfqStatus(
       .andThen(validateWith(BuilderRfqStatusResponseSchema))
       .mapErr(toRfqRequestRejection),
   );
+}
+
+function assertCombosSupportedForAccount(client: BaseSecureClient): void {
+  if (client.account.signerType === SignerType.SESSION_KEY) {
+    throw new UserInputError('Combos is not supported with Session Keys');
+  }
 }

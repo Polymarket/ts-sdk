@@ -1,9 +1,13 @@
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
+  type ConditionId,
   ConditionIdSchema,
   DecimalishSchema,
+  type DecimalString,
   EpochMillisecondsToIsoDateTimeStringSchema,
-  TokenIdSchema,
+  type PositionId,
+  type TokenId,
 } from '../shared';
 
 const CurrentRewardConfigSchema = z
@@ -87,15 +91,22 @@ export type PaginatedCurrentRewards = z.infer<
 
 const RewardTokenSchema = z
   .object({
-    token_id: TokenIdSchema,
+    token_id: ClobAssetIdSchema,
     outcome: z.string(),
     price: DecimalishSchema,
   })
   .transform(({ token_id, ...rest }) => ({
     ...rest,
+    assetId: token_id,
     tokenId: token_id,
-  }));
-export type RewardToken = z.infer<typeof RewardTokenSchema>;
+  })) satisfies z.ZodType<RewardToken>;
+export type RewardToken = {
+  assetId: TokenId | PositionId;
+  /** @deprecated Use `assetId`. */
+  tokenId: TokenId | PositionId;
+  outcome: string;
+  price: DecimalString;
+};
 
 const RewardConfigSchema = z
   .object({
@@ -157,8 +168,19 @@ export const MarketRewardSchema = z
       marketCompetitiveness: market_competitiveness,
       rewardsConfig: rewards_config,
     }),
-  );
-export type MarketReward = z.infer<typeof MarketRewardSchema>;
+  ) satisfies z.ZodType<MarketReward>;
+export type MarketReward = {
+  conditionId: ConditionId;
+  question: string;
+  marketSlug: string | undefined;
+  eventSlug: string | undefined;
+  image?: string;
+  rewardsMaxSpread: number | undefined;
+  rewardsMinSize: DecimalString | undefined;
+  marketCompetitiveness: number | undefined;
+  tokens: RewardToken[];
+  rewardsConfig: RewardConfig[] | undefined;
+};
 
 export const PaginatedMarketRewardsSchema = z
   .object({

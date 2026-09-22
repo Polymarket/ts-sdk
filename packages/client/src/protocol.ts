@@ -1,18 +1,23 @@
 import {
   type ComboConditionId,
+  type ConditionId,
   type PositionId,
+  type TokenId,
   toComboConditionId,
+  toConditionId,
   toPositionId,
 } from '@polymarket/bindings';
+import type { Tagged } from '@polymarket/types';
 import { AbiParameters, Hash } from 'ox';
 import { UserInputError } from './errors';
 
-type Tagged<T, Tag extends string> = T & { readonly __tag: Tag };
-
 const UINT256_BYTE_LENGTH = 32;
+const BINARY_MODULE_ID = 1n;
+const NEG_RISK_MODULE_ID = 2n;
 const COMBINATORIAL_MODULE_ID = 3n;
 const MAX_COMBO_LEGS = 50;
 const UINT256_MAX = (1n << 256n) - 1n;
+const V2_RESERVED_BITS_MASK = ((1n << 64n) - 1n) << 40n;
 
 export type CanonicalComboLegs = Tagged<
   readonly bigint[],
@@ -119,42 +124,62 @@ export function canonicalizeComboLegs(
   ) as unknown as CanonicalComboLegs;
 }
 
-export type DecodedComboOutcomePositionId = {
-  conditionId: ComboConditionId;
+export type DecodedV2OutcomePositionId = {
+  conditionId: ConditionId;
   outcomeIndex: 0 | 1;
 };
 
 /**
- * Decodes a combo YES/NO position ID into its condition ID and outcome index.
+ * Classifies whether an identifier occupies the protocol v2 position-ID
+ * namespace based on its reserved bits.
+ *
+ * @internal
+ */
+export function isV2PositionId(assetId: PositionId | TokenId): boolean {
+  try {
+    return (parsePositionId(assetId) & V2_RESERVED_BITS_MASK) === 0n;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Decodes a protocol v2 YES/NO position ID into its condition ID and outcome index.
  *
  * @throws {@link UserInputError}
- * Thrown when the position ID is not a valid combo YES/NO position ID.
+ * Thrown when the position ID is not a supported protocol v2 YES/NO position ID.
  */
-export function decodeComboOutcomePositionId(
+export function decodeV2OutcomePositionId(
   positionId: PositionId,
-): DecodedComboOutcomePositionId {
+): DecodedV2OutcomePositionId {
   const value = parsePositionId(positionId);
   const hex = value.toString(16).padStart(UINT256_BYTE_LENGTH * 2, '0');
   const moduleId = BigInt(`0x${hex.slice(0, 2)}`);
   const outcomeIndex = Number.parseInt(hex.slice(-2), 16);
 
-  if (moduleId !== COMBINATORIAL_MODULE_ID) {
+  if (
+    moduleId !== BINARY_MODULE_ID &&
+    moduleId !== NEG_RISK_MODULE_ID &&
+    moduleId !== COMBINATORIAL_MODULE_ID
+  ) {
     throw new UserInputError(
-      'Combo position ID must use the combinatorial module',
+      'Position ID must use a supported protocol v2 module',
     );
   }
 
   if (outcomeIndex !== 0 && outcomeIndex !== 1) {
-    throw new UserInputError('Combo position ID must be a YES/NO position ID');
+    throw new UserInputError(
+      'Protocol v2 position ID must be a YES/NO position ID',
+    );
   }
 
   return {
-    conditionId: toComboConditionId(`0x${hex.slice(0, -2)}`),
+    conditionId: toConditionId(`0x${hex.slice(0, -2)}`),
     outcomeIndex,
   };
 }
 
-function parsePositionId(positionId: PositionId): bigint {
+function parsePositionId(positionId: string): bigint {
   const value = positionId.trim();
   let parsed: bigint;
 

@@ -11,20 +11,22 @@ const {
   })
   .firstPage();
 
-const tokenId =
-  market?.outcomes.yes.tokenId ?? never('No YES token found for market');
+const assetId =
+  market?.outcomes.yes.tokenId ??
+  market?.outcomes.yes.positionId ??
+  never('No YES asset found for market');
 
 const [orderBook, buyPrice, midpoint, spread, lastTrade] = await Promise.all([
-  client.fetchOrderBook({ tokenId }),
-  client.fetchPrice({ tokenId, side: OrderSide.BUY }),
-  client.fetchMidpoint({ tokenId }),
-  client.fetchSpread({ tokenId }),
-  client.fetchLastTradePrice({ tokenId }),
+  client.fetchOrderBook({ assetId }),
+  client.fetchPrice({ assetId, side: OrderSide.BUY }),
+  client.fetchMidpoint({ assetId }),
+  client.fetchSpread({ assetId }),
+  client.fetchLastTradePrice({ assetId }),
 ]);
 
 console.table({
   market: market?.question ?? market?.slug ?? market?.id ?? never(),
-  tokenId,
+  assetId,
   bids: orderBook.bids.length,
   asks: orderBook.asks.length,
   buyPrice,

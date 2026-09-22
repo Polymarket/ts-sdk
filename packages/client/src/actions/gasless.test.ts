@@ -11,6 +11,7 @@ import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig } from '../environments';
 import { RequestRejectedError } from '../errors';
 import type { Signer } from '../types';
+import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
 import { prepareGaslessTransaction } from './gasless';
 
@@ -78,6 +79,7 @@ function createClient(options: CreateClientOptions = {}) {
   const client = {
     account: {
       signer: SIGNER,
+      signerType: SignerType.OWNER,
       wallet: WALLET,
       walletType: WalletType.DEPOSIT_WALLET,
     },

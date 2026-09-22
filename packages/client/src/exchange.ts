@@ -139,6 +139,7 @@ export function createExchangeOrderTypedDataPayload(
     },
     primaryType: 'TypedDataSign',
     types: {
+      EIP712Domain: EIP712_DOMAIN,
       Order: ORDER_STRUCTURE,
       TypedDataSign: TYPED_DATA_SIGN_STRUCTURE,
     },
@@ -215,16 +216,6 @@ export function calculateExchangeOrderTakerAmount(
   }
 
   return size.toString();
-}
-
-/** @internal */
-export function generateExchangeOrderSalt(): bigint {
-  const bytes = new Uint8Array(8);
-  globalThis.crypto.getRandomValues(bytes);
-
-  return BigInt(
-    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
-  );
 }
 
 /** @internal */

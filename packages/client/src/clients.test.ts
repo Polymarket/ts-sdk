@@ -25,6 +25,7 @@ import {
   deriveProxyWalletAddress,
   deriveSafeWalletAddress,
   deriveUupsDepositWalletAddress,
+  SignerType,
 } from './wallet';
 
 const rpcRoot = 'http://localhost:4014';
@@ -115,6 +116,7 @@ describe('secure client gasless wallet setup', () => {
     expect(submit.transactionFetches).toBe(2);
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: expectedWallet,
       walletType: WalletType.DEPOSIT_WALLET,
     });
@@ -144,6 +146,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: expectedWallet,
       walletType: WalletType.DEPOSIT_WALLET,
     });
@@ -166,6 +169,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: expectedWallet,
       walletType: WalletType.DEPOSIT_WALLET,
     });
@@ -190,6 +194,7 @@ describe('secure client gasless wallet setup', () => {
     expect(deployedWallet.called).toBe(true);
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: expectedWallet,
       walletType: WalletType.DEPOSIT_WALLET,
     });
@@ -208,6 +213,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: signerAddress,
       walletType: WalletType.EOA,
     });
@@ -243,6 +249,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: signerAddress,
       walletType: WalletType.EOA,
     });
@@ -266,6 +273,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: safeWallet,
       walletType: WalletType.GNOSIS_SAFE,
     });
@@ -289,6 +297,7 @@ describe('secure client gasless wallet setup', () => {
 
     expect(client.account).toEqual({
       signer: signerAddress,
+      signerType: SignerType.OWNER,
       wallet: proxyWallet,
       walletType: WalletType.POLY_PROXY,
     });

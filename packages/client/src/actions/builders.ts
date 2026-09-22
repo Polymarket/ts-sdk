@@ -21,21 +21,45 @@ import {
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
 import { validateWith } from '../response';
+import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
-const ListBuilderTradesRequestSchema = z.object({
+const ListBuilderTradesRequestFieldsSchema = z.object({
   after: z.string().optional(),
   before: z.string().optional(),
   builderCode: BuilderCodeSchema,
   cursor: PaginationCursorSchema.optional(),
   id: z.string().optional(),
   market: z.string().optional(),
-  tokenId: z.string().optional(),
 });
 
-export type ListBuilderTradesRequest = z.input<
-  typeof ListBuilderTradesRequestSchema
->;
+const ListBuilderTradesRequestSchema = optionalExchangeAssetRequestSchema(
+  ListBuilderTradesRequestFieldsSchema.shape,
+);
+
+export type ListBuilderTradesRequest =
+  | {
+      /** Identifier for a CTF token or Polymarket V2 position. */
+      assetId?: string;
+      tokenId?: never;
+      after?: string;
+      before?: string;
+      builderCode: string;
+      cursor?: string;
+      id?: string;
+      market?: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. */
+      tokenId?: string;
+      after?: string;
+      before?: string;
+      builderCode: string;
+      cursor?: string;
+      id?: string;
+      market?: string;
+    };
 
 export type ListBuilderTradesError =
   | RateLimitError
@@ -87,20 +111,26 @@ export function listBuilderTrades(
   client: BaseClient,
   request: ListBuilderTradesRequest,
 ): Paginated<BuilderTrade[]> {
-  const { cursor, ...params } = parseUserInput(
-    request,
-    ListBuilderTradesRequestSchema,
-  );
+  const params = parseUserInput(request, ListBuilderTradesRequestSchema);
+  const { cursor } = params;
 
   return paginate(
     (nextCursor) =>
       client.clob
         .get('/builder/trades', {
           params: toSearchParams(
-            { ...params, nextCursor },
+            {
+              after: params.after,
+              assetId: params.assetId ?? params.tokenId,
+              before: params.before,
+              builderCode: params.builderCode,
+              id: params.id,
+              market: params.market,
+              nextCursor,
+            },
             snakeCase({
+              assetId: 'asset_id',
               builderCode: 'builder_code',
-              tokenId: 'asset_id',
             }),
           ),
         })

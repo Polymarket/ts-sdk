@@ -1,11 +1,25 @@
 export type * from '@polymarket/bindings';
-export { OrderSide, OrderType } from '@polymarket/bindings';
+export {
+  CommentParentEntityType,
+  OrderSide,
+  OrderType,
+} from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
-export { PriceHistoryInterval, SignatureType } from '@polymarket/bindings/clob';
+export {
+  NotificationType,
+  OrderPostStatus,
+  OrderResponseErrorCode,
+  SignatureType,
+} from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';
 export { ActivityType } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
-export { WalletType } from '@polymarket/bindings/gamma';
+export {
+  ComboKnownStatus,
+  ProtocolVersion,
+  TeamOrdering,
+  WalletType,
+} from '@polymarket/bindings/gamma';
 export type * from '@polymarket/bindings/perps';
 export {
   PerpsDepositStatus,
@@ -43,5 +57,10 @@ export * from './environments';
 export * from './errors';
 export * from './hmac';
 export type * from './pagination';
+export type {
+  RateLimitBucket,
+  RateLimitUpdate,
+  RateLimitUpdateListener,
+} from './rate-limit';
 export * from './types';
-export type { AccountIdentity } from './wallet';
+export { type AccountIdentity, SignerType } from './wallet';

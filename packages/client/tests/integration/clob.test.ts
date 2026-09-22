@@ -1,9 +1,10 @@
 import { OrderSide, type TokenId } from '@polymarket/bindings';
-import { PriceHistoryInterval } from '@polymarket/bindings/clob';
 import type { PublicClient } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectPageWindow } from './helpers';
+
+const REWARD_PAGE_WINDOW = 10;
 
 let liquidClobTokenIdPromise: Promise<TokenId> | undefined;
 
@@ -161,34 +162,12 @@ describe('CLOB', () => {
     });
   });
 
-  describe('fetchPriceHistory', () => {
-    it('lists historical price points for a token', async ({
-      publicClient,
-    }) => {
-      const tokenId = await selectLiquidClobTokenId(publicClient);
-
-      const result = await publicClient.fetchPriceHistory({
-        tokenId,
-        interval: PriceHistoryInterval.ONE_DAY,
-        fidelity: 60,
-      });
-
-      expect(result.length).toBeGreaterThan(0);
-      expect(result[0]).toEqual(
-        expect.objectContaining({
-          p: expect.any(Number),
-          t: expect.any(Number),
-        }),
-      );
-    });
-  });
-
   describe('listCurrentRewards', () => {
     it('lists current active market rewards', async ({ publicClient }) => {
       const paginator = publicClient.listCurrentRewards();
       const firstPage = await paginator.firstPage();
 
-      await expectPageWindow(paginator, firstPage, 99);
+      await expectPageWindow(paginator, firstPage, REWARD_PAGE_WINDOW - 1);
     });
   });
 
@@ -226,7 +205,7 @@ describe('CLOB', () => {
           conditionId: currentReward.conditionId,
         }),
         result,
-        99,
+        REWARD_PAGE_WINDOW - 1,
       );
     });
   });

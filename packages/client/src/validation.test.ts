@@ -64,7 +64,7 @@ describe('validation', () => {
   describe('formatResponseZodError', () => {
     it('includes the endpoint context', () => {
       const schema = z.object({
-        marketMakerAddress: z.string(),
+        conditionId: z.string(),
       });
 
       const result = schema.safeParse({});
@@ -84,7 +84,7 @@ describe('validation', () => {
         Endpoint: https://gamma.polymarket.com/markets/123
         This usually means the API response shape changed in a breaking way or the SDK is outdated.
         Fix the following issues:
-        - marketMakerAddress: Invalid input: expected string, received undefined"
+        - conditionId: Invalid input: expected string, received undefined"
       `);
     });
   });
@@ -117,7 +117,7 @@ describe('validation', () => {
   describe('UnexpectedResponseError', () => {
     it('formats Zod failures through the factory', () => {
       const schema = z.object({
-        marketMakerAddress: z.string(),
+        conditionId: z.string(),
       });
 
       const result = schema.safeParse({});
@@ -138,7 +138,7 @@ describe('validation', () => {
         Endpoint: https://gamma.polymarket.com/markets
         This usually means the API response shape changed in a breaking way or the SDK is outdated.
         Fix the following issues:
-        - marketMakerAddress: Invalid input: expected string, received undefined"
+        - conditionId: Invalid input: expected string, received undefined"
       `);
     });
   });

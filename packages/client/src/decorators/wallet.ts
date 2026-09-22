@@ -4,6 +4,8 @@ import {
   type CollateralReturnPlanResponse,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
+  type FetchTradingApprovalsStateRequest,
+  fetchTradingApprovalsState,
   mergePositions,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
@@ -15,12 +17,54 @@ import {
   redeemPositions,
   setupTradingApprovals,
   splitPosition,
+  type TradingApprovalsState,
   transferErc20,
 } from '../actions';
-import type { BaseSecureClient } from '../clients';
+import type {
+  BaseClient,
+  BasePublicClient,
+  BaseSecureClient,
+} from '../clients';
 import type { TransactionHandle } from '../types';
 
+export type PublicWalletActions = {
+  /**
+   * Reads the approvals a wallet is missing for supported trading workflows.
+   *
+   * This method only reads on-chain state. It does not require a signer or
+   * submit transactions.
+   *
+   * @throws {@link FetchTradingApprovalsStateError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const state = await client.fetchTradingApprovalsState({
+   *   user: '0x1234…',
+   * });
+   * ```
+   */
+  fetchTradingApprovalsState(
+    request: FetchTradingApprovalsStateRequest,
+  ): Promise<TradingApprovalsState>;
+};
+
 export type SecureWalletActions = {
+  /**
+   * Reads the approvals a wallet is missing for supported trading workflows.
+   *
+   * This method reads the authenticated account's wallet state. It only reads
+   * on-chain state and does not submit transactions.
+   *
+   * @throws {@link FetchTradingApprovalsStateError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const state = await client.fetchTradingApprovalsState();
+   * ```
+   */
+  fetchTradingApprovalsState(): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -99,7 +143,7 @@ export type SecureWalletActions = {
     request: PrepareErc20TransferRequest,
   ): Promise<TransactionHandle>;
   /**
-   * Splits collateral into market or combo positions.
+   * Splits collateral into positions.
    *
    * @throws {@link SplitPositionError}
    * Thrown on failure.
@@ -108,8 +152,7 @@ export type SecureWalletActions = {
    * ```ts
    * const handle = await client.splitPosition({
    *   amount: 1n,
-   *   conditionId:
-   *     '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+   *   conditionId: '0x123…',
    * });
    *
    * const outcome = await handle.wait();
@@ -133,7 +176,7 @@ export type SecureWalletActions = {
     request: PrepareSplitPositionRequest,
   ): Promise<TransactionHandle>;
   /**
-   * Merges complementary market or combo positions back into collateral.
+   * Merges complementary positions back into collateral.
    *
    * @throws {@link MergePositionsError}
    * Thrown on failure.
@@ -142,8 +185,7 @@ export type SecureWalletActions = {
    * ```ts
    * const handle = await client.mergePositions({
    *   amount: 'max',
-   *   conditionId:
-   *     '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+   *   conditionId: '0x123…',
    * });
    *
    * const outcome = await handle.wait();
@@ -167,7 +209,7 @@ export type SecureWalletActions = {
     request: PrepareMergePositionsRequest,
   ): Promise<TransactionHandle>;
   /**
-   * Redeems resolved market or combo positions.
+   * Redeems held positions for a market or a specific position by ID.
    *
    * @throws {@link RedeemPositionsError}
    * Thrown on failure.
@@ -176,8 +218,7 @@ export type SecureWalletActions = {
    * ```ts
    * // Redeem a market by condition ID.
    * const handle = await client.redeemPositions({
-   *   conditionId:
-   *     '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+   *   conditionId: '0x123…',
    * });
    *
    * const outcome = await handle.wait();
@@ -196,7 +237,7 @@ export type SecureWalletActions = {
    * // outcome.transactionHash: TxHash
    * ```
    *
-   * @example Redeem a combo by position ID.
+   * @example Redeem a Polymarket V2 position by position ID.
    * ```ts
    * const handle = await client.redeemPositions({
    *   positionId: '123',
@@ -266,8 +307,27 @@ export type SecureWalletActions = {
   ): Promise<TransactionHandle>;
 };
 
-export function walletActions(client: BaseSecureClient): SecureWalletActions {
+function publicWalletActions(client: BaseClient): PublicWalletActions {
   return {
+    fetchTradingApprovalsState: fetchTradingApprovalsState.bind(null, client),
+  };
+}
+
+export function walletActions(client: BasePublicClient): PublicWalletActions;
+export function walletActions(client: BaseSecureClient): SecureWalletActions;
+export function walletActions(
+  client: BaseClient,
+): PublicWalletActions | SecureWalletActions {
+  const actions = publicWalletActions(client);
+
+  if (client.isPublicClient()) {
+    return actions;
+  }
+
+  return {
+    ...actions,
+    fetchTradingApprovalsState: () =>
+      fetchTradingApprovalsState(client, { user: client.account.wallet }),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
@@ -288,7 +348,12 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
+  Erc20TradingApproval,
+  Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
+  FetchTradingApprovalsStateRequest,
+  TradingApprovalRequirements,
+  TradingApprovalsState,
 } from '../actions';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
@@ -298,6 +363,7 @@ export {
   ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
   ExecuteCollateralReturnPlanError,
+  FetchTradingApprovalsStateError,
   MergePositionsError,
   PlanCollateralReturnError,
   RedeemPositionsError,

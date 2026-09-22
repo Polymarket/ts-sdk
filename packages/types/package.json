@@ -1,6 +1,6 @@
 {
   "name": "@polymarket/types",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shared TypeScript types for the Polymarket SDK.",
   "repository": {
     "type": "git",

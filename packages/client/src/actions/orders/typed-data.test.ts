@@ -1,7 +1,9 @@
 import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import type { EvmAddress, EvmSignature, HexString } from '@polymarket/types';
+import { TypedData } from 'ox';
 import { describe, expect, it } from 'vitest';
+import { ExchangeOrderProtocolVersion } from '../../exchange';
 import {
   createOrderSignature,
   createOrderTypedDataPayload,
@@ -37,6 +39,19 @@ describe('createOrderTypedDataPayload', () => {
       version: '1',
     });
     expect(payload.primaryType).toBe('TypedDataSign');
+    const { EIP712Domain, ...types } = payload.types;
+    expect(EIP712Domain).toEqual([
+      { name: 'name', type: 'string' },
+      { name: 'version', type: 'string' },
+      { name: 'chainId', type: 'uint256' },
+      { name: 'verifyingContract', type: 'address' },
+    ]);
+    expect(TypedData.getSignPayload(payload)).toBe(
+      TypedData.getSignPayload({
+        ...payload,
+        types,
+      }),
+    );
   });
 
   it('signs non-POLY_1271 orders directly against the app domain', () => {
@@ -51,6 +66,20 @@ describe('createOrderTypedDataPayload', () => {
       version: '2',
     });
     expect(payload.primaryType).toBe('Order');
+  });
+
+  it('uses the V3 domain selected during order preparation', () => {
+    const payload = createOrderTypedDataPayload({
+      ...createUnsignedOrderFixture(SignatureType.EOA),
+      protocolVersion: ExchangeOrderProtocolVersion.V3,
+    });
+
+    expect(payload.domain).toEqual({
+      chainId: 137,
+      name: 'Polymarket CTF Exchange',
+      verifyingContract: EXCHANGE_ADDRESS,
+      version: '3',
+    });
   });
 });
 
@@ -99,6 +128,7 @@ function createUnsignedOrderFixture(
     metadata:
       '0x0000000000000000000000000000000000000000000000000000000000000000' as HexString,
     orderType: OrderType.GTC,
+    protocolVersion: ExchangeOrderProtocolVersion.V2,
     salt: '1',
     side: OrderSide.BUY,
     signatureType,

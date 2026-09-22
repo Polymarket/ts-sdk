@@ -1,48 +1,57 @@
 import {
+  type BuilderCode,
   BuilderCodeSchema,
-  OrderSide,
+  type ClobAssetId,
+  type OrderSide,
   OrderSideSchema,
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
-  type TokenId,
-  TokenIdSchema,
 } from '@polymarket/bindings';
 import type { EvmAddress } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import { UserInputError } from '../../errors';
+import { computeLimitOrderAmounts } from './amounts';
+import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 import {
   fetchCurrentOrderMarketMetadata,
   type OrderMarketMetadata,
   resolveOrderMarketMetadata,
 } from './cache';
 import {
-  resolveExchangeAddress,
-  resolveRoundingConfig,
+  resolveOrderExchangeAddress,
   validatePriceOnTickGrid,
 } from './context';
-import {
-  decimalPlaces,
-  parseAmount,
-  roundDown,
-  roundNormal,
-  roundUp,
-} from './math';
+import type { ScaledPrice } from './fixed';
 import type { OrderDraft, PrepareLimitOrderRequest } from './types';
 
 const MINIMUM_LIMIT_ORDER_EXPIRATION_SECONDS = 180;
 
+const BasePrepareLimitOrderParamsSchema = z.strictObject({
+  price: PositiveDecimalNumberSchema,
+  size: PositiveDecimalNumberSchema,
+  side: OrderSideSchema,
+  builderCode: BuilderCodeSchema.optional(),
+  postOnly: z.boolean().default(false),
+  expiration: z.number().int().nonnegative().optional(),
+});
+
+export type PrepareLimitOrderDraftParams = {
+  assetId: ClobAssetId;
+  builderCode?: BuilderCode;
+  expiration?: number;
+  postOnly: boolean;
+  price: number;
+  side: OrderSide;
+  size: number;
+};
+
 export const PrepareLimitOrderParamsSchema = z
-  .strictObject({
-    tokenId: TokenIdSchema,
-    price: PositiveDecimalNumberSchema,
-    size: PositiveDecimalNumberSchema,
-    side: OrderSideSchema,
-    builderCode: BuilderCodeSchema.optional(),
-    postOnly: z.boolean().default(false),
-    expiration: z.number().int().nonnegative().optional(),
-  })
+  .union([
+    BasePrepareLimitOrderParamsSchema.extend(AssetIdOrderAssetSchema.shape),
+    BasePrepareLimitOrderParamsSchema.extend(TokenIdOrderAssetSchema.shape),
+  ])
   .superRefine((params, context) => {
     if (params.expiration !== undefined) {
       const minimumExpiration =
@@ -56,15 +65,18 @@ export const PrepareLimitOrderParamsSchema = z
         });
       }
     }
-  }) satisfies z.ZodType<PrepareLimitOrderRequest>;
-
-export type PrepareLimitOrderDraftParams = z.output<
-  typeof PrepareLimitOrderParamsSchema
+  })
+  .transform(({ assetId, tokenId, ...params }) => ({
+    ...params,
+    assetId: assetId ?? tokenId,
+  })) satisfies z.ZodType<
+  PrepareLimitOrderDraftParams,
+  PrepareLimitOrderRequest
 >;
 
 type ResolveLimitOrderContextParams = {
+  assetId: ClobAssetId;
   price: number;
-  tokenId: TokenId;
 };
 
 export async function prepareLimitOrderDraft(
@@ -72,8 +84,8 @@ export async function prepareLimitOrderDraft(
   params: PrepareLimitOrderDraftParams,
 ): Promise<OrderDraft> {
   const context = await resolveLimitOrderContext(client, {
+    assetId: params.assetId,
     price: params.price,
-    tokenId: params.tokenId,
   });
   const amounts = computeLimitOrderAmounts({
     price: context.price,
@@ -83,6 +95,7 @@ export async function prepareLimitOrderDraft(
   });
 
   return {
+    assetId: params.assetId,
     builderCode: params.builderCode,
     chainId: client.environment.chainId,
     exchangeAddress: context.exchangeAddress,
@@ -93,14 +106,13 @@ export async function prepareLimitOrderDraft(
     side: params.side,
     signer: context.signerAddress,
     requestedAmount: amounts.requestedAmount,
-    tokenId: params.tokenId,
   };
 }
 
 type LimitOrderContext = {
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: number;
+  price: ScaledPrice;
   signerAddress: EvmAddress;
   tickSize: TickSizeValue;
 };
@@ -109,7 +121,7 @@ async function resolveLimitOrderContext(
   client: BaseSecureClient,
   params: ResolveLimitOrderContextParams,
 ): Promise<LimitOrderContext> {
-  const metadata = await resolveOrderMarketMetadata(client, params.tokenId);
+  const metadata = await resolveOrderMarketMetadata(client, params.assetId);
 
   try {
     return buildLimitOrderContext(client, params, metadata);
@@ -120,7 +132,7 @@ async function resolveLimitOrderContext(
 
     const currentMetadata = await fetchCurrentOrderMarketMetadata(
       client,
-      params.tokenId,
+      params.assetId,
     );
 
     return buildLimitOrderContext(client, params, currentMetadata);
@@ -135,7 +147,11 @@ function buildLimitOrderContext(
   const price = validateExactPriceOnTickGrid(params.price, metadata.tickSize);
 
   return {
-    exchangeAddress: resolveExchangeAddress(client, metadata.negRisk),
+    exchangeAddress: resolveOrderExchangeAddress(
+      client,
+      params.assetId,
+      metadata.negRisk,
+    ),
     funderAddress: client.account.wallet,
     price,
     signerAddress: client.account.signer,
@@ -146,7 +162,7 @@ function buildLimitOrderContext(
 function validateExactPriceOnTickGrid(
   price: number,
   tickSize: TickSizeValue,
-): number {
+): ScaledPrice {
   try {
     return validatePriceOnTickGrid(price, tickSize);
   } catch (error) {
@@ -156,51 +172,4 @@ function validateExactPriceOnTickGrid(
 
     throw new UserInputError(`Price ${error.message}`, { cause: error });
   }
-}
-
-function computeLimitOrderAmounts(params: {
-  price: number;
-  side: OrderSide;
-  size: number;
-  tickSize: TickSizeValue;
-}): {
-  offeredAmount: bigint;
-  requestedAmount: bigint;
-} {
-  const roundConfig = resolveRoundingConfig(params.tickSize);
-  const rawPrice = roundNormal(params.price, roundConfig.price);
-
-  if (params.side === OrderSide.BUY) {
-    const rawTakerAmount = roundDown(params.size, roundConfig.size);
-    let rawMakerAmount = rawTakerAmount * rawPrice;
-
-    if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-      rawMakerAmount = roundUp(rawMakerAmount, roundConfig.amount + 4);
-
-      if (decimalPlaces(rawMakerAmount) > roundConfig.amount) {
-        rawMakerAmount = roundDown(rawMakerAmount, roundConfig.amount);
-      }
-    }
-
-    return {
-      offeredAmount: parseAmount(rawMakerAmount),
-      requestedAmount: parseAmount(rawTakerAmount),
-    };
-  }
-
-  const rawMakerAmount = roundDown(params.size, roundConfig.size);
-  let rawTakerAmount = rawMakerAmount * rawPrice;
-
-  if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-    rawTakerAmount = roundUp(rawTakerAmount, roundConfig.amount + 4);
-
-    if (decimalPlaces(rawTakerAmount) > roundConfig.amount) {
-      rawTakerAmount = roundDown(rawTakerAmount, roundConfig.amount);
-    }
-  }
-
-  return {
-    offeredAmount: parseAmount(rawMakerAmount),
-    requestedAmount: parseAmount(rawTakerAmount),
-  };
 }

@@ -4,11 +4,12 @@ import {
   OrderType,
   toOrderId,
 } from '@polymarket/bindings';
-import { OrderPostStatus } from '@polymarket/bindings/clob';
 import {
   createSecureClient,
   InsufficientLiquidityError,
   type Market,
+  OrderPostStatus,
+  type RateLimitUpdate,
   type SecureClient,
   UserInputError,
 } from '@polymarket/client';
@@ -47,9 +48,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const result = await publicClient.estimateMarketPrice({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         orderType: OrderType.FAK,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(result).toEqual(expect.any(Number));
@@ -94,14 +95,14 @@ describe('Orders', { timeout: 60_000 }, () => {
       }
 
       const position = page.items.find(
-        (candidate) => candidate.tokenId === market.outcomes.yes.tokenId,
+        (candidate) => candidate.assetId === market.outcomes.yes.tokenId,
       );
 
       await secureClient
         .placeMarketOrder({
           side: OrderSide.SELL,
-          shares: expectPresent(position?.size),
-          tokenId: expectPresent(position?.tokenId),
+          shares: expectPresent(position?.currentSize),
+          tokenId: expectPresent(market.outcomes.yes.tokenId),
         })
         .then(expectAcceptedOrderResponse);
     });
@@ -120,18 +121,19 @@ describe('Orders', { timeout: 60_000 }, () => {
           .firstPage();
         const existingPosition = positions.items.find(
           (candidate) =>
-            candidate.tokenId === yesTokenId && Number(candidate.size ?? 0) > 0,
+            candidate.assetId === yesTokenId &&
+            Number(candidate.currentSize) > 0,
         );
 
         if (existingPosition !== undefined) {
           annotate(
-            `Found existing position for token ${yesTokenId} with size ${existingPosition.size}, closing it with a market sell order...`,
+            `Found existing position for token ${yesTokenId} with size ${existingPosition.currentSize}, closing it with a market sell order...`,
           );
 
           const sellResult = await secureClientWithDepositWallet
             .placeMarketOrder({
               side: OrderSide.SELL,
-              shares: expectPresent(existingPosition.size),
+              shares: existingPosition.currentSize,
               tokenId: yesTokenId,
             })
             .then(expectAcceptedOrderResponse);
@@ -188,9 +190,9 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       const order = await secureClientWithDepositWallet.createMarketOrder({
         amount: expectPresent(market.trading.minimumOrderSize),
+        assetId: yesTokenId,
         builderCode,
         side: OrderSide.BUY,
-        tokenId: yesTokenId,
       });
 
       expect(order.builder).toBe(builderCode);
@@ -422,10 +424,10 @@ describe('Orders', { timeout: 60_000 }, () => {
       const minSize = expectPresent(market.trading.minimumOrderSize);
 
       const result = await secureClientWithDepositWallet.placeLimitOrder({
+        assetId: yesTokenId,
         price: minPrice,
         side: OrderSide.BUY,
         size: minSize,
-        tokenId: yesTokenId,
       });
 
       expect(result.ok).toBe(true);
@@ -606,21 +608,37 @@ describe('Orders', { timeout: 60_000 }, () => {
   });
 
   describe('cancelAll', () => {
-    it('cancels all open orders', async ({
+    it('cancels all open orders and reports rate-limit buckets', async ({
       annotate,
-      secureClientWithDepositWallet,
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      relayerAuthentication,
     }) => {
+      const rateLimitUpdates: RateLimitUpdate[] = [];
+      const secureClient = await createSecureClient({
+        apiKey: relayerAuthentication,
+        environment,
+        onRateLimitUpdate: (update) => {
+          rateLimitUpdates.push(update);
+        },
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
       const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
       annotate(`Market ID: ${market.id}`);
       annotate(`Token ID: ${yesTokenId}`);
 
-      const order = await createRestingLimitOrder(
-        secureClientWithDepositWallet,
-        market,
-      );
-      const result = await secureClientWithDepositWallet.cancelAll();
+      const order = await createRestingLimitOrder(secureClient, market);
+      const result = await secureClient.cancelAll();
 
       expect(result.canceled).toContain(order.orderId);
+      expect(rateLimitUpdates).toContainEqual(
+        expect.objectContaining({ bucket: 'order' }),
+      );
+      expect(rateLimitUpdates).toContainEqual(
+        expect.objectContaining({ bucket: 'cancel' }),
+      );
     });
   });
 

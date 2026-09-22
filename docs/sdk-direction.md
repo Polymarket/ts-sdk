@@ -20,7 +20,7 @@ The SDK should hide internal service boundaries where possible while staying clo
 - Prefer workflow-first APIs over service-shaped APIs.
 - Keep public models pragmatic, typed, and consistent.
 - Standardize SDK identifier naming on JS/TS-style `...Id` forms such as `orderId`, `tradeId`, `tokenId`, and `marketId`.
-- Normalize the CTF position identifier to `tokenId` in the SDK public model, even when upstream services call the same value `assetId`.
+- Use `assetId` for exchange assets in the SDK public model, whether they identify a CTF token or a Polymarket V2 position.
 - Translate legacy `...ID` and wire-format variants at the service boundary.
 - Add lower-level controls only when they support a concrete SDK workflow.
 

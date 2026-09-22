@@ -1,14 +1,22 @@
 import { z } from 'zod';
 import {
+  ClobAssetIdSchema,
+  type ConditionId,
   ConditionIdSchema,
+  type DecimalString,
   DecimalStringSchema,
+  type EpochMilliseconds,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  type IsoDateTimeString,
   OptionalDecimalStringSchema,
   type OrderSide,
   OrderSideSchema,
+  type OrderType,
   OrderTypeSchema,
-  TokenIdSchema,
+  type PositionId,
+  type TokenId,
+  type TradeStatus,
   TradeStatusSchema,
   toIsoDateTimeString,
 } from '../shared';
@@ -61,8 +69,8 @@ export type OrderBookLevel = z.infer<typeof OrderBookLevelSchema>;
 export const MarketBookEventSchema = z
   .object({
     event_type: z.literal('book'),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     bids: z.array(OrderBookLevelSchema),
     asks: z.array(OrderBookLevelSchema),
     hash: z.string().nullish(),
@@ -88,6 +96,9 @@ export const MarketBookEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
+          assetId: asset_id,
           tokenId: asset_id,
           minOrderSize: min_order_size,
           tickSize: tick_size,
@@ -96,13 +107,32 @@ export const MarketBookEventSchema = z
         },
       };
     },
-  );
+  ) satisfies z.ZodType<MarketBookEvent>;
 
-export type MarketBookEvent = z.infer<typeof MarketBookEventSchema>;
+export type MarketBookEvent = {
+  topic: 'market';
+  type: 'book';
+  payload: {
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    bids: OrderBookLevel[];
+    asks: OrderBookLevel[];
+    hash?: string | null;
+    timestamp?: EpochMilliseconds | null;
+    minOrderSize: DecimalString | null | undefined;
+    tickSize: DecimalString | null | undefined;
+    negRisk: boolean | null | undefined;
+    lastTradePrice: DecimalString | null | undefined;
+  };
+};
 
 const PriceChangeSchema = z
   .object({
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     price: DecimalStringSchema,
     size: DecimalStringSchema,
     side: NormalizedOrderSideSchema,
@@ -112,17 +142,28 @@ const PriceChangeSchema = z
   })
   .transform(({ asset_id, best_bid, best_ask, ...rest }) => ({
     ...rest,
+    assetId: asset_id,
     tokenId: asset_id,
     bestBid: best_bid,
     bestAsk: best_ask,
-  }));
+  })) satisfies z.ZodType<PriceChange>;
 
-export type PriceChange = z.infer<typeof PriceChangeSchema>;
+export type PriceChange = {
+  assetId: PositionId | TokenId;
+  /** @deprecated Use `assetId`. */
+  tokenId: PositionId | TokenId;
+  price: DecimalString;
+  size: DecimalString;
+  side: OrderSide;
+  hash?: string | null;
+  bestBid: DecimalString | null | undefined;
+  bestAsk: DecimalString | null | undefined;
+};
 
 export const MarketPriceChangeEventSchema = z
   .object({
     event_type: z.literal('price_change'),
-    market: z.string(),
+    market: ConditionIdSchema,
     price_changes: z.array(PriceChangeSchema),
     timestamp: EpochMillisecondsStringSchema.nullish(),
   })
@@ -133,20 +174,30 @@ export const MarketPriceChangeEventSchema = z
       type: event_type,
       payload: {
         ...rest,
+        conditionId: rest.market,
+        market: rest.market,
         priceChanges: price_changes,
       },
     };
-  });
+  }) satisfies z.ZodType<MarketPriceChangeEvent>;
 
-export type MarketPriceChangeEvent = z.infer<
-  typeof MarketPriceChangeEventSchema
->;
+export type MarketPriceChangeEvent = {
+  topic: 'market';
+  type: 'price_change';
+  payload: {
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    priceChanges: PriceChange[];
+    timestamp?: EpochMilliseconds | null;
+  };
+};
 
 export const MarketLastTradePriceEventSchema = z
   .object({
     event_type: z.literal('last_trade_price'),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     price: DecimalStringSchema,
     size: OptionalDecimalStringSchema,
     fee_rate_bps: OptionalDecimalStringSchema,
@@ -162,23 +213,41 @@ export const MarketLastTradePriceEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
+          assetId: asset_id,
           tokenId: asset_id,
           feeRateBps: fee_rate_bps,
           transactionHash: transaction_hash,
         },
       };
     },
-  );
+  ) satisfies z.ZodType<MarketLastTradePriceEvent>;
 
-export type MarketLastTradePriceEvent = z.infer<
-  typeof MarketLastTradePriceEventSchema
->;
+export type MarketLastTradePriceEvent = {
+  topic: 'market';
+  type: 'last_trade_price';
+  payload: {
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    price: DecimalString;
+    side: OrderSide;
+    size?: DecimalString | null;
+    feeRateBps: DecimalString | null | undefined;
+    timestamp?: EpochMilliseconds | null;
+    transactionHash: string | null | undefined;
+  };
+};
 
 export const MarketTickSizeChangeEventSchema = z
   .object({
     event_type: z.literal('tick_size_change'),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     old_tick_size: OptionalDecimalStringSchema,
     new_tick_size: DecimalStringSchema,
     timestamp: EpochMillisecondsStringSchema.nullish(),
@@ -191,23 +260,38 @@ export const MarketTickSizeChangeEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
+          assetId: asset_id,
           tokenId: asset_id,
           oldTickSize: old_tick_size,
           newTickSize: new_tick_size,
         },
       };
     },
-  );
+  ) satisfies z.ZodType<MarketTickSizeChangeEvent>;
 
-export type MarketTickSizeChangeEvent = z.infer<
-  typeof MarketTickSizeChangeEventSchema
->;
+export type MarketTickSizeChangeEvent = {
+  topic: 'market';
+  type: 'tick_size_change';
+  payload: {
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    oldTickSize: DecimalString | null | undefined;
+    newTickSize: DecimalString;
+    timestamp?: EpochMilliseconds | null;
+  };
+};
 
 export const MarketBestBidAskEventSchema = z
   .object({
     event_type: z.literal('best_bid_ask'),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     best_bid: OptionalDecimalStringSchema,
     best_ask: OptionalDecimalStringSchema,
     spread: OptionalDecimalStringSchema,
@@ -220,14 +304,32 @@ export const MarketBestBidAskEventSchema = z
       type: event_type,
       payload: {
         ...rest,
+        conditionId: rest.market,
+        market: rest.market,
+        assetId: asset_id,
         tokenId: asset_id,
         bestBid: best_bid,
         bestAsk: best_ask,
       },
     };
-  });
+  }) satisfies z.ZodType<MarketBestBidAskEvent>;
 
-export type MarketBestBidAskEvent = z.infer<typeof MarketBestBidAskEventSchema>;
+export type MarketBestBidAskEvent = {
+  topic: 'market';
+  type: 'best_bid_ask';
+  payload: {
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    bestBid: DecimalString | null | undefined;
+    bestAsk: DecimalString | null | undefined;
+    spread?: DecimalString | null;
+    timestamp?: EpochMilliseconds | null;
+  };
+};
 
 const MarketEventMessageSchema = z.object({
   id: z.string(),
@@ -247,7 +349,7 @@ export const NewMarketEventSchema = z
     market: z.string(),
     slug: z.string().nullish(),
     description: z.string().nullish(),
-    assets_ids: z.array(TokenIdSchema).nullish(),
+    assets_ids: z.array(ClobAssetIdSchema).nullish(),
     outcomes: z.array(z.string()).nullish(),
     event_message: MarketEventMessageSchema.nullish(),
     timestamp: EpochMillisecondsStringSchema.nullish(),
@@ -286,6 +388,7 @@ export const NewMarketEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          assetIds: assets_ids,
           tokenIds: assets_ids,
           eventMessage: event_message,
           conditionId: condition_id,
@@ -300,17 +403,45 @@ export const NewMarketEventSchema = z
         },
       };
     },
-  );
+  ) satisfies z.ZodType<NewMarketEvent>;
 
-export type NewMarketEvent = z.infer<typeof NewMarketEventSchema>;
+export type NewMarketEvent = {
+  topic: 'market';
+  type: 'new_market';
+  payload: {
+    id: string;
+    market: string;
+    assetIds: Array<PositionId | TokenId> | null | undefined;
+    /** @deprecated Use `assetIds`. */
+    tokenIds: Array<PositionId | TokenId> | null | undefined;
+    eventMessage: MarketEventMessage | null | undefined;
+    conditionId: ConditionId | null | undefined;
+    clobTokenIds: string[] | null | undefined;
+    sportsMarketType: string | null | undefined;
+    gameStartTime: IsoDateTimeString | null | undefined;
+    orderPriceMinTickSize: DecimalString | null | undefined;
+    groupItemTitle: string | null | undefined;
+    takerBaseFee: DecimalString | null | undefined;
+    feesEnabled: boolean | null | undefined;
+    feeSchedule: unknown;
+    question?: string | null;
+    slug?: string | null;
+    description?: string | null;
+    outcomes?: string[] | null;
+    timestamp?: EpochMilliseconds | null;
+    tags?: string[] | null;
+    active?: boolean | null;
+    line?: DecimalString | null;
+  };
+};
 
 export const MarketResolvedEventSchema = z
   .object({
     event_type: z.literal('market_resolved'),
     id: z.string(),
-    market: z.string(),
-    assets_ids: z.array(TokenIdSchema).nullish(),
-    winning_asset_id: TokenIdSchema.nullish(),
+    market: ConditionIdSchema,
+    assets_ids: z.array(ClobAssetIdSchema).nullish(),
+    winning_asset_id: ClobAssetIdSchema.nullish(),
     winning_outcome: z.string().nullish(),
     event_message: MarketEventMessageSchema.nullish(),
     timestamp: EpochMillisecondsStringSchema.nullish(),
@@ -331,16 +462,39 @@ export const MarketResolvedEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
+          assetIds: assets_ids,
           tokenIds: assets_ids,
+          winningAssetId: winning_asset_id,
           winningTokenId: winning_asset_id,
           winningOutcome: winning_outcome,
           eventMessage: event_message,
         },
       };
     },
-  );
+  ) satisfies z.ZodType<MarketResolvedEvent>;
 
-export type MarketResolvedEvent = z.infer<typeof MarketResolvedEventSchema>;
+export type MarketResolvedEvent = {
+  topic: 'market';
+  type: 'market_resolved';
+  payload: {
+    id: string;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    assetIds: Array<PositionId | TokenId> | null | undefined;
+    /** @deprecated Use `assetIds`. */
+    tokenIds: Array<PositionId | TokenId> | null | undefined;
+    winningAssetId: PositionId | TokenId | null | undefined;
+    /** @deprecated Use `winningAssetId`. */
+    winningTokenId: PositionId | TokenId | null | undefined;
+    winningOutcome: string | null | undefined;
+    eventMessage: MarketEventMessage | null | undefined;
+    timestamp?: EpochMilliseconds | null;
+    tags?: string[] | null;
+  };
+};
 
 export enum UserOrderEventType {
   Placement = 'PLACEMENT',
@@ -355,8 +509,8 @@ export const UserOrderEventSchema = z
     event_type: z.literal('order'),
     id: z.string(),
     owner: z.string(),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     side: NormalizedOrderSideSchema,
     order_owner: z.string().nullish(),
     original_size: DecimalStringSchema,
@@ -393,7 +547,10 @@ export const UserOrderEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
           orderEventType,
+          assetId: asset_id,
           tokenId: asset_id,
           orderOwner: order_owner,
           originalSize: original_size,
@@ -406,9 +563,36 @@ export const UserOrderEventSchema = z
         },
       };
     },
-  );
+  ) satisfies z.ZodType<UserOrderEvent>;
 
-export type UserOrderEvent = z.infer<typeof UserOrderEventSchema>;
+export type UserOrderEvent = {
+  topic: 'user';
+  type: 'order';
+  payload: {
+    id: string;
+    owner: string;
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    side: OrderSide;
+    orderOwner: string | null | undefined;
+    originalSize: DecimalString;
+    sizeMatched: DecimalString;
+    price: DecimalString;
+    associateTrades: string[] | null | undefined;
+    outcome?: string | null;
+    orderEventType: UserOrderEventType;
+    createdAt: IsoDateTimeString | null | undefined;
+    expiresAt: IsoDateTimeString | null | undefined;
+    orderType: OrderType | null | undefined;
+    status?: UserOrderStatus | null;
+    makerAddress: string | null | undefined;
+    timestamp: EpochMilliseconds;
+  };
+};
 
 const TradeMakerOrderSchema = z
   .object({
@@ -418,7 +602,7 @@ const TradeMakerOrderSchema = z
     matched_amount: DecimalStringSchema,
     price: DecimalStringSchema,
     fee_rate_bps: OptionalDecimalStringSchema,
-    asset_id: TokenIdSchema,
+    asset_id: ClobAssetIdSchema,
     outcome: z.string().nullish(),
     outcome_index: z.number().int().nullish(),
     side: NormalizedOrderSideSchema,
@@ -438,12 +622,26 @@ const TradeMakerOrderSchema = z
       makerAddress: maker_address,
       matchedAmount: matched_amount,
       feeRateBps: fee_rate_bps,
+      assetId: asset_id,
       tokenId: asset_id,
       outcomeIndex: outcome_index,
     }),
-  );
+  ) satisfies z.ZodType<TradeMakerOrder>;
 
-export type TradeMakerOrder = z.infer<typeof TradeMakerOrderSchema>;
+export type TradeMakerOrder = {
+  orderId: string;
+  owner: string;
+  assetId: PositionId | TokenId;
+  /** @deprecated Use `assetId`. */
+  tokenId: PositionId | TokenId;
+  makerAddress: string | null | undefined;
+  matchedAmount: DecimalString;
+  price: DecimalString;
+  feeRateBps: DecimalString | null | undefined;
+  outcome?: string | null;
+  outcomeIndex: number | null | undefined;
+  side: OrderSide;
+};
 
 export const UserTradeEventSchema = z
   .object({
@@ -451,8 +649,8 @@ export const UserTradeEventSchema = z
     type: z.literal('TRADE'),
     id: z.string(),
     taker_order_id: z.string(),
-    market: z.string(),
-    asset_id: TokenIdSchema,
+    market: ConditionIdSchema,
+    asset_id: ClobAssetIdSchema,
     side: NormalizedOrderSideSchema,
     size: DecimalStringSchema,
     fee_rate_bps: OptionalDecimalStringSchema,
@@ -495,7 +693,10 @@ export const UserTradeEventSchema = z
         type: event_type,
         payload: {
           ...rest,
+          conditionId: rest.market,
+          market: rest.market,
           takerOrderId: taker_order_id,
+          assetId: asset_id,
           tokenId: asset_id,
           feeRateBps: fee_rate_bps,
           matchedAt: match_time ?? matchtime,
@@ -509,26 +710,62 @@ export const UserTradeEventSchema = z
         },
       };
     },
-  );
+  ) satisfies z.ZodType<UserTradeEvent>;
 
-export type UserTradeEvent = z.infer<typeof UserTradeEventSchema>;
+export type UserTradeEvent = {
+  topic: 'user';
+  type: 'trade';
+  payload: {
+    id: string;
+    takerOrderId: string;
+    assetId: PositionId | TokenId;
+    /** @deprecated Use `assetId`. */
+    tokenId: PositionId | TokenId;
+    conditionId: ConditionId;
+    /** @deprecated Use `conditionId`. */
+    market: ConditionId;
+    side: OrderSide;
+    size: DecimalString;
+    feeRateBps: DecimalString | null | undefined;
+    price: DecimalString;
+    status: TradeStatus;
+    matchedAt: IsoDateTimeString | null | undefined;
+    updatedAt: IsoDateTimeString | null | undefined;
+    outcome?: string | null;
+    owner: string;
+    tradeOwner: string | null | undefined;
+    makerAddress: string | null | undefined;
+    transactionHash: string | null | undefined;
+    bucketIndex: number | null | undefined;
+    makerOrders: TradeMakerOrder[] | null | undefined;
+    traderSide: 'TAKER' | 'MAKER' | null | undefined;
+    timestamp: EpochMilliseconds;
+  };
+};
 
 export const StandardMarketEventSchema = z.discriminatedUnion('event_type', [
   MarketBookEventSchema,
   MarketPriceChangeEventSchema,
   MarketLastTradePriceEventSchema,
   MarketTickSizeChangeEventSchema,
-]);
+]) satisfies z.ZodType<StandardMarketEvent>;
 
-export type StandardMarketEvent = z.infer<typeof StandardMarketEventSchema>;
+export type StandardMarketEvent =
+  | MarketBookEvent
+  | MarketPriceChangeEvent
+  | MarketLastTradePriceEvent
+  | MarketTickSizeChangeEvent;
 
 export const CustomMarketEventSchema = z.discriminatedUnion('event_type', [
   MarketBestBidAskEventSchema,
   NewMarketEventSchema,
   MarketResolvedEventSchema,
-]);
+]) satisfies z.ZodType<CustomMarketEvent>;
 
-export type CustomMarketEvent = z.infer<typeof CustomMarketEventSchema>;
+export type CustomMarketEvent =
+  | MarketBestBidAskEvent
+  | NewMarketEvent
+  | MarketResolvedEvent;
 
 export const MarketEventSchema = z.discriminatedUnion('event_type', [
   MarketBookEventSchema,
@@ -538,13 +775,13 @@ export const MarketEventSchema = z.discriminatedUnion('event_type', [
   MarketBestBidAskEventSchema,
   NewMarketEventSchema,
   MarketResolvedEventSchema,
-]);
+]) satisfies z.ZodType<MarketEvent>;
 
 export type MarketEvent = StandardMarketEvent | CustomMarketEvent;
 
 export const UserEventSchema = z.discriminatedUnion('event_type', [
   UserOrderEventSchema,
   UserTradeEventSchema,
-]);
+]) satisfies z.ZodType<UserEvent>;
 
-export type UserEvent = z.infer<typeof UserEventSchema>;
+export type UserEvent = UserOrderEvent | UserTradeEvent;

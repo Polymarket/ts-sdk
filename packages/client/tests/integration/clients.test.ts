@@ -1,4 +1,8 @@
-import { createSecureClient, WalletType } from '@polymarket/client';
+import {
+  createSecureClient,
+  UserInputError,
+  WalletType,
+} from '@polymarket/client';
 import { fetchApiKeys, isWalletDeployed } from '@polymarket/client/actions';
 import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
 import { describe, expect, it, runMeteredTests } from './fixtures';
@@ -112,7 +116,7 @@ describe('clients', () => {
       20_000,
     );
 
-    it('rejects with InvariantError when wallet does not match signer or any supported derived wallet', async ({
+    it('rejects an undeployed non-default wallet with UserInputError', async ({
       depositWalletSigner,
       environment,
     }) => {
@@ -122,7 +126,7 @@ describe('clients', () => {
           wallet: ZERO_ADDRESS,
           signer: depositWalletSigner,
         }),
-      ).rejects.toBeInstanceOf(InvariantError);
+      ).rejects.toThrow(UserInputError);
     });
 
     it('reuses stored credentials during authentication when they remain valid', async ({
