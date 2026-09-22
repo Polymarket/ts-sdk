@@ -273,7 +273,8 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * const result = listCommentsByUserAddress(client, {
  *   address: '0x1234...',
  *   pageSize: 10,
- *   order: 'DESC',
+ *   order: 'createdAt',
+ *   ascending: false,
  * });
  *
  * const firstPage = await result.firstPage();
@@ -290,7 +291,8 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * const result = listCommentsByUserAddress(client, {
  *   address: '0x1234...',
  *   pageSize: 10,
- *   order: 'DESC',
+ *   order: 'createdAt',
+ *   ascending: false,
  * });
  *
  * for await (const page of result) {

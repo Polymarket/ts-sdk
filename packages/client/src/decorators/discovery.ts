@@ -607,7 +607,8 @@ export type DiscoveryActions = {
    * const paginator = client.listCommentsByUserAddress({
    *   address: '0x1234...',
    *   pageSize: 10,
-   *   order: 'DESC',
+   *   order: 'createdAt',
+   *   ascending: false,
    * });
    *
    * const firstPage = await paginator.firstPage();
@@ -624,7 +625,8 @@ export type DiscoveryActions = {
    * const paginator = client.listCommentsByUserAddress({
    *   address: '0x1234...',
    *   pageSize: 10,
-   *   order: 'DESC',
+   *   order: 'createdAt',
+   *   ascending: false,
    * });
    *
    * for await (const page of paginator) {
