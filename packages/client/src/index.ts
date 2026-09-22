@@ -1,8 +1,13 @@
 export type * from '@polymarket/bindings';
-export { OrderSide, OrderType } from '@polymarket/bindings';
+export {
+  CommentParentEntityType,
+  OrderSide,
+  OrderType,
+} from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
 export {
   NotificationType,
+  OrderPostStatus,
   OrderResponseErrorCode,
   SignatureType,
 } from '@polymarket/bindings/clob';

@@ -4,6 +4,7 @@ import type {
   EquityPricesEvent,
   MarketEvent,
   PerpsMarketDataEvent,
+  PriceEvent,
   SportsEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
@@ -14,6 +15,7 @@ import type {
   EquityPricesSubscription,
   MarketSubscription,
   PerpsMarketDataSubscription,
+  PriceSubscription,
   SportsSubscription,
   SubscriptionHandle,
   UserSubscription,
@@ -72,6 +74,7 @@ export type PublicWebSocketManagers = {
     SportsSubscription,
     SportsEvent
   >;
+  /** @deprecated Compatibility transport for legacy topics. */
   readonly rtds: WebSocketSubscriptionManager<
     | CommentsSubscription
     | CryptoPricesSubscription
@@ -90,6 +93,10 @@ export type PublicWebSocketManagers = {
 
 // Secure client additionally exposes the user surface.
 export type SecureWebSocketManagers = PublicWebSocketManagers & {
+  readonly realtime: WebSocketSubscriptionManager<
+    PriceSubscription,
+    PriceEvent
+  >;
   readonly clobUser: WebSocketSubscriptionManager<UserSubscription, UserEvent>;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.
