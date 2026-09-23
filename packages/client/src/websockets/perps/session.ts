@@ -11,6 +11,7 @@ import {
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
+  type PerpsInternalTransfer,
   type PerpsNotificationEntry,
   type PerpsOrder,
   type PerpsPnlPoint,
@@ -59,6 +60,7 @@ import {
   type ListPerpsEquityHistoryRequest,
   type ListPerpsFillsRequest,
   type ListPerpsFundingPaymentsRequest,
+  type ListPerpsInternalTransfersRequest,
   type ListPerpsNotificationsRequest,
   type ListPerpsPnlHistoryRequest,
   type ListPerpsWithdrawalsRequest,
@@ -66,6 +68,7 @@ import {
   listPerpsEquityHistory,
   listPerpsFills,
   listPerpsFundingPayments,
+  listPerpsInternalTransfers,
   listPerpsNotifications,
   listPerpsPnlHistory,
   listPerpsWithdrawals,
@@ -172,6 +175,7 @@ export type {
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
@@ -473,6 +477,25 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: ListPerpsDepositsRequest = {},
   ): Paginated<PerpsDeposit[]> {
     return listPerpsDeposits(this.#api, request);
+  }
+
+  /**
+   * Lists settled Perps internal transfers with SDK-owned pagination.
+   *
+   * @remarks
+   * Overlapping timestamp boundaries are deduplicated. Throws
+   * `UnexpectedResponseError` if a full millisecond cannot be paged without
+   * risking omitted transfers.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  listInternalTransfers(
+    request: ListPerpsInternalTransfersRequest = {},
+  ): Paginated<PerpsInternalTransfer[]> {
+    return listPerpsInternalTransfers(this.#api, request);
   }
 
   /**

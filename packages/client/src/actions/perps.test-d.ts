@@ -17,6 +17,7 @@ import type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
@@ -25,6 +26,8 @@ import type {
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
+  PerpsInternalTransfer,
+  PerpsInternalTransferId,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -32,8 +35,11 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecurePerpsActions,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
@@ -87,6 +93,7 @@ describe('public Perps exports', () => {
       FetchPerpsOrdersRequest,
       ListPerpsFillsRequest,
       ListPerpsFundingPaymentsRequest,
+      ListPerpsInternalTransfersRequest,
       ListPerpsDepositsRequest,
       ListPerpsWithdrawalsRequest,
       ListPerpsEquityHistoryRequest,
@@ -102,6 +109,7 @@ describe('public Perps exports', () => {
       PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
+      TransferPerpsCollateralRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -117,6 +125,25 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exposes owner transfers only on secure Perps actions', () => {
+    const secureActions = {} as SecurePerpsActions;
+    const publicActions = {} as PublicPerpsActions;
+
+    expectTypeOf(secureActions.transferPerpsCollateral).returns.toEqualTypeOf<
+      Promise<PerpsInternalTransferId>
+    >();
+    // @ts-expect-error Collateral movement requires an owner-capable secure client.
+    void publicActions.transferPerpsCollateral;
+  });
+
+  it('exposes normalized internal-transfer history on Perps sessions', () => {
+    const session = {} as import('../index').PerpsSession;
+
+    expectTypeOf(session.listInternalTransfers).returns.toMatchTypeOf<
+      import('../index').Paginated<PerpsInternalTransfer[]>
+    >();
   });
 
   it('exports known cancel rejections and narrows rejected results', () => {
