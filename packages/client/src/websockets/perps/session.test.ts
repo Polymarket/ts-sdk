@@ -1000,7 +1000,7 @@ describe('PerpsSession', () => {
           return [
             {
               coid: '0123456789abcdef0123456789abcdef',
-              error: 'order not found',
+              error: 'order_not_found',
               status: 'err',
             },
           ];
@@ -1018,7 +1018,7 @@ describe('PerpsSession', () => {
           }),
         ).resolves.toEqual({
           clientOrderId: '0123456789abcdef0123456789abcdef',
-          error: 'order not found',
+          error: 'order_not_found',
           status: 'err',
         });
       } finally {
