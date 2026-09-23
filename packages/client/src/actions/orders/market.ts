@@ -96,7 +96,6 @@ export async function prepareMarketOrderDraft(
   const amounts = computeMarketOrderAmounts({
     amount: context.resolvedAmount,
     price: context.price,
-    protectPrice: hasProtectedPrice(params),
     side: params.side,
     tickSize: context.tickSize,
   });
