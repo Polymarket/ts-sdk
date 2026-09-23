@@ -21,6 +21,10 @@ import type {
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsCancelOptions,
+  PerpsCancelOrderErrorCode,
+  PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -34,7 +38,12 @@ import type {
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
+import {
+  FetchPerpsTickerError,
+  PerpsCancelRetryError,
+  PerpsKnownCancelOrderErrorCode,
+  UpdatePerpsMarginError,
+} from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
@@ -89,6 +98,8 @@ describe('public Perps exports', () => {
       CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
+      PerpsCancelOptions,
+      PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
     ];
@@ -106,5 +117,33 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exports known cancel rejections and narrows rejected results', () => {
+    const result = undefined as unknown as PerpsCancelOrderResult;
+
+    if (result.status === 'err') {
+      expectTypeOf(result.error).toEqualTypeOf<PerpsCancelOrderErrorCode>();
+    } else {
+      expectTypeOf(result.error).toEqualTypeOf<undefined>();
+    }
+    void PerpsKnownCancelOrderErrorCode.OrderInFlight;
+  });
+
+  it('exposes retry failures with typed historical results for reconciliation', () => {
+    const error = new PerpsCancelRetryError('Retry failed', {
+      results: [],
+      pendingIndexes: [],
+      cause: new Error('Connection lost'),
+    });
+
+    expectTypeOf(error.results).toEqualTypeOf<
+      readonly PerpsCancelOrderResult[]
+    >();
+    expectTypeOf(error.pendingIndexes).toEqualTypeOf<readonly number[]>();
+    expectTypeOf(error.cause).toEqualTypeOf<unknown>();
+    expectTypeOf<
+      Extract<PerpsSessionTradingError, PerpsCancelRetryError>
+    >().toEqualTypeOf<PerpsCancelRetryError>();
   });
 });

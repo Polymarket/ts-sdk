@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   PerpsAccountFillSchema,
   PerpsCancelOrderResultSchema,
+  PerpsKnownCancelOrderErrorCode,
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
@@ -170,6 +171,41 @@ describe('PerpsCancelOrderResultSchema', () => {
 
     expect(result.status).toBe('ok');
     expect(result.orderId).toBeUndefined();
+  });
+
+  it.each(
+    Object.values(PerpsKnownCancelOrderErrorCode),
+  )('types the %s rejection identifier', (error) => {
+    const result = PerpsCancelOrderResultSchema.parse({ error, status: 'err' });
+
+    expect(result).toEqual({
+      clientOrderId: undefined,
+      error,
+      orderId: undefined,
+      status: 'err',
+    });
+  });
+
+  it('preserves cancellation rejection identifiers introduced after release', () => {
+    const result = PerpsCancelOrderResultSchema.parse({
+      error: 'unknown_error_code_18',
+      oid: 123,
+      status: 'err',
+    });
+
+    expect(result).toEqual({
+      clientOrderId: undefined,
+      error: 'unknown_error_code_18',
+      orderId: 123,
+      status: 'err',
+    });
+  });
+
+  it.each([
+    { status: 'err' },
+    { error: '', status: 'err' },
+  ])('rejects a cancellation rejection without an identifier: %j', (value) => {
+    expect(() => PerpsCancelOrderResultSchema.parse(value)).toThrow();
   });
 
   it('normalizes TP/SL metadata', () => {

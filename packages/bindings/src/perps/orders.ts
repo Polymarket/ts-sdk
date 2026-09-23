@@ -85,6 +85,43 @@ export const PerpsOrderStatusSchema = z.enum(PerpsOrderStatus);
  */
 export const PerpsCommandStatusSchema = z.enum(['ok', 'err']);
 
+/**
+ * Known rejection identifiers returned when a Perps order cancellation fails.
+ *
+ * The service evolves this set independently of released clients, so
+ * cancellation parsing accepts unknown identifiers as plain strings; see
+ * {@link PerpsCancelOrderErrorCode}.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownCancelOrderErrorCode {
+  OrderUnknown = 'order_unknown',
+  OrderNotInOrderbook = 'order_not_in_orderbook',
+  OrderInFlight = 'order_in_flight',
+  OrderNotPendingEngine = 'order_not_pending_engine',
+  OrderNotFound = 'order_not_found',
+}
+
+/**
+ * A Perps order cancellation rejection identifier. Known identifiers are
+ * enumerated in {@link PerpsKnownCancelOrderErrorCode}; newly introduced
+ * identifiers flow through as plain strings so they can be handled before a
+ * client release that enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsCancelOrderErrorCode =
+  | PerpsKnownCancelOrderErrorCode
+  | (string & {});
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsCancelOrderErrorCodeSchema = z
+  .string()
+  .min(1)
+  .transform((value): PerpsCancelOrderErrorCode => value);
+
 const PerpsAckErrorSchema = z
   .string()
   .min(1)
@@ -150,17 +187,24 @@ export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsCancelOrderResultSchema = z
-  .object({
-    status: PerpsCommandStatusSchema,
-    oid: PerpsOrderIdSchema.optional(),
-    coid: PerpsClientOrderIdSchema.optional(),
-    error: z.string().optional(),
-  })
+  .discriminatedUnion('status', [
+    z.object({
+      status: z.literal('ok'),
+      oid: PerpsOrderIdSchema.optional(),
+      coid: PerpsClientOrderIdSchema.optional(),
+    }),
+    z.object({
+      status: z.literal('err'),
+      error: PerpsCancelOrderErrorCodeSchema,
+      oid: PerpsOrderIdSchema.optional(),
+      coid: PerpsClientOrderIdSchema.optional(),
+    }),
+  ])
   .transform((ack) => {
     if (ack.status === 'err') {
       return {
         status: 'err' as const,
-        error: perpsAckError(ack.error),
+        error: ack.error,
         orderId: ack.oid,
         clientOrderId: ack.coid,
       };
