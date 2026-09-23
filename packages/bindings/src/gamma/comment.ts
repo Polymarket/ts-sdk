@@ -5,6 +5,7 @@ import {
   CommentParentEntityTypeSchema,
   EventIdSchema,
   IsoDateTimeStringSchema,
+  PaginationCursorSchema,
   TokenIdSchema,
 } from '../shared';
 import { ImageOptimizationSchema } from './common';
@@ -80,6 +81,15 @@ export const CommentSchema = z.object({
 });
 
 export const ListCommentsResponseSchema = z.array(CommentSchema);
+export const ListCommentsKeysetResponseSchema = z
+  .object({
+    comments: z.array(CommentSchema),
+    next_cursor: PaginationCursorSchema.optional(),
+  })
+  .transform(({ comments, next_cursor }) => ({
+    items: comments,
+    nextCursor: next_cursor,
+  }));
 
 export type Comment = z.infer<typeof CommentSchema>;
 export type CommentMedia = z.infer<typeof CommentMediaSchema>;
@@ -87,3 +97,6 @@ export type CommentPosition = z.infer<typeof CommentPositionSchema>;
 export type CommentProfile = z.infer<typeof CommentProfileSchema>;
 export type Reaction = z.infer<typeof ReactionSchema>;
 export type ListCommentsResponse = z.infer<typeof ListCommentsResponseSchema>;
+export type ListCommentsKeysetResponse = z.infer<
+  typeof ListCommentsKeysetResponseSchema
+>;
