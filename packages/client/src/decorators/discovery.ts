@@ -534,9 +534,21 @@ export type DiscoveryActions = {
    * Lists comments for an event or series.
    *
    * @remarks
-   * Pages starting past offset 200 are not served. Following a cursor past
-   * that point throws {@link PaginationLimitError} before any request is
-   * sent; the pages already returned stay valid.
+   * Without `order`, pages are newest first and `ascending` is ignored. With
+   * `order` (`id` or `createdAt`), pages are ascending unless `ascending` is
+   * `false`.
+   *
+   * Reads without `holdersOnly` or `getPositions` and with one of those
+   * orders page through the whole thread. Their cursors continue that exact
+   * query and are rejected for a different parent, order or direction. Reads
+   * with `holdersOnly`, `getPositions` or another order serve pages up to
+   * offset 200; following a cursor past that point throws
+   * {@link PaginationLimitError} before any request is sent. Cursors saved
+   * from earlier versions keep working with the same arguments.
+   *
+   * `pageSize` counts top-level comments; replies ride along in the same
+   * page. A thread ending exactly on a page boundary may return one final
+   * empty page.
    *
    * @throws {@link ListCommentsError}
    * Thrown on failure.

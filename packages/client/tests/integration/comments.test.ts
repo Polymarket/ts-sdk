@@ -35,12 +35,14 @@ describe('Comments', () => {
       expect(firstPage.items).toEqual(expect.any(Array));
     });
 
-    it('serves pages up to the deepest offset and then stops with a typed error', async ({
+    it('serves offset pages up to the cap and then stops with a typed error when holder filtering keeps the read on offset pages', async ({
       publicClient,
     }) => {
       // A long-running thread with far more than 300 top-level comments, so
-      // every page below the cap comes back full.
+      // every page below the cap comes back full. Holder filtering is only
+      // served on offset pages, so this read cannot switch to cursors.
       const paginator = publicClient.listComments({
+        holdersOnly: true,
         parentEntityId: toEventId('45915'),
         parentEntityType: CommentParentEntityType.Event,
         pageSize: 100,
