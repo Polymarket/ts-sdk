@@ -20,7 +20,7 @@
   Legacy RTDS price topics remain deprecated for compatibility, with removal
   planned one month after the 0.11.0 release. Migrating from Binance USDT prices
   changes the quote currency to USD as well as the feed source. The 30-second
-  TWAP has no PolyBolt replacement. See the [migration guide](https://docs.polymarket.com/api-reference/live-data/migrating-from-rtds#migrate-sdks-to-polybolt).
+  TWAP has no replacement in the new streams. See the [migration guide](https://docs.polymarket.com/api-reference/live-data/migrating-from-rtds#migrate-sdks-to-polybolt).
 
 ### Patch Changes
 
