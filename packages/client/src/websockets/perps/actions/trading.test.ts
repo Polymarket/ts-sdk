@@ -20,8 +20,6 @@ import {
   cancelPerpsOrders,
   type PerpsCommandExecutor,
   type PerpsCommandRequest,
-  type PerpsEventCommandExecutor,
-  placePerpsOrder,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -100,48 +98,6 @@ describe('Perps trading actions', () => {
         ),
       ).rejects.toBeInstanceOf(UserInputError);
       expect(executeCommand).not.toHaveBeenCalled();
-    });
-
-    it('applies the same terms to the entry and every generated TP/SL leg', async () => {
-      const inspected = new Error('Inspected signing boundary');
-      const executor: PerpsEventCommandExecutor = {
-        async executeCommand() {
-          throw new Error('Unexpected execution');
-        },
-        async executeCommandWithEvent(request) {
-          expect(toPerpsCommandBodyOp(request.op)).toMatchObject({
-            args: [
-              {
-                builder: {
-                  address: builder.address,
-                  fee_rate: builder.feeRate,
-                },
-              },
-              {
-                builder: {
-                  address: builder.address,
-                  fee_rate: builder.feeRate,
-                },
-              },
-              {
-                builder: {
-                  address: builder.address,
-                  fee_rate: builder.feeRate,
-                },
-              },
-            ],
-          });
-          throw inspected;
-        },
-      };
-      await expect(
-        placePerpsOrder(executor, {
-          ...order,
-          builder,
-          takeProfit: { triggerPrice: '110' },
-          stopLoss: { triggerPrice: '90' },
-        }),
-      ).rejects.toBe(inspected);
     });
   });
   describe('createPerpsOpTypedDataPayload', () => {

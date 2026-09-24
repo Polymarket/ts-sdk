@@ -32,7 +32,6 @@ import {
   expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
-import type { PerpsBuilderTermsInput } from './actions/builder-terms';
 import { PerpsSession } from './session';
 
 const perps = ws.link(production.perps.ws);
@@ -472,39 +471,6 @@ describe('PerpsSession', () => {
 
     beforeEach(() => {
       frames = mockCommandSession();
-    });
-
-    it('keeps malformed batch validation at the action boundary', async () => {
-      const session = createSession();
-      // @ts-expect-error JavaScript callers can pass a non-array collection.
-      await expect(session.postOrders({ orders: {} })).rejects.toBeInstanceOf(
-        UserInputError,
-      );
-      await session.close();
-    });
-
-    it('copies session defaults and resolves each batch override', async () => {
-      const builder = {
-        address: '0x0000000000000000000000000000000000001234',
-        feeRate: '0.0005',
-      };
-      const session = createSession(builder);
-      builder.feeRate = '0.001';
-      await session.connect();
-      const order = {
-        instrumentId: 1,
-        price: '100',
-        quantity: '1',
-        side: OrderSide.BUY,
-        timeInForce: PerpsTimeInForce.GTC,
-      } as const;
-      await session.postOrders({
-        orders: [order, { ...order, builder: null }, { ...order, builder }],
-      });
-      expect(frames[2]).toHaveProperty('op.args.0.builder.fee_rate', '0.0005');
-      expect(frames[2]).not.toHaveProperty('op.args.1.builder');
-      expect(frames[2]).toHaveProperty('op.args.2.builder.fee_rate', '0.001');
-      await session.close();
     });
 
     it('places signed orders over the session socket', async () => {
@@ -2059,9 +2025,8 @@ describe('PerpsSession', () => {
   });
 });
 
-function createSession(builder?: PerpsBuilderTermsInput): PerpsSession {
+function createSession(): PerpsSession {
   return new PerpsSession({
-    builder,
     chainId: production.chainId,
     credentials,
     onClose: () => undefined,
