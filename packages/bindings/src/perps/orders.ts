@@ -429,8 +429,11 @@ export const PerpsAccountFillSchema = z
     price: fill.price,
     quantity: fill.quantity,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
     builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
     totalFee:
       fill.total_fee ??
       totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),
@@ -488,8 +491,11 @@ export const PerpsAccountFillUpdateSchema = z
     price: fill.p,
     quantity: fill.qty,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
     builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
     totalFee:
       fill.total_fee ??
       totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),

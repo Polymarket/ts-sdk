@@ -30,6 +30,11 @@ export type PerpsClientOrderId = Tagged<string, 'PerpsClientOrderId'>;
  */
 export type PerpsNotificationId = Tagged<string, 'PerpsNotificationId'>;
 /**
+ * Opaque receipt identity, unique within the authenticated builder account.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsBuilderEarningId = Tagged<string, 'PerpsBuilderEarningId'>;
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsTradeId = Tagged<number, 'PerpsTradeId'>;
@@ -90,6 +95,14 @@ export const PerpsClientOrderIdSchema = z
 export const PerpsNotificationIdSchema = z
   .uuid()
   .transform((value) => value as PerpsNotificationId);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsBuilderEarningIdSchema = z
+  .string()
+  .min(1)
+  .transform((value) => value as PerpsBuilderEarningId);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

@@ -7,6 +7,7 @@ import {
 } from '../shared';
 import {
   PerpsAssetSchema,
+  PerpsBuilderEarningIdSchema,
   PerpsClientOrderIdSchema,
   PerpsInstrumentIdSchema,
   PerpsOrderIdSchema,
@@ -80,14 +81,6 @@ export const FetchPerpsBuilderApprovalsResponseSchema = z.object({
   data: z.array(PerpsBuilderApprovalSchema),
 });
 
-/**
- * Opaque receipt identity, unique within the authenticated builder account.
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsBuilderEarningId = string & {
-  readonly __tag: 'PerpsBuilderEarningId';
-};
-
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export enum PerpsLiquidityRole {
   Maker = 'maker',
@@ -97,10 +90,7 @@ export enum PerpsLiquidityRole {
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export const PerpsBuilderEarningSchema = z
   .object({
-    earning_id: z
-      .string()
-      .min(1)
-      .transform((id) => id as PerpsBuilderEarningId),
+    earning_id: PerpsBuilderEarningIdSchema,
     trade_id: PerpsTradeIdSchema,
     order_id: PerpsOrderIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
@@ -136,9 +126,13 @@ export const PerpsBuilderEarningSchema = z
     sequence: earning.sequence,
     notional: earning.notional,
     feeAsset: earning.fee_asset,
+    /** Exchange fee for the fill, excluding the builder fee. */
     fee: earning.fee,
+    /** Builder fee charged in addition to `fee` and credited to this builder. */
     builderFee: earning.builder_fee,
+    /** Sum of `fee` and `builderFee`. */
     totalFee: earning.total_fee,
+    /** Builder fee rate for the fill, as a decimal fraction of `notional`. */
     feeRate: earning.fee_rate,
   }));
 
