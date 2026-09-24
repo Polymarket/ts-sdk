@@ -1151,14 +1151,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     await this.#subscribe();
 
     this.#ready = true;
-    if (this.#builderQueues.size > 0) {
-      await this.#syncBuilderSubscription();
-      if (emitResync) {
-        for (const queue of this.#builderQueues)
-          queue.push({ type: 'resync', reason: 'reconnect' });
-      }
-    }
-
+    // Core recovery must not wait for the optional builder subscription.
     this.#reconnectScheduler.resetBackoff();
     if (emitResync) {
       this.#sequences.clear();
@@ -1166,6 +1159,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         reason: 'reconnect',
         type: 'resync',
       });
+    }
+
+    if (this.#builderQueues.size > 0) {
+      await this.#syncBuilderSubscription();
+      if (emitResync) {
+        for (const queue of this.#builderQueues)
+          queue.push({ type: 'resync', reason: 'reconnect' });
+      }
     }
   }
 

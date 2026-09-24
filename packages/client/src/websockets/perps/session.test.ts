@@ -408,6 +408,71 @@ describe('PerpsSession', () => {
       }
     });
 
+    it.each([
+      'rejection',
+      'timeout',
+    ] as const)('recovers the core session despite a builder subscription %s', async (failure) => {
+      server.resetHandlers();
+      const connections: Array<{ close: () => void }> = [];
+      let builderAttempts = 0;
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          connections.push(client);
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            const failBuilder =
+              frame.chs?.includes('builderFills') && ++builderAttempts === 2;
+            if (failBuilder && failure === 'timeout') return;
+            client.send(
+              JSON.stringify({
+                id: frame.id,
+                data: failBuilder
+                  ? { status: 'err', error: 'unavailable' }
+                  : { status: 'ok' },
+              }),
+            );
+          });
+        }),
+      );
+      vi.useFakeTimers();
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const session = createSession();
+      try {
+        await session.connect();
+        const handle = await session.subscribeBuilderFills();
+        const onResync = vi.fn();
+        void waitForNextEvent(session).then(onResync);
+        const onBuilderResync = vi.fn();
+        void waitForNextEvent(handle).then(onBuilderResync);
+
+        connections[0]?.close();
+        await vi.advanceTimersByTimeAsync(125);
+        expect(builderAttempts).toBe(2);
+        expect(onResync).toHaveBeenCalledWith({
+          done: false,
+          value: { type: 'resync', reason: 'reconnect' },
+        });
+        expect(onBuilderResync).not.toHaveBeenCalled();
+
+        if (failure === 'timeout') {
+          await vi.advanceTimersByTimeAsync(30_000);
+        }
+        // Builder recovery retains its retry, but core success resets backoff.
+        await vi.advanceTimersByTimeAsync(124);
+        expect(builderAttempts).toBe(2);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(builderAttempts).toBe(3);
+        expect(onBuilderResync).toHaveBeenCalledWith({
+          done: false,
+          value: { type: 'resync', reason: 'reconnect' },
+        });
+        expect(connections).toHaveLength(2);
+      } finally {
+        await session.close();
+        random.mockRestore();
+      }
+    });
+
     it('reauthenticates, resubscribes, and emits resync', async () => {
       const session = createSession();
 
