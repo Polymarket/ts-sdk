@@ -117,26 +117,50 @@ describe('Portfolio', () => {
       }
     });
 
-    // REDEEMABLE_LOST and MERGEABLE are filter vocabulary: the service serves
-    // them but never echoes them back on a row, so parsing a page is what
-    // proves the narrowed row status holds.
-    for (const [status, rowStatus] of [
-      [PositionStatus.RedeemableLost, PositionStatus.Redeemable],
-      [PositionStatus.Mergeable, PositionStatus.Open],
-    ] as const) {
-      it(`lists ${status} positions as ${rowStatus} rows`, async ({
-        publicClient,
-      }) => {
-        const result = await publicClient
-          .listPositions({ user: TEST_USER, status, pageSize: 50 })
-          .firstPage();
+    it('lists REDEEMABLE_LOST positions as zero-payout REDEEMABLE rows', async ({
+      publicClient,
+    }) => {
+      // Holds lost positions as of 2026-09-24; TEST_USER has none.
+      const user = '0x2005d16a84ceefa912d4e380cd32e7ff827875ea';
+      const result = await publicClient
+        .listPositions({
+          user,
+          status: PositionStatus.RedeemableLost,
+          pageSize: 50,
+        })
+        .firstPage()
+        .then(expectNonEmptyPage);
 
-        for (const position of result.items) {
-          expect(position.status).toBe(rowStatus);
-          expect(position.wallet).toBe(TEST_USER);
-        }
-      });
-    }
+      for (const position of result.items) {
+        expect(position.status).toBe(PositionStatus.Redeemable);
+        expect(position.wallet).toBe(user);
+        expect(position.redeemable).toBe(true);
+        expect(Number(position.currentSize)).toBeGreaterThan(0);
+        expect(Number(position.currentPrice)).toBe(0);
+        expect(Number(position.currentValue)).toBe(0);
+      }
+    });
+
+    it('lists MERGEABLE positions as live mergeable OPEN rows', async ({
+      publicClient,
+    }) => {
+      const result = await publicClient
+        .listPositions({
+          user: TEST_USER,
+          status: PositionStatus.Mergeable,
+          pageSize: 50,
+        })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      for (const position of result.items) {
+        expect(position.status).toBe(PositionStatus.Open);
+        expect(position.wallet).toBe(TEST_USER);
+        expect(position.mergeable).toBe(true);
+        expect(position.redeemable).toBe(false);
+        expect(Number(position.currentSize)).toBeGreaterThan(0);
+      }
+    });
 
     it('rejects REDEEMABLE_LOST without a wallet', ({ publicClient }) => {
       expect(() =>

@@ -178,6 +178,11 @@ export const ListPositionsError = makeErrorGuard(
  * defaults to 100 (max 1000). Transient rate limits are retried
  * automatically.
  *
+ * `REDEEMABLE_LOST` requires `user`. For `MERGEABLE`, provide `user` to
+ * filter to mergeable positions; a `conditionId`-only request falls back
+ * to the broader `OPEN` listing. `sortBy` defaults to `TOKENS` for
+ * `MERGEABLE`, `REALIZED_PNL` for `CLOSED`, and `CURRENT_VALUE` otherwise.
+ *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
