@@ -1167,7 +1167,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       try {
         await this.#syncBuilderSubscription();
       } catch (error) {
-        for (const queue of this.#builderQueues) queue.end(error);
+        const failure =
+          error instanceof Error ? error : TransportError.fromError(error);
+        for (const queue of this.#builderQueues) queue.end(failure);
         this.#builderQueues.clear();
         this.#builderSubscribed = undefined;
         return;
