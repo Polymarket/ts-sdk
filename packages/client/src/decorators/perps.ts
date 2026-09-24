@@ -312,13 +312,18 @@ export type PublicPerpsActions = {
 export type SecurePerpsActions = PublicPerpsActions & {
   /**
    * Approves or revokes a builder fee using the account owner's signature.
-   * Pass zero to revoke; approvalVersion must be exactly the stored version + 1.
+   * Omitted terms use session defaults, then client defaults. Pass `session` to
+   * select between multiple open sessions. Omitted approvalVersion fetches the
+   * stored version and adds one (initially 1), opening a temporary one-minute
+   * session if needed. This requires an extra owner signature; the temporary
+   * connection is closed after the lookup.
+   * Pass maxFeeRate: "0" to revoke. Submission failures are not retried automatically.
    * This does not change any session's local order defaults.
    * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   approvePerpsBuilderFee(
-    request: ApprovePerpsBuilderFeeRequest,
+    request?: ApprovePerpsBuilderFeeRequest,
   ): Promise<PerpsBuilderApproval>;
   /**
    * Deposits collateral into Perps for the authenticated signer account.

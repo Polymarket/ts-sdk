@@ -12,3 +12,10 @@ builder fee. Existing untagged order signatures and session event types are unch
 
 Add an opt-in builder receipt stream with independent handles and reconnect
 signals. Historical reconciliation remains application-owned. Perps remains experimental.
+
+Allow `approvePerpsBuilderFee()` to inherit builder terms from a selected session
+or the secure client, and resolve the next approval version automatically.
+Explicit parameters override defaults. Version lookup reuses an open session or
+opens and closes a temporary session with one-minute credentials; creating those
+credentials requires an additional owner signature. Pass `session` when multiple
+sessions are open. Failed submissions are not automatically retried.

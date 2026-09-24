@@ -361,6 +361,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
+   * Defaults applied to this session's orders.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  get builderAttribution(): PerpsBuilderTermsInput | undefined {
+    return this.#builderAttribution;
+  }
+
+  /**
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   get closed(): boolean {

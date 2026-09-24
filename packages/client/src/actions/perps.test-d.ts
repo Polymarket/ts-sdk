@@ -4,6 +4,7 @@ import {
 } from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
@@ -59,6 +60,18 @@ import type {
   FetchPerpsInstrumentsRequest,
   ResumePerpsSessionRequest,
 } from './perps';
+
+describe('builder fee approval defaults', () => {
+  it('allows no arguments and partial overrides on the secure client', () => {
+    function approve(client: SecurePerpsActions) {
+      void client.approvePerpsBuilderFee();
+      void client.approvePerpsBuilderFee({ maxFeeRate: '0' });
+    }
+    void approve;
+    const request: ApprovePerpsBuilderFeeRequest = {};
+    void request;
+  });
+});
 
 describe('Perps session builder attribution defaults', () => {
   it('accepts client defaults without requiring them', () => {
