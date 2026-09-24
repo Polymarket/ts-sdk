@@ -53,17 +53,16 @@ export const PositionStatusSchema = z.enum(PositionStatus);
  * only. A lost holding still reports `REDEEMABLE`, and a mergeable one
  * reports `OPEN`.
  */
-export const PositionRowStatusSchema = PositionStatusSchema.extract([
-  // `extract` keys off the enum member names, not their values.
-  'Open',
-  'Redeemable',
-  'Closed',
-]);
-
 export type PositionRowStatus =
   | PositionStatus.Open
   | PositionStatus.Redeemable
   | PositionStatus.Closed;
+
+export const PositionRowStatusSchema = z.enum([
+  PositionStatus.Open,
+  PositionStatus.Redeemable,
+  PositionStatus.Closed,
+]) satisfies z.ZodType<PositionRowStatus>;
 
 /** Sort key for position listings. */
 export enum PositionSortBy {
