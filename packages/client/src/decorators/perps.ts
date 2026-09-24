@@ -1,5 +1,7 @@
 import type {
   PerpsBook,
+  PerpsBuilderApproval,
+  PerpsBuilderStatus,
   PerpsCandle,
   PerpsFeeScheduleEntry,
   PerpsFundingRate,
@@ -37,6 +39,12 @@ import {
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
 } from '../actions';
+import {
+  type ApprovePerpsBuilderFeeRequest,
+  approvePerpsBuilderFee,
+  type FetchPerpsBuilderStatusRequest,
+  fetchPerpsBuilderStatus,
+} from '../actions/perps/builders';
 import type {
   BaseClient,
   BasePublicClient,
@@ -125,11 +133,41 @@ export {
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  FetchPerpsBuilderStatusError,
+  type FetchPerpsBuilderStatusRequest,
+} from '../actions/perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsBuilderApprovalsError,
+  type FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryError,
+  type FetchPerpsBuilderEarningsSummaryRequest,
+  ListPerpsBuilderEarningsError,
+  type ListPerpsBuilderEarningsRequest,
+  type PerpsBuilderEarningsPage,
+  type PerpsBuilderEarningsPaginator,
+  type PerpsBuilderFillsEvent,
+  type PerpsBuilderFillUpdateEvent,
+  type PerpsBuilderTermsInput,
+  SubscribePerpsBuilderFillsError,
+} from '../websockets/perps/session';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /**
+   * Fetches public builder availability and the platform fee cap.
+   * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsBuilderStatus(
+    request: FetchPerpsBuilderStatusRequest,
+  ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
    *
@@ -273,6 +311,16 @@ export type PublicPerpsActions = {
  */
 export type SecurePerpsActions = PublicPerpsActions & {
   /**
+   * Approves or revokes a builder fee using the account owner's signature.
+   * Pass zero to revoke; approvalVersion must be exactly the stored version + 1.
+   * This does not change any session's local order defaults.
+   * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  approvePerpsBuilderFee(
+    request: ApprovePerpsBuilderFeeRequest,
+  ): Promise<PerpsBuilderApproval>;
+  /**
    * Deposits collateral into Perps for the authenticated signer account.
    *
    * @example
@@ -295,6 +343,10 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
+   * Optional `builder` terms are local defaults for new orders and generated
+   * TP/SL exits. An order-level object replaces them; `builder: null` opts out.
+   * Configure defaults again when resuming credentials. Setup does not approve
+   * fees: the trader must separately call `approvePerpsBuilderFee`.
    *
    * @example
    * ```ts
@@ -390,6 +442,7 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
+    fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
     fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),
@@ -405,6 +458,7 @@ export function perpsActions(
 
   return {
     ...actions,
+    approvePerpsBuilderFee: approvePerpsBuilderFee.bind(null, client),
     depositToPerps: (request) => depositToPerps(client, request),
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>

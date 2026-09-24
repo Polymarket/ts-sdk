@@ -34,6 +34,7 @@ export type {
   EquityPricesEvent,
   EquityPricesSubscription,
   PriceSubscription,
+  SubscriptionHandle,
 } from '../actions';
 export { SubscribeError } from '../actions';
 

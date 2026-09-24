@@ -1,5 +1,6 @@
 import type { PerpsCredentials } from '@polymarket/bindings/perps';
 import { TransportError } from '../../errors';
+import type { PerpsBuilderTermsInput } from './actions/builder-terms';
 import { PerpsSession } from './session';
 
 /**
@@ -36,9 +37,15 @@ export class PerpsSessionManager {
   }
 
   /**
+   * Connects credentials with optional validated defaults for new orders.
+   * Builder defaults belong to this session, not the credentials.
+   *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  connect(credentials: PerpsCredentials): Promise<PerpsSession> {
+  connect(
+    credentials: PerpsCredentials,
+    builder?: PerpsBuilderTermsInput,
+  ): Promise<PerpsSession> {
     if (this.#hasShutdown) {
       return Promise.reject(
         new TransportError('Perps session manager has been shut down.'),
@@ -46,6 +53,7 @@ export class PerpsSessionManager {
     }
 
     const session = new PerpsSession({
+      builder,
       chainId: this.#chainId,
       credentials,
       headers: this.#headers,

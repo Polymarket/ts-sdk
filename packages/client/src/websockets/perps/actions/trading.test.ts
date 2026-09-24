@@ -12,6 +12,7 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import {
@@ -19,6 +20,9 @@ import {
   cancelPerpsOrders,
   type PerpsCommandExecutor,
   type PerpsCommandRequest,
+  type PerpsEventCommandExecutor,
+  placePerpsOrder,
+  placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -35,7 +39,261 @@ afterEach(() => {
 });
 
 describe('Perps trading actions', () => {
+  describe('builder attribution', () => {
+    const builder = {
+      address: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0005000000000000000000000000',
+    };
+    const order = {
+      instrumentId: 1,
+      quantity: '10',
+      side: OrderSide.BUY,
+      timeInForce: PerpsTimeInForce.IOC,
+    } as const;
+
+    it('preserves exact builder terms in signed tuples and JSON', async () => {
+      const executor: PerpsCommandExecutor = {
+        async executeCommand(request, schema) {
+          expect(request.op).toEqual([
+            'createOrders',
+            [
+              [
+                1,
+                true,
+                undefined,
+                '10',
+                'ioc',
+                false,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                [builder.address, builder.feeRate],
+              ],
+            ],
+          ]);
+          expect(toPerpsCommandBodyOp(request.op)).toEqual({
+            type: 'createOrders',
+            args: [
+              {
+                iid: 1,
+                buy: true,
+                qty: '10',
+                tif: 'ioc',
+                po: false,
+                builder: {
+                  address: builder.address,
+                  fee_rate: builder.feeRate,
+                },
+              },
+            ],
+          });
+          expect(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: request.op,
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          ).toEqual(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: [
+                'createOrders',
+                [
+                  [
+                    1,
+                    true,
+                    '10',
+                    'ioc',
+                    false,
+                    [builder.address, builder.feeRate],
+                  ],
+                ],
+              ],
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          );
+          return schema.parse([{ oid: 123, status: 'ok' }]);
+        },
+      };
+      await postPerpsOrders(executor, { orders: [{ ...order, builder }] });
+    });
+
+    it('omits the explicit null opt-out from signed and JSON orders', async () => {
+      const executor: PerpsCommandExecutor = {
+        async executeCommand(request, schema) {
+          expect(toPerpsCommandBodyOp(request.op)).toEqual({
+            type: 'createOrders',
+            args: [{ iid: 1, buy: true, qty: '10', tif: 'ioc', po: false }],
+          });
+          expect(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: request.op,
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          ).toEqual(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: ['createOrders', [[1, true, '10', 'ioc', false]]],
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          );
+          return schema.parse([{ oid: 123, status: 'ok' }]);
+        },
+      };
+      await postPerpsOrders(executor, {
+        orders: [{ ...order, builder: null }],
+      });
+    });
+
+    it.each([
+      '-0.0001',
+      '0.0010000000000000000000000001',
+      '0.00000000000000000000000000001',
+      '0.00100000000000000000000000000',
+      'NaN',
+      '5%',
+      '1e-4',
+    ])('rejects invalid rate %s before submitting any batch orders', async (feeRate) => {
+      const executeCommand = vi.fn(async () => {
+        throw new Error('Invalid orders must not be submitted');
+      });
+      await expect(
+        postPerpsOrders(
+          { executeCommand },
+          {
+            orders: [order, { ...order, builder: { ...builder, feeRate } }],
+          },
+        ),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+
+    it('applies the same terms to the entry and every generated TP/SL leg', async () => {
+      const inspected = new Error('Inspected signing boundary');
+      const executor: PerpsEventCommandExecutor = {
+        async executeCommand() {
+          throw new Error('Unexpected execution');
+        },
+        async executeCommandWithEvent(request) {
+          expect(toPerpsCommandBodyOp(request.op)).toMatchObject({
+            args: [
+              {
+                builder: {
+                  address: builder.address,
+                  fee_rate: builder.feeRate,
+                },
+              },
+              {
+                builder: {
+                  address: builder.address,
+                  fee_rate: builder.feeRate,
+                },
+              },
+              {
+                builder: {
+                  address: builder.address,
+                  fee_rate: builder.feeRate,
+                },
+              },
+            ],
+            grp: 'order',
+          });
+          throw inspected;
+        },
+      };
+      await expect(
+        placePerpsOrder(executor, {
+          ...order,
+          builder,
+          takeProfit: { triggerPrice: '110' },
+          stopLoss: { triggerPrice: '90' },
+        }),
+      ).rejects.toBe(inspected);
+    });
+
+    it('rejects invalid position exit terms before reading the position', async () => {
+      const fetchPortfolio = vi.fn(async () => {
+        throw new Error('Invalid builder terms must fail before the read');
+      });
+      const executeCommand = vi.fn(async () => {
+        throw new Error('Invalid builder terms must not be submitted');
+      });
+      await expect(
+        placePerpsPositionTpSl(
+          { executeCommand, fetchPortfolio },
+          {
+            instrumentId: 1,
+            builder: { ...builder, feeRate: '0.0010000000000000000000000001' },
+            takeProfit: { triggerPrice: '110' },
+          },
+        ),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(fetchPortfolio).not.toHaveBeenCalled();
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+  });
   describe('createPerpsOpTypedDataPayload', () => {
+    it('matches backend approval bytes and binds the version and maximum rate', () => {
+      function approvalHash(maxFeeRate: string, approvalVersion: number) {
+        return createPerpsOpTypedDataPayload({
+          chainId: 31_337,
+          op: [
+            'approveBuilder',
+            [
+              '0x0000000000000000000000000000000000001234',
+              maxFeeRate,
+              approvalVersion,
+            ],
+          ],
+          salt: 1,
+          timestamp: 1_739_491_200_000,
+        }).message.data;
+      }
+      // This serializer fixture comes from the backend; its above-cap rate
+      // deliberately bypasses user-input validation to pin the signed bytes.
+      const hash = approvalHash('0.002', 1);
+      expect(hash).toBe(
+        '0x3f1cc1f398302e8b00fa75c4f5d2ca0e8464014785a365873fd41582b7280a9b',
+      );
+      expect(approvalHash('0.002', 2)).not.toBe(hash);
+      expect(approvalHash('0', 1)).not.toBe(hash);
+    });
+    it('matches the backend nested builder signing fixture', () => {
+      // This backend serializer fixture intentionally exceeds the admission
+      // cap; it tests signing independently of SDK user-input validation.
+      const payload = createPerpsOpTypedDataPayload({
+        chainId: 31_337,
+        op: [
+          'createOrders',
+          [
+            [
+              1,
+              true,
+              '100.50',
+              '10',
+              'gtc',
+              false,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              ['0x0000000000000000000000000000000000001234', '0.002'],
+            ],
+          ],
+        ],
+        salt: 1,
+        timestamp: 1_739_491_200_000,
+      });
+      expect(payload.message.data).toBe(
+        '0xb712d9d3d4ba4c722daf48c55e3b0c5450abb64477c7c6765fa5c09e1d4805c2',
+      );
+    });
     it('signs entry orders with backend-compatible createOrders bytes', async () => {
       const client: PerpsCommandExecutor = {
         async executeCommand(request, responseSchema) {

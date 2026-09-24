@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   PerpsAccountFillSchema,
+  PerpsAccountFillUpdateSchema,
   PerpsCancelOrderResultSchema,
   PerpsKnownCancelOrderErrorCode,
   PerpsOrderSchema,
@@ -26,6 +27,76 @@ const baseFill = {
 };
 
 describe('PerpsAccountFillSchema', () => {
+  it('derives signed total fees exactly and preserves optional attribution', () => {
+    const fill = PerpsAccountFillSchema.parse({
+      ...baseFill,
+      hash: '0x',
+      fee: '-9007199254740993.00000000000000000001',
+      builder_fee: '0.00000000000000000002',
+      builder: {
+        address: '0x1111111111111111111111111111111111111111',
+        fee_rate: '0.0005',
+      },
+    });
+    expect(fill.totalFee).toBe('-9007199254740992.99999999999999999999');
+    expect(fill.builder).toEqual({
+      address: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0005',
+    });
+  });
+
+  it('adds legacy fee defaults without inventing builder identity', () => {
+    const fill = PerpsAccountFillSchema.parse({ ...baseFill, hash: '0x' });
+    expect(fill).toMatchObject({
+      fee: '0.01',
+      builderFee: '0',
+      totalFee: '0.01',
+    });
+    expect(fill).not.toHaveProperty('builder');
+  });
+
+  it.each([
+    'builder_fee',
+    'total_fee',
+  ])('rejects invalid supplied %s', (field) => {
+    for (const invalid of ['NaN', '', null]) {
+      expect(
+        PerpsAccountFillSchema.safeParse({
+          ...baseFill,
+          hash: '0x',
+          [field]: invalid,
+        }).success,
+      ).toBe(false);
+    }
+  });
+
+  it('normalizes the same fee contract on compact websocket fills', () => {
+    const fill = PerpsAccountFillUpdateSchema.parse({
+      tid: 1,
+      oid: 2,
+      iid: 6,
+      side: 'long',
+      p: '1',
+      qty: '2',
+      taker: false,
+      fee: '-0.2',
+      builder_fee: '0.1',
+      total_fee: '-0.1',
+      fea: 'USDC',
+      psz: '0',
+      pep: '0',
+      pnl: '0',
+      liq: false,
+      ts: 1_700_000_000_000,
+    });
+    expect(fill).toMatchObject({
+      fee: '-0.2',
+      builderFee: '0.1',
+      totalFee: '-0.1',
+    });
+    expect(fill).not.toHaveProperty('builder');
+  });
+
   it('normalizes placeholder hashes to undefined', () => {
     const fill = PerpsAccountFillSchema.parse({
       ...baseFill,
@@ -37,6 +108,23 @@ describe('PerpsAccountFillSchema', () => {
 });
 
 describe('PerpsPostOrderAckSchema', () => {
+  it('preserves saved builder terms on accepted acknowledgements', () => {
+    expect(
+      PerpsPostOrderAckSchema.parse({
+        oid: 123,
+        status: 'ok',
+        builder: {
+          address: '0x1111111111111111111111111111111111111111',
+          fee_rate: '0',
+        },
+      }),
+    ).toMatchObject({
+      builder: {
+        address: '0x1111111111111111111111111111111111111111',
+        feeRate: '0',
+      },
+    });
+  });
   it('normalizes mixed post order acknowledgements', () => {
     const acks = [
       PerpsPostOrderAckSchema.parse({
