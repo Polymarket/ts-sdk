@@ -9,18 +9,17 @@ import { z } from 'zod';
 export type PerpsBuilderTermsInput = {
   /** Address of the builder account receiving the fee. */
   readonly address: string;
-  /** Exact decimal fraction between 0 and 0.001 (10 bps), inclusive. */
+  /** Exact non-negative decimal fraction of executed notional. */
   readonly feeRate: string;
 };
 
 /** @internal */
-export const PerpsBuilderFeeRateInputSchema = z.string().refine((value) => {
-  // Comparing padded decimal digits avoids rounding at the fee cap. Requiring
-  // at most 28 fractional digits also prevents rust_decimal from rounding.
-  const match = /^0+(?:\.(\d{1,28}))?$/.exec(value);
-  if (match === null) return false;
-  return (match[1] ?? '').padEnd(28, '0') <= '001'.padEnd(28, '0');
-}, 'Expected a fixed-point fee rate from 0 to 0.001 with at most 28 fractional digits.');
+export const PerpsBuilderFeeRateInputSchema = z
+  .string()
+  .regex(
+    /^\d+(?:\.\d{1,28})?$/,
+    'Expected a non-negative fixed-point fee rate with at most 28 fractional digits.',
+  );
 
 /** @internal */
 export const PerpsBuilderTermsInputSchema = z.object({

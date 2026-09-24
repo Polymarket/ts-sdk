@@ -87,7 +87,6 @@ describe('Perps trading actions', () => {
     });
 
     it.each([
-      '0.0010000000000000000000000001',
       '0.00000000000000000000000000001',
     ])('rejects rate %s without rounding or submitting the batch', async (feeRate) => {
       const executeCommand = vi.fn(async () => {
