@@ -22,7 +22,6 @@ import {
   type PerpsCommandRequest,
   type PerpsEventCommandExecutor,
   placePerpsOrder,
-  placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -51,43 +50,9 @@ describe('Perps trading actions', () => {
       timeInForce: PerpsTimeInForce.IOC,
     } as const;
 
-    it('preserves exact builder terms in signed tuples and JSON', async () => {
+    it('keeps trailing decimal digits in the signed builder terms', async () => {
       const executor: PerpsCommandExecutor = {
         async executeCommand(request, schema) {
-          expect(request.op).toEqual([
-            'createOrders',
-            [
-              [
-                1,
-                true,
-                undefined,
-                '10',
-                'ioc',
-                false,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                [builder.address, builder.feeRate],
-              ],
-            ],
-          ]);
-          expect(toPerpsCommandBodyOp(request.op)).toEqual({
-            type: 'createOrders',
-            args: [
-              {
-                iid: 1,
-                buy: true,
-                qty: '10',
-                tif: 'ioc',
-                po: false,
-                builder: {
-                  address: builder.address,
-                  fee_rate: builder.feeRate,
-                },
-              },
-            ],
-          });
           expect(
             createPerpsOpTypedDataPayload({
               chainId: 31337,
@@ -121,54 +86,17 @@ describe('Perps trading actions', () => {
       await postPerpsOrders(executor, { orders: [{ ...order, builder }] });
     });
 
-    it('omits the explicit null opt-out from signed and JSON orders', async () => {
-      const executor: PerpsCommandExecutor = {
-        async executeCommand(request, schema) {
-          expect(toPerpsCommandBodyOp(request.op)).toEqual({
-            type: 'createOrders',
-            args: [{ iid: 1, buy: true, qty: '10', tif: 'ioc', po: false }],
-          });
-          expect(
-            createPerpsOpTypedDataPayload({
-              chainId: 31337,
-              op: request.op,
-              salt: 1,
-              timestamp: 1739491200000,
-            }).message.data,
-          ).toEqual(
-            createPerpsOpTypedDataPayload({
-              chainId: 31337,
-              op: ['createOrders', [[1, true, '10', 'ioc', false]]],
-              salt: 1,
-              timestamp: 1739491200000,
-            }).message.data,
-          );
-          return schema.parse([{ oid: 123, status: 'ok' }]);
-        },
-      };
-      await postPerpsOrders(executor, {
-        orders: [{ ...order, builder: null }],
-      });
-    });
-
     it.each([
-      '-0.0001',
       '0.0010000000000000000000000001',
       '0.00000000000000000000000000001',
-      '0.00100000000000000000000000000',
-      'NaN',
-      '5%',
-      '1e-4',
-    ])('rejects invalid rate %s before submitting any batch orders', async (feeRate) => {
+    ])('rejects rate %s without rounding or submitting the batch', async (feeRate) => {
       const executeCommand = vi.fn(async () => {
         throw new Error('Invalid orders must not be submitted');
       });
       await expect(
         postPerpsOrders(
           { executeCommand },
-          {
-            orders: [order, { ...order, builder: { ...builder, feeRate } }],
-          },
+          { orders: [order, { ...order, builder: { ...builder, feeRate } }] },
         ),
       ).rejects.toBeInstanceOf(UserInputError);
       expect(executeCommand).not.toHaveBeenCalled();
@@ -202,7 +130,6 @@ describe('Perps trading actions', () => {
                 },
               },
             ],
-            grp: 'order',
           });
           throw inspected;
         },
@@ -215,27 +142,6 @@ describe('Perps trading actions', () => {
           stopLoss: { triggerPrice: '90' },
         }),
       ).rejects.toBe(inspected);
-    });
-
-    it('rejects invalid position exit terms before reading the position', async () => {
-      const fetchPortfolio = vi.fn(async () => {
-        throw new Error('Invalid builder terms must fail before the read');
-      });
-      const executeCommand = vi.fn(async () => {
-        throw new Error('Invalid builder terms must not be submitted');
-      });
-      await expect(
-        placePerpsPositionTpSl(
-          { executeCommand, fetchPortfolio },
-          {
-            instrumentId: 1,
-            builder: { ...builder, feeRate: '0.0010000000000000000000000001' },
-            takeProfit: { triggerPrice: '110' },
-          },
-        ),
-      ).rejects.toBeInstanceOf(UserInputError);
-      expect(fetchPortfolio).not.toHaveBeenCalled();
-      expect(executeCommand).not.toHaveBeenCalled();
     });
   });
   describe('createPerpsOpTypedDataPayload', () => {

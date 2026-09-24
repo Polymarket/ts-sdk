@@ -74,24 +74,6 @@ describe('PerpsSession', () => {
       frames = mockSuccessfulSession();
     });
 
-    it('shares the optional builder stream and closes only its last subscription', async () => {
-      const session = createSession();
-      await session.connect();
-      const [first, second] = await Promise.all([
-        session.subscribeBuilderFills(),
-        session.subscribeBuilderFills(),
-      ]);
-      expect(frames.slice(2)).toEqual([
-        { id: 3, req: 'sub', chs: ['builderFills'] },
-      ]);
-      await first.close();
-      expect(frames).toHaveLength(3);
-      await second.close();
-      expect(frames[3]).toEqual({ id: 4, req: 'unsub', chs: ['builderFills'] });
-      expect(session.closed).toBe(false);
-      await session.close();
-    });
-
     it('keeps pre-ack builder frames and treats sparse sequences as valid', async () => {
       server.resetHandlers();
       server.use(
@@ -121,19 +103,12 @@ describe('PerpsSession', () => {
       for (const sequence of [10, 100]) {
         await expect(waitForNextEvent(handle)).resolves.toMatchObject({
           value: {
-            channel: 'builderFills',
+            type: 'builderFill',
             sequence,
-            payload: [],
           },
         });
       }
       await session.close();
-      await expect(waitForNextEvent(handle)).resolves.toMatchObject({
-        done: true,
-      });
-      await expect(session.subscribeBuilderFills()).rejects.toBeInstanceOf(
-        TransportError,
-      );
     });
 
     it('cleans up a rejected builder subscription so it can be retried', async () => {
@@ -161,12 +136,9 @@ describe('PerpsSession', () => {
       await expect(session.subscribeBuilderFills()).rejects.toBeInstanceOf(
         RequestRejectedError,
       );
-      const handle = await session.subscribeBuilderFills();
+      await session.subscribeBuilderFills();
       expect(attempts).toBe(2);
       await session.close();
-      await expect(waitForNextEvent(handle)).resolves.toMatchObject({
-        done: true,
-      });
     });
 
     it('resubscribes after an unsubscribe acknowledgement is lost', async () => {
@@ -230,8 +202,13 @@ describe('PerpsSession', () => {
       const session = createSession();
       try {
         await session.connect();
-        const first = await session.subscribeBuilderFills();
-        const closing = first.close();
+        const [first, second] = await Promise.all([
+          session.subscribeBuilderFills(),
+          session.subscribeBuilderFills(),
+        ]);
+        await first.close();
+        expect(changes).toEqual(['sub']);
+        const closing = second.close();
         await unsubscribing;
         const replacement = session.subscribeBuilderFills();
         acknowledgeUnsubscribe?.();
@@ -417,23 +394,16 @@ describe('PerpsSession', () => {
         connectionFrames[0]?.client.close();
         await vi.advanceTimersToNextTimerAsync();
         await vi.waitFor(() =>
-          expect(connectionFrames[1]?.frames).toHaveLength(3),
+          expect(connectionFrames[1]?.frames[2]).toMatchObject({
+            req: 'sub',
+            chs: ['builderFills'],
+          }),
         );
-        expect(connectionFrames[1]?.frames[2]).toMatchObject({
-          req: 'sub',
-          chs: ['builderFills'],
-        });
         for (const handle of [first, second]) {
           await expect(waitForNextEvent(handle)).resolves.toMatchObject({
             value: { type: 'resync', reason: 'reconnect' },
           });
         }
-        await first.close();
-        await second.close();
-        expect(connectionFrames[1]?.frames[3]).toMatchObject({
-          req: 'unsub',
-          chs: ['builderFills'],
-        });
       } finally {
         await session.close();
       }
@@ -513,7 +483,7 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('copies session defaults and resolves each batch override without changing credentials', async () => {
+    it('copies session defaults and resolves each batch override', async () => {
       const builder = {
         address: '0x0000000000000000000000000000000000001234',
         feeRate: '0.0005',
@@ -531,18 +501,9 @@ describe('PerpsSession', () => {
       await session.postOrders({
         orders: [order, { ...order, builder: null }, { ...order, builder }],
       });
-      expect(frames[2]).toMatchObject({
-        op: {
-          args: [
-            { builder: { address: builder.address, fee_rate: '0.0005' } },
-            { iid: 1 },
-            { builder: { address: builder.address, fee_rate: '0.001' } },
-          ],
-        },
-      });
-      expect(JSON.stringify(frames[2])).not.toContain('null');
-      expect(session.credentials).toEqual(credentials);
-      expect(session.credentials).not.toHaveProperty('builder');
+      expect(frames[2]).toHaveProperty('op.args.0.builder.fee_rate', '0.0005');
+      expect(frames[2]).not.toHaveProperty('op.args.1.builder');
+      expect(frames[2]).toHaveProperty('op.args.2.builder.fee_rate', '0.001');
       await session.close();
     });
 

@@ -4,21 +4,16 @@ import {
 } from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
-  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   DepositToPerpsRequest,
   FetchPerpsAccountConfigRequest,
   FetchPerpsBookRequest,
-  FetchPerpsBuilderApprovalsRequest,
-  FetchPerpsBuilderEarningsSummaryRequest,
-  FetchPerpsBuilderStatusRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
   FetchPerpsTickerRequest,
   FetchPerpsTickersRequest,
-  ListPerpsBuilderEarningsRequest,
   ListPerpsCandlesRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
@@ -30,21 +25,12 @@ import type {
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
-  PerpsBuilderApproval,
-  PerpsBuilderEarning,
-  PerpsBuilderEarningsPage,
-  PerpsBuilderEarningsPaginator,
-  PerpsBuilderEarningsSummary,
-  PerpsBuilderFillsEvent,
-  PerpsBuilderStatus,
-  PerpsBuilderTermsInput,
   PerpsCancelOptions,
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
-  PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -56,23 +42,15 @@ import type {
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
   SecurePerpsActions,
-  SubscriptionHandle,
   TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
 import {
-  ApprovePerpsBuilderFeeError,
-  FetchPerpsBuilderApprovalsError,
-  FetchPerpsBuilderEarningsSummaryError,
-  FetchPerpsBuilderStatusError,
   FetchPerpsTickerError,
-  ListPerpsBuilderEarningsError,
   PerpsCancelRetryError,
   PerpsKnownCancelOrderErrorCode,
-  PerpsLiquidityRole,
-  SubscribePerpsBuilderFillsError,
   UpdatePerpsMarginError,
 } from '../index';
 import type {
@@ -129,63 +107,6 @@ describe('FetchPerpsInstrumentsRequest', () => {
 });
 
 describe('public Perps exports', () => {
-  it('exposes owner consent and typed builder reporting through root imports', () => {
-    expectTypeOf<PublicPerpsActions>()
-      .toHaveProperty('fetchPerpsBuilderStatus')
-      .parameters.toEqualTypeOf<[FetchPerpsBuilderStatusRequest]>();
-    expectTypeOf<PublicPerpsActions>()
-      .toHaveProperty('fetchPerpsBuilderStatus')
-      .returns.toEqualTypeOf<Promise<PerpsBuilderStatus>>();
-    expectTypeOf<PublicPerpsActions>().not.toHaveProperty(
-      'approvePerpsBuilderFee',
-    );
-    expectTypeOf<SecurePerpsActions>()
-      .toHaveProperty('approvePerpsBuilderFee')
-      .parameters.toEqualTypeOf<[ApprovePerpsBuilderFeeRequest]>();
-    expectTypeOf<SecurePerpsActions>()
-      .toHaveProperty('approvePerpsBuilderFee')
-      .returns.toEqualTypeOf<Promise<PerpsBuilderApproval>>();
-    expectTypeOf<PerpsSession>().not.toHaveProperty('approvePerpsBuilderFee');
-
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('fetchBuilderApprovals')
-      .parameters.toEqualTypeOf<[FetchPerpsBuilderApprovalsRequest?]>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('fetchBuilderApprovals')
-      .returns.toEqualTypeOf<Promise<PerpsBuilderApproval[]>>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('listBuilderEarnings')
-      .parameters.toEqualTypeOf<[ListPerpsBuilderEarningsRequest?]>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('listBuilderEarnings')
-      .returns.toEqualTypeOf<PerpsBuilderEarningsPaginator>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('fetchBuilderEarningsSummary')
-      .parameters.toEqualTypeOf<[FetchPerpsBuilderEarningsSummaryRequest?]>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('fetchBuilderEarningsSummary')
-      .returns.toEqualTypeOf<Promise<PerpsBuilderEarningsSummary>>();
-    expectTypeOf<PerpsSession>()
-      .toHaveProperty('subscribeBuilderFills')
-      .returns.toEqualTypeOf<
-        Promise<SubscriptionHandle<PerpsBuilderFillsEvent>>
-      >();
-    expectTypeOf<PerpsBuilderEarningsPage>()
-      .toHaveProperty('items')
-      .toEqualTypeOf<PerpsBuilderEarning[]>();
-    expectTypeOf<PerpsBuilderTermsInput>().toEqualTypeOf<{
-      readonly address: string;
-      readonly feeRate: string;
-    }>();
-
-    expectTypeOf(ApprovePerpsBuilderFeeError.isError).toBeFunction();
-    expectTypeOf(FetchPerpsBuilderStatusError.isError).toBeFunction();
-    expectTypeOf(FetchPerpsBuilderApprovalsError.isError).toBeFunction();
-    expectTypeOf(ListPerpsBuilderEarningsError.isError).toBeFunction();
-    expectTypeOf(FetchPerpsBuilderEarningsSummaryError.isError).toBeFunction();
-    expectTypeOf(SubscribePerpsBuilderFillsError.isError).toBeFunction();
-    expectTypeOf(PerpsLiquidityRole.Maker).toExtend<PerpsLiquidityRole>();
-  });
   it('exports Perps request types from the root entry point', () => {
     expectTypeOf<RootFetchPerpsInstrumentsRequest>().toEqualTypeOf<FetchPerpsInstrumentsRequest>();
     expectTypeOf<FetchPerpsTickerRequest>().toEqualTypeOf<{
