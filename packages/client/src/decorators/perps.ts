@@ -4,6 +4,7 @@ import type {
   PerpsFeeScheduleEntry,
   PerpsFundingRate,
   PerpsInstrument,
+  PerpsInternalTransferId,
   PerpsPublicTrade,
   PerpsTicker,
   PerpsWithdrawalId,
@@ -31,6 +32,8 @@ import {
   type PerpsSession,
   type RevokePerpsCredentialsRequest,
   revokePerpsCredentials,
+  type TransferPerpsCollateralRequest,
+  transferPerpsCollateral,
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
 } from '../actions';
@@ -63,6 +66,7 @@ export type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
@@ -71,7 +75,9 @@ export type {
   OpenPerpsSessionRequest,
   PerpsAutoCancelStatus,
   PerpsBookDepth,
+  PerpsCancelOptions,
   PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
@@ -96,6 +102,7 @@ export type {
   PostPerpsOrdersRequest,
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
@@ -113,6 +120,7 @@ export {
   ListPerpsTradesError,
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
+  TransferPerpsCollateralError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
@@ -319,6 +327,32 @@ export type SecurePerpsActions = PublicPerpsActions & {
   revokePerpsCredentials(request: RevokePerpsCredentialsRequest): Promise<void>;
 
   /**
+   * Transfers Perps collateral to another account.
+   *
+   * @remarks
+   * This owner-signed request is attempted once. If a timeout or server error
+   * occurs after submission, reconcile through internal-transfer history using
+   * the label before submitting another transfer.
+   *
+   * @example
+   * ```ts
+   * const transferId = await client.transferPerpsCollateral({
+   *   recipient: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+   *   amount: '100.00',
+   *   label: 'treasury-rebalance-42',
+   * });
+   * ```
+   *
+   * @throws {@link TransferPerpsCollateralError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  transferPerpsCollateral(
+    request: TransferPerpsCollateralRequest,
+  ): Promise<PerpsInternalTransferId>;
+
+  /**
    * Requests a Perps withdrawal to the authenticated wallet.
    *
    * @example
@@ -375,6 +409,7 @@ export function perpsActions(
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>
       revokePerpsCredentials(client, request),
+    transferPerpsCollateral: transferPerpsCollateral.bind(null, client),
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }

@@ -1,5 +1,9 @@
 export type * from '@polymarket/bindings';
-export { OrderSide, OrderType } from '@polymarket/bindings';
+export {
+  CommentParentEntityType,
+  OrderSide,
+  OrderType,
+} from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
 export {
   NotificationType,
@@ -23,6 +27,8 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsKnownCancelOrderErrorCode,
+  PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
   PerpsMarginType,
   PerpsNotificationOrderType,

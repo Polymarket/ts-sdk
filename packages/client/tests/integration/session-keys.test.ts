@@ -4,11 +4,14 @@ import {
   OrderPostStatus,
   SessionKeyKnownScope,
   SignerType,
+  TransferPerpsCollateralError,
+  UserInputError,
 } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { expectPresent } from '@polymarket/types';
 import { http } from 'viem';
 import { generatePrivateKey } from 'viem/accounts';
+import { vi } from 'vitest';
 import { describe, expect, it, publicClient } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
@@ -124,6 +127,29 @@ describe('Session keys', { timeout: 600_000 }, () => {
     annotate(`Token ID: ${tokenId}`);
 
     try {
+      const signing = vi.spyOn(sessionClient.signer, 'signTypedData');
+      const sending = vi.spyOn(globalThis, 'fetch');
+      try {
+        await expect(
+          sessionClient.transferPerpsCollateral({
+            // Stay non-transferable even if the owner check regresses.
+            amount: '0',
+            recipient: secureClientWithDepositWallet.account.signer,
+          }),
+        ).rejects.toSatisfy(
+          (error: unknown) =>
+            error instanceof UserInputError &&
+            TransferPerpsCollateralError.isError(error) &&
+            error.message ===
+              'Perps collateral transfers must be signed by the account owner.',
+        );
+        expect(signing).not.toHaveBeenCalled();
+        expect(sending).not.toHaveBeenCalled();
+      } finally {
+        signing.mockRestore();
+        sending.mockRestore();
+      }
+
       const response = await sessionClient.placeLimitOrder({
         postOnly: true,
         price: expectPresent(market.trading.minimumTickSize),

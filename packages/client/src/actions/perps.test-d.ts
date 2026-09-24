@@ -17,10 +17,17 @@ import type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsCancelOptions,
+  PerpsCancelOrderErrorCode,
+  PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
+  PerpsInternalTransfer,
+  PerpsInternalTransferId,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -28,13 +35,21 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecurePerpsActions,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
+import {
+  FetchPerpsTickerError,
+  PerpsCancelRetryError,
+  PerpsKnownCancelOrderErrorCode,
+  UpdatePerpsMarginError,
+} from '../index';
 import type { FetchPerpsInstrumentsRequest } from './perps';
 
 describe('FetchPerpsInstrumentsRequest', () => {
@@ -78,6 +93,7 @@ describe('public Perps exports', () => {
       FetchPerpsOrdersRequest,
       ListPerpsFillsRequest,
       ListPerpsFundingPaymentsRequest,
+      ListPerpsInternalTransfersRequest,
       ListPerpsDepositsRequest,
       ListPerpsWithdrawalsRequest,
       ListPerpsEquityHistoryRequest,
@@ -89,8 +105,11 @@ describe('public Perps exports', () => {
       CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
+      PerpsCancelOptions,
+      PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
+      TransferPerpsCollateralRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -106,5 +125,52 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exposes owner transfers only on secure Perps actions', () => {
+    const secureActions = {} as SecurePerpsActions;
+    const publicActions = {} as PublicPerpsActions;
+
+    expectTypeOf(secureActions.transferPerpsCollateral).returns.toEqualTypeOf<
+      Promise<PerpsInternalTransferId>
+    >();
+    // @ts-expect-error Collateral movement requires an owner-capable secure client.
+    void publicActions.transferPerpsCollateral;
+  });
+
+  it('exposes normalized internal-transfer history on Perps sessions', () => {
+    const session = {} as import('../index').PerpsSession;
+
+    expectTypeOf(session.listInternalTransfers).returns.toMatchTypeOf<
+      import('../index').Paginated<PerpsInternalTransfer[]>
+    >();
+  });
+
+  it('exports known cancel rejections and narrows rejected results', () => {
+    const result = undefined as unknown as PerpsCancelOrderResult;
+
+    if (result.status === 'err') {
+      expectTypeOf(result.error).toEqualTypeOf<PerpsCancelOrderErrorCode>();
+    } else {
+      expectTypeOf(result.error).toEqualTypeOf<undefined>();
+    }
+    void PerpsKnownCancelOrderErrorCode.OrderInFlight;
+  });
+
+  it('exposes retry failures with typed historical results for reconciliation', () => {
+    const error = new PerpsCancelRetryError('Retry failed', {
+      results: [],
+      pendingIndexes: [],
+      cause: new Error('Connection lost'),
+    });
+
+    expectTypeOf(error.results).toEqualTypeOf<
+      readonly PerpsCancelOrderResult[]
+    >();
+    expectTypeOf(error.pendingIndexes).toEqualTypeOf<readonly number[]>();
+    expectTypeOf(error.cause).toEqualTypeOf<unknown>();
+    expectTypeOf<
+      Extract<PerpsSessionTradingError, PerpsCancelRetryError>
+    >().toEqualTypeOf<PerpsCancelRetryError>();
   });
 });

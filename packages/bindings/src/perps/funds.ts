@@ -12,6 +12,7 @@ import {
   PerpsDepositStatusSchema,
   PerpsInternalTransferDirectionSchema,
   PerpsInternalTransferIdSchema,
+  PerpsInternalTransferTypeSchema,
   PerpsTxHashSchema,
   PerpsWithdrawalIdSchema,
   PerpsWithdrawalStatusSchema,
@@ -158,17 +159,49 @@ export const PerpsWithdrawalUpdateSchema = z
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export const PerpsInternalTransferSchema = z.object({
-  transferId: PerpsInternalTransferIdSchema,
-  asset: PerpsAssetSchema,
-  amount: BaseUnitsSchema,
-  direction: PerpsInternalTransferDirectionSchema,
-  counterparty: EvmAddressSchema,
-  label: z.string().optional(),
-  createdTimestamp: EpochMillisecondsSchema,
-});
+export const PerpsInternalTransferSchema = z
+  .object({
+    transfer_id: PerpsInternalTransferIdSchema,
+    type: PerpsInternalTransferTypeSchema,
+    asset: PerpsAssetSchema,
+    amount: DecimalStringSchema,
+    direction: PerpsInternalTransferDirectionSchema,
+    counterparty: EvmAddressSchema,
+    label: z.string().optional(),
+    created_timestamp: EpochMillisecondsSchema,
+  })
+  .transform((transfer) => ({
+    transferId: transfer.transfer_id,
+    type: transfer.type,
+    asset: transfer.asset,
+    amount: transfer.amount,
+    direction: transfer.direction,
+    counterparty: transfer.counterparty,
+    label: transfer.label,
+    createdTimestamp: transfer.created_timestamp,
+  }));
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsInternalTransfer = z.infer<typeof PerpsInternalTransferSchema>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const ListPerpsInternalTransfersResponseSchema = PerpsDataResponseSchema(
+  PerpsInternalTransferSchema,
+);
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsInternalTransferResponseSchema = z
+  .strictObject({
+    status: z.literal('ok'),
+    transfer_id: PerpsInternalTransferIdSchema,
+  })
+  .transform((response) => ({
+    status: response.status,
+    transferId: response.transfer_id,
+  }));
