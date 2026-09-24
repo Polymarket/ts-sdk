@@ -81,7 +81,9 @@ describe('Perps trading actions', () => {
           return schema.parse([{ oid: 123, status: 'ok' }]);
         },
       };
-      await postPerpsOrders(executor, { orders: [{ ...order, builder }] });
+      await postPerpsOrders(executor, {
+        orders: [{ ...order, builderAttribution: builder }],
+      });
     });
 
     it.each([
@@ -94,7 +96,12 @@ describe('Perps trading actions', () => {
       await expect(
         postPerpsOrders(
           { executeCommand },
-          { orders: [order, { ...order, builder: { ...builder, feeRate } }] },
+          {
+            orders: [
+              order,
+              { ...order, builderAttribution: { ...builder, feeRate } },
+            ],
+          },
         ),
       ).rejects.toBeInstanceOf(UserInputError);
       expect(executeCommand).not.toHaveBeenCalled();

@@ -260,7 +260,7 @@ export {
  */
 export type PerpsSessionOptions = {
   /** Local order defaults, independent of delegated authentication credentials. */
-  builder?: PerpsBuilderTermsInput;
+  builderAttribution?: PerpsBuilderTermsInput;
   chainId: number;
   credentials: PerpsCredentials;
   headers?: Record<string, string>;
@@ -326,7 +326,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly #eventWaiters = new Set<EventWaiter>();
   readonly #reconnectScheduler = new ReconnectScheduler();
   readonly #sequences = new Map<string, number>();
-  readonly #builder: PerpsBuilderTermsInput | undefined;
+  readonly #builderAttribution: PerpsBuilderTermsInput | undefined;
   readonly #builderQueues = new Set<Pushable<PerpsBuilderFillsEvent>>();
   #builderChange: Promise<void> = Promise.resolve();
   #builderSubscribed: boolean | undefined = false;
@@ -339,11 +339,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   constructor(options: PerpsSessionOptions) {
-    this.#builder =
-      options.builder === undefined
+    this.#builderAttribution =
+      options.builderAttribution === undefined
         ? undefined
         : Object.freeze(
-            parseUserInput(options.builder, PerpsBuilderTermsInputSchema),
+            parseUserInput(
+              options.builderAttribution,
+              PerpsBuilderTermsInputSchema,
+            ),
           );
     this.#api = new ServiceClient({
       headers: options.headers,
@@ -482,12 +485,15 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return change;
   }
 
-  #withBuilder<T extends { builder?: PerpsBuilderTermsInput | null }>(
-    request: T,
-  ): T {
+  #withBuilderAttribution<
+    T extends { builderAttribution?: PerpsBuilderTermsInput | null },
+  >(request: T): T {
     return {
       ...request,
-      builder: request?.builder === undefined ? this.#builder : request.builder,
+      builderAttribution:
+        request?.builderAttribution === undefined
+          ? this.#builderAttribution
+          : request.builderAttribution,
     };
   }
 
@@ -847,7 +853,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async placeOrder(
     request: PlacePerpsOrderRequestWithOptions,
   ): Promise<PlacePerpsOrderResult | PlacePerpsOrderWithTpSlResult> {
-    return await placePerpsOrder(this, this.#withBuilder(request));
+    return await placePerpsOrder(this, this.#withBuilderAttribution(request));
   }
 
   /**
@@ -867,7 +873,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await postPerpsOrders(this, {
       ...request,
       orders: Array.isArray(request?.orders)
-        ? request.orders.map((order) => this.#withBuilder(order))
+        ? request.orders.map((order) => this.#withBuilderAttribution(order))
         : request?.orders,
     });
   }
@@ -898,7 +904,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   async placePositionTpSl(
     request: PlacePerpsPositionTpSlRequest,
   ): Promise<PlacePerpsPositionTpSlResult> {
-    return await placePerpsPositionTpSl(this, this.#withBuilder(request));
+    return await placePerpsPositionTpSl(
+      this,
+      this.#withBuilderAttribution(request),
+    );
   }
 
   /**

@@ -343,8 +343,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
-   * Optional `builder` terms are local defaults for new orders and generated
-   * TP/SL exits. An order-level object replaces them; `builder: null` opts out.
+   * Optional `builderAttribution` terms are local defaults for new orders and
+   * generated TP/SL exits. An order-level object replaces them; `builderAttribution: null` opts out.
    * Configure defaults again when resuming credentials. Setup does not approve
    * fees: the trader must separately call `approvePerpsBuilderFee`.
    *

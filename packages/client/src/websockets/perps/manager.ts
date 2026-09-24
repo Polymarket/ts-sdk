@@ -44,7 +44,7 @@ export class PerpsSessionManager {
    */
   connect(
     credentials: PerpsCredentials,
-    builder?: PerpsBuilderTermsInput,
+    builderAttribution?: PerpsBuilderTermsInput,
   ): Promise<PerpsSession> {
     if (this.#hasShutdown) {
       return Promise.reject(
@@ -53,7 +53,7 @@ export class PerpsSessionManager {
     }
 
     const session = new PerpsSession({
-      builder,
+      builderAttribution,
       chainId: this.#chainId,
       credentials,
       headers: this.#headers,

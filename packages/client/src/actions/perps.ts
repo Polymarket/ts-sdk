@@ -984,7 +984,7 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
-  builder: PerpsBuilderTermsInputSchema.optional(),
+  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
   expiresIn: z
     .number()
     .int()
@@ -994,7 +994,7 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
-  builder: PerpsBuilderTermsInputSchema.optional(),
+  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -1017,7 +1017,7 @@ const RevokePerpsCredentialsRequestSchema =
  */
 export type CreatePerpsSessionRequest = {
   /** Optional defaults for new orders and their TP/SL exits. Does not grant fee approval. */
-  builder?: PerpsBuilderTermsInput;
+  builderAttribution?: PerpsBuilderTermsInput;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1032,7 +1032,7 @@ type ParsedCreatePerpsSessionRequest = z.output<
  */
 export type ResumePerpsSessionRequest = {
   /** Optional order defaults. Supply again when resuming; credentials do not store them. */
-  builder?: PerpsBuilderTermsInput;
+  builderAttribution?: PerpsBuilderTermsInput;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1258,11 +1258,12 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
- * Optional `builder` settings apply to new orders and generated TP/SL exits.
+ * Optional `builderAttribution` settings apply to new orders and generated
+ * TP/SL exits.
  * They remain fixed for the session and are not stored in its credentials.
  * Supply them again when resuming. Fee consent requires a separate owner
  * approval; session setup never creates or increases an approval. Individual
- * placements can replace the terms or use `builder: null` to opt out.
+ * placements can replace the terms or use `builderAttribution: null` to opt out.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
@@ -1278,7 +1279,10 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials, params.builder);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+  );
 }
 
 /**

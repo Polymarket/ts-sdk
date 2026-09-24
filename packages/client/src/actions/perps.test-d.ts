@@ -59,15 +59,18 @@ import type {
   ResumePerpsSessionRequest,
 } from './perps';
 
-describe('Perps session builder defaults', () => {
+describe('Perps session builder attribution defaults', () => {
   it('accepts plain address and exact fee strings when creating or resuming', () => {
-    const builder = {
+    const builderAttribution = {
       address: '0x1111111111111111111111111111111111111111',
       feeRate: '0.0005',
     };
-    const create: CreatePerpsSessionRequest = { builder, expiresIn: 60_000 };
+    const create: CreatePerpsSessionRequest = {
+      builderAttribution,
+      expiresIn: 60_000,
+    };
     function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
-      return { credentials, builder };
+      return { credentials, builderAttribution };
     }
     expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
     expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
@@ -75,12 +78,14 @@ describe('Perps session builder defaults', () => {
 
   it('rejects incomplete terms and the order-only opt-out marker at setup', () => {
     const incomplete: CreatePerpsSessionRequest = {
-      // @ts-expect-error Session builder defaults require both terms.
-      builder: { address: '0x1111111111111111111111111111111111111111' },
+      // @ts-expect-error Session builder attribution requires both terms.
+      builderAttribution: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     };
     const disabled: CreatePerpsSessionRequest = {
-      // @ts-expect-error Omit builder to open a session without attribution.
-      builder: null,
+      // @ts-expect-error Omit builderAttribution to open a session without attribution.
+      builderAttribution: null,
     };
     void incomplete;
     void disabled;

@@ -13,7 +13,7 @@ import type {
 } from './trading';
 
 const baseOrder = {
-  builder: {
+  builderAttribution: {
     address: '0x1111111111111111111111111111111111111111',
     feeRate: '0.0005',
   },
@@ -30,15 +30,20 @@ const gtcOrder = {
 
 describe('PlacePerpsOrderRequest', () => {
   it('accepts explicit opt-out and requires complete decimal-string terms', () => {
-    const optOut: PlacePerpsOrderRequest = { ...gtcOrder, builder: null };
+    const optOut: PlacePerpsOrderRequest = {
+      ...gtcOrder,
+      builderAttribution: null,
+    };
     const invalid: PlacePerpsOrderRequest = {
       ...gtcOrder,
       // @ts-expect-error Explicit terms must include both address and fee rate.
-      builder: { address: '0x1111111111111111111111111111111111111111' },
+      builderAttribution: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
     };
     const numericRate: PlacePerpsOrderRequest = {
       ...gtcOrder,
-      builder: {
+      builderAttribution: {
         address: '0x1111111111111111111111111111111111111111',
         // @ts-expect-error Rates must be exact decimal strings.
         feeRate: 0.0005,
@@ -205,12 +210,12 @@ describe('PlacePerpsPositionTpSlRequest', () => {
   it('accepts terms and explicit opt-out for generated position exits', () => {
     const tagged: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,
-      builder: baseOrder.builder,
+      builderAttribution: baseOrder.builderAttribution,
       takeProfit: { triggerPrice: '110' },
     };
     const untagged: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,
-      builder: null,
+      builderAttribution: null,
       stopLoss: { triggerPrice: '90' },
     };
     void tagged;
