@@ -116,6 +116,36 @@ describe('Portfolio', () => {
         expect(position.wallet).toBe(TEST_USER);
       }
     });
+
+    // REDEEMABLE_LOST and MERGEABLE are filter vocabulary: the service serves
+    // them but never echoes them back on a row, so parsing a page is what
+    // proves the narrowed row status holds.
+    for (const [status, rowStatus] of [
+      [PositionStatus.RedeemableLost, PositionStatus.Redeemable],
+      [PositionStatus.Mergeable, PositionStatus.Open],
+    ] as const) {
+      it(`lists ${status} positions as ${rowStatus} rows`, async ({
+        publicClient,
+      }) => {
+        const result = await publicClient
+          .listPositions({ user: TEST_USER, status, pageSize: 50 })
+          .firstPage();
+
+        for (const position of result.items) {
+          expect(position.status).toBe(rowStatus);
+          expect(position.wallet).toBe(TEST_USER);
+        }
+      });
+    }
+
+    it('rejects REDEEMABLE_LOST without a wallet', ({ publicClient }) => {
+      expect(() =>
+        publicClient.listPositions({
+          conditionId: TEST_CONDITION_ID,
+          status: PositionStatus.RedeemableLost,
+        }),
+      ).toThrow(UserInputError);
+    });
   });
 
   describe('listComboPositions', () => {
