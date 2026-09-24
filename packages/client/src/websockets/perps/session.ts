@@ -437,6 +437,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * This opt-in stream shares the session socket and is separate from account
    * events. It has no initial snapshot. On `resync`, reconcile with
    * `listBuilderEarnings` and deduplicate receipts by `earningId`.
+   * If the stream cannot be restored after a reconnect, each handle's iteration
+   * throws that error; subscribe again to retry.
    * The configured order builder does not change whose receipts are read.
    * Close each handle when finished; the last close unsubscribes this channel.
    *
@@ -1162,7 +1164,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     }
 
     if (this.#builderQueues.size > 0) {
-      await this.#syncBuilderSubscription();
+      try {
+        await this.#syncBuilderSubscription();
+      } catch (error) {
+        for (const queue of this.#builderQueues) queue.end(error);
+        this.#builderQueues.clear();
+        this.#builderSubscribed = undefined;
+        return;
+      }
       if (emitResync) {
         for (const queue of this.#builderQueues)
           queue.push({ type: 'resync', reason: 'reconnect' });
