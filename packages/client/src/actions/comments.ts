@@ -264,6 +264,9 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * point throws {@link PaginationLimitError} before any request is sent; the
  * pages already returned stay valid.
  *
+ * This is a hard stop for this listing: there are no range filters to retrieve
+ * the remaining comments.
+ *
  * @throws {@link ListCommentsByUserAddressError}
  * Thrown on failure.
  *

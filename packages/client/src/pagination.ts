@@ -67,7 +67,7 @@ export function paginate<T, TError>(
 
   function createPaginator(cursor = initialCursor): Paginated<T> {
     return {
-      firstPage() {
+      async firstPage() {
         return unwrap(fetchPage(cursor));
       },
       from(nextCursor) {
@@ -107,7 +107,7 @@ export function encodeOffsetCursor(state: OffsetCursorState): PaginationCursor {
 
 /** @internal */
 export type OffsetCursorLimits = {
-  /** Deepest offset the service serves; a cursor past it fails before any request. */
+  /** Largest cursor position the service serves; a cursor past it fails before any request. */
   maxOffset?: number;
   /** Largest page size the service serves; a cursor carrying more fails before any request. */
   maxPageSize?: number;
@@ -131,7 +131,7 @@ export function decodeOffsetCursor(
 
   if (limits.maxOffset !== undefined && state.offset > limits.maxOffset) {
     throw new PaginationLimitError(
-      `Pagination reached the deepest page served (offset ${limits.maxOffset}); whether more items exist cannot be established. Narrow the query to read further.`,
+      `Pagination reached this listing's supported depth limit (${limits.maxOffset}); whether more items exist cannot be established.`,
     );
   }
 

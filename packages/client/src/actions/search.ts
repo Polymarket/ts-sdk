@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -36,6 +37,8 @@ export enum SearchSort {
   StartDate = 'start_date',
   EndDate = 'end_date',
 }
+
+const MAX_SEARCH_PAGE = 100;
 
 const SearchRequestSchema = z.object({
   q: z.string().trim().min(1),
@@ -71,12 +74,14 @@ export type SearchResults = {
 };
 
 export type SearchError =
+  | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const SearchError = makeErrorGuard(
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -91,6 +96,10 @@ export const SearchError = makeErrorGuard(
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  * `keepClosedMarkets` is an hour window for including recently closed markets
  * when searching active events.
+ *
+ * Search serves up to 100 pages. Following a cursor beyond that limit throws
+ * {@link PaginationLimitError} before any request is sent; the pages already
+ * returned stay valid, but completeness cannot be established.
  *
  * @throws {@link SearchError}
  * Thrown on failure.
@@ -124,7 +133,10 @@ export function search(
 
   return paginate(
     (cursor) => {
-      const decoded = decodeOffsetCursor(cursor, pageSize);
+      // Search stores one-based page numbers in the offset cursor.
+      const decoded = decodeOffsetCursor(cursor, pageSize, {
+        maxOffset: MAX_SEARCH_PAGE,
+      });
 
       return client.gamma
         .get('/public-search', {

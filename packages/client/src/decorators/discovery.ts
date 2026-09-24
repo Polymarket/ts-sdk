@@ -429,6 +429,10 @@ export type DiscoveryActions = {
    * `keepClosedMarkets` is an hour window for including recently closed markets
    * when searching active events.
    *
+   * Search serves up to 100 pages. Following a cursor beyond that limit throws
+   * {@link PaginationLimitError} before any request is sent; the pages already
+   * returned stay valid, but completeness cannot be established.
+   *
    * @throws {@link SearchError}
    * Thrown on failure.
    *
@@ -597,6 +601,9 @@ export type DiscoveryActions = {
    * Pages starting past offset 200 are not served. Following a cursor past
    * that point throws {@link PaginationLimitError} before any request is
    * sent; the pages already returned stay valid.
+   *
+   * This is a hard stop for this listing: there are no range filters to
+   * retrieve the remaining comments.
    *
    * @throws {@link ListCommentsByUserAddressError}
    * Thrown on failure.
