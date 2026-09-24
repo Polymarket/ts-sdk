@@ -6,6 +6,7 @@ import {
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
+  TickSizeValueSchema,
 } from '@polymarket/bindings';
 import { type EvmAddress, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -25,7 +26,12 @@ import {
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
-import { fromScaledPrice, type ScaledPrice, toScaledPrice } from './fixed';
+import {
+  FIXED_SCALE,
+  fromScaledPrice,
+  type ScaledPrice,
+  toScaledPrice,
+} from './fixed';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -93,13 +99,6 @@ export async function prepareMarketOrderDraft(
     params,
     params.assetId,
   );
-  const amounts = computeMarketOrderAmounts({
-    amount: context.resolvedAmount,
-    price: context.price,
-    protectPrice: hasProtectedPrice(params),
-    side: params.side,
-    tickSize: context.tickSize,
-  });
 
   return {
     assetId: params.assetId,
@@ -108,21 +107,24 @@ export async function prepareMarketOrderDraft(
     exchangeAddress: context.exchangeAddress,
     expiration: 0,
     funderAddress: context.funderAddress,
-    offeredAmount: amounts.offeredAmount,
+    offeredAmount: context.amounts.offeredAmount,
     orderType: params.orderType,
     side: params.side,
     signer: context.signerAddress,
-    requestedAmount: amounts.requestedAmount,
+    requestedAmount: context.amounts.requestedAmount,
   };
 }
 
+type MarketOrderAmounts = {
+  offeredAmount: bigint;
+  requestedAmount: bigint;
+};
+
 type MarketOrderContext = {
+  amounts: MarketOrderAmounts;
   exchangeAddress: EvmAddress;
   funderAddress: EvmAddress;
-  price: ScaledPrice;
-  resolvedAmount: number;
   signerAddress: EvmAddress;
-  tickSize: TickSizeValue;
 };
 
 async function resolveMarketOrderContext(
@@ -140,131 +142,129 @@ async function resolveProtectedMarketOrderContext(
   params: PrepareMarketOrderDraftParams,
   assetId: ClobAssetId,
 ): Promise<MarketOrderContext> {
-  const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
+  const { amounts, metadata } = await resolveProtectedMarketOrderAmounts(
+    params,
+    {
+      resolveMarket: () => resolveOrderMarketMetadata(client, assetId),
+      fetchCurrentMarket: () =>
+        fetchCurrentOrderMarketMetadata(client, assetId),
+      resolveBuilderTakerFeeRate: () =>
+        resolveBuilderTakerFeeRate(client, params.builderCode),
+    },
+  );
 
-  if (params.side === OrderSide.BUY && params.maxSpend !== undefined) {
-    const { builderTakerFeeRate, market } = await resolveFeeInputs(
+  return {
+    amounts,
+    exchangeAddress: resolveOrderExchangeAddress(
       client,
       assetId,
-      params.builderCode,
-    );
+      metadata.negRisk,
+    ),
+    funderAddress: client.account.wallet,
+    signerAddress: client.account.signer,
+  };
+}
 
-    try {
-      return buildProtectedBuyMarketOrderContext(
-        client,
-        params,
-        assetId,
-        amount,
-        builderTakerFeeRate,
-        params.maxSpend,
-        market,
-      );
-    } catch (error) {
-      if (!(error instanceof UserInputError)) {
-        throw error;
-      }
+/** @internal */
+export type ProtectedMarketOrderDeps = {
+  resolveMarket(): Promise<OrderMarketMetadata>;
+  fetchCurrentMarket(): Promise<OrderMarketMetadata>;
+  resolveBuilderTakerFeeRate(): Promise<number>;
+};
 
-      const currentMarket = await fetchCurrentOrderMarketMetadata(
-        client,
-        assetId,
-      );
+type ProtectedMarketOrderAmounts = {
+  amounts: MarketOrderAmounts;
+  metadata: OrderMarketMetadata;
+};
 
-      return buildProtectedBuyMarketOrderContext(
-        client,
-        params,
-        assetId,
-        amount,
-        builderTakerFeeRate,
-        params.maxSpend,
-        currentMarket,
-      );
-    }
-  }
-
-  const metadata = await resolveOrderMarketMetadata(client, assetId);
+/** Resolves protected amounts, rebuilding once with fresh metadata on invalid input. @internal */
+export async function resolveProtectedMarketOrderAmounts(
+  params: PrepareMarketOrderDraftParams,
+  deps: ProtectedMarketOrderDeps,
+): Promise<ProtectedMarketOrderAmounts> {
+  const [metadata, builderTakerFeeRate] = await Promise.all([
+    deps.resolveMarket(),
+    params.side === OrderSide.BUY && params.maxSpend !== undefined
+      ? deps.resolveBuilderTakerFeeRate()
+      : 0,
+  ]);
 
   try {
-    return buildProtectedMarketOrderContext(
-      client,
-      params,
-      assetId,
-      amount,
+    return {
+      amounts: buildProtectedMarketOrderAmounts(
+        params,
+        metadata,
+        builderTakerFeeRate,
+      ),
       metadata,
-    );
+    };
   } catch (error) {
     if (!(error instanceof UserInputError)) {
       throw error;
     }
-
-    const currentMetadata = await fetchCurrentOrderMarketMetadata(
-      client,
-      assetId,
-    );
-
-    return buildProtectedMarketOrderContext(
-      client,
-      params,
-      assetId,
-      amount,
-      currentMetadata,
-    );
   }
+
+  const currentMetadata = await deps.fetchCurrentMarket();
+  return {
+    amounts: buildProtectedMarketOrderAmounts(
+      params,
+      currentMetadata,
+      builderTakerFeeRate,
+    ),
+    metadata: currentMetadata,
+  };
 }
 
-function buildProtectedBuyMarketOrderContext(
-  client: BaseSecureClient,
-  params: PrepareMarketOrderDraftParams,
-  assetId: ClobAssetId,
-  amount: number,
-  builderTakerFeeRate: number,
-  maxSpend: number,
-  metadata: OrderMarketMetadata,
-): MarketOrderContext {
-  const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
-  const priceNumber = fromScaledPrice(price);
+const MIN_SUPPORTED_TICK_SIZE = toScaledPrice(
+  Math.min(...TickSizeValueSchema.options.map((option) => option.value)),
+);
 
-  return {
-    exchangeAddress: resolveOrderExchangeAddress(
-      client,
-      assetId,
-      metadata.negRisk,
-    ),
-    funderAddress: client.account.wallet,
-    price,
-    resolvedAmount: adjustBuyAmountForFees({
+function buildProtectedMarketOrderAmounts(
+  params: PrepareMarketOrderDraftParams,
+  metadata: OrderMarketMetadata,
+  builderTakerFeeRate: number,
+): MarketOrderAmounts {
+  const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
+  let amount = params.side === OrderSide.BUY ? params.amount : params.shares;
+  if (params.side === OrderSide.BUY && params.maxSpend !== undefined) {
+    amount = adjustBuyAmountForFees({
       amount,
       builderTakerFeeRate,
-      maxSpend,
+      maxSpend: params.maxSpend,
       platformFeeExponent: metadata.feeInfo.exponent,
       platformFeeRate: metadata.feeInfo.rate,
-      price: priceNumber,
-    }),
-    signerAddress: client.account.signer,
-    tickSize: metadata.tickSize,
-  };
-}
+      price: fromScaledPrice(price),
+    });
+  }
 
-function buildProtectedMarketOrderContext(
-  client: BaseSecureClient,
-  params: PrepareMarketOrderDraftParams,
-  assetId: ClobAssetId,
-  amount: number,
-  metadata: OrderMarketMetadata,
-): MarketOrderContext {
-  const price = resolveProtectedMarketOrderPrice(params, metadata.tickSize);
-
-  return {
-    exchangeAddress: resolveOrderExchangeAddress(
-      client,
-      assetId,
-      metadata.negRisk,
-    ),
-    funderAddress: client.account.wallet,
+  const amounts = computeMarketOrderAmounts({
+    amount,
     price,
-    resolvedAmount: amount,
-    signerAddress: client.account.signer,
+    side: params.side,
     tickSize: metadata.tickSize,
-  };
+  });
+
+  if (params.side === OrderSide.BUY) {
+    if (amounts.offeredAmount <= 0n || amounts.requestedAmount <= 0n) {
+      throw new UserInputError(
+        'Protected BUY amount rounds to zero; increase amount and, if set, maxSpend.',
+      );
+    }
+
+    // Flooring shares makes the implied bid reach maxPrice. Keep it strictly
+    // below the next executable price, even if the cached tick becomes finer
+    // before submission. Check the final fee-adjusted amounts without division.
+    if (
+      amounts.offeredAmount * FIXED_SCALE >=
+      amounts.requestedAmount * (price + MIN_SUPPORTED_TICK_SIZE)
+    ) {
+      throw new UserInputError(
+        'Cannot preserve maxPrice with this BUY amount and tick precision; increase amount and, if set, maxSpend, or choose a different maxPrice.',
+      );
+    }
+  }
+
+  return amounts;
 }
 
 async function resolveUnprotectedMarketOrderContext(
@@ -304,15 +304,18 @@ async function resolveUnprotectedMarketOrderContext(
       orderBook.negRisk,
     ),
     funderAddress: client.account.wallet,
-    price,
-    resolvedAmount: resolveUnprotectedMarketOrderAmount(
-      params,
-      amount,
-      fromScaledPrice(price),
-      resolvedFeeInputs,
-    ),
+    amounts: computeMarketOrderAmounts({
+      amount: resolveUnprotectedMarketOrderAmount(
+        params,
+        amount,
+        fromScaledPrice(price),
+        resolvedFeeInputs,
+      ),
+      price,
+      side: params.side,
+      tickSize: orderBook.tickSize,
+    }),
     signerAddress: client.account.signer,
-    tickSize: orderBook.tickSize,
   };
 }
 
