@@ -145,8 +145,6 @@ export {
   type FetchPerpsBuilderEarningsSummaryRequest,
   ListPerpsBuilderEarningsError,
   type ListPerpsBuilderEarningsRequest,
-  type PerpsBuilderEarningsPage,
-  type PerpsBuilderEarningsPaginator,
   type PerpsBuilderFillsEvent,
   type PerpsBuilderFillUpdateEvent,
   type PerpsBuilderTermsInput,

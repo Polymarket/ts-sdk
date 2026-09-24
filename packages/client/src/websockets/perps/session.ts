@@ -6,6 +6,7 @@ import {
   type PerpsAutoCancelStatus,
   type PerpsBalance,
   type PerpsBuilderApproval,
+  type PerpsBuilderEarning,
   type PerpsBuilderEarningsSummary,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
@@ -99,7 +100,6 @@ import {
   fetchPerpsBuilderEarningsSummary,
   type ListPerpsBuilderEarningsRequest,
   listPerpsBuilderEarnings,
-  type PerpsBuilderEarningsPaginator,
 } from './actions/builders';
 import {
   type ArmPerpsAutoCancelRequest,
@@ -222,8 +222,6 @@ export type {
   FetchPerpsBuilderApprovalsRequest,
   FetchPerpsBuilderEarningsSummaryRequest,
   ListPerpsBuilderEarningsRequest,
-  PerpsBuilderEarningsPage,
-  PerpsBuilderEarningsPaginator,
 } from './actions/builders';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
@@ -556,20 +554,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Lists fee receipts earned by this authenticated account as a builder.
-   * Each page retains its reporting window and indexed sequence cutoff.
+   * To reconcile with totals, call `fetchBuilderEarningsSummary` first and pass
+   * its `snapshot` here; the snapshot pins the window and indexed sequence cutoff.
+   * Continuations keep the original window and cutoff.
    * The configured order builder does not change whose earnings are read.
    * @throws {@link ListPerpsBuilderEarningsError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   listBuilderEarnings(
     request?: ListPerpsBuilderEarningsRequest,
-  ): PerpsBuilderEarningsPaginator {
+  ): Paginated<PerpsBuilderEarning[]> {
     return listPerpsBuilderEarnings(this.#api, request);
   }
 
   /**
    * Fetches this builder account's earnings totals at a reporting cutoff.
-   * Pass a page's snapshot to reconcile totals against that same snapshot.
+   * Pass the returned `snapshot` to `listBuilderEarnings` to page the matching history.
    * Active approval count reflects current grants, independently of the cutoff.
    * @throws {@link FetchPerpsBuilderEarningsSummaryError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.

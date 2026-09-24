@@ -115,8 +115,6 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
-  PerpsBuilderEarningsPage,
-  PerpsBuilderEarningsPaginator,
   PerpsBuilderFillsEvent,
   PerpsBuilderFillUpdateEvent,
   PerpsBuilderTermsInput,
