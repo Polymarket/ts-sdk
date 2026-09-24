@@ -81,6 +81,7 @@ import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -1838,13 +1839,4 @@ function sendPerpsDepositTransaction(
     kind: 'sendPerpsDepositTransaction',
     request,
   };
-}
-
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
 }

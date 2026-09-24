@@ -5,7 +5,7 @@ import {
   type PerpsBuilderStatus,
   PerpsBuilderStatusSchema,
 } from '@polymarket/bindings/perps';
-import { type EvmSignature, invariant, unwrap } from '@polymarket/types';
+import { type EvmSignature, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient, BaseSecureClient } from '../../clients';
 import {
@@ -19,9 +19,13 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
+import type { TypedDataPayload } from '../../types';
 import { PerpsBuilderFeeRateInputSchema } from '../../websockets/perps/actions/builder-terms';
 import type { PerpsSession } from '../../websockets/perps/session';
-import { createPerpsOpTypedDataPayload } from '../../websockets/perps/signing';
+import {
+  createPerpsOpTypedDataPayload,
+  randomUint32,
+} from '../../websockets/perps/signing';
 import { snakeCase, toSearchParams } from '../params';
 
 const FetchPerpsBuilderStatusRequestSchema = z.object({
@@ -77,7 +81,7 @@ export async function fetchPerpsBuilderStatus(
   );
 }
 
-const ResolvedPerpsBuilderFeeSchema = z.object({
+const ResolvedPerpsBuilderFeeSchema = z.strictObject({
   builder: EvmAddressSchema,
   maxFeeRate: PerpsBuilderFeeRateInputSchema,
   approvalVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
@@ -139,7 +143,7 @@ export const ApprovePerpsBuilderFeeError = makeErrorGuard(
  * @throws {@link ApprovePerpsBuilderFeeError}
  * Thrown on failure.
  *
- * @experimental This API may change in a breaking way in any release, including patch releases.
+ * @internal
  */
 export async function approvePerpsBuilderFee(
   client: BaseSecureClient,
@@ -155,37 +159,27 @@ export async function approvePerpsBuilderFee(
     },
     ResolvedPerpsBuilderFeeSchema.omit({ approvalVersion: true }),
   );
-  let approvalVersion = input.approvalVersion;
-  if (approvalVersion === undefined) {
-    const approvals = await session.fetchBuilderApprovals({
-      builder: terms.builder,
-    });
-    const previous = approvals.find(
-      (approval) =>
-        approval.builder.toLowerCase() === terms.builder.toLowerCase(),
+  const approvalVersion =
+    input.approvalVersion ??
+    nextPerpsBuilderApprovalVersion(
+      await session.fetchBuilderApprovals({ builder: terms.builder }),
+      terms.builder,
     );
-    approvalVersion = (previous?.approvalVersion ?? 0) + 1;
-  }
 
   const params = parseUserInput(
     { ...terms, approvalVersion },
     ResolvedPerpsBuilderFeeSchema,
   );
-  const [salt] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(salt !== undefined, 'Expected a random Perps operation salt.');
-  const timestamp = Date.now();
+  const op: PerpsBuilderFeeApprovalOp = {
+    ...params,
+    chainId: client.environment.chainId,
+    salt: randomUint32(),
+    timestamp: Date.now(),
+  };
   let signature: EvmSignature;
   try {
     signature = await client.signer.signTypedData(
-      createPerpsOpTypedDataPayload({
-        chainId: client.environment.chainId,
-        op: [
-          'approveBuilder',
-          [params.builder, params.maxFeeRate, params.approvalVersion],
-        ],
-        salt,
-        timestamp,
-      }),
+      createPerpsBuilderFeeApprovalTypedData(op),
     );
   } catch (error) {
     throw SigningError.fromError(error, 'Could not sign builder consent');
@@ -194,22 +188,63 @@ export async function approvePerpsBuilderFee(
   return unwrap(
     client.perps
       .post('/v1/account/builder-approvals', {
-        json: {
-          op: {
-            type: 'approveBuilder',
-            args: {
-              builder: params.builder,
-              max_fee_rate: params.maxFeeRate,
-              approval_version: params.approvalVersion,
-            },
-          },
-          salt,
-          sig: signature,
-          ts: timestamp,
-        },
+        json: createPerpsBuilderFeeApprovalBody(op, signature),
       })
       .andThen(validateWith(PerpsBuilderApprovalSchema)),
   );
+}
+
+/** @internal Returns the saved version for the builder plus one, or 1. */
+export function nextPerpsBuilderApprovalVersion(
+  approvals: readonly PerpsBuilderApproval[],
+  builder: string,
+): number {
+  const previous = approvals.find(
+    (approval) => approval.builder.toLowerCase() === builder.toLowerCase(),
+  );
+  return (previous?.approvalVersion ?? 0) + 1;
+}
+
+/** @internal */
+export type PerpsBuilderFeeApprovalOp = {
+  chainId: number;
+  builder: string;
+  maxFeeRate: string;
+  approvalVersion: number;
+  salt: number;
+  timestamp: number;
+};
+
+/** @internal Typed data the owner signs to approve builder fees. */
+export function createPerpsBuilderFeeApprovalTypedData(
+  op: PerpsBuilderFeeApprovalOp,
+): TypedDataPayload {
+  return createPerpsOpTypedDataPayload({
+    chainId: op.chainId,
+    op: ['approveBuilder', [op.builder, op.maxFeeRate, op.approvalVersion]],
+    salt: op.salt,
+    timestamp: op.timestamp,
+  });
+}
+
+/** @internal Submission body carrying the signed approval values. */
+export function createPerpsBuilderFeeApprovalBody(
+  op: PerpsBuilderFeeApprovalOp,
+  signature: EvmSignature,
+) {
+  return {
+    op: {
+      type: 'approveBuilder',
+      args: {
+        builder: op.builder,
+        max_fee_rate: op.maxFeeRate,
+        approval_version: op.approvalVersion,
+      },
+    },
+    salt: op.salt,
+    sig: signature,
+    ts: op.timestamp,
+  };
 }
 
 /** @internal Owner-signing operation bound to the parent secure client. */
