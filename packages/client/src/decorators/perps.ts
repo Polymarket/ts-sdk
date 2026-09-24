@@ -345,7 +345,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * resume a previous session.
    * Optional `builderAttribution` terms are local defaults for new orders and
    * generated TP/SL exits. An order-level object replaces them; `builderAttribution: null` opts out.
-   * Configure defaults again when resuming credentials. Setup does not approve
+   * Omitted session settings inherit client defaults, including when resuming;
+   * `null` disables them for the session. Setup does not approve
    * fees: the trader must separately call `approvePerpsBuilderFee`.
    *
    * @example

@@ -200,8 +200,12 @@ describe('secure client gasless wallet setup', () => {
     });
   });
 
-  it('keeps an explicit EOA wallet bound to the EOA', async () => {
+  it('keeps an explicit EOA wallet and snapshots its Perps defaults', async () => {
     mockApiKeys();
+    const perpsBuilderAttribution = {
+      address: signerAddress,
+      feeRate: '0.0005',
+    };
 
     const client = await createSecureClient({
       apiKey,
@@ -209,7 +213,15 @@ describe('secure client gasless wallet setup', () => {
       environment,
       signer,
       wallet: signerAddress,
+      perpsBuilderAttribution,
     });
+
+    perpsBuilderAttribution.feeRate = '0.0009';
+    expect(client.perpsBuilderAttribution).toEqual({
+      address: signerAddress,
+      feeRate: '0.0005',
+    });
+    expect(Object.isFrozen(client.perpsBuilderAttribution)).toBe(true);
 
     expect(client.account).toEqual({
       signer: signerAddress,

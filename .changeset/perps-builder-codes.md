@@ -3,7 +3,7 @@
 '@polymarket/client': minor
 ---
 
-Add Perps Builder Codes with optional `builderAttribution` session defaults, per-placement overrides,
+Add Perps Builder Codes with optional `perpsBuilderAttribution` secure-client defaults, `builderAttribution` session and per-placement overrides,
 explicit opt-out, owner-signed fee approvals, and typed earnings reporting.
 
 Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
