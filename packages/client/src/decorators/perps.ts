@@ -1,6 +1,5 @@
 import type {
   PerpsBook,
-  PerpsBuilderApproval,
   PerpsBuilderStatus,
   PerpsCandle,
   PerpsFeeScheduleEntry,
@@ -40,8 +39,6 @@ import {
   withdrawFromPerps,
 } from '../actions';
 import {
-  type ApprovePerpsBuilderFeeRequest,
-  approvePerpsBuilderFee,
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
 } from '../actions/perps/builders';
@@ -311,21 +308,6 @@ export type PublicPerpsActions = {
  */
 export type SecurePerpsActions = PublicPerpsActions & {
   /**
-   * Approves or revokes a builder fee using the account owner's signature.
-   * Omitted terms use session defaults, then client defaults. Pass `session` to
-   * select between multiple open sessions. Omitted approvalVersion fetches the
-   * stored version and adds one (initially 1), opening a temporary one-minute
-   * session if needed. This requires an extra owner signature; the temporary
-   * connection is closed after the lookup.
-   * Pass maxFeeRate: "0" to revoke. Submission failures are not retried automatically.
-   * This does not change any session's local order defaults.
-   * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
-   * @experimental This API may change in a breaking way in any release, including patch releases.
-   */
-  approvePerpsBuilderFee(
-    request?: ApprovePerpsBuilderFeeRequest,
-  ): Promise<PerpsBuilderApproval>;
-  /**
    * Deposits collateral into Perps for the authenticated signer account.
    *
    * @example
@@ -350,9 +332,8 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * resume a previous session.
    * Optional `builderAttribution` terms are local defaults for new orders and
    * generated TP/SL exits. An order-level object replaces them; `builderAttribution: null` opts out.
-   * Omitted session settings inherit client defaults, including when resuming;
-   * `null` disables them for the session. Setup does not approve
-   * fees: the trader must separately call `approvePerpsBuilderFee`.
+   * Configure defaults again when resuming credentials. Setup does not approve
+   * fees: the trader must separately call `session.approveBuilderFee()`.
    *
    * @example
    * ```ts
@@ -464,7 +445,6 @@ export function perpsActions(
 
   return {
     ...actions,
-    approvePerpsBuilderFee: approvePerpsBuilderFee.bind(null, client),
     depositToPerps: (request) => depositToPerps(client, request),
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>

@@ -32,6 +32,11 @@ import {
 import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
+import type {
+  ApprovePerpsBuilderFeeError,
+  ApprovePerpsBuilderFeeRequest,
+  PerpsBuilderFeeApprover,
+} from '../../actions/perps/builders';
 import type { SubscriptionHandle } from '../../actions/subscriptions';
 import {
   makeErrorGuard,
@@ -43,7 +48,7 @@ import {
   TimeoutError,
   TransportError,
   type UnexpectedResponseError,
-  type UserInputError,
+  UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import type { Paginated } from '../../pagination';
@@ -159,6 +164,9 @@ const PerpsResponseEnvelopeSchema = z
   })
   .passthrough();
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type { ApprovePerpsBuilderFeeError };
+
 const PerpsSessionAckSchema = z
   .union([PerpsCommandAckSchema, z.array(PerpsCommandAckSchema)])
   .transform((response) =>
@@ -259,6 +267,8 @@ export {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsSessionOptions = {
+  /** @internal Owner approval operation supplied by the parent client. */
+  approveBuilderFee?: PerpsBuilderFeeApprover;
   /** Local order defaults, independent of delegated authentication credentials. */
   builderAttribution?: PerpsBuilderTermsInput;
   chainId: number;
@@ -313,6 +323,7 @@ export type PerpsSessionTradingError =
  */
 export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly credentials: PerpsCredentials;
+  readonly #approveBuilderFee: PerpsBuilderFeeApprover | undefined;
   readonly #api: ServiceClient;
   readonly #chainId: number;
   readonly #headers: Record<string, string> | undefined;
@@ -339,6 +350,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   constructor(options: PerpsSessionOptions) {
+    this.#approveBuilderFee = options.approveBuilderFee;
     this.#builderAttribution =
       options.builderAttribution === undefined
         ? undefined
@@ -503,6 +515,32 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
           ? this.#builderAttribution
           : request.builderAttribution,
     };
+  }
+
+  /**
+   * Approves builder fees with the parent client's owner signer.
+   * Omitted builder and maxFeeRate use this session's attribution settings.
+   * Omitted approvalVersion fetches the saved version and adds one (initially 1).
+   * Explicit parameters override defaults; maxFeeRate: "0" revokes permission.
+   * Submission failures are not automatically signed or submitted again.
+   *
+   * @example
+   * ```ts
+   * await session.approveBuilderFee();
+   * ```
+   * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async approveBuilderFee(
+    request?: ApprovePerpsBuilderFeeRequest,
+  ): Promise<PerpsBuilderApproval> {
+    if (this.closed) throw new TransportError('Perps session is closed.');
+    if (this.#approveBuilderFee === undefined) {
+      throw new UserInputError(
+        'Builder approval requires a session opened with a secure client.',
+      );
+    }
+    return this.#approveBuilderFee(this, request);
   }
 
   /**

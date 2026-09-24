@@ -32,6 +32,7 @@ import type {
   PerpsCancelRetryOptions,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -62,10 +63,18 @@ import type {
 } from './perps';
 
 describe('builder fee approval defaults', () => {
-  it('allows no arguments and partial overrides on the secure client', () => {
-    function approve(client: SecurePerpsActions) {
-      void client.approvePerpsBuilderFee();
-      void client.approvePerpsBuilderFee({ maxFeeRate: '0' });
+  it('keeps builder configuration and approval off the secure client', () => {
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
+    expectTypeOf<SecurePerpsActions>().not.toHaveProperty(
+      'approvePerpsBuilderFee',
+    );
+  });
+  it('allows no arguments and partial overrides on the session', () => {
+    function approve(session: PerpsSession) {
+      void session.approveBuilderFee();
+      void session.approveBuilderFee({ maxFeeRate: '0' });
     }
     void approve;
     const request: ApprovePerpsBuilderFeeRequest = {};
@@ -74,21 +83,6 @@ describe('builder fee approval defaults', () => {
 });
 
 describe('Perps session builder attribution defaults', () => {
-  it('accepts client defaults without requiring them', () => {
-    const defaults = {
-      perpsBuilderAttribution: {
-        address: '0x1111111111111111111111111111111111111111',
-        feeRate: '0.0005',
-      },
-    };
-    expectTypeOf(defaults).toExtend<
-      Pick<SecureClientOptions, 'perpsBuilderAttribution'>
-    >();
-    expectTypeOf({}).toExtend<
-      Pick<SecureClientOptions, 'perpsBuilderAttribution'>
-    >();
-  });
-
   it('accepts plain address and exact fee strings when creating or resuming', () => {
     const builderAttribution = {
       address: '0x1111111111111111111111111111111111111111',
@@ -105,7 +99,7 @@ describe('Perps session builder attribution defaults', () => {
     expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
   });
 
-  it('rejects incomplete terms and accepts session opt-out', () => {
+  it('rejects incomplete terms and the order-only opt-out marker at setup', () => {
     const incomplete: CreatePerpsSessionRequest = {
       // @ts-expect-error Session builder attribution requires both terms.
       builderAttribution: {
@@ -113,6 +107,7 @@ describe('Perps session builder attribution defaults', () => {
       },
     };
     const disabled: CreatePerpsSessionRequest = {
+      // @ts-expect-error Omit builderAttribution to open a session without attribution.
       builderAttribution: null,
     };
     void incomplete;

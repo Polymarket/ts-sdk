@@ -1,5 +1,6 @@
 import type { PerpsCredentials } from '@polymarket/bindings/perps';
-import { TransportError, UserInputError } from '../../errors';
+import type { PerpsBuilderFeeApprover } from '../../actions/perps/builders';
+import { TransportError } from '../../errors';
 import type { PerpsBuilderTermsInput } from './actions/builder-terms';
 import { PerpsSession } from './session';
 
@@ -45,6 +46,7 @@ export class PerpsSessionManager {
   connect(
     credentials: PerpsCredentials,
     builderAttribution?: PerpsBuilderTermsInput,
+    approveBuilderFee?: PerpsBuilderFeeApprover,
   ): Promise<PerpsSession> {
     if (this.#hasShutdown) {
       return Promise.reject(
@@ -54,6 +56,7 @@ export class PerpsSessionManager {
 
     const session = new PerpsSession({
       builderAttribution,
+      approveBuilderFee,
       chainId: this.#chainId,
       credentials,
       headers: this.#headers,
@@ -84,24 +87,6 @@ export class PerpsSessionManager {
 
     this.#connecting.add(connecting);
     return connecting;
-  }
-
-  /** @internal Selects an owned session without guessing between multiple sessions. */
-  getSession(session?: PerpsSession): PerpsSession | undefined {
-    if (session !== undefined) {
-      if (!this.#sessions.has(session) || session.closed) {
-        throw new UserInputError(
-          'session must be an open Perps session owned by this client.',
-        );
-      }
-      return session;
-    }
-    if (this.#sessions.size > 1) {
-      throw new UserInputError(
-        'Multiple Perps sessions are open. Pass session to select builder approval defaults and credentials.',
-      );
-    }
-    return this.#sessions.values().next().value;
   }
 
   /**

@@ -66,10 +66,6 @@ import {
   SportsWebSocketManager,
 } from './websockets';
 import {
-  type PerpsBuilderTermsInput,
-  PerpsBuilderTermsInputSchema,
-} from './websockets/perps/actions/builder-terms';
-import {
   type AuthenticationWorkflow,
   authenticateWith,
   requestAddress,
@@ -232,14 +228,6 @@ const BeginAuthenticationCredentialsSchema = z.object({
 
 export type BeginAuthenticationRequest = {
   /**
-   * Default builder attribution for Perps sessions. Session and order settings
-   * can override it or use `null` to opt out. Does not grant fee approval.
-   *
-   * @experimental This API may change in a breaking way in any release, including patch releases.
-   */
-  perpsBuilderAttribution?: PerpsBuilderTermsInput;
-
-  /**
    * Wallet address to authenticate as.
    *
    * Pass the signer address itself to authenticate as an EOA account.
@@ -268,7 +256,6 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
   z
     .object({
       wallet: EvmAddressSchema,
-      perpsBuilderAttribution: PerpsBuilderTermsInputSchema.optional(),
       credentials: BeginAuthenticationCredentialsSchema.optional(),
       nonce: z.number().int().nonnegative().optional(),
     })
@@ -285,7 +272,6 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
       if (value.credentials !== undefined) {
         return {
           wallet: value.wallet,
-          perpsBuilderAttribution: value.perpsBuilderAttribution,
           credentials: value.credentials,
         };
       }
@@ -293,14 +279,12 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
       if (value.nonce !== undefined) {
         return {
           wallet: value.wallet,
-          perpsBuilderAttribution: value.perpsBuilderAttribution,
           nonce: value.nonce,
         };
       }
 
       return {
         wallet: value.wallet,
-        perpsBuilderAttribution: value.perpsBuilderAttribution,
       };
     });
 
@@ -470,7 +454,6 @@ class BasePublicClient<
             params.credentials,
             identity,
             signer,
-            params.perpsBuilderAttribution,
           );
 
           try {
@@ -504,12 +487,7 @@ class BasePublicClient<
           timestamp,
         });
 
-        return this.#createSecureClient(
-          credentials,
-          identity,
-          signer,
-          params.perpsBuilderAttribution,
-        );
+        return this.#createSecureClient(credentials, identity, signer);
       }.call(this as unknown as PublicClient<TPublicActions, TSecureActions>),
     );
   }
@@ -518,11 +496,9 @@ class BasePublicClient<
     credentials: ApiKeyCreds,
     account: AccountIdentity,
     signer: Signer,
-    perpsBuilderAttribution?: PerpsBuilderTermsInput,
   ): SecureClient<TPublicActions, TSecureActions> {
     const client = new BaseSecureClient({
       account: account,
-      perpsBuilderAttribution,
       apiKey: this.context.apiKey,
       credentials,
       environment: this.environment,
@@ -569,15 +545,6 @@ class BaseSecureClient<
     });
     super({
       account: config.account,
-      perpsBuilderAttribution:
-        config.perpsBuilderAttribution === undefined
-          ? undefined
-          : Object.freeze(
-              parseUserInput(
-                config.perpsBuilderAttribution,
-                PerpsBuilderTermsInputSchema,
-              ),
-            ),
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
@@ -697,11 +664,6 @@ class BaseSecureClient<
   /** @internal */
   get signer(): Signer {
     return this.context.signer;
-  }
-
-  /** @internal */
-  get perpsBuilderAttribution(): PerpsBuilderTermsInput | undefined {
-    return this.context.perpsBuilderAttribution;
   }
 
   /** @internal */
@@ -878,8 +840,6 @@ class BaseSecureClient<
 
 type SecureContext = PublicContext & {
   /** @internal */
-  perpsBuilderAttribution?: PerpsBuilderTermsInput;
-  /** @internal */
   account: AccountIdentity;
   /** @internal */
   credentials: ApiKeyCreds;
@@ -896,7 +856,6 @@ type SecureContext = PublicContext & {
 };
 
 type SecureClientConfig = PublicClientConfig & {
-  perpsBuilderAttribution?: PerpsBuilderTermsInput;
   account: AccountIdentity;
   credentials: ApiKeyCreds;
   signer: Signer;
@@ -955,14 +914,6 @@ export type PublicClientOptions = {
 };
 
 export type SecureClientOptions = PublicClientOptions & {
-  /**
-   * Default builder attribution for Perps sessions. Session and order settings
-   * can override it or use `null` to opt out. Does not grant fee approval.
-   *
-   * @experimental This API may change in a breaking way in any release, including patch releases.
-   */
-  perpsBuilderAttribution?: PerpsBuilderTermsInput;
-
   /**
    * Wallet address to use as the account wallet.
    *
@@ -1058,10 +1009,6 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
 export async function createSecureClient(
   options: SecureClientOptions,
 ): Promise<SecureClient<PublicActions, SecureActions>> {
-  const perpsBuilderAttribution = parseUserInput(
-    options.perpsBuilderAttribution,
-    PerpsBuilderTermsInputSchema.optional(),
-  );
   const client = createPublicClient({
     environment: options.environment,
     apiKey: options.apiKey,
@@ -1073,7 +1020,6 @@ export async function createSecureClient(
     .beginAuthentication(
       {
         wallet,
-        perpsBuilderAttribution,
         credentials: options.credentials,
         nonce: options.nonce,
       },

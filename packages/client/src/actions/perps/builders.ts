@@ -20,10 +20,9 @@ import {
 import { parseUserInput } from '../../input';
 import { validateWith } from '../../response';
 import { PerpsBuilderFeeRateInputSchema } from '../../websockets/perps/actions/builder-terms';
-import { PerpsSession } from '../../websockets/perps/session';
+import type { PerpsSession } from '../../websockets/perps/session';
 import { createPerpsOpTypedDataPayload } from '../../websockets/perps/signing';
 import { snakeCase, toSearchParams } from '../params';
-import { openPerpsSession } from '../perps';
 
 const FetchPerpsBuilderStatusRequestSchema = z.object({
   address: EvmAddressSchema,
@@ -85,22 +84,20 @@ const ResolvedPerpsBuilderFeeSchema = z.object({
 });
 
 const ApprovePerpsBuilderFeeRequestSchema =
-  ResolvedPerpsBuilderFeeSchema.partial()
-    .extend({ session: z.instanceof(PerpsSession).optional() })
-    .default({}) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
+  ResolvedPerpsBuilderFeeSchema.partial().default(
+    {},
+  ) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ApprovePerpsBuilderFeeRequest = {
-  /** Builder address. Defaults to the selected session, then the client. */
+  /** Builder address. Defaults to the selected session. */
   builder?: string;
-  /** Maximum fee fraction. Defaults to session/client terms; zero revokes permission. */
+  /** Maximum fee fraction. Defaults to session terms; zero revokes permission. */
   maxFeeRate?: string;
   /** Omit to fetch the saved version and add one; the first approval uses 1. */
   approvalVersion?: number;
-  /** Open session owned by this client. Required to disambiguate multiple sessions. */
-  session?: PerpsSession;
 };
 
 /**
@@ -131,13 +128,11 @@ export const ApprovePerpsBuilderFeeError = makeErrorGuard(
  *
  * @remarks
  * A zero maximum revokes permission for new orders, including zero-rate orders.
- * Explicit parameters override session defaults, which override client defaults.
- * The client's single open session is selected automatically; pass `session`
- * when several are open. If the version is omitted, reads the saved approval
- * and submits its version plus one, or 1 for the first approval.
- * The lookup requires Perps credentials: when no session is open, this opens a
- * temporary session with one-minute credentials and closes it after the lookup.
- * Creating those credentials requires an additional owner signature.
+ * Explicit parameters override session defaults. Without session defaults,
+ * provide builder and maxFeeRate explicitly.
+ * If the version is omitted, reads this session's saved approval and submits
+ * its version plus one, or 1 for the first approval. Consent is signed with
+ * the parent client's owner signer, not the delegated session key.
  * Existing orders retain their saved terms. Conflicts and ambiguous submission
  * failures propagate without automatically signing or submitting again.
  *
@@ -148,19 +143,11 @@ export const ApprovePerpsBuilderFeeError = makeErrorGuard(
  */
 export async function approvePerpsBuilderFee(
   client: BaseSecureClient,
+  session: PerpsSession,
   request?: ApprovePerpsBuilderFeeRequest,
 ): Promise<PerpsBuilderApproval> {
   const input = parseUserInput(request, ApprovePerpsBuilderFeeRequestSchema);
-  const needsSession =
-    input.builder === undefined ||
-    input.maxFeeRate === undefined ||
-    input.approvalVersion === undefined;
-  let session =
-    input.session !== undefined || needsSession
-      ? client.webSockets.perpsSession.getSession(input.session)
-      : undefined;
-  const defaults =
-    session?.builderAttribution ?? client.perpsBuilderAttribution;
+  const defaults = session.builderAttribution;
   const terms = parseUserInput(
     {
       builder: input.builder ?? defaults?.address,
@@ -170,21 +157,16 @@ export async function approvePerpsBuilderFee(
   );
   let approvalVersion = input.approvalVersion;
   if (approvalVersion === undefined) {
-    const temporary = session === undefined;
-    session ??= await openPerpsSession(client, { expiresIn: 60_000 });
-    try {
-      const approvals = await session.fetchBuilderApprovals({
-        builder: terms.builder,
-      });
-      const previous = approvals.find(
-        (approval) =>
-          approval.builder.toLowerCase() === terms.builder.toLowerCase(),
-      );
-      approvalVersion = (previous?.approvalVersion ?? 0) + 1;
-    } finally {
-      if (temporary) await session.close();
-    }
+    const approvals = await session.fetchBuilderApprovals({
+      builder: terms.builder,
+    });
+    const previous = approvals.find(
+      (approval) =>
+        approval.builder.toLowerCase() === terms.builder.toLowerCase(),
+    );
+    approvalVersion = (previous?.approvalVersion ?? 0) + 1;
   }
+
   const params = parseUserInput(
     { ...terms, approvalVersion },
     ResolvedPerpsBuilderFeeSchema,
@@ -229,3 +211,9 @@ export async function approvePerpsBuilderFee(
       .andThen(validateWith(PerpsBuilderApprovalSchema)),
   );
 }
+
+/** @internal Owner-signing operation bound to the parent secure client. */
+export type PerpsBuilderFeeApprover = (
+  session: PerpsSession,
+  request?: ApprovePerpsBuilderFeeRequest,
+) => Promise<PerpsBuilderApproval>;

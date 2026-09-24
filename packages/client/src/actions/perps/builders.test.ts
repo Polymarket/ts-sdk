@@ -145,7 +145,6 @@ async function createClient() {
     wallet: owner,
     environment,
     credentials,
-    perpsBuilderAttribution: { address: builder, feeRate: '0.0005' },
   });
 }
 
@@ -153,34 +152,53 @@ describe('builder approval defaults', () => {
   it.each([
     undefined,
     7,
-  ])('resolves client defaults and saved version %s, then closes the temporary connection', async (version) => {
+  ])('uses session defaults and saved version %s', async (version) => {
     previousVersion = version;
     const client = await createClient();
-    const approval = await client.approvePerpsBuilderFee();
-    expect(approval).toMatchObject({
-      builder,
-      maxFeeRate: '0.0005',
-      approvalVersion: (version ?? 0) + 1,
+    const session = await client.openPerpsSession({
+      builderAttribution: { address: builder, feeRate: '0.0005' },
     });
-    expect(reads).toBe(1);
-    expect(submissions).toHaveLength(1);
-    expect(signTypedData).toHaveBeenCalledTimes(2); // Delegate credentials, then owner consent.
-    expect(keys[0]?.expiry).toBeLessThanOrEqual(Date.now() + 60_000);
-    expect(client.webSockets.perpsSession.getSession()).toBeUndefined();
+    try {
+      signTypedData.mockClear();
+      const approval = await session.approveBuilderFee();
+      expect(approval).toMatchObject({
+        builder,
+        maxFeeRate: '0.0005',
+        approvalVersion: (version ?? 0) + 1,
+      });
+      expect(reads).toBe(1);
+      expect(submissions).toHaveLength(1);
+      expect(signTypedData).toHaveBeenCalledTimes(1);
+      expect(session.closed).toBe(false);
+    } finally {
+      await session.close();
+    }
   });
 
-  it('uses session terms before client terms and lets explicit terms override either', async () => {
+  it('requires explicit terms without session defaults and performs no approval side effects', async () => {
+    const client = await createClient();
+    const session = await client.openPerpsSession();
+    try {
+      signTypedData.mockClear();
+      await expect(session.approveBuilderFee()).rejects.toMatchObject({
+        name: 'UserInputError',
+      });
+      expect(reads).toBe(0);
+      expect(submissions).toHaveLength(0);
+      expect(signTypedData).not.toHaveBeenCalled();
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('lets explicit terms override session terms, including revocation', async () => {
     const client = await createClient();
     const session = await client.openPerpsSession({
       builderAttribution: { address: sessionBuilder, feeRate: '0.0003' },
     });
     try {
-      await expect(client.approvePerpsBuilderFee()).resolves.toMatchObject({
-        builder: sessionBuilder,
-        maxFeeRate: '0.0003',
-      });
       await expect(
-        client.approvePerpsBuilderFee({
+        session.approveBuilderFee({
           builder,
           maxFeeRate: '0',
           approvalVersion: 9,
@@ -190,55 +208,97 @@ describe('builder approval defaults', () => {
         maxFeeRate: '0',
         approvalVersion: 9,
       });
-      expect(reads).toBe(1);
+      expect(reads).toBe(0);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('uses the receiving session when multiple sessions are open', async () => {
+    const client = await createClient();
+    const first = await client.openPerpsSession({
+      builderAttribution: { address: builder, feeRate: '0.0005' },
+    });
+    const second = await client.openPerpsSession({
+      builderAttribution: { address: sessionBuilder, feeRate: '0.0003' },
+    });
+    try {
+      await expect(first.approveBuilderFee()).resolves.toMatchObject({
+        builder,
+        maxFeeRate: '0.0005',
+      });
+      await expect(second.approveBuilderFee()).resolves.toMatchObject({
+        builder: sessionBuilder,
+        maxFeeRate: '0.0003',
+      });
+      expect(keys).toHaveLength(2);
+    } finally {
+      await Promise.all([first.close(), second.close()]);
+    }
+  });
+
+  it('skips lookup for an explicit version without configured defaults', async () => {
+    const client = await createClient();
+    const session = await client.openPerpsSession();
+    try {
+      signTypedData.mockClear();
+      await session.approveBuilderFee({
+        builder,
+        maxFeeRate: '0.0005',
+        approvalVersion: 4,
+      });
+      expect(reads).toBe(0);
+      expect(signTypedData).toHaveBeenCalledTimes(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('does not sign approval after a failed lookup', async () => {
+    readStatus = 401;
+    const client = await createClient();
+    const session = await client.openPerpsSession({
+      builderAttribution: { address: builder, feeRate: '0.0005' },
+    });
+    try {
+      signTypedData.mockClear();
+      await expect(session.approveBuilderFee()).rejects.toThrow();
+      expect(submissions).toHaveLength(0);
+      expect(signTypedData).not.toHaveBeenCalled();
       expect(session.closed).toBe(false);
     } finally {
       await session.close();
     }
   });
 
-  it('requires session selection when multiple sessions are open', async () => {
-    const client = await createClient();
-    const first = await client.openPerpsSession();
-    const second = await client.openPerpsSession({
-      builderAttribution: { address: sessionBuilder, feeRate: '0.0003' },
-    });
-    try {
-      await expect(client.approvePerpsBuilderFee()).rejects.toThrow(
-        'Multiple Perps sessions',
-      );
-      expect(reads).toBe(0);
-      await expect(
-        client.approvePerpsBuilderFee({ session: second }),
-      ).resolves.toMatchObject({ builder: sessionBuilder });
-    } finally {
-      await Promise.all([first.close(), second.close()]);
-    }
-  });
-
-  it('skips session creation and lookup for an explicit version', async () => {
-    const client = await createClient();
-    await client.approvePerpsBuilderFee({ approvalVersion: 4 });
-    expect(keys).toHaveLength(0);
-    expect(reads).toBe(0);
-    expect(signTypedData).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not sign approval after a failed lookup and closes the temporary connection', async () => {
-    readStatus = 401;
-    const client = await createClient();
-    await expect(client.approvePerpsBuilderFee()).rejects.toThrow();
-    expect(submissions).toHaveLength(0);
-    expect(signTypedData).toHaveBeenCalledTimes(1);
-    expect(client.webSockets.perpsSession.getSession()).toBeUndefined();
-  });
-
   it('does not sign or submit again after a version conflict', async () => {
     submitStatus = 409;
     const client = await createClient();
-    await expect(client.approvePerpsBuilderFee()).rejects.toThrow();
-    expect(reads).toBe(1);
-    expect(submissions).toHaveLength(1);
-    expect(signTypedData).toHaveBeenCalledTimes(2);
+    const session = await client.openPerpsSession({
+      builderAttribution: { address: builder, feeRate: '0.0005' },
+    });
+    try {
+      signTypedData.mockClear();
+      await expect(session.approveBuilderFee()).rejects.toThrow();
+      expect(reads).toBe(1);
+      expect(submissions).toHaveLength(1);
+      expect(signTypedData).toHaveBeenCalledTimes(1);
+    } finally {
+      await session.close();
+    }
+  });
+
+  it('rejects approval after the session closes without signing or fetching', async () => {
+    const client = await createClient();
+    const session = await client.openPerpsSession({
+      builderAttribution: { address: builder, feeRate: '0.0005' },
+    });
+    await session.close();
+    signTypedData.mockClear();
+    await expect(session.approveBuilderFee()).rejects.toThrow(
+      'Perps session is closed',
+    );
+    expect(reads).toBe(0);
+    expect(signTypedData).not.toHaveBeenCalled();
   });
 });
