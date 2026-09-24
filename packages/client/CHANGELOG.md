@@ -1,5 +1,26 @@
 # @polymarket/client
 
+## 0.12.0
+
+### Minor Changes
+
+- 348977a: Add `REDEEMABLE_LOST` and `MERGEABLE` to `PositionStatus` as `listPositions` filters. `REDEEMABLE_LOST` lists still-held zero-payout positions and requires `user`, so a request without one now fails locally with `UserInputError`. `MERGEABLE` lists live complementary pairs a wallet can merge back to collateral, sorted by `TOKENS` by default. Without `user` it falls back to the broader `OPEN` listing. Rows still report only `OPEN`, `REDEEMABLE`, or `CLOSED`, so `Position.status` is now typed as `PositionRowStatus`. Lost rows report `REDEEMABLE` and mergeable rows report `OPEN`.
+- 2393b48: Type known Perps cancellation rejections while preserving unrecognized identifiers, and retry transient `order_in_flight` results with configurable bounded backoff.
+
+  When a later cancellation attempt fails, throw `PerpsCancelRetryError` with the last received results in original request order, the pending request indexes, and the underlying cause. Earlier confirmed outcomes remain available; pending entries describe the previous attempt and must be reconciled if the retry's response was lost. Initial-attempt failures keep their existing error types.
+
+- e7b7af1: Add owner-signed Perps internal transfers and normalized transfer history.
+
+  Preserve submillisecond transfers at history page boundaries. If a full
+  millisecond cannot be paged safely, report an error instead of omitting records.
+
+### Patch Changes
+
+- Updated dependencies [348977a]
+- Updated dependencies [2393b48]
+- Updated dependencies [e7b7af1]
+  - @polymarket/bindings@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes
