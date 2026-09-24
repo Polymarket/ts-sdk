@@ -1,6 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { EventSchema, TeamOrdering } from './event';
+import {
+  EventSchema,
+  ListSportsMetadataResponseSchema,
+  TeamOrdering,
+} from './event';
 import { ProtocolVersion } from './market';
+
+const rawSport = {
+  id: 1,
+  sport: 'nfl',
+  image: '',
+  resolution: '',
+  ordering: '1',
+  tags: '1',
+  series: '1',
+};
+
+describe('ListSportsMetadataResponseSchema', () => {
+  it('preserves the sport name without changing the sport code', () => {
+    const sports = ListSportsMetadataResponseSchema.parse([
+      { ...rawSport, name: 'National Football League' },
+    ]);
+
+    expect(sports[0]?.name).toBe('National Football League');
+    expect(sports[0]?.sport).toBe('nfl');
+  });
+
+  it('keeps sport names nullish when absent', () => {
+    const sports = ListSportsMetadataResponseSchema.parse([
+      rawSport,
+      { ...rawSport, name: null },
+    ]);
+
+    expect(sports.map((sport) => sport.name)).toEqual([undefined, null]);
+  });
+});
 
 describe('EventSchema', () => {
   it('exposes the protocol version shared by its markets', () => {
@@ -41,5 +75,15 @@ describe('EventSchema', () => {
       TeamOrdering.Home,
       TeamOrdering.Away,
     ]);
+  });
+
+  it('preserves the nested sport name without changing the sport code', () => {
+    const event = EventSchema.parse({
+      id: '570146',
+      sport: { ...rawSport, name: 'National Football League' },
+    });
+
+    expect(event.sports.sport?.name).toBe('National Football League');
+    expect(event.sports.sport?.sport).toBe('nfl');
   });
 });
