@@ -47,6 +47,24 @@ export enum PositionStatus {
 
 export const PositionStatusSchema = z.enum(PositionStatus);
 
+/**
+ * The statuses a position row itself reports, which is narrower than the
+ * listing filter: `REDEEMABLE_LOST` and `MERGEABLE` are filter vocabulary
+ * only. A lost holding still reports `REDEEMABLE`, and a mergeable one
+ * reports `OPEN`.
+ */
+export const PositionRowStatusSchema = PositionStatusSchema.extract([
+  // `extract` keys off the enum member names, not their values.
+  'Open',
+  'Redeemable',
+  'Closed',
+]);
+
+export type PositionRowStatus =
+  | PositionStatus.Open
+  | PositionStatus.Redeemable
+  | PositionStatus.Closed;
+
 /** Sort key for position listings. */
 export enum PositionSortBy {
   CurrentValue = 'CURRENT_VALUE',
@@ -122,9 +140,10 @@ export type Position = {
   percentRealizedPnl: DecimalString;
   /**
    * The row's actual state — can be narrower than the requested status,
-   * since an OPEN request also returns REDEEMABLE rows.
+   * since an OPEN request also returns REDEEMABLE rows, and a
+   * REDEEMABLE_LOST or MERGEABLE listing reports REDEEMABLE or OPEN rows.
    */
-  status: PositionStatus;
+  status: PositionRowStatus;
   redeemable: boolean;
   mergeable: boolean;
   negativeRisk: boolean;
@@ -179,7 +198,7 @@ export const PositionSchema = z
     total_pnl: DecimalishSchema,
     percent_pnl: DecimalishSchema,
     percent_realized_pnl: DecimalishSchema,
-    status: PositionStatusSchema,
+    status: PositionRowStatusSchema,
     redeemable: z.boolean(),
     mergeable: z.boolean(),
     negative_risk: z.boolean(),
