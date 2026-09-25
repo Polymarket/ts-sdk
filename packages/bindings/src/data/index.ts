@@ -1,5 +1,6 @@
 export * from './activity';
 export * from './analytics';
+export * from './approvals';
 export * from './common';
 export * from './envelope';
 export * from './leaderboard';
