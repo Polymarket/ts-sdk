@@ -13,35 +13,35 @@ describe('Approvals', () => {
       publicClient,
     }) => {
       const originalFetch = globalThis.fetch;
-      const rpcMethods: string[] = [];
+      const requests: Request[] = [];
       const fetchSpy = vi
         .spyOn(globalThis, 'fetch')
         .mockImplementation(async (input, init) => {
           const request =
             input instanceof Request ? input.clone() : new Request(input, init);
-          const payload = (await request.clone().json()) as
-            | { method: string }
-            | { method: string }[];
-          const requests = Array.isArray(payload) ? payload : [payload];
-
-          rpcMethods.push(...requests.map(({ method }) => method));
+          requests.push(request);
 
           return originalFetch(input, init);
         });
 
       try {
         const state = await publicClient.fetchTradingApprovalsState({
-          user: ZERO_ADDRESS,
+          user: '0x00000000000000000000000000000000000000aa',
         });
 
         expect(state.isFullyApproved).toBe(false);
         expect(state.missing.erc20).toHaveLength(7);
-        expect(state.missing.erc1155).toHaveLength(8);
+        expect(state.missing.erc1155).toHaveLength(10);
         expect(
           state.missing.erc20.every(({ amount }) => amount === 2n ** 256n - 1n),
         ).toBe(true);
-        expect(rpcMethods.length).toBeGreaterThan(0);
-        expect(rpcMethods.every((method) => method === 'eth_call')).toBe(true);
+        expect(requests).toHaveLength(1);
+        const request = requests[0];
+        expect(request?.method).toBe('GET');
+        expect(new URL(request?.url ?? '').pathname).toBe('/v2/approvals');
+        expect(new URL(request?.url ?? '').searchParams.get('user')).toBe(
+          '0x00000000000000000000000000000000000000aa',
+        );
       } finally {
         fetchSpy.mockRestore();
       }
@@ -56,22 +56,29 @@ describe('Approvals', () => {
         secureClientWithDepositWallet.rpc,
         'ethCallBatch',
       );
-      const encodedWallet = secureClientWithDepositWallet.account.wallet
-        .slice(2)
-        .toLowerCase();
+      const originalFetch = globalThis.fetch;
+      const urls: URL[] = [];
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation((input, init) => {
+          const request =
+            input instanceof Request ? input : new Request(input, init);
+          urls.push(new URL(request.url));
+          return originalFetch(input, init);
+        });
 
       try {
         await secureClientWithDepositWallet.fetchTradingApprovalsState();
 
-        expect(ethCallBatchSpy).toHaveBeenCalledOnce();
-        const [requests] = ethCallBatchSpy.mock.calls[0] ?? [];
-        expect(
-          requests?.every(({ data }) =>
-            data.toLowerCase().includes(encodedWallet),
-          ),
-        ).toBe(true);
+        expect(ethCallBatchSpy).not.toHaveBeenCalled();
+        expect(urls).toHaveLength(1);
+        expect(urls[0]?.pathname).toBe('/v2/approvals');
+        expect(urls[0]?.searchParams.get('user')?.toLowerCase()).toBe(
+          secureClientWithDepositWallet.account.wallet.toLowerCase(),
+        );
       } finally {
         ethCallBatchSpy.mockRestore();
+        fetchSpy.mockRestore();
       }
     });
   });
