@@ -37,7 +37,8 @@ export class UserInputError extends PolymarketError {
  * Some list endpoints cap how far an offset-paginated read may go and reject
  * requests past the cap. The SDK throws this before sending such a request;
  * the pages already returned stay valid, but whether more items exist past
- * the cap cannot be established.
+ * the cap cannot be established. Automatic iteration stops normally on a page
+ * with `limitReached: true`; explicitly resuming past the cap still throws.
  */
 export class PaginationLimitError extends PolymarketError {
   override name = 'PaginationLimitError' as const;

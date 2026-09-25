@@ -95,9 +95,10 @@ export const ListCommentsError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pages starting past offset 200 are not served. Following a cursor past that
- * point throws {@link PaginationLimitError} before any request is sent; the
- * pages already returned stay valid.
+ * Pages starting past offset 200 are not served. Automatic iteration yields
+ * the last accessible full page with `limitReached: true` and stops normally;
+ * `hasMore` stays true because completeness cannot be established. Explicitly
+ * following its cursor throws {@link PaginationLimitError} before any request.
  *
  * @throws {@link ListCommentsError}
  * Thrown on failure.
@@ -174,6 +175,8 @@ export function listComments(
         return {
           items: comments,
           hasMore,
+          limitReached:
+            hasMore && decoded.offset + decoded.pageSize > MAX_COMMENTS_OFFSET,
           nextCursor: hasMore
             ? encodeOffsetCursor({
                 offset: decoded.offset + decoded.pageSize,
@@ -260,9 +263,10 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pages starting past offset 200 are not served. Following a cursor past that
- * point throws {@link PaginationLimitError} before any request is sent; the
- * pages already returned stay valid.
+ * Pages starting past offset 200 are not served. Automatic iteration yields
+ * the last accessible full page with `limitReached: true` and stops normally;
+ * `hasMore` stays true because completeness cannot be established. Explicitly
+ * following its cursor throws {@link PaginationLimitError} before any request.
  *
  * This is a hard stop for this listing: there are no range filters to retrieve
  * the remaining comments.
@@ -334,6 +338,8 @@ export function listCommentsByUserAddress(
         return {
           items: comments,
           hasMore,
+          limitReached:
+            hasMore && decoded.offset + decoded.pageSize > MAX_COMMENTS_OFFSET,
           nextCursor: hasMore
             ? encodeOffsetCursor({
                 offset: decoded.offset + decoded.pageSize,

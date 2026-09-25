@@ -1,10 +1,12 @@
 import { toPaginationCursor } from '@polymarket/bindings';
 import {
+  type Page,
   PaginationLimitError,
   SearchError,
   SearchSort,
   UserInputError,
 } from '@polymarket/client';
+import type { SearchResults } from '@polymarket/client/actions';
 import { afterEach, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 
@@ -48,7 +50,7 @@ describe('Search', () => {
       }
     });
 
-    it('requests the deepest supported search page', async ({
+    it('stops normally after the deepest supported search page', async ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -56,9 +58,20 @@ describe('Search', () => {
         btoa(JSON.stringify({ offset: 100, pageSize: 1 })),
       );
 
-      await publicClient
-        .search({ q: 'trump', pageSize: 1, cursor })
-        .firstPage();
+      const paginator = publicClient.search({
+        q: 'trump',
+        pageSize: 1,
+        cursor,
+      });
+      const pages: Page<SearchResults>[] = [];
+      for await (const page of paginator) {
+        pages.push(page);
+      }
+
+      expect(pages).toHaveLength(1);
+      expect(pages[0]).toEqual(
+        expect.objectContaining({ hasMore: true, limitReached: true }),
+      );
 
       const requests = fetchSpy.mock.calls
         .map(
@@ -70,6 +83,11 @@ describe('Search', () => {
       expect(requests).toHaveLength(1);
       expect(requests[0]?.searchParams.get('page')).toBe('100');
       expect(requests[0]?.searchParams.get('limit_per_type')).toBe('1');
+      fetchSpy.mockClear();
+      await expect(
+        paginator.from(pages[0]?.nextCursor).firstPage(),
+      ).rejects.toThrow(PaginationLimitError);
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('rejects search pages past the depth limit before sending a request', async ({

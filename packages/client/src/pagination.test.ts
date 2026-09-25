@@ -1,11 +1,65 @@
 import { okAsync } from '@polymarket/types';
 import { describe, expect, it } from 'vitest';
 import { PaginationLimitError, UserInputError } from './errors';
-import { decodeOffsetCursor, encodeOffsetCursor, paginate } from './pagination';
+import {
+  decodeOffsetCursor,
+  encodeOffsetCursor,
+  type Page,
+  paginate,
+} from './pagination';
 
 const LIMITS = { maxOffset: 200, maxPageSize: 100 };
 
 describe('paginate', () => {
+  it('yields a depth-limited page and stops without following its cursor', async () => {
+    const boundaryCursor = encodeOffsetCursor({ offset: 200, pageSize: 100 });
+    const nextCursor = encodeOffsetCursor({ offset: 300, pageSize: 100 });
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate((cursor) => {
+      requested.push(cursor);
+      decodeOffsetCursor(cursor, 100, LIMITS);
+      return okAsync({
+        items: cursor === undefined ? [1] : [2],
+        hasMore: true,
+        limitReached: cursor === boundaryCursor,
+        nextCursor: cursor === undefined ? boundaryCursor : nextCursor,
+      });
+    });
+    const pages: Page<number[]>[] = [];
+
+    for await (const page of paginator) {
+      pages.push(page);
+    }
+
+    expect(requested).toEqual([undefined, boundaryCursor]);
+    expect(pages).toHaveLength(2);
+    expect(pages[1]).toEqual({
+      items: [2],
+      hasMore: true,
+      limitReached: true,
+      nextCursor,
+    });
+    await expect(paginator.from(nextCursor).firstPage()).rejects.toThrow(
+      PaginationLimitError,
+    );
+  });
+
+  it('does not hide a fetch error when a page has no depth-limit signal', async () => {
+    const nextCursor = encodeOffsetCursor({ offset: 300, pageSize: 100 });
+    const paginator = paginate((cursor) => {
+      decodeOffsetCursor(cursor, 100, LIMITS);
+      return okAsync({ items: [1], hasMore: true, nextCursor });
+    });
+    const pages: Page<number[]>[] = [];
+
+    await expect(async () => {
+      for await (const page of paginator) {
+        pages.push(page);
+      }
+    }).rejects.toThrow(PaginationLimitError);
+    expect(pages).toHaveLength(1);
+  });
+
   it('rejects firstPage through its promise when cursor validation throws', async () => {
     let fetchedPages = 0;
     const paginator = paginate((cursor) => {

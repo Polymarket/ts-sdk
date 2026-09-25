@@ -97,9 +97,10 @@ export const SearchError = makeErrorGuard(
  * `keepClosedMarkets` is an hour window for including recently closed markets
  * when searching active events.
  *
- * Search serves up to 100 pages. Following a cursor beyond that limit throws
- * {@link PaginationLimitError} before any request is sent; the pages already
- * returned stay valid, but completeness cannot be established.
+ * Search serves up to 100 pages. If more results may exist at that boundary,
+ * automatic iteration yields the page with `limitReached: true` and stops
+ * normally, keeping `hasMore` true. Explicitly following its cursor throws
+ * {@link PaginationLimitError} before any request. Completeness is unknown.
  *
  * @throws {@link SearchError}
  * Thrown on failure.
@@ -155,6 +156,9 @@ export function search(
         .map((response) => ({
           items: toSearchResults(response),
           hasMore: response.pagination?.hasMore ?? false,
+          limitReached:
+            (response.pagination?.hasMore ?? false) &&
+            decoded.offset + 1 > MAX_SEARCH_PAGE,
           totalCount: response.pagination?.totalResults ?? undefined,
           nextCursor: response.pagination?.hasMore
             ? encodeOffsetCursor({

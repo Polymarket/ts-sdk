@@ -17,11 +17,18 @@ export type Page<T> = {
    * reports `true` and the follow-up request returns an empty final page when
    * the collection ended exactly on a page boundary.
    *
-   * On lists with a depth limit, the deepest served page still reports `true`
-   * when it is full; following its cursor throws
-   * {@link PaginationLimitError} instead of sending a request.
+   * A depth-limited page can report `true` alongside `limitReached`.
+   * Automatic iteration stops there; explicitly following its cursor throws
+   * {@link PaginationLimitError} before sending a request.
    */
   hasMore: boolean;
+  /**
+   * Whether the listing's supported depth prevents fetching another page.
+   * Automatic iteration yields this page, then stops normally. This signals
+   * that completeness cannot be established, not that more items definitely
+   * exist. Absent or false when no depth limit stopped continuation.
+   */
+  limitReached?: boolean;
   nextCursor?: PaginationCursor;
   /** Total number of matching items across all pages. Only present when the service reports one. */
   totalCount?: number;
@@ -85,7 +92,7 @@ export function paginate<T, TError>(
 
           yield page;
 
-          if (!page.hasMore) {
+          if (!page.hasMore || page.limitReached) {
             return;
           }
 
