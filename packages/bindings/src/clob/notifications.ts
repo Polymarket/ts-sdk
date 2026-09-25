@@ -15,6 +15,7 @@ import {
   DecimalStringSchema,
   EpochMillisecondsSchema,
   EvmAddressSchema,
+  emptyStringToUndefined,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
   NotificationIdSchema,
@@ -50,15 +51,6 @@ export enum NotificationType {
 }
 
 export const NotificationTypeSchema = z.enum(NotificationType);
-
-/**
- * Preprocess helper for upstream fields that serialize missing values as
- * empty strings and whose populated form is a validated format that rejects
- * `''`. Normalizes `''` to `undefined` so the field can parse as optional.
- */
-function emptyStringToUndefined(value: unknown): unknown {
-  return value === '' ? undefined : value;
-}
 
 /**
  * Payload of an order lifecycle notification (cancellation, fill, and
