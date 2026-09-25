@@ -14,6 +14,7 @@ import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -31,11 +32,19 @@ import {
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
+// Matches the upstream per-request limit cap and offset cap on the comments
+// listings; pages starting past the offset cap are rejected upstream.
+const MAX_COMMENTS_PAGE_SIZE = 100;
+const MAX_COMMENTS_OFFSET = 200;
+const COMMENT_CURSOR_LIMITS = {
+  maxOffset: MAX_COMMENTS_OFFSET,
+  maxPageSize: MAX_COMMENTS_PAGE_SIZE,
+};
+
 const ListCommentsRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
-  // Matches the upstream per-request limit cap.
-  pageSize: PageSizeSchema.max(100).default(20),
+  pageSize: PageSizeSchema.max(MAX_COMMENTS_PAGE_SIZE).default(20),
   getPositions: z.boolean().optional(),
   holdersOnly: z.boolean().optional(),
   order: z.string().optional(),
@@ -53,8 +62,7 @@ const ListCommentsByUserAddressRequestSchema = z.object({
   ascending: z.boolean().optional(),
   cursor: PaginationCursorSchema.optional(),
   order: z.string().optional(),
-  // Matches the upstream per-request limit cap.
-  pageSize: PageSizeSchema.max(100).default(20),
+  pageSize: PageSizeSchema.max(MAX_COMMENTS_PAGE_SIZE).default(20),
 });
 
 export type ListCommentsRequest = z.input<typeof ListCommentsRequestSchema>;
@@ -66,12 +74,14 @@ export type ListCommentsByUserAddressRequest = z.input<
 >;
 
 export type ListCommentsError =
+  | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListCommentsError = makeErrorGuard(
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -84,6 +94,11 @@ export const ListCommentsError = makeErrorGuard(
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * Pages starting past offset 200 are not served. Automatic iteration yields
+ * the last accessible full page with `limitReached: true` and stops normally;
+ * `hasMore` stays true because completeness cannot be established. Explicitly
+ * following its cursor throws {@link PaginationLimitError} before any request.
  *
  * @throws {@link ListCommentsError}
  * Thrown on failure.
@@ -129,7 +144,7 @@ export function listComments(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, COMMENT_CURSOR_LIMITS);
 
     return client.gamma
       .get('/comments', {
@@ -149,11 +164,19 @@ export function listComments(
       })
       .andThen(validateWith(ListCommentsResponseSchema))
       .map((comments) => {
-        const hasMore = comments.length >= decoded.pageSize;
+        // The page size bounds top-level comments; their replies ride along
+        // in the same array, so count the roots to judge whether the page
+        // was full.
+        const rootCount = comments.filter(
+          (comment) => comment.parentCommentID == null,
+        ).length;
+        const hasMore = rootCount >= decoded.pageSize;
 
         return {
           items: comments,
           hasMore,
+          limitReached:
+            hasMore && decoded.offset + decoded.pageSize > MAX_COMMENTS_OFFSET,
           nextCursor: hasMore
             ? encodeOffsetCursor({
                 offset: decoded.offset + decoded.pageSize,
@@ -219,12 +242,14 @@ export async function fetchCommentsById(
 }
 
 export type ListCommentsByUserAddressError =
+  | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListCommentsByUserAddressError = makeErrorGuard(
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -238,6 +263,14 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Pages starting past offset 200 are not served. Automatic iteration yields
+ * the last accessible full page with `limitReached: true` and stops normally;
+ * `hasMore` stays true because completeness cannot be established. Explicitly
+ * following its cursor throws {@link PaginationLimitError} before any request.
+ *
+ * This is a hard stop for this listing: there are no range filters to retrieve
+ * the remaining comments.
+ *
  * @throws {@link ListCommentsByUserAddressError}
  * Thrown on failure.
  *
@@ -247,7 +280,8 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * const result = listCommentsByUserAddress(client, {
  *   address: '0x1234...',
  *   pageSize: 10,
- *   order: 'DESC',
+ *   order: 'createdAt',
+ *   ascending: false,
  * });
  *
  * const firstPage = await result.firstPage();
@@ -264,7 +298,8 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
  * const result = listCommentsByUserAddress(client, {
  *   address: '0x1234...',
  *   pageSize: 10,
- *   order: 'DESC',
+ *   order: 'createdAt',
+ *   ascending: false,
  * });
  *
  * for await (const page of result) {
@@ -282,7 +317,7 @@ export function listCommentsByUserAddress(
   );
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize);
+    const decoded = decodeOffsetCursor(cursor, pageSize, COMMENT_CURSOR_LIMITS);
 
     return client.gamma
       .get(`comments/user_address/${address}`, {
@@ -303,6 +338,8 @@ export function listCommentsByUserAddress(
         return {
           items: comments,
           hasMore,
+          limitReached:
+            hasMore && decoded.offset + decoded.pageSize > MAX_COMMENTS_OFFSET,
           nextCursor: hasMore
             ? encodeOffsetCursor({
                 offset: decoded.offset + decoded.pageSize,
