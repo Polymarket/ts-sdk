@@ -25,6 +25,7 @@ import {
   RequestRejectedError,
   TimeoutError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import {
@@ -71,6 +72,152 @@ describe('PerpsSession', () => {
 
     beforeEach(() => {
       frames = mockSuccessfulSession();
+    });
+
+    it('keeps pre-ack builder frames and treats sparse sequences as valid', async () => {
+      server.resetHandlers();
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.chs?.includes('builderFills')) {
+              for (const sequence of [10, 100])
+                client.send(
+                  JSON.stringify({
+                    ch: 'builderFills',
+                    ts: 1_700_000_000_000,
+                    sq: sequence,
+                    data: [],
+                  }),
+                );
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession();
+      await session.connect();
+      const handle = await session.subscribeBuilderFills();
+      for (const sequence of [10, 100]) {
+        await expect(waitForNextEvent(handle)).resolves.toMatchObject({
+          value: {
+            type: 'builderFill',
+            sequence,
+          },
+        });
+      }
+      await session.close();
+    });
+
+    it('cleans up a rejected builder subscription so it can be retried', async () => {
+      let attempts = 0;
+      server.resetHandlers();
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            const rejected =
+              frame.chs?.includes('builderFills') && ++attempts === 1;
+            client.send(
+              JSON.stringify({
+                id: frame.id,
+                data: rejected
+                  ? { status: 'err', error: 'unavailable' }
+                  : { status: 'ok' },
+              }),
+            );
+          });
+        }),
+      );
+      const session = createSession();
+      await session.connect();
+      await expect(session.subscribeBuilderFills()).rejects.toBeInstanceOf(
+        RequestRejectedError,
+      );
+      await session.subscribeBuilderFills();
+      expect(attempts).toBe(2);
+      await session.close();
+    });
+
+    it('resubscribes after an unsubscribe acknowledgement is lost', async () => {
+      let subscriptions = 0;
+      server.resetHandlers();
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.req === 'unsub') return; // Server applied it; response was lost.
+            if (frame.chs?.includes('builderFills')) subscriptions++;
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      vi.useFakeTimers();
+      const session = createSession();
+      try {
+        await session.connect();
+        const first = await session.subscribeBuilderFills();
+        const closed = first.close().catch((error: unknown) => error);
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(await closed).toBeInstanceOf(TransportError);
+        await session.subscribeBuilderFills();
+        expect(subscriptions).toBe(2);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('serializes a new subscriber behind an in-flight last-handle close', async () => {
+      server.resetHandlers();
+      const changes: string[] = [];
+      let acknowledgeUnsubscribe: (() => void) | undefined;
+      let notifyUnsubscribe!: () => void;
+      const unsubscribing = new Promise<void>((resolve) => {
+        notifyUnsubscribe = resolve;
+      });
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            const acknowledge = () =>
+              client.send(
+                JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+              );
+            if (frame.chs?.includes('builderFills')) {
+              changes.push(frame.req);
+              if (frame.req === 'unsub') {
+                acknowledgeUnsubscribe = acknowledge;
+                notifyUnsubscribe();
+                return;
+              }
+            }
+            acknowledge();
+          });
+        }),
+      );
+      const session = createSession();
+      try {
+        await session.connect();
+        const [first, second] = await Promise.all([
+          session.subscribeBuilderFills(),
+          session.subscribeBuilderFills(),
+        ]);
+        await first.close();
+        expect(changes).toEqual(['sub']);
+        const closing = second.close();
+        await unsubscribing;
+        const replacement = session.subscribeBuilderFills();
+        acknowledgeUnsubscribe?.();
+        await closing;
+        await replacement;
+        expect(changes).toEqual(['sub', 'unsub', 'sub']);
+      } finally {
+        await session.close();
+      }
     });
 
     it('authenticates and subscribes to session channels', async () => {
@@ -233,6 +380,96 @@ describe('PerpsSession', () => {
 
     beforeEach(() => {
       connectionFrames = mockSuccessfulSessions();
+    });
+
+    it('restores the builder stream and tells every handle to reconcile', async () => {
+      const session = createSession();
+      vi.useFakeTimers();
+      try {
+        await session.connect();
+        const [first, second] = await Promise.all([
+          session.subscribeBuilderFills(),
+          session.subscribeBuilderFills(),
+        ]);
+        connectionFrames[0]?.client.close();
+        await vi.advanceTimersToNextTimerAsync();
+        await vi.waitFor(() =>
+          expect(connectionFrames[1]?.frames[2]).toMatchObject({
+            req: 'sub',
+            chs: ['builderFills'],
+          }),
+        );
+        for (const handle of [first, second]) {
+          await expect(waitForNextEvent(handle)).resolves.toMatchObject({
+            value: { type: 'resync', reason: 'reconnect' },
+          });
+        }
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      'rejection',
+      'timeout',
+    ] as const)('recovers the core session and fails builder handles on a builder subscription %s', async (failure) => {
+      server.resetHandlers();
+      const connections: Array<{ close: () => void }> = [];
+      let builderAttempts = 0;
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          connections.push(client);
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            const failBuilder =
+              frame.chs?.includes('builderFills') && ++builderAttempts === 2;
+            if (failBuilder && failure === 'timeout') return;
+            client.send(
+              JSON.stringify({
+                id: frame.id,
+                data: failBuilder
+                  ? { status: 'err', error: 'unavailable' }
+                  : { status: 'ok' },
+              }),
+            );
+          });
+        }),
+      );
+      vi.useFakeTimers();
+      const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+      const session = createSession();
+      try {
+        await session.connect();
+        const handle = await session.subscribeBuilderFills();
+        const onResync = vi.fn();
+        void waitForNextEvent(session).then(onResync);
+        const builderEvent = waitForNextEvent(handle);
+        builderEvent.catch(() => undefined);
+
+        connections[0]?.close();
+        await vi.advanceTimersByTimeAsync(125);
+        expect(builderAttempts).toBe(2);
+        expect(onResync).toHaveBeenCalledWith({
+          done: false,
+          value: { type: 'resync', reason: 'reconnect' },
+        });
+
+        if (failure === 'timeout') {
+          await vi.advanceTimersByTimeAsync(30_000);
+        }
+        await expect(builderEvent).rejects.toBeInstanceOf(
+          failure === 'timeout' ? TransportError : RequestRejectedError,
+        );
+        await vi.advanceTimersByTimeAsync(30_000);
+        expect(builderAttempts).toBe(2);
+        expect(connections).toHaveLength(2);
+
+        await session.subscribeBuilderFills();
+        expect(builderAttempts).toBe(3);
+      } finally {
+        await session.close();
+        random.mockRestore();
+      }
     });
 
     it('reauthenticates, resubscribes, and emits resync', async () => {
@@ -1447,6 +1684,68 @@ describe('PerpsSession', () => {
   });
 
   describe('account reads', () => {
+    // Malformed continuation responses cannot be produced reliably by live APIs.
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('rejects builder earnings with more=true and cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: true,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        const pages = session.listBuilderEarnings();
+        if (cursor === undefined) {
+          await expect(pages.firstPage()).rejects.toThrow(
+            UnexpectedResponseError,
+          );
+        }
+        await expect(
+          pages.from(toPaginationCursor('current-cursor')).firstPage(),
+        ).rejects.toThrow(UnexpectedResponseError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('accepts final builder earnings with cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: false,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session
+            .listBuilderEarnings()
+            .from(toPaginationCursor('current-cursor'))
+            .firstPage(),
+        ).resolves.toEqual({ items: [], hasMore: false });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('sends session credentials as REST auth headers', async () => {
       server.use(
         http.get(

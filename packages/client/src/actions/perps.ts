@@ -73,10 +73,15 @@ import {
   type TypedDataPayload,
 } from '../types';
 import { SignerType } from '../wallet';
+import {
+  type PerpsBuilderTermsInput,
+  PerpsBuilderTermsInputSchema,
+} from '../websockets/perps/actions/builder-terms';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -96,8 +101,11 @@ export type {
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  ListPerpsBuilderEarningsRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
@@ -108,6 +116,9 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
+  PerpsBuilderFillsEvent,
+  PerpsBuilderFillUpdateEvent,
+  PerpsBuilderTermsInput,
   PerpsCancelOptions,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
@@ -138,11 +149,16 @@ export type {
 } from '../websockets/perps/session';
 export {
   ArmPerpsAutoCancelError,
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+  SubscribePerpsBuilderFillsError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { approvePerpsBuilderFee } from './perps/builders';
 import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
@@ -968,6 +984,7 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
   expiresIn: z
     .number()
     .int()
@@ -977,6 +994,7 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -998,6 +1016,8 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
+  /** Optional defaults for new orders and their TP/SL exits. Does not grant fee approval. */
+  builderAttribution?: PerpsBuilderTermsInput;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1011,6 +1031,8 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
+  /** Optional order defaults. Supply again when resuming; credentials do not store them. */
+  builderAttribution?: PerpsBuilderTermsInput;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1236,6 +1258,13 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
+ * Optional `builderAttribution` settings apply to new orders and generated
+ * TP/SL exits.
+ * They remain fixed for the session and are not stored in its credentials.
+ * Supply them again when resuming. Fee consent requires a separate owner
+ * approval; session setup never creates or increases an approval. Individual
+ * placements can replace the terms or use `builderAttribution: null` to opt out.
+ *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
  *
@@ -1250,7 +1279,11 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+    approvePerpsBuilderFee.bind(null, client),
+  );
 }
 
 /**
@@ -1806,13 +1839,4 @@ function sendPerpsDepositTransaction(
     kind: 'sendPerpsDepositTransaction',
     request,
   };
-}
-
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
 }

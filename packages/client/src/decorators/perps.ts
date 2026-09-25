@@ -1,5 +1,6 @@
 import type {
   PerpsBook,
+  PerpsBuilderStatus,
   PerpsCandle,
   PerpsFeeScheduleEntry,
   PerpsFundingRate,
@@ -37,6 +38,10 @@ import {
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
 } from '../actions';
+import {
+  type FetchPerpsBuilderStatusRequest,
+  fetchPerpsBuilderStatus,
+} from '../actions/perps/builders';
 import type {
   BaseClient,
   BasePublicClient,
@@ -125,11 +130,39 @@ export {
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  FetchPerpsBuilderStatusError,
+  type FetchPerpsBuilderStatusRequest,
+} from '../actions/perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsBuilderApprovalsError,
+  type FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryError,
+  type FetchPerpsBuilderEarningsSummaryRequest,
+  ListPerpsBuilderEarningsError,
+  type ListPerpsBuilderEarningsRequest,
+  type PerpsBuilderFillsEvent,
+  type PerpsBuilderFillUpdateEvent,
+  type PerpsBuilderTermsInput,
+  SubscribePerpsBuilderFillsError,
+} from '../websockets/perps/session';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /**
+   * Fetches public builder availability and the platform fee cap.
+   * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsBuilderStatus(
+    request: FetchPerpsBuilderStatusRequest,
+  ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
    *
@@ -295,6 +328,10 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
+   * Optional `builderAttribution` terms are local defaults for new orders and
+   * generated TP/SL exits. An order-level object replaces them; `builderAttribution: null` opts out.
+   * Configure defaults again when resuming credentials. Setup does not approve
+   * fees: the trader must separately call `session.approveBuilderFee()`.
    *
    * @example
    * ```ts
@@ -390,6 +427,7 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
+    fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
     fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),

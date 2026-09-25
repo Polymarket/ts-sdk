@@ -1,6 +1,6 @@
 import { encode } from '@msgpack/msgpack';
 import type { EvmSignature, PrivateKey } from '@polymarket/types';
-import { expectEvmSignature } from '@polymarket/types';
+import { expectEvmSignature, invariant } from '@polymarket/types';
 import { Hash, Secp256k1, Signature, TypedData } from 'ox';
 import type { TypedDataPayload } from '../../types';
 
@@ -92,5 +92,15 @@ function compactSignableValue(value: PerpsSignableValue): PerpsSignableValue {
     return value.filter((item) => item !== undefined).map(compactSignableValue);
   }
 
+  return value;
+}
+
+/** @internal */
+export function randomUint32(): number {
+  const [value] = crypto.getRandomValues(new Uint32Array(1));
+  invariant(
+    value !== undefined,
+    'Expected crypto.getRandomValues to return a salt.',
+  );
   return value;
 }

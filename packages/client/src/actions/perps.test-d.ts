@@ -1,6 +1,10 @@
-import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
+import {
+  type PerpsCredentials,
+  PerpsInstrumentCategory,
+} from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
@@ -28,6 +32,7 @@ import type {
   PerpsCancelRetryOptions,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -38,6 +43,7 @@ import type {
   PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecureClientOptions,
   SecurePerpsActions,
   TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
@@ -50,7 +56,64 @@ import {
   PerpsKnownCancelOrderErrorCode,
   UpdatePerpsMarginError,
 } from '../index';
-import type { FetchPerpsInstrumentsRequest } from './perps';
+import type {
+  CreatePerpsSessionRequest,
+  FetchPerpsInstrumentsRequest,
+  ResumePerpsSessionRequest,
+} from './perps';
+
+describe('builder fee approval defaults', () => {
+  it('keeps builder configuration and approval off the secure client', () => {
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
+    expectTypeOf<SecurePerpsActions>().not.toHaveProperty(
+      'approvePerpsBuilderFee',
+    );
+  });
+  it('allows no arguments and partial overrides on the session', () => {
+    function approve(session: PerpsSession) {
+      void session.approveBuilderFee();
+      void session.approveBuilderFee({ maxFeeRate: '0' });
+    }
+    void approve;
+    const request: ApprovePerpsBuilderFeeRequest = {};
+    void request;
+  });
+});
+
+describe('Perps session builder attribution defaults', () => {
+  it('accepts plain address and exact fee strings when creating or resuming', () => {
+    const builderAttribution = {
+      address: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0005',
+    };
+    const create: CreatePerpsSessionRequest = {
+      builderAttribution,
+      expiresIn: 60_000,
+    };
+    function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
+      return { credentials, builderAttribution };
+    }
+    expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
+  });
+
+  it('rejects incomplete terms and the order-only opt-out marker at setup', () => {
+    const incomplete: CreatePerpsSessionRequest = {
+      // @ts-expect-error Session builder attribution requires both terms.
+      builderAttribution: {
+        address: '0x1111111111111111111111111111111111111111',
+      },
+    };
+    const disabled: CreatePerpsSessionRequest = {
+      // @ts-expect-error Omit builderAttribution to open a session without attribution.
+      builderAttribution: null,
+    };
+    void incomplete;
+    void disabled;
+  });
+});
 
 describe('FetchPerpsInstrumentsRequest', () => {
   it('allows current instrument filters', () => {

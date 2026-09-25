@@ -26,6 +26,25 @@ const baseFill = {
 };
 
 describe('PerpsAccountFillSchema', () => {
+  it('derives signed total fees without losing decimal precision', () => {
+    const fill = PerpsAccountFillSchema.parse({
+      ...baseFill,
+      hash: '0x',
+      fee: '-9007199254740993.00000000000000000001',
+      builder_fee: '0.00000000000000000002',
+    });
+    expect(fill.totalFee).toBe('-9007199254740992.99999999999999999999');
+  });
+
+  it('adds legacy fee defaults without inventing builder identity', () => {
+    const fill = PerpsAccountFillSchema.parse({ ...baseFill, hash: '0x' });
+    expect(fill).toMatchObject({
+      builderFee: '0',
+      totalFee: '0.01',
+    });
+    expect(fill).not.toHaveProperty('builder');
+  });
+
   it('normalizes placeholder hashes to undefined', () => {
     const fill = PerpsAccountFillSchema.parse({
       ...baseFill,
