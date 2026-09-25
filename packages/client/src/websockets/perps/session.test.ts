@@ -25,6 +25,7 @@ import {
   RequestRejectedError,
   TimeoutError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import {
@@ -1683,6 +1684,68 @@ describe('PerpsSession', () => {
   });
 
   describe('account reads', () => {
+    // Malformed continuation responses cannot be produced reliably by live APIs.
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('rejects builder earnings with more=true and cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: true,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        const pages = session.listBuilderEarnings();
+        if (cursor === undefined) {
+          await expect(pages.firstPage()).rejects.toThrow(
+            UnexpectedResponseError,
+          );
+        }
+        await expect(
+          pages.from(toPaginationCursor('current-cursor')).firstPage(),
+        ).rejects.toThrow(UnexpectedResponseError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('accepts final builder earnings with cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: false,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session
+            .listBuilderEarnings()
+            .from(toPaginationCursor('current-cursor'))
+            .firstPage(),
+        ).resolves.toEqual({ items: [], hasMore: false });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('sends session credentials as REST auth headers', async () => {
       server.use(
         http.get(

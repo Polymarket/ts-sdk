@@ -175,8 +175,13 @@ export function listPerpsBuilderEarnings(
       })
       .andThen(validateWith(ListPerpsBuilderEarningsResponseSchema))
       .map((response): Page<PerpsBuilderEarning[]> => {
-        if (!response.more || response.cursor === undefined) {
+        if (!response.more) {
           return { items: response.data, hasMore: false };
+        }
+        if (response.cursor === undefined || response.cursor === cursor) {
+          throw new UnexpectedResponseError(
+            'Builder earnings pagination did not return a new cursor',
+          );
         }
         return {
           items: response.data,
