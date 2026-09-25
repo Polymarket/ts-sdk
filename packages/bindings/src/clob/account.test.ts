@@ -33,6 +33,47 @@ const baseTrade = {
 };
 
 describe('ClobTradeSchema', () => {
+  it.each([
+    'FAILED',
+    'MATCHED_NOT_BROADCASTED',
+  ])('accepts a %s trade without a transaction hash', (status) => {
+    const { transaction_hash: _, ...tradeWithoutHash } = baseTrade;
+    const trade = ClobTradeSchema.parse({
+      ...tradeWithoutHash,
+      status,
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBeUndefined();
+  });
+
+  it('normalizes an empty transaction hash to undefined', () => {
+    const trade = ClobTradeSchema.parse({
+      ...baseTrade,
+      status: 'FAILED',
+      transaction_hash: '',
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBeUndefined();
+  });
+
+  it.each([
+    'CONFIRMED',
+    'FAILED',
+  ])('preserves a populated transaction hash on a %s trade', (status) => {
+    const trade = ClobTradeSchema.parse({
+      ...baseTrade,
+      status,
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBe(baseTrade.transaction_hash);
+  });
+
   it('normalizes legacy epoch seconds timestamp strings', () => {
     const trade = ClobTradeSchema.parse({
       ...baseTrade,
