@@ -14,6 +14,7 @@ import {
 import { Bytes, Hash } from 'ox';
 import type { z } from 'zod';
 import {
+  CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
   RequestRejectedError,
@@ -37,12 +38,14 @@ export class PredictionsSessionClosedError extends PolymarketError {
 }
 
 export type OpenPredictionsSessionError =
+  | CancelledSigningError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const OpenPredictionsSessionError = makeErrorGuard(
+  CancelledSigningError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -79,6 +82,8 @@ export const LogoutPredictionsSessionError = makeErrorGuard(
 /**
  * A wallet-bound identity session with credentials held privately in memory.
  * Closing this session does not revoke trading credentials or close Perps sessions.
+ * Ending the secure client's authentication does not close this handle; call
+ * `logout()` explicitly as part of application sign-out.
  */
 export type PredictionsSession = {
   /**
@@ -289,6 +294,12 @@ export function createPredictionsSessionManager({
       try {
         signature = await signer.signTypedData(challenge.typedData);
       } catch (error) {
+        if (
+          error instanceof CancelledSigningError ||
+          error instanceof SigningError
+        ) {
+          throw error;
+        }
         throw SigningError.fromError(
           error,
           'Could not sign the signer ownership challenge',

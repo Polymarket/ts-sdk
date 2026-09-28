@@ -50,7 +50,10 @@ Logout blocks local identity reads immediately. If server logout fails, call
 `session.logout()` again to retry. It does not revoke trading credentials, close
 Perps sessions, or end the secure client's authentication. Previously issued
 access tokens remain valid on the server until their expiry. Treat session logout
-as an explicit part of your application's cleanup.
+as an explicit part of your application's cleanup. Conversely,
+`client.endAuthentication()` revokes trading credentials and leaves independently
+owned predictions sessions active. For complete sign-out, call both
+`session.logout()` and `client.endAuthentication()`.
 
 The optional `platformApiKey` identifies your application. It is separate from
 builder or relayer authorization passed as `apiKey`. Use publishable keys in browser
