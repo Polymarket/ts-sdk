@@ -38,8 +38,9 @@ export type {
   EquityTwapPriceSubscription,
   PriceSource,
   PriceSubscription,
+  PriceSubscriptionConfirmation,
 } from '../actions';
-export { KnownPriceSource, SubscribeError } from '../actions';
+export { KnownPriceSource, PriceProvider, SubscribeError } from '../actions';
 
 export type PublicSubscriptionsActions = {
   /**
@@ -76,6 +77,12 @@ export type SecureSubscriptionsActions = {
    * or entire history batch, including empty batches. Unknown source names remain
    * strings. Crypto sources are constant; equity sources may change across
    * reconnects. Cached history starts fresh whenever the source changes.
+   * These four topics accept an optional `provider` pin. Omit it to follow the
+   * default. A pin may fall back or be ignored when selection is disabled;
+   * `source` always identifies the actual producer. Different provider choices,
+   * including omission, use separate connections, even if they serve the same source.
+   * An optional `onSubscribed` callback reports the provider the server confirms,
+   * on acceptance and after every reconnect.
    * Event `seq` values are scoped to one channel on one WebSocket connection
    * and reset after reconnecting. Subscriptions with more than 64 filters use
    * multiple connections, so their sequence values may interleave.
