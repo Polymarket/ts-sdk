@@ -38,7 +38,7 @@ afterEach(() => {
 describe('Perps trading actions', () => {
   describe('builder attribution', () => {
     const builder = {
-      address: '0x1111111111111111111111111111111111111111',
+      builderAddress: '0x1111111111111111111111111111111111111111',
       feeRate: '0.0005000000000000000000000000',
     };
     const order = {
@@ -70,7 +70,7 @@ describe('Perps trading actions', () => {
                     '10',
                     'ioc',
                     false,
-                    [builder.address, builder.feeRate],
+                    [builder.builderAddress, builder.feeRate],
                   ],
                 ],
               ],

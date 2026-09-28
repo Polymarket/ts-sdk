@@ -4,7 +4,9 @@
 ---
 
 Add Perps Builder Codes with optional `builderAttribution` session defaults and per-placement overrides,
-explicit opt-out, owner-signed fee approvals, and typed earnings reporting.
+explicit opt-out, owner-signed fee approvals and revocation, and typed earnings reporting.
+Session setup accepts a `builderAddress`, checks builder availability, and defaults an omitted
+`feeRate` to the maximum returned by the API.
 
 Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
 `fee` continues to mean the exchange fee. Legacy responses normalize to zero

@@ -43,12 +43,12 @@ import {
   makeErrorGuard,
   type OperationAbortedError,
   type PerpsCancelRetryError,
-  type RateLimitError,
+  RateLimitError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
   TransportError,
-  type UnexpectedResponseError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
@@ -281,6 +281,25 @@ export type PerpsSessionOptions = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsSessionLifecycleError = RequestRejectedError | TransportError;
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type RevokePerpsBuilderFeeError =
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export const RevokePerpsBuilderFeeError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
 
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type SubscribePerpsBuilderFillsError =
@@ -541,6 +560,29 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       );
     }
     return this.#approveBuilderFee(this, request);
+  }
+
+  /**
+   * Revokes builder fee permission with the parent client's owner signer.
+   * The builder address defaults to this session's attribution settings.
+   * Fetches the saved approval version and submits the next version with a zero
+   * maximum fee. Revocation remains available when the builder is inactive.
+   * Existing orders retain their saved terms.
+   *
+   * @example
+   * ```ts
+   * await session.revokeBuilderFee();
+   * ```
+   * @throws {@link RevokePerpsBuilderFeeError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async revokeBuilderFee(
+    builderAddress?: string,
+  ): Promise<PerpsBuilderApproval> {
+    return this.approveBuilderFee({
+      builder: builderAddress,
+      maxFeeRate: '0',
+    });
   }
 
   /**

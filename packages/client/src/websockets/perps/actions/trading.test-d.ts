@@ -14,7 +14,7 @@ import type {
 
 const baseOrder = {
   builderAttribution: {
-    address: '0x1111111111111111111111111111111111111111',
+    builderAddress: '0x1111111111111111111111111111111111111111',
     feeRate: '0.0005',
   },
   instrumentId: 1,
@@ -38,13 +38,13 @@ describe('PlacePerpsOrderRequest', () => {
       ...gtcOrder,
       // @ts-expect-error Explicit terms must include both address and fee rate.
       builderAttribution: {
-        address: '0x1111111111111111111111111111111111111111',
+        builderAddress: '0x1111111111111111111111111111111111111111',
       },
     };
     const numericRate: PlacePerpsOrderRequest = {
       ...gtcOrder,
       builderAttribution: {
-        address: '0x1111111111111111111111111111111111111111',
+        builderAddress: '0x1111111111111111111111111111111111111111',
         // @ts-expect-error Rates must be exact decimal strings.
         feeRate: 0.0005,
       },

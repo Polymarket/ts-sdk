@@ -7,6 +7,52 @@ const runBuilderTests =
   process.env.POLYMARKET_PERPS_BUILDER_INTEGRATION === 'true';
 
 describe('Perps builder integration', () => {
+  it.runIf(runBuilderTests)(
+    'resolves the default fee on setup and preserves an explicit fee on resume',
+    async ({ secureClientWithDepositWallet: client, skip }) => {
+      if (builderAddress === undefined) return skip();
+      const status = await client.fetchPerpsBuilderStatus({
+        address: builderAddress,
+      });
+      if (!status.registered || !status.enabled || !status.admissionEnabled)
+        return skip();
+
+      const session = await client.openPerpsSession({
+        builderAttribution: { builderAddress },
+        expiresIn: 30 * 60_000,
+      });
+      try {
+        expect(session.builderAttribution?.feeRate).toBe(status.maxFeeRate);
+      } finally {
+        await session.close();
+      }
+
+      const resumed = await client.openPerpsSession({
+        credentials: session.credentials,
+        builderAttribution: { builderAddress, feeRate: '0' },
+      });
+      try {
+        expect(resumed.builderAttribution?.feeRate).toBe('0');
+      } finally {
+        await resumed.close();
+      }
+    },
+  );
+
+  it.runIf(runBuilderTests)(
+    'rejects attribution to an unregistered builder',
+    async ({ secureClientWithDepositWallet: client, randomEoaSigner }) => {
+      const unregisteredBuilderAddress = await randomEoaSigner.getAddress();
+      await expect(
+        client.openPerpsSession({
+          builderAttribution: { builderAddress: unregisteredBuilderAddress },
+        }),
+      ).rejects.toThrow(
+        'Builder attribution is not active for this builder address',
+      );
+    },
+  );
+
   // Creating session credentials is metered. This opt-in also requires the
   // fixture signer to be the builder account whose live reporting is tested.
   it.runIf(runBuilderTests)(

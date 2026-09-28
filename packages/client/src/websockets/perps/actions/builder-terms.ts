@@ -8,7 +8,7 @@ import { z } from 'zod';
  */
 export type PerpsBuilderTermsInput = {
   /** Address of the builder account receiving the fee. */
-  readonly address: string;
+  readonly builderAddress: string;
   /** Exact non-negative decimal fraction of executed notional. */
   readonly feeRate: string;
 };
@@ -23,6 +23,6 @@ export const PerpsBuilderFeeRateInputSchema = z
 
 /** @internal */
 export const PerpsBuilderTermsInputSchema = z.object({
-  address: EvmAddressSchema,
+  builderAddress: EvmAddressSchema,
   feeRate: PerpsBuilderFeeRateInputSchema,
 }) satisfies z.ZodType<PerpsBuilderTermsInput>;

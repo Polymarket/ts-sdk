@@ -1572,7 +1572,10 @@ function toRawPerpsOrder(
     undefined,
     order.builderAttribution == null
       ? undefined
-      : [order.builderAttribution.address, order.builderAttribution.feeRate],
+      : [
+          order.builderAttribution.builderAddress,
+          order.builderAttribution.feeRate,
+        ],
   ];
 }
 
@@ -1604,7 +1607,7 @@ function toRawPerpsTpSlOrder(request: {
     request.builderAttribution == null
       ? undefined
       : [
-          request.builderAttribution.address,
+          request.builderAttribution.builderAddress,
           request.builderAttribution.feeRate,
         ],
   ];

@@ -152,13 +152,17 @@ export {
   FetchPerpsBuilderApprovalsError,
   FetchPerpsBuilderEarningsSummaryError,
   ListPerpsBuilderEarningsError,
+  RevokePerpsBuilderFeeError,
   SubscribePerpsBuilderFillsError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
-import { approvePerpsBuilderFee } from './perps/builders';
+import {
+  approvePerpsBuilderFee,
+  fetchPerpsBuilderStatus,
+} from './perps/builders';
 import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
@@ -983,8 +987,24 @@ const PerpsCredentialsSchema = z.object({
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * Defaults for order attribution, resolved against current builder availability at session setup.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsSessionBuilderAttributionInput = {
+  /** Registered builder account receiving the additional fee. */
+  readonly builderAddress: string;
+  /** Exact fee fraction. Omit to use the maximum returned by builder status. */
+  readonly feeRate?: string;
+};
+
+const PerpsSessionBuilderAttributionInputSchema =
+  PerpsBuilderTermsInputSchema.partial({
+    feeRate: true,
+  }) satisfies z.ZodType<PerpsSessionBuilderAttributionInput>;
+
 const CreatePerpsSessionRequestSchema = z.strictObject({
-  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
+  builderAttribution: PerpsSessionBuilderAttributionInputSchema.optional(),
   expiresIn: z
     .number()
     .int()
@@ -994,7 +1014,7 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
-  builderAttribution: PerpsBuilderTermsInputSchema.optional(),
+  builderAttribution: PerpsSessionBuilderAttributionInputSchema.optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -1016,8 +1036,8 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
-  /** Optional defaults for new orders and their TP/SL exits. Does not grant fee approval. */
-  builderAttribution?: PerpsBuilderTermsInput;
+  /** Checks builder availability and resolves order defaults. Does not grant fee approval. */
+  builderAttribution?: PerpsSessionBuilderAttributionInput;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1031,8 +1051,8 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
-  /** Optional order defaults. Supply again when resuming; credentials do not store them. */
-  builderAttribution?: PerpsBuilderTermsInput;
+  /** Rechecks availability and resolves defaults. Supply again; credentials do not store them. */
+  builderAttribution?: PerpsSessionBuilderAttributionInput;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1258,12 +1278,14 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
- * Optional `builderAttribution` settings apply to new orders and generated
- * TP/SL exits.
- * They remain fixed for the session and are not stored in its credentials.
- * Supply them again when resuming. Fee consent requires a separate owner
- * approval; session setup never creates or increases an approval. Individual
- * placements can replace the terms or use `builderAttribution: null` to opt out.
+ * When `builderAttribution` is provided, checks that the builder is registered,
+ * enabled, and accepting attribution before creating or resuming credentials.
+ * An omitted `feeRate` uses the maximum returned by builder status. Resolved
+ * defaults apply to new orders and generated TP/SL exits and remain fixed for
+ * the session. Supply them again when resuming; credentials do not store them.
+ * Fee consent requires a separate `session.approveBuilderFee()` call. Individual
+ * placements can replace both terms or use `builderAttribution: null` to opt out.
+ * The platform still validates attribution when each order is submitted.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
@@ -1275,13 +1297,29 @@ export async function openPerpsSession(
   request: OpenPerpsSessionRequest = {},
 ): Promise<PerpsSession> {
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
+  let builderAttribution: PerpsBuilderTermsInput | undefined;
+  if (params.builderAttribution !== undefined) {
+    const { builderAddress, feeRate } = params.builderAttribution;
+    const status = await fetchPerpsBuilderStatus(client, {
+      address: builderAddress,
+    });
+    if (!status.registered || !status.enabled || !status.admissionEnabled) {
+      throw new UserInputError(
+        `Builder attribution is not active for this builder address: ${builderAddress}`,
+      );
+    }
+    builderAttribution = parseUserInput(
+      { builderAddress, feeRate: feeRate ?? status.maxFeeRate },
+      PerpsBuilderTermsInputSchema,
+    );
+  }
   const credentials =
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
   return client.webSockets.perpsSession.connect(
     credentials,
-    params.builderAttribution,
+    builderAttribution,
     approvePerpsBuilderFee.bind(null, client),
   );
 }

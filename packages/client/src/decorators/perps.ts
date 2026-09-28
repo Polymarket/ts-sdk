@@ -93,6 +93,7 @@ export type {
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
+  PerpsSessionBuilderAttributionInput,
   PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -148,6 +149,7 @@ export {
   type PerpsBuilderFillsEvent,
   type PerpsBuilderFillUpdateEvent,
   type PerpsBuilderTermsInput,
+  RevokePerpsBuilderFeeError,
   SubscribePerpsBuilderFillsError,
 } from '../websockets/perps/session';
 
@@ -328,14 +330,20 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
-   * Optional `builderAttribution` terms are local defaults for new orders and
-   * generated TP/SL exits. An order-level object replaces them; `builderAttribution: null` opts out.
-   * Configure defaults again when resuming credentials. Setup does not approve
-   * fees: the trader must separately call `session.approveBuilderFee()`.
+   * When `builderAttribution` is provided, checks that the builder is registered,
+   * enabled, and accepting attribution before creating or resuming credentials.
+   * An omitted `feeRate` uses the maximum returned by builder status. Resolved
+   * defaults apply to new orders and generated TP/SL exits and remain fixed for
+   * the session. Supply them again when resuming; credentials do not store them.
+   * Fee consent requires a separate `session.approveBuilderFee()` call. Individual
+   * placements can replace both terms or use `builderAttribution: null` to opt out.
+   * The platform still validates attribution when each order is submitted.
    *
    * @example
    * ```ts
-   * const session = await client.openPerpsSession();
+   * const session = await client.openPerpsSession({
+   *   builderAttribution: { builderAddress },
+   * });
    * ```
    *
    * @throws {@link OpenPerpsSessionError}

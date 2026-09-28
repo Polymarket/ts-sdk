@@ -75,6 +75,12 @@ describe('builder fee approval defaults', () => {
     function approve(session: PerpsSession) {
       void session.approveBuilderFee();
       void session.approveBuilderFee({ maxFeeRate: '0' });
+      void session.revokeBuilderFee();
+      void session.revokeBuilderFee(
+        '0x1111111111111111111111111111111111111111',
+      );
+      // @ts-expect-error Revocation takes an optional address, not a fee override.
+      void session.revokeBuilderFee({ maxFeeRate: '0.0005' });
     }
     void approve;
     const request: ApprovePerpsBuilderFeeRequest = {};
@@ -83,27 +89,29 @@ describe('builder fee approval defaults', () => {
 });
 
 describe('Perps session builder attribution defaults', () => {
-  it('accepts plain address and exact fee strings when creating or resuming', () => {
+  it('accepts an address with an optional fee when creating or resuming', () => {
     const builderAttribution = {
-      address: '0x1111111111111111111111111111111111111111',
-      feeRate: '0.0005',
+      builderAddress: '0x1111111111111111111111111111111111111111',
     };
     const create: CreatePerpsSessionRequest = {
       builderAttribution,
       expiresIn: 60_000,
     };
     function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
-      return { credentials, builderAttribution };
+      return {
+        credentials,
+        builderAttribution: { ...builderAttribution, feeRate: '0.0005' },
+      };
     }
     expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
     expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
   });
 
-  it('rejects incomplete terms and the order-only opt-out marker at setup', () => {
+  it('requires the builder address and rejects the order-only opt-out marker at setup', () => {
     const incomplete: CreatePerpsSessionRequest = {
-      // @ts-expect-error Session builder attribution requires both terms.
+      // @ts-expect-error A fee alone does not identify a builder.
       builderAttribution: {
-        address: '0x1111111111111111111111111111111111111111',
+        feeRate: '0.0005',
       },
     };
     const disabled: CreatePerpsSessionRequest = {

@@ -154,7 +154,7 @@ export async function approvePerpsBuilderFee(
   const defaults = session.builderAttribution;
   const terms = parseUserInput(
     {
-      builder: input.builder ?? defaults?.address,
+      builder: input.builder ?? defaults?.builderAddress,
       maxFeeRate: input.maxFeeRate ?? defaults?.feeRate,
     },
     ResolvedPerpsBuilderFeeSchema.omit({ approvalVersion: true }),
