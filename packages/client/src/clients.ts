@@ -248,7 +248,7 @@ export type BeginAuthenticationRequest = {
   wallet: string;
 
   /**
-   * Nonce used when creating or deriving fresh credentials.
+   * Nonce used when creating or deriving fresh credentials (0 to 4,294,967,295).
    *
    * Mutually exclusive with `credentials`.
    *
@@ -794,7 +794,9 @@ class BaseSecureClient<
    *
    * @remarks
    * This revokes the current authenticated credential and invalidates the
-   * current `SecureClient` instance.
+   * current `SecureClient` instance. Independently owned predictions-session
+   * handles remain active; call `session.logout()` to end those sessions too.
+   * The returned public client retains the application's platform API key.
    *
    * @example
    * ```ts

@@ -11,7 +11,11 @@ import {
   it,
   vi,
 } from 'vitest';
-import { UnexpectedResponseError } from './errors';
+import {
+  CancelledSigningError,
+  SigningError,
+  UnexpectedResponseError,
+} from './errors';
 import { createPredictionsSessionManager } from './predictions-session';
 import { ServiceClient } from './ServiceClient';
 import type { Signer, TypedDataPayload } from './types';
@@ -104,6 +108,26 @@ afterAll(() => {
 });
 
 describe('signer ownership response boundary', () => {
+  it.each([
+    new CancelledSigningError('User declined the signature'),
+    new SigningError('The signing adapter failed'),
+  ])('preserves a recognized signer error and allows another explicit open: $name', async (failure) => {
+    vi.spyOn(Date, 'now').mockReturnValue(issuedAt * 1000);
+    const login = vi.fn(() => new HttpResponse(null, { status: 500 }));
+    server.use(
+      http.post(`${root}/v1/auth/challenge`, () =>
+        HttpResponse.json(challenge(), { status: 201 }),
+      ),
+      http.post(`${root}/v1/auth/login`, login),
+    );
+    const { manager, signTypedData } = authenticationBoundary();
+    signTypedData.mockRejectedValue(failure);
+    await expect(manager.open()).rejects.toBe(failure);
+    await expect(manager.open()).rejects.toBe(failure);
+    expect(signTypedData).toHaveBeenCalledTimes(2);
+    expect(login).not.toHaveBeenCalled();
+  });
+
   it.each([
     'signer',
     'chain',

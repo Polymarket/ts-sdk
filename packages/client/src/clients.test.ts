@@ -574,6 +574,33 @@ describe('secure client gasless wallet setup', () => {
     expect(perpsShutdown).toHaveBeenCalledTimes(1);
     expect(rfqShutdown).toHaveBeenCalledTimes(1);
   });
+
+  it('preserves platform identity when returning to a public client', async () => {
+    mockApiKeys();
+    const identity = { keyId: 'application-key', keyType: 'publishable' };
+    const observedKeys: Array<string | null> = [];
+    server.use(
+      http.delete(`${clobRoot}/auth/api-key`, () => HttpResponse.json('OK')),
+      http.get(`${gatewayRoot}/next/me`, ({ request }) => {
+        observedKeys.push(request.headers.get('x-api-key'));
+        return HttpResponse.json(identity);
+      }),
+    );
+    const client = await createSecureClient({
+      platformApiKey: 'pm_pk_test_application',
+      credentials,
+      environment,
+      signer,
+      wallet: signerAddress,
+    });
+    await expect(client.fetchIdentity()).resolves.toEqual(identity);
+    const publicClient = await client.endAuthentication();
+    await expect(publicClient.fetchIdentity()).resolves.toEqual(identity);
+    expect(observedKeys).toEqual([
+      'pm_pk_test_application',
+      'pm_pk_test_application',
+    ]);
+  });
 });
 
 function mockApiKeys() {
