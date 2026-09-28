@@ -1,6 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TransportError, UserInputError } from '../errors';
 import { createPublicClient, SubscribeError } from '../index';
+import { subscriptionsFor } from '../websockets/realtime/protocol';
+import { parsePriceSubscription } from './price-subscriptions';
+
+describe('price subscription input', () => {
+  it('canonicalizes an equity TWAP quote pair without imposing a USD suffix', () => {
+    const spec = parsePriceSubscription({
+      topic: 'prices.equity.twap',
+      symbol: ' UsDjPy ',
+    });
+    expect(subscriptionsFor(spec)).toEqual([
+      expect.objectContaining({
+        topic: 'prices.equity.twap',
+        symbol: 'usdjpy',
+        windowSeconds: 60,
+      }),
+    ]);
+    expect(subscriptionsFor(spec)).toEqual(
+      subscriptionsFor({ topic: 'prices.equity.twap', symbol: 'usdjpy' }),
+    );
+  });
+
+  it.each([
+    { windowSeconds: 30 },
+    { windowSeconds: 60 },
+    { types: ['update'] },
+    { symbols: ['usdjpy'] },
+  ])('rejects unsupported equity TWAP options %o', (options) => {
+    expect(() =>
+      parsePriceSubscription({
+        topic: 'prices.equity.twap',
+        symbol: 'usdjpy',
+        ...options,
+      } as never),
+    ).toThrow(UserInputError);
+  });
+});
 
 describe('SubscribeError', () => {
   it('recognizes every documented subscription error', () => {

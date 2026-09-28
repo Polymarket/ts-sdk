@@ -175,6 +175,31 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
     }
   });
 
+  it('delivers equity TWAP history and updates in the pair quote currency', async ({
+    secureClientWithDepositWallet: client,
+  }) => {
+    try {
+      for (const type of ['subscribe', 'update'] as const) {
+        const event = await first(
+          await client.subscribe([
+            {
+              topic: 'prices.equity.twap',
+              symbol: 'USDJPY',
+            },
+          ]),
+          (event) => event.type === type,
+        );
+        expect(event.topic).toBe('prices.equity.twap');
+        expect(event.payload.symbol).toBe('usdjpy');
+        expect(event.payload.windowSeconds).toBe(60);
+        if (event.type === 'update')
+          expect(typeof event.payload.value).toBe('string');
+      }
+    } finally {
+      await client.closeSubscriptions();
+    }
+  });
+
   it('keeps live prices flowing across 100 filters on shared connections', async ({
     secureClientWithDepositWallet: client,
   }) => {
@@ -316,6 +341,8 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
         })),
       ),
       { topic: 'prices.crypto', symbols: ['btcusd'], includeSnapshot: false },
+      { topic: 'prices.equity.twap', symbol: 'usdjpy', windowSeconds: 30 },
+      { topic: 'prices.equity.twap', symbol: 'usdjpy', types: ['update'] },
     ];
     try {
       for (const spec of invalid) {

@@ -7,6 +7,8 @@ import type {
   CryptoTwapPriceEvent,
   CustomMarketEvent,
   EquityPriceEvent,
+  EquityTwapPriceEvent,
+  EquityTwapPriceSnapshotEvent,
   MarketEvent,
   SportsEvent,
   StandardMarketEvent,
@@ -22,16 +24,20 @@ import type {
 import type * as ClientExports from '../index';
 import {
   createPublicClient,
+  type EquityTwapPriceSubscription,
   type RealtimeErrorCode,
   RealtimeKnownErrorCode,
   type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
   type CryptoTwapPriceSubscription as RootCryptoTwapPriceSubscription,
+  type EquityTwapPriceEvent as RootEquityTwapPriceEvent,
+  type EquityTwapPriceSnapshotEvent as RootEquityTwapPriceSnapshotEvent,
   type SecureClient,
 } from '../index';
 
 import type {
   EventForSubscriptionSpecs,
   MarketSubscription,
+  PublicSubscriptionSpec,
   SubscribeError,
   SubscriptionHandle,
 } from './subscriptions';
@@ -75,12 +81,24 @@ describe('price subscription contracts', () => {
     expectTypeOf(equity).resolves.toEqualTypeOf<
       SubscriptionHandle<EquityPriceEvent>
     >();
+    const equityTwap = secureClient.subscribe([
+      {
+        topic: 'prices.equity.twap',
+        symbol: 'USDJPY',
+      },
+    ]);
+    expectTypeOf(equityTwap).resolves.toEqualTypeOf<
+      SubscriptionHandle<EquityTwapPriceEvent>
+    >();
     const mixed = secureClient.subscribe([
       { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
       { topic: 'prices.equity', symbol: 'aapl' },
+      { topic: 'prices.equity.twap', symbol: 'USDJPY' },
     ]);
     expectTypeOf(mixed).resolves.toEqualTypeOf<
-      SubscriptionHandle<CryptoTwapPriceEvent | EquityPriceEvent>
+      SubscriptionHandle<
+        CryptoTwapPriceEvent | EquityPriceEvent | EquityTwapPriceEvent
+      >
     >();
 
     for await (const event of await twap) {
@@ -105,6 +123,28 @@ describe('price subscription contracts', () => {
         >();
       }
     }
+    for await (const event of await equityTwap) {
+      expectTypeOf(event.payload.windowSeconds).toEqualTypeOf<60>();
+      if (event.type === 'subscribe') {
+        expectTypeOf(event).toEqualTypeOf<EquityTwapPriceSnapshotEvent>();
+      } else {
+        expectTypeOf(event).toEqualTypeOf<
+          Extract<EquityTwapPriceEvent, { type: 'update' }>
+        >();
+      }
+    }
+  });
+
+  it('exports equity TWAP types only for secure subscriptions', () => {
+    expectTypeOf<EquityTwapPriceSubscription>().toEqualTypeOf<{
+      topic: 'prices.equity.twap';
+      symbol: string;
+    }>();
+    expectTypeOf<RootEquityTwapPriceEvent>().toEqualTypeOf<EquityTwapPriceEvent>();
+    expectTypeOf<RootEquityTwapPriceSnapshotEvent>().toEqualTypeOf<EquityTwapPriceSnapshotEvent>();
+    expectTypeOf<
+      Extract<PublicSubscriptionSpec, { topic: 'prices.equity.twap' }>
+    >().toEqualTypeOf<never>();
   });
 
   it('requires authentication and explicit symbols while preserving deprecated topics', () => {
@@ -165,6 +205,28 @@ describe('price subscription contracts', () => {
 });
 
 describe('EventForSubscriptionSpecs', () => {
+  it('narrows equity TWAP and mixed price specs', () => {
+    type EquityTwapOnly = EventForSubscriptionSpecs<
+      readonly [
+        {
+          topic: 'prices.equity.twap';
+          symbol: 'USDJPY';
+        },
+      ]
+    >;
+    expectTypeOf<EquityTwapOnly>().toEqualTypeOf<EquityTwapPriceEvent>();
+
+    type MixedPrices = EventForSubscriptionSpecs<
+      readonly [
+        { topic: 'prices.crypto'; symbols: readonly ['btcusd'] },
+        { topic: 'prices.equity.twap'; symbol: 'USDJPY' },
+      ]
+    >;
+    expectTypeOf<MixedPrices>().toEqualTypeOf<
+      CryptoPriceEvent | EquityTwapPriceEvent
+    >();
+  });
+
   it('narrows a standard market spec to standard market events', () => {
     type MarketOnly = EventForSubscriptionSpecs<
       readonly [
