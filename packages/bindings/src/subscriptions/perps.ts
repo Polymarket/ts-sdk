@@ -307,11 +307,6 @@ export type PerpsBuilderFillUpdateEvent = z.infer<
   typeof PerpsBuilderFillUpdateEventSchema
 >;
 
-/** @experimental This API may change in a breaking way in any release, including patch releases. */
-export type PerpsBuilderFillsEvent =
-  | PerpsBuilderFillUpdateEvent
-  | PerpsResyncEvent;
-
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -429,6 +424,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsPortfolioUpdateEventSchema,
   PerpsOrderUpdateEventSchema,
   PerpsFillUpdateEventSchema,
+  PerpsBuilderFillUpdateEventSchema,
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,

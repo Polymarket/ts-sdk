@@ -87,21 +87,19 @@ const ResolvedPerpsBuilderFeeSchema = z.strictObject({
   approvalVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 });
 
-const ApprovePerpsBuilderFeeRequestSchema =
-  ResolvedPerpsBuilderFeeSchema.partial().default(
-    {},
-  ) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
+const ApprovePerpsBuilderFeeRequestSchema = z.strictObject({
+  builderAddress: EvmAddressSchema,
+  maxFeeRate: PerpsBuilderFeeRateInputSchema,
+}) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ApprovePerpsBuilderFeeRequest = {
-  /** Builder address. Defaults to the selected session. */
-  builder?: string;
-  /** Maximum fee fraction. Defaults to session terms; zero revokes permission. */
-  maxFeeRate?: string;
-  /** Omit to fetch the saved version and add one; the first approval uses 1. */
-  approvalVersion?: number;
+  /** Builder account to explicitly authorize. */
+  builderAddress: string;
+  /** Approved maximum fee fraction; zero revokes permission. */
+  maxFeeRate: string;
 };
 
 /**
@@ -132,10 +130,8 @@ export const ApprovePerpsBuilderFeeError = makeErrorGuard(
  *
  * @remarks
  * A zero maximum revokes permission for new orders, including zero-rate orders.
- * Explicit parameters override session defaults. Without session defaults,
- * provide builder and maxFeeRate explicitly.
- * If the version is omitted, reads this session's saved approval and submits
- * its version plus one, or 1 for the first approval. Consent is signed with
+ * Reads this session's saved approval and submits its version plus one,
+ * or 1 for the first approval. Consent is signed with
  * the parent client's owner signer, not the delegated session key.
  * Existing orders retain their saved terms. Conflicts and ambiguous submission
  * failures propagate without automatically signing or submitting again.
@@ -148,26 +144,19 @@ export const ApprovePerpsBuilderFeeError = makeErrorGuard(
 export async function approvePerpsBuilderFee(
   client: BaseSecureClient,
   session: PerpsSession,
-  request?: ApprovePerpsBuilderFeeRequest,
+  request: ApprovePerpsBuilderFeeRequest,
 ): Promise<PerpsBuilderApproval> {
   const input = parseUserInput(request, ApprovePerpsBuilderFeeRequestSchema);
-  const defaults = session.builderAttribution;
-  const terms = parseUserInput(
-    {
-      builder: input.builder ?? defaults?.builderAddress,
-      maxFeeRate: input.maxFeeRate ?? defaults?.feeRate,
-    },
-    ResolvedPerpsBuilderFeeSchema.omit({ approvalVersion: true }),
+  const approvalVersion = nextPerpsBuilderApprovalVersion(
+    await session.fetchBuilderApprovals({ builder: input.builderAddress }),
+    input.builderAddress,
   );
-  const approvalVersion =
-    input.approvalVersion ??
-    nextPerpsBuilderApprovalVersion(
-      await session.fetchBuilderApprovals({ builder: terms.builder }),
-      terms.builder,
-    );
-
   const params = parseUserInput(
-    { ...terms, approvalVersion },
+    {
+      builder: input.builderAddress,
+      maxFeeRate: input.maxFeeRate,
+      approvalVersion,
+    },
     ResolvedPerpsBuilderFeeSchema,
   );
   const op: PerpsBuilderFeeApprovalOp = {
@@ -250,5 +239,5 @@ export function createPerpsBuilderFeeApprovalBody(
 /** @internal Owner-signing operation bound to the parent secure client. */
 export type PerpsBuilderFeeApprover = (
   session: PerpsSession,
-  request?: ApprovePerpsBuilderFeeRequest,
+  request: ApprovePerpsBuilderFeeRequest,
 ) => Promise<PerpsBuilderApproval>;

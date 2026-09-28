@@ -1,5 +1,11 @@
-import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
+  OrderSide,
+  toDecimalString,
+  toEpochMilliseconds,
+  toPaginationCursor,
+} from '@polymarket/bindings';
+import {
+  type PerpsBuilderApproval,
   type PerpsCredentials,
   PerpsKnownInternalTransferType,
   PerpsPnlInterval,
@@ -33,7 +39,7 @@ import {
   expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
-import { PerpsSession } from './session';
+import { PerpsSession, type PerpsSessionOptions } from './session';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
@@ -67,6 +73,73 @@ describe('PerpsSession', () => {
     server.close();
   });
 
+  describe('builder consent', () => {
+    const builderAddress = '0xabababababababababababababababababababab';
+    const terms = { builderAddress, feeRate: '0.0003' };
+
+    it('serializes approval and revocation and adopts only confirmed terms', async () => {
+      let confirmApproval!: (approval: PerpsBuilderApproval) => void;
+      const approval = new Promise<PerpsBuilderApproval>((resolve) => {
+        confirmApproval = resolve;
+      });
+      const approveBuilderFee = vi
+        .fn()
+        .mockReturnValueOnce(approval)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0', 2));
+      const session = createSession({ approveBuilderFee });
+      const approving = session.approveBuilderFee({
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      const revoking = session.revokeBuilderFee();
+      await vi.waitFor(() =>
+        expect(approveBuilderFee).toHaveBeenCalledTimes(1),
+      );
+      expect(session.builderAttribution).toBeUndefined();
+      confirmApproval(builderApproval(builderAddress, '0.0003', 1));
+      await approving;
+      await revoking;
+      expect(approveBuilderFee).toHaveBeenLastCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0',
+      });
+      expect(session.builderAttribution).toBeUndefined();
+      await session.close();
+    });
+
+    it('preserves active terms after rejected changes and recovers the consent queue', async () => {
+      const rejected = new RequestRejectedError('rejected', { status: 400 });
+      const approveBuilderFee = vi
+        .fn()
+        .mockRejectedValueOnce(rejected)
+        .mockRejectedValueOnce(rejected)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0.0004', 2));
+      const session = createSession({
+        approveBuilderFee,
+        builderAttribution: terms,
+      });
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' }),
+      ).rejects.toBe(rejected);
+      await expect(session.revokeBuilderFee()).rejects.toBe(rejected);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0004');
+      await session.close();
+    });
+
+    it('keeps the selected builder when revoking a different builder', async () => {
+      const otherBuilder = '0x3333333333333333333333333333333333333333';
+      const session = createSession({
+        builderAttribution: terms,
+        approveBuilderFee: async () => builderApproval(otherBuilder, '0', 2),
+      });
+      await session.revokeBuilderFee(otherBuilder);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.close();
+    });
+  });
+
   describe('successful session', () => {
     let frames: unknown[];
 
@@ -97,11 +170,10 @@ describe('PerpsSession', () => {
           });
         }),
       );
-      const session = createSession();
+      const session = createSession({ includeBuilderFills: true });
       await session.connect();
-      const handle = await session.subscribeBuilderFills();
       for (const sequence of [10, 100]) {
-        await expect(waitForNextEvent(handle)).resolves.toMatchObject({
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
           value: {
             type: 'builderFill',
             sequence,
@@ -109,115 +181,6 @@ describe('PerpsSession', () => {
         });
       }
       await session.close();
-    });
-
-    it('cleans up a rejected builder subscription so it can be retried', async () => {
-      let attempts = 0;
-      server.resetHandlers();
-      server.use(
-        perps.addEventListener('connection', ({ client }) => {
-          client.addEventListener('message', (message) => {
-            const frame = JSON.parse(String(message.data));
-            const rejected =
-              frame.chs?.includes('builderFills') && ++attempts === 1;
-            client.send(
-              JSON.stringify({
-                id: frame.id,
-                data: rejected
-                  ? { status: 'err', error: 'unavailable' }
-                  : { status: 'ok' },
-              }),
-            );
-          });
-        }),
-      );
-      const session = createSession();
-      await session.connect();
-      await expect(session.subscribeBuilderFills()).rejects.toBeInstanceOf(
-        RequestRejectedError,
-      );
-      await session.subscribeBuilderFills();
-      expect(attempts).toBe(2);
-      await session.close();
-    });
-
-    it('resubscribes after an unsubscribe acknowledgement is lost', async () => {
-      let subscriptions = 0;
-      server.resetHandlers();
-      server.use(
-        perps.addEventListener('connection', ({ client }) => {
-          client.addEventListener('message', (message) => {
-            const frame = JSON.parse(String(message.data));
-            if (frame.req === 'unsub') return; // Server applied it; response was lost.
-            if (frame.chs?.includes('builderFills')) subscriptions++;
-            client.send(
-              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
-            );
-          });
-        }),
-      );
-      vi.useFakeTimers();
-      const session = createSession();
-      try {
-        await session.connect();
-        const first = await session.subscribeBuilderFills();
-        const closed = first.close().catch((error: unknown) => error);
-        await vi.advanceTimersByTimeAsync(30_000);
-        expect(await closed).toBeInstanceOf(TransportError);
-        await session.subscribeBuilderFills();
-        expect(subscriptions).toBe(2);
-      } finally {
-        await session.close();
-      }
-    });
-
-    it('serializes a new subscriber behind an in-flight last-handle close', async () => {
-      server.resetHandlers();
-      const changes: string[] = [];
-      let acknowledgeUnsubscribe: (() => void) | undefined;
-      let notifyUnsubscribe!: () => void;
-      const unsubscribing = new Promise<void>((resolve) => {
-        notifyUnsubscribe = resolve;
-      });
-      server.use(
-        perps.addEventListener('connection', ({ client }) => {
-          client.addEventListener('message', (message) => {
-            const frame = JSON.parse(String(message.data));
-            const acknowledge = () =>
-              client.send(
-                JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
-              );
-            if (frame.chs?.includes('builderFills')) {
-              changes.push(frame.req);
-              if (frame.req === 'unsub') {
-                acknowledgeUnsubscribe = acknowledge;
-                notifyUnsubscribe();
-                return;
-              }
-            }
-            acknowledge();
-          });
-        }),
-      );
-      const session = createSession();
-      try {
-        await session.connect();
-        const [first, second] = await Promise.all([
-          session.subscribeBuilderFills(),
-          session.subscribeBuilderFills(),
-        ]);
-        await first.close();
-        expect(changes).toEqual(['sub']);
-        const closing = second.close();
-        await unsubscribing;
-        const replacement = session.subscribeBuilderFills();
-        acknowledgeUnsubscribe?.();
-        await closing;
-        await replacement;
-        expect(changes).toEqual(['sub', 'unsub', 'sub']);
-      } finally {
-        await session.close();
-      }
     });
 
     it('authenticates and subscribes to session channels', async () => {
@@ -382,93 +345,24 @@ describe('PerpsSession', () => {
       connectionFrames = mockSuccessfulSessions();
     });
 
-    it('restores the builder stream and tells every handle to reconcile', async () => {
-      const session = createSession();
+    it('restores builder fills in the same subscription and emits one resync', async () => {
+      const session = createSession({ includeBuilderFills: true });
       vi.useFakeTimers();
       try {
         await session.connect();
-        const [first, second] = await Promise.all([
-          session.subscribeBuilderFills(),
-          session.subscribeBuilderFills(),
-        ]);
         connectionFrames[0]?.client.close();
         await vi.advanceTimersToNextTimerAsync();
         await vi.waitFor(() =>
-          expect(connectionFrames[1]?.frames[2]).toMatchObject({
+          expect(connectionFrames[1]?.frames[1]).toMatchObject({
             req: 'sub',
-            chs: ['builderFills'],
+            chs: expect.arrayContaining(['orders', 'builderFills']),
           }),
         );
-        for (const handle of [first, second]) {
-          await expect(waitForNextEvent(handle)).resolves.toMatchObject({
-            value: { type: 'resync', reason: 'reconnect' },
-          });
-        }
-      } finally {
-        await session.close();
-      }
-    });
-
-    it.each([
-      'rejection',
-      'timeout',
-    ] as const)('recovers the core session and fails builder handles on a builder subscription %s', async (failure) => {
-      server.resetHandlers();
-      const connections: Array<{ close: () => void }> = [];
-      let builderAttempts = 0;
-      server.use(
-        perps.addEventListener('connection', ({ client }) => {
-          connections.push(client);
-          client.addEventListener('message', (message) => {
-            const frame = JSON.parse(String(message.data));
-            const failBuilder =
-              frame.chs?.includes('builderFills') && ++builderAttempts === 2;
-            if (failBuilder && failure === 'timeout') return;
-            client.send(
-              JSON.stringify({
-                id: frame.id,
-                data: failBuilder
-                  ? { status: 'err', error: 'unavailable' }
-                  : { status: 'ok' },
-              }),
-            );
-          });
-        }),
-      );
-      vi.useFakeTimers();
-      const random = vi.spyOn(Math, 'random').mockReturnValue(0.5);
-      const session = createSession();
-      try {
-        await session.connect();
-        const handle = await session.subscribeBuilderFills();
-        const onResync = vi.fn();
-        void waitForNextEvent(session).then(onResync);
-        const builderEvent = waitForNextEvent(handle);
-        builderEvent.catch(() => undefined);
-
-        connections[0]?.close();
-        await vi.advanceTimersByTimeAsync(125);
-        expect(builderAttempts).toBe(2);
-        expect(onResync).toHaveBeenCalledWith({
-          done: false,
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
           value: { type: 'resync', reason: 'reconnect' },
         });
-
-        if (failure === 'timeout') {
-          await vi.advanceTimersByTimeAsync(30_000);
-        }
-        await expect(builderEvent).rejects.toBeInstanceOf(
-          failure === 'timeout' ? TransportError : RequestRejectedError,
-        );
-        await vi.advanceTimersByTimeAsync(30_000);
-        expect(builderAttempts).toBe(2);
-        expect(connections).toHaveLength(2);
-
-        await session.subscribeBuilderFills();
-        expect(builderAttempts).toBe(3);
       } finally {
         await session.close();
-        random.mockRestore();
       }
     });
 
@@ -2151,13 +2045,16 @@ describe('PerpsSession', () => {
   });
 });
 
-function createSession(): PerpsSession {
+function createSession(
+  options: Partial<PerpsSessionOptions> = {},
+): PerpsSession {
   return new PerpsSession({
     chainId: production.chainId,
     credentials,
     onClose: () => undefined,
     restUrl: production.perps.rest,
     wsUrl: production.perps.ws,
+    ...options,
   });
 }
 
@@ -2540,4 +2437,19 @@ function mockPortfolioPosition(request: { size: string }) {
       timestamp: 1_700_000_000_000,
     }),
   );
+}
+
+function builderApproval(
+  builder: string,
+  maxFeeRate: string,
+  approvalVersion: number,
+): PerpsBuilderApproval {
+  return {
+    trader: credentials.proxy,
+    builder: expectEvmAddress(builder),
+    maxFeeRate: toDecimalString(maxFeeRate),
+    approvalVersion,
+    timestamp: toEpochMilliseconds(1_767_225_600_000),
+    sequence: approvalVersion,
+  };
 }

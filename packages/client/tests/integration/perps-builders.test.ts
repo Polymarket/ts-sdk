@@ -8,7 +8,7 @@ const runBuilderTests =
 
 describe('Perps builder integration', () => {
   it.runIf(runBuilderTests)(
-    'resolves the default fee on setup and preserves an explicit fee on resume',
+    'restores saved consent on resume or requires explicit approval',
     async ({ secureClientWithDepositWallet: client, skip }) => {
       if (builderAddress === undefined) return skip();
       const status = await client.fetchPerpsBuilderStatus({
@@ -18,23 +18,36 @@ describe('Perps builder integration', () => {
         return skip();
 
       const session = await client.openPerpsSession({
-        builderAttribution: { builderAddress },
         expiresIn: 30 * 60_000,
       });
       try {
-        expect(session.builderAttribution?.feeRate).toBe(status.maxFeeRate);
+        const approvals = await session.fetchBuilderApprovals({
+          builder: builderAddress,
+        });
+        const approval = approvals.find(
+          (grant) =>
+            grant.builder.toLowerCase() === builderAddress.toLowerCase(),
+        );
+        const restore = client.openPerpsSession({
+          credentials: session.credentials,
+          builderAttribution: builderAddress,
+        });
+        if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
+          await expect(restore).rejects.toThrow(
+            'Explicit builder fee approval is required',
+          );
+        } else {
+          const restored = await restore;
+          try {
+            expect(restored.builderAttribution?.feeRate).toBe(
+              approval.maxFeeRate,
+            );
+          } finally {
+            await restored.close();
+          }
+        }
       } finally {
         await session.close();
-      }
-
-      const resumed = await client.openPerpsSession({
-        credentials: session.credentials,
-        builderAttribution: { builderAddress, feeRate: '0' },
-      });
-      try {
-        expect(resumed.builderAttribution?.feeRate).toBe('0');
-      } finally {
-        await resumed.close();
       }
     },
   );
@@ -45,7 +58,7 @@ describe('Perps builder integration', () => {
       const unregisteredBuilderAddress = await randomEoaSigner.getAddress();
       await expect(
         client.openPerpsSession({
-          builderAttribution: { builderAddress: unregisteredBuilderAddress },
+          builderAttribution: unregisteredBuilderAddress,
         }),
       ).rejects.toThrow(
         'Builder attribution is not active for this builder address',

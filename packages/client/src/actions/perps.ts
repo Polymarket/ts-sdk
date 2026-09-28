@@ -6,6 +6,7 @@ import {
 } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
+  FetchPerpsBuilderApprovalsResponseSchema,
   FetchPerpsCandlesResponseSchema,
   FetchPerpsFeesResponseSchema,
   FetchPerpsFundingHistoryResponseSchema,
@@ -116,7 +117,6 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
-  PerpsBuilderFillsEvent,
   PerpsBuilderFillUpdateEvent,
   PerpsBuilderTermsInput,
   PerpsCancelOptions,
@@ -153,7 +153,6 @@ export {
   FetchPerpsBuilderEarningsSummaryError,
   ListPerpsBuilderEarningsError,
   RevokePerpsBuilderFeeError,
-  SubscribePerpsBuilderFillsError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
@@ -987,24 +986,9 @@ const PerpsCredentialsSchema = z.object({
 
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * Defaults for order attribution, resolved against current builder availability at session setup.
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export type PerpsSessionBuilderAttributionInput = {
-  /** Registered builder account receiving the additional fee. */
-  readonly builderAddress: string;
-  /** Exact fee fraction. Omit to use the maximum returned by builder status. */
-  readonly feeRate?: string;
-};
-
-const PerpsSessionBuilderAttributionInputSchema =
-  PerpsBuilderTermsInputSchema.partial({
-    feeRate: true,
-  }) satisfies z.ZodType<PerpsSessionBuilderAttributionInput>;
-
 const CreatePerpsSessionRequestSchema = z.strictObject({
-  builderAttribution: PerpsSessionBuilderAttributionInputSchema.optional(),
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   expiresIn: z
     .number()
     .int()
@@ -1014,7 +998,8 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
-  builderAttribution: PerpsSessionBuilderAttributionInputSchema.optional(),
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -1036,8 +1021,10 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
-  /** Checks builder availability and resolves order defaults. Does not grant fee approval. */
-  builderAttribution?: PerpsSessionBuilderAttributionInput;
+  /** Builder address whose active trader approval supplies the default order fee. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1051,8 +1038,10 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
-  /** Rechecks availability and resolves defaults. Supply again; credentials do not store them. */
-  builderAttribution?: PerpsSessionBuilderAttributionInput;
+  /** Restore this builder's active trader approval. Credentials do not store attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1280,12 +1269,13 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  *
  * When `builderAttribution` is provided, checks that the builder is registered,
  * enabled, and accepting attribution before creating or resuming credentials.
- * An omitted `feeRate` uses the maximum returned by builder status. Resolved
- * defaults apply to new orders and generated TP/SL exits and remain fixed for
- * the session. Supply them again when resuming; credentials do not store them.
- * Fee consent requires a separate `session.approveBuilderFee()` call. Individual
- * placements can replace both terms or use `builderAttribution: null` to opt out.
- * The platform still validates attribution when each order is submitted.
+ * Restores the authenticated trader's active approval and uses its approved
+ * maximum for all new orders and generated TP/SL exits. Missing or revoked
+ * approval fails setup; setup never grants consent or uses the platform cap.
+ * Omit attribution to start without a builder, then explicitly approve one with
+ * `session.approveBuilderFee({ builderAddress, maxFeeRate })`.
+ * Successful approval or revocation updates the same session's order defaults.
+ * Set `includeBuilderFills` to receive builder receipts through the session iterator.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
@@ -1299,7 +1289,7 @@ export async function openPerpsSession(
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
   let builderAttribution: PerpsBuilderTermsInput | undefined;
   if (params.builderAttribution !== undefined) {
-    const { builderAddress, feeRate } = params.builderAttribution;
+    const builderAddress = params.builderAttribution;
     const status = await fetchPerpsBuilderStatus(client, {
       address: builderAddress,
     });
@@ -1308,19 +1298,39 @@ export async function openPerpsSession(
         `Builder attribution is not active for this builder address: ${builderAddress}`,
       );
     }
-    builderAttribution = parseUserInput(
-      { builderAddress, feeRate: feeRate ?? status.maxFeeRate },
-      PerpsBuilderTermsInputSchema,
-    );
   }
   const credentials =
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
+  if (params.builderAttribution !== undefined) {
+    const builderAddress = params.builderAttribution;
+    const approvals = await unwrap(
+      client.perps
+        .get('/v1/account/builder-approvals', {
+          headers: perpsCredentialHeaders(credentials),
+          params: toSearchParams({ builder: builderAddress }, snakeCase()),
+        })
+        .andThen(validateWith(FetchPerpsBuilderApprovalsResponseSchema)),
+    );
+    const approval = approvals.data.find((grant) =>
+      isSameEvmAddress(grant.builder, builderAddress),
+    );
+    if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
+      throw new UserInputError(
+        `Explicit builder fee approval is required for this builder address: ${builderAddress}`,
+      );
+    }
+    builderAttribution = parseUserInput(
+      { builderAddress: approval.builder, feeRate: approval.maxFeeRate },
+      PerpsBuilderTermsInputSchema,
+    );
+  }
   return client.webSockets.perpsSession.connect(
     credentials,
     builderAttribution,
     approvePerpsBuilderFee.bind(null, client),
+    params.includeBuilderFills,
   );
 }
 

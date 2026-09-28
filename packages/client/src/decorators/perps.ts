@@ -93,7 +93,6 @@ export type {
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
-  PerpsSessionBuilderAttributionInput,
   PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -146,11 +145,9 @@ export {
   type FetchPerpsBuilderEarningsSummaryRequest,
   ListPerpsBuilderEarningsError,
   type ListPerpsBuilderEarningsRequest,
-  type PerpsBuilderFillsEvent,
   type PerpsBuilderFillUpdateEvent,
   type PerpsBuilderTermsInput,
   RevokePerpsBuilderFeeError,
-  SubscribePerpsBuilderFillsError,
 } from '../websockets/perps/session';
 
 /**
@@ -332,17 +329,17 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * resume a previous session.
    * When `builderAttribution` is provided, checks that the builder is registered,
    * enabled, and accepting attribution before creating or resuming credentials.
-   * An omitted `feeRate` uses the maximum returned by builder status. Resolved
-   * defaults apply to new orders and generated TP/SL exits and remain fixed for
-   * the session. Supply them again when resuming; credentials do not store them.
-   * Fee consent requires a separate `session.approveBuilderFee()` call. Individual
-   * placements can replace both terms or use `builderAttribution: null` to opt out.
-   * The platform still validates attribution when each order is submitted.
+   * Restores the trader's active approval and uses its approved maximum for all
+   * new orders and generated TP/SL exits. Missing or revoked approval fails setup.
+   * Omit attribution to start without a builder, then call
+   * `session.approveBuilderFee({ builderAddress, maxFeeRate })` to grant consent.
+   * Successful approval or revocation updates the same session's defaults.
+   * Set `includeBuilderFills` to receive builder receipts in the session iterator.
    *
    * @example
    * ```ts
    * const session = await client.openPerpsSession({
-   *   builderAttribution: { builderAddress },
+   *   builderAttribution: builderAddress,
    * });
    * ```
    *

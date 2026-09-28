@@ -47,6 +47,7 @@ export class PerpsSessionManager {
     credentials: PerpsCredentials,
     builderAttribution?: PerpsBuilderTermsInput,
     approveBuilderFee?: PerpsBuilderFeeApprover,
+    includeBuilderFills?: boolean,
   ): Promise<PerpsSession> {
     if (this.#hasShutdown) {
       return Promise.reject(
@@ -57,6 +58,7 @@ export class PerpsSessionManager {
     const session = new PerpsSession({
       builderAttribution,
       approveBuilderFee,
+      includeBuilderFills,
       chainId: this.#chainId,
       credentials,
       headers: this.#headers,

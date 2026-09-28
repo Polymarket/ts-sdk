@@ -3,20 +3,19 @@
 '@polymarket/client': minor
 ---
 
-Add Perps Builder Codes with optional `builderAttribution` session defaults and per-placement overrides,
-explicit opt-out, owner-signed fee approvals and revocation, and typed earnings reporting.
-Session setup accepts a `builderAddress`, checks builder availability, and defaults an omitted
-`feeRate` to the maximum returned by the API.
+Add Perps Builder Codes with explicit owner-signed fee approval and revocation.
+Approving a builder updates the session's attribution after confirmation; revoking
+clears it after confirmation. Approval versions are managed internally.
+
+An optional builder address at session setup restores the trader's active saved
+approval. Its maximum fee applies consistently to single orders, batches, and
+TP/SL exits. Setup never creates consent or substitutes the platform fee cap.
 
 Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
 `fee` continues to mean the exchange fee. Legacy responses normalize to zero
-builder fee. Existing untagged order signatures and session event types are unchanged.
+builder fee. Existing untagged order signatures are unchanged.
 
-Add an opt-in builder receipt stream with independent handles and reconnect
-signals. Historical reconciliation remains application-owned. Perps remains experimental.
-
-Add `session.approveBuilderFee()` with optional parameters: inherit builder terms
-from that session and resolve the next approval version automatically. Explicit
-parameters override defaults. The parent secure client's owner signer signs
-consent; the session's delegated credentials read the saved approval. Failed
-submissions are not automatically retried.
+Expose typed builder earnings reporting and opt-in builder receipts through the
+existing session iterator with `includeBuilderFills`. This extends the experimental
+`PerpsSessionEvent` union with `builderFill`. Historical reconciliation remains
+application-owned. Failed consent submissions are not automatically retried.

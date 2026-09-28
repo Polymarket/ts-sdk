@@ -62,64 +62,36 @@ import type {
   ResumePerpsSessionRequest,
 } from './perps';
 
-describe('builder fee approval defaults', () => {
-  it('keeps builder configuration and approval off the secure client', () => {
-    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
-      'perpsBuilderAttribution',
-    );
-    expectTypeOf<SecurePerpsActions>().not.toHaveProperty(
-      'approvePerpsBuilderFee',
-    );
-  });
-  it('allows no arguments and partial overrides on the session', () => {
+describe('session builder consent', () => {
+  it('requires explicit consent terms and keeps versions internal', () => {
     function approve(session: PerpsSession) {
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        maxFeeRate: '0.0003',
+      });
+      // @ts-expect-error Approval requires explicit consent terms.
       void session.approveBuilderFee();
-      void session.approveBuilderFee({ maxFeeRate: '0' });
       void session.revokeBuilderFee();
-      void session.revokeBuilderFee(
-        '0x1111111111111111111111111111111111111111',
-      );
-      // @ts-expect-error Revocation takes an optional address, not a fee override.
-      void session.revokeBuilderFee({ maxFeeRate: '0.0005' });
     }
     void approve;
-    const request: ApprovePerpsBuilderFeeRequest = {};
-    void request;
+    expectTypeOf<ApprovePerpsBuilderFeeRequest>().not.toHaveProperty(
+      'approvalVersion',
+    );
   });
-});
 
-describe('Perps session builder attribution defaults', () => {
-  it('accepts an address with an optional fee when creating or resuming', () => {
-    const builderAttribution = {
-      builderAddress: '0x1111111111111111111111111111111111111111',
-    };
+  it('accepts an address selector and receipts option on creation and resume', () => {
     const create: CreatePerpsSessionRequest = {
-      builderAttribution,
-      expiresIn: 60_000,
+      builderAttribution: '0x1111111111111111111111111111111111111111',
+      includeBuilderFills: true,
     };
     function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
-      return {
-        credentials,
-        builderAttribution: { ...builderAttribution, feeRate: '0.0005' },
-      };
+      return { ...create, credentials };
     }
     expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
     expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
-  });
-
-  it('requires the builder address and rejects the order-only opt-out marker at setup', () => {
-    const incomplete: CreatePerpsSessionRequest = {
-      // @ts-expect-error A fee alone does not identify a builder.
-      builderAttribution: {
-        feeRate: '0.0005',
-      },
-    };
-    const disabled: CreatePerpsSessionRequest = {
-      // @ts-expect-error Omit builderAttribution to open a session without attribution.
-      builderAttribution: null,
-    };
-    void incomplete;
-    void disabled;
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
   });
 });
 

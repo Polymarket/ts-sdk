@@ -55,10 +55,7 @@ import { parseUserInput } from '../../../input';
 import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
-import {
-  type PerpsBuilderTermsInput,
-  PerpsBuilderTermsInputSchema,
-} from './builder-terms';
+import type { PerpsBuilderTermsInput } from './builder-terms';
 
 const PerpsOrderBaseInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
@@ -66,7 +63,6 @@ const PerpsOrderBaseInputSchema = z.object({
   quantity: PerpsDecimalInputSchema,
   reduceOnly: z.boolean().default(false),
   clientOrderId: PerpsClientOrderIdSchema.optional(),
-  builderAttribution: PerpsBuilderTermsInputSchema.nullable().optional(),
 });
 
 /**
@@ -91,8 +87,6 @@ export type PerpsPlaceGtcOrderRequest = {
   reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
-  /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-  builderAttribution?: PerpsBuilderTermsInput | null;
 };
 
 const PerpsPlaceGtcOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
@@ -122,8 +116,6 @@ export type PerpsPlaceIocOrderRequest = {
   reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
-  /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-  builderAttribution?: PerpsBuilderTermsInput | null;
 };
 
 const PerpsPlaceIocOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
@@ -153,8 +145,6 @@ export type PerpsPlaceFokOrderRequest = {
   reduceOnly?: boolean;
   /** Optional caller-supplied idempotency identifier. */
   clientOrderId?: string;
-  /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-  builderAttribution?: PerpsBuilderTermsInput | null;
 };
 
 const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
@@ -226,6 +216,7 @@ export type PerpsCommandRequest = {
 
 /** @internal */
 export type PerpsCommandExecutor = {
+  readonly builderAttribution?: PerpsBuilderTermsInput;
   /** @internal */
   executeCommand<T>(
     request: PerpsCommandRequest,
@@ -286,9 +277,15 @@ export async function postPerpsOrders(
   request: PostPerpsOrdersRequest,
 ): Promise<PerpsPostOrderAck[]> {
   const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
+  const builderAttribution = client.builderAttribution;
   return await client.executeCommand(
     {
-      op: ['createOrders', params.orders.map(toRawPerpsOrder)],
+      op: [
+        'createOrders',
+        params.orders.map((order) =>
+          toRawPerpsOrder(order, builderAttribution),
+        ),
+      ],
       expiresAt: params.expiresAt,
     },
     z.array(PerpsPostOrderAckSchema),
@@ -327,8 +324,6 @@ export type PlacePerpsOrderRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       takeProfit?: never;
@@ -350,8 +345,6 @@ export type PlacePerpsOrderRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       takeProfit?: never;
@@ -373,8 +366,6 @@ export type PlacePerpsOrderRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       takeProfit?: never;
@@ -402,8 +393,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Take-profit trigger to place with the entry order. */
@@ -428,8 +417,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Optional take-profit trigger to place with the entry order. */
@@ -453,8 +440,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Take-profit trigger to place with the entry order. */
@@ -478,8 +463,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Optional take-profit trigger to place with the entry order. */
@@ -503,8 +486,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Take-profit trigger to place with the entry order. */
@@ -528,8 +509,6 @@ export type PlacePerpsOrderWithTpSlRequest =
       reduceOnly?: boolean;
       /** Optional caller-supplied idempotency identifier. Generated when omitted. */
       clientOrderId?: string;
-      /** Omit to inherit session defaults; null disables builder attribution for this placement and its exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
       /** Optional take-profit trigger to place with the entry order. */
@@ -636,9 +615,10 @@ export async function placePerpsOrder(
   }
 
   const params = parseUserInput(request, PlacePerpsOrderRequestSchema);
+  const builderAttribution = client.builderAttribution;
   const [, update] = await client.executeCommandWithEvent(
     {
-      op: ['createOrders', [toRawPerpsOrder(params)]],
+      op: ['createOrders', [toRawPerpsOrder(params, builderAttribution)]],
       expiresAt: params.expiresAt,
     },
     SuccessfulPerpsPostOrderAcksSchema,
@@ -652,7 +632,10 @@ async function placePerpsOrderWithTpSl(
   request: PlacePerpsOrderWithTpSlRequest,
 ): Promise<PlacePerpsOrderWithTpSlResult> {
   const params = parseUserInput(request, PlacePerpsOrderWithTpSlRequestSchema);
-  const orders: RawPerpsOrderInput[] = [toRawPerpsOrder(params)];
+  const builderAttribution = client.builderAttribution;
+  const orders: RawPerpsOrderInput[] = [
+    toRawPerpsOrder(params, builderAttribution),
+  ];
   const exitBuy = params.side === OrderSide.SELL;
 
   if (params.takeProfit !== undefined) {
@@ -662,7 +645,7 @@ async function placePerpsOrderWithTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: toDecimalString(params.quantity),
-        builderAttribution: params.builderAttribution,
+        builderAttribution,
         trigger: params.takeProfit,
       }),
     );
@@ -674,7 +657,7 @@ async function placePerpsOrderWithTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: toDecimalString(params.quantity),
-        builderAttribution: params.builderAttribution,
+        builderAttribution,
         trigger: params.stopLoss,
       }),
     );
@@ -716,8 +699,6 @@ async function placePerpsOrderWithTpSl(
  */
 export type PlacePerpsPositionTpSlRequest =
   | {
-      /** Omit to inherit session defaults; null disables builder attribution for these exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Perps instrument identifier whose current position should receive TP/SL protection. */
       instrumentId: number;
       /** Take-profit trigger to place for the current position. */
@@ -728,8 +709,6 @@ export type PlacePerpsPositionTpSlRequest =
       expiresAt?: number;
     }
   | {
-      /** Omit to inherit session defaults; null disables builder attribution for these exits. */
-      builderAttribution?: PerpsBuilderTermsInput | null;
       /** Perps instrument identifier whose current position should receive TP/SL protection. */
       instrumentId: number;
       /** Optional take-profit trigger to place alongside the stop-loss. */
@@ -755,7 +734,6 @@ const PlacePerpsPositionTpSlRequestSchema = z.intersection(
   PerpsPositionTpSlRequiredPairSchema,
   z.object({
     instrumentId: PerpsInstrumentIdSchema,
-    builderAttribution: PerpsBuilderTermsInputSchema.nullable().optional(),
     expiresAt: z.number().int().positive().optional(),
   }),
 ) satisfies z.ZodType<PlacePerpsPositionTpSlRequest>;
@@ -779,6 +757,7 @@ export async function placePerpsPositionTpSl(
   request: PlacePerpsPositionTpSlRequest,
 ): Promise<PlacePerpsPositionTpSlResult> {
   const params = parseUserInput(request, PlacePerpsPositionTpSlRequestSchema);
+  const builderAttribution = client.builderAttribution;
   const buy = positionTpSlExitBuy(
     await client.fetchPortfolio(),
     params.instrumentId,
@@ -792,7 +771,7 @@ export async function placePerpsPositionTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: '0',
-        builderAttribution: params.builderAttribution,
+        builderAttribution,
         trigger: params.takeProfit,
       }),
     );
@@ -804,7 +783,7 @@ export async function placePerpsPositionTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: '0',
-        builderAttribution: params.builderAttribution,
+        builderAttribution,
         trigger: params.stopLoss,
       }),
     );
@@ -1558,6 +1537,7 @@ type RawPerpsTpSlTriggerInput = readonly [
 
 function toRawPerpsOrder(
   order: z.output<typeof PerpsOrderRequestSchema>,
+  builderAttribution: PerpsBuilderTermsInput | undefined,
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,
@@ -1570,12 +1550,9 @@ function toRawPerpsOrder(
     order.clientOrderId,
     undefined,
     undefined,
-    order.builderAttribution == null
+    builderAttribution === undefined
       ? undefined
-      : [
-          order.builderAttribution.builderAddress,
-          order.builderAttribution.feeRate,
-        ],
+      : [builderAttribution.builderAddress, builderAttribution.feeRate],
   ];
 }
 
@@ -1584,7 +1561,7 @@ function toRawPerpsTpSlOrder(request: {
   instrumentId: PerpsInstrumentId;
   kind: PerpsTpSlKind;
   quantity: string;
-  builderAttribution?: PerpsBuilderTermsInput | null;
+  builderAttribution?: PerpsBuilderTermsInput;
   trigger: z.output<typeof PerpsTpSlTriggerSchema>;
 }): RawPerpsOrderInput {
   return [

@@ -13,10 +13,6 @@ import type {
 } from './trading';
 
 const baseOrder = {
-  builderAttribution: {
-    builderAddress: '0x1111111111111111111111111111111111111111',
-    feeRate: '0.0005',
-  },
   instrumentId: 1,
   quantity: '1',
   side: OrderSide.BUY,
@@ -29,29 +25,13 @@ const gtcOrder = {
 } as const;
 
 describe('PlacePerpsOrderRequest', () => {
-  it('accepts explicit opt-out and requires complete decimal-string terms', () => {
-    const optOut: PlacePerpsOrderRequest = {
+  it('does not accept per-order builder overrides', () => {
+    const request: PlacePerpsOrderRequest = {
       ...gtcOrder,
+      // @ts-expect-error Builder terms belong to the session.
       builderAttribution: null,
     };
-    const invalid: PlacePerpsOrderRequest = {
-      ...gtcOrder,
-      // @ts-expect-error Explicit terms must include both address and fee rate.
-      builderAttribution: {
-        builderAddress: '0x1111111111111111111111111111111111111111',
-      },
-    };
-    const numericRate: PlacePerpsOrderRequest = {
-      ...gtcOrder,
-      builderAttribution: {
-        builderAddress: '0x1111111111111111111111111111111111111111',
-        // @ts-expect-error Rates must be exact decimal strings.
-        feeRate: 0.0005,
-      },
-    };
-    void optOut;
-    void invalid;
-    void numericRate;
+    void request;
   });
   it('allows priced GTC orders to be post-only', () => {
     const request: PerpsPlaceGtcOrderRequest = {
@@ -207,19 +187,14 @@ describe('PerpsSession.placeOrder', () => {
 });
 
 describe('PlacePerpsPositionTpSlRequest', () => {
-  it('accepts terms and explicit opt-out for generated position exits', () => {
-    const tagged: PlacePerpsPositionTpSlRequest = {
+  it('does not accept builder overrides for generated exits', () => {
+    const request: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,
-      builderAttribution: baseOrder.builderAttribution,
-      takeProfit: { triggerPrice: '110' },
-    };
-    const untagged: PlacePerpsPositionTpSlRequest = {
-      instrumentId: 1,
+      // @ts-expect-error Builder terms belong to the session.
       builderAttribution: null,
       stopLoss: { triggerPrice: '90' },
     };
-    void tagged;
-    void untagged;
+    void request;
   });
   it('rejects position side', () => {
     const request: PlacePerpsPositionTpSlRequest = {
