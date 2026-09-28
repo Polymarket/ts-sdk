@@ -8,6 +8,7 @@ import {
   BuilderApiKeyCredsSchema,
   BuilderApiKeysResponseSchema,
 } from '@polymarket/bindings/clob';
+import { GatewayTradingCredentialsSchema } from '@polymarket/bindings/gateway';
 import { type EvmAddress, type EvmSignature, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient, BaseSecureClient } from '../clients';
@@ -346,4 +347,39 @@ function toL1Headers(auth: ApiKeyAuthRequest): HeadersInit {
     POLY_SIGNATURE: auth.signature,
     POLY_TIMESTAMP: `${auth.timestamp}`,
   };
+}
+
+/** @internal Exchange the signed authentication payload without replaying it. */
+export async function authenticateTradingCredentials(
+  client: BaseClient,
+  request: ApiKeyAuthRequest,
+): Promise<ApiKeyCreds> {
+  const response = await unwrap(
+    client.gateway.post('/next/login', {
+      json: {
+        type: 'L1_CREDENTIALS',
+        signer: request.address,
+        signature: request.signature,
+        timestamp: request.timestamp,
+        nonce: request.nonce,
+      },
+      timeout: 10_000,
+    }),
+  );
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new UnexpectedResponseError(
+      'Received an invalid authentication response.',
+    );
+  }
+  const parsed = GatewayTradingCredentialsSchema.safeParse(payload);
+  if (!parsed.success) {
+    // Never attach credential-bearing response data to validation errors.
+    throw new UnexpectedResponseError(
+      'Received incompatible trading credentials.',
+    );
+  }
+  return parsed.data;
 }

@@ -16,6 +16,12 @@ export type RestEndpoint = {
   headers?: Record<string, string>;
 };
 
+/** Endpoint and trusted issuer used to bind wallet ownership signatures. */
+export type GatewayEndpoint = RestEndpoint & {
+  /** Exact issuer configured by the identity service, including scheme and port. */
+  identityIssuer: string;
+};
+
 export type WebSocketEndpoint = {
   ws: string;
   headers?: Record<string, string>;
@@ -73,7 +79,7 @@ export type EnvironmentConfig = {
   /** @internal */
   gamma: RestEndpoint;
   /** @internal */
-  gateway: RestEndpoint;
+  gateway: GatewayEndpoint;
   /** @internal */
   data: RestEndpoint;
   /** @internal */
@@ -106,7 +112,7 @@ export type EnvironmentConfigFork = {
   };
   relayer?: Partial<RestEndpoint>;
   gamma?: Partial<RestEndpoint>;
-  gateway?: Partial<RestEndpoint>;
+  gateway?: Partial<GatewayEndpoint>;
   data?: Partial<RestEndpoint>;
   combos?: EnvironmentConfigForkEndpoint & {
     builderGateway?: Partial<RestEndpoint>;
@@ -204,7 +210,10 @@ export const production: EnvironmentConfig = {
   },
   relayer: { rest: 'https://relayer-v2.polymarket.com' },
   gamma: { rest: 'https://gamma-api.polymarket.com' },
-  gateway: { rest: 'https://api.defi.polymarket.com' },
+  gateway: {
+    rest: 'https://api.defi.polymarket.com',
+    identityIssuer: 'https://api.defi.polymarket.com',
+  },
   data: { rest: 'https://data-api.polymarket.com' },
   combos: {
     rest: 'https://combos-rfq-api.polymarket.com',
@@ -255,7 +264,11 @@ export function forkEnvironmentConfig(
     },
     relayer: forkRestEndpoint(base.relayer, fork.relayer),
     gamma: forkRestEndpoint(base.gamma, fork.gamma),
-    gateway: forkRestEndpoint(base.gateway, fork.gateway),
+    gateway: {
+      ...forkRestEndpoint(base.gateway, fork.gateway),
+      identityIssuer:
+        fork.gateway?.identityIssuer ?? base.gateway.identityIssuer,
+    },
     data: forkRestEndpoint(base.data, fork.data),
     combos: {
       ...forkRestWebSocketEndpoint(base.combos, fork.combos),
@@ -321,6 +334,9 @@ export const preproduction = forkEnvironmentConfig({
   clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
   data: { rest: 'https://data-api-preprod-int.polymarket.com' },
   gamma: { rest: 'https://gamma-api-preprod-int.polymarket.com' },
-  gateway: { rest: 'https://api-defi-staging.polymarket.dev' },
+  gateway: {
+    rest: 'https://api-defi-staging.polymarket.dev',
+    identityIssuer: 'https://api-defi-staging.polymarket.dev',
+  },
   relayer: { rest: 'https://relayer-v2-preprod-int.polymarket.com' },
 });
