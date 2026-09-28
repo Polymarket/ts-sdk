@@ -13,6 +13,10 @@ try {
     { topic: 'prices.crypto', symbols: ['btcusd', 'ethusd'] },
     { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
     { topic: 'prices.equity', symbol: 'aapl' },
+    {
+      topic: 'prices.equity.twap',
+      symbol: 'USDJPY',
+    },
   ]);
   let count = 0;
   for await (const event of prices) {

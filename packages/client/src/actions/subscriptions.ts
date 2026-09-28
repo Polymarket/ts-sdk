@@ -16,6 +16,7 @@ import type {
   EquityPriceEvent,
   EquityPricesEvent,
   EquityPricesTopic,
+  EquityTwapPriceEvent,
   MarketEvent,
   PerpsBboEvent,
   PerpsBookEvent,
@@ -61,6 +62,8 @@ export type {
   CryptoTwapPriceSnapshotEvent,
   EquityPriceEvent,
   EquityPricesEvent,
+  EquityTwapPriceEvent,
+  EquityTwapPriceSnapshotEvent,
 } from '@polymarket/bindings/subscriptions';
 
 // Event types — re-exported from bindings for consumer convenience.
@@ -345,10 +348,20 @@ export type EquityPriceSubscription = {
   symbol: string;
   types?: readonly ('subscribe' | 'update')[];
 };
+/**
+ * 60-second time-weighted equity prices and recent history. Requires a secure
+ * client. Symbols such as `eurusd` and `usdjpy` are case-insensitive; prices
+ * use the symbol's quote currency. Returned events include `windowSeconds: 60`.
+ */
+export type EquityTwapPriceSubscription = {
+  topic: 'prices.equity.twap';
+  symbol: string;
+};
 export type PriceSubscription =
   | CryptoPriceSubscription
   | CryptoTwapPriceSubscription
-  | EquityPriceSubscription;
+  | EquityPriceSubscription
+  | EquityTwapPriceSubscription;
 export type SecureSubscriptionSpec =
   | PublicSubscriptionSpec
   | UserSubscription
@@ -368,7 +381,8 @@ export type SecureRealtimeEvent =
   | UserEvent
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
-  | EquityPriceEvent;
+  | EquityPriceEvent
+  | EquityTwapPriceEvent;
 
 // Topics derived from event unions so bindings remain the single source of
 // truth for topic literals.
@@ -386,6 +400,7 @@ type EventByTopic = {
   'prices.crypto': CryptoPriceEvent;
   'prices.crypto.twap': CryptoTwapPriceEvent;
   'prices.equity': EquityPriceEvent;
+  'prices.equity.twap': EquityTwapPriceEvent;
   comments: CommentsEvent;
   'prices.crypto.binance': CryptoPricesBinanceEvent;
   'prices.crypto.chainlink': CryptoPricesChainlinkEvent;
@@ -457,6 +472,7 @@ enum SubscriptionTopic {
   Crypto = 'prices.crypto',
   Twap = 'prices.crypto.twap',
   Equity = 'prices.equity',
+  EquityTwap = 'prices.equity.twap',
   Comments = 'comments',
   LegacyBinance = 'prices.crypto.binance',
   LegacyChainlink = 'prices.crypto.chainlink',
@@ -494,7 +510,8 @@ const MarketSubscriptionSchema = z.union([
 /**
  * Starts one or more realtime subscriptions on this client.
  *
- * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+ * The `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and
+ * `prices.equity.twap` topics
  * require a secure client and explicit filters, and include history snapshots
  * and live updates. Legacy source-named topics retain their existing behavior.
  * Event `seq` values are scoped to one channel on one WebSocket connection and
@@ -540,6 +557,7 @@ export async function subscribe(
       case 'prices.crypto':
       case 'prices.crypto.twap':
       case 'prices.equity':
+      case 'prices.equity.twap':
         if (!client.isSecureClient())
           throw new UserInputError(
             'This subscription requires a secure client.',
@@ -581,6 +599,7 @@ function subscribeOne(
     case 'prices.crypto':
     case 'prices.crypto.twap':
     case 'prices.equity':
+    case 'prices.equity.twap':
       if (!client.isSecureClient())
         throw new UserInputError('This subscription requires a secure client.');
       return client.webSockets.realtime.subscribe(spec);

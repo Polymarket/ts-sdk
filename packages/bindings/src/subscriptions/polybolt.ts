@@ -29,6 +29,7 @@ export enum PolyboltChannel {
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
   Equity = 'price.equity',
+  EquityTwap = 'price.equity.twap',
 }
 
 /** A filter sent to a PolyBolt price channel. */
@@ -207,10 +208,35 @@ export const EquityPriceEventSchema = z.union([
  * values from those connections may interleave.
  */
 export type EquityPriceEvent = z.infer<typeof EquityPriceEventSchema>;
+export const EquityTwapPriceEventSchema = z.union([
+  EventMetadataSchema.extend({
+    topic: z.literal('prices.equity.twap'),
+    type: z.literal('update'),
+    payload: TwapPayloadSchema,
+  }),
+  EventMetadataSchema.extend({
+    topic: z.literal('prices.equity.twap'),
+    type: z.literal('subscribe'),
+    payload: TwapSnapshotSchema,
+  }),
+]);
+/**
+ * An equity TWAP event, denominated in the symbol's quote currency.
+ *
+ * `seq` is scoped to one channel on one WebSocket connection and resets after
+ * reconnecting. When an SDK subscription spans multiple connections, sequence
+ * values from those connections may interleave.
+ */
+export type EquityTwapPriceEvent = z.infer<typeof EquityTwapPriceEventSchema>;
+export type EquityTwapPriceSnapshotEvent = Extract<
+  EquityTwapPriceEvent,
+  { type: 'subscribe' }
+>;
 export type PriceEvent =
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
-  | EquityPriceEvent;
+  | EquityPriceEvent
+  | EquityTwapPriceEvent;
 
 /** @internal Normalizes validated envelopes, dropping unknown payloads. */
 export function parsePolyboltEvent(
@@ -238,6 +264,11 @@ export function parsePolyboltEvent(
       return EquityPriceEventSchema.safeParse({
         ...event,
         topic: 'prices.equity',
+      }).data;
+    case PolyboltChannel.EquityTwap:
+      return EquityTwapPriceEventSchema.safeParse({
+        ...event,
+        topic: 'prices.equity.twap',
       }).data;
   }
 }
