@@ -8,6 +8,7 @@ export * from './collateral-return';
 export * from './comments';
 export * from './events';
 export * from './gasless';
+export * from './identity';
 export * from './leaderboards';
 export * from './market-clarifications';
 export * from './markets';

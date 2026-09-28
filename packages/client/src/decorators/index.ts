@@ -13,6 +13,11 @@ import { type AnalyticsActions, analyticsActions } from './analytics';
 import { type DataActions, dataActions } from './data';
 import { type DiscoveryActions, discoveryActions } from './discovery';
 import {
+  identityActions,
+  type PublicIdentityActions,
+  type SecureIdentityActions,
+} from './identity';
+import {
   type PublicPerpsActions,
   perpsActions,
   type SecurePerpsActions,
@@ -40,6 +45,7 @@ export type PublicActions = Prettify<
   DiscoveryActions &
     DataActions &
     AnalyticsActions &
+    PublicIdentityActions &
     PublicPerpsActions &
     PublicAccountActions &
     PublicRewardsActions &
@@ -51,6 +57,7 @@ export type SecureActions = Prettify<
   DiscoveryActions &
     DataActions &
     AnalyticsActions &
+    SecureIdentityActions &
     SecurePerpsActions &
     SecureAccountActions &
     SecureRewardsActions &
@@ -70,6 +77,7 @@ export function allActions(client: BaseClient): PublicActions | SecureActions {
       ...analyticsActions(client),
       ...dataActions(client),
       ...discoveryActions(client),
+      ...identityActions(client),
       ...perpsActions(client),
       ...rewardsActions(client),
       ...rfqActions(client),
@@ -85,6 +93,7 @@ export function allActions(client: BaseClient): PublicActions | SecureActions {
     ...analyticsActions(client),
     ...dataActions(client),
     ...discoveryActions(client),
+    ...identityActions(client),
     ...perpsActions(client),
     ...rewardsActions(client),
     ...subscriptionsActions(client),
@@ -96,6 +105,7 @@ export * from './account';
 export * from './analytics';
 export * from './data';
 export * from './discovery';
+export * from './identity';
 export * from './perps';
 export * from './rewards';
 export * from './rfq';

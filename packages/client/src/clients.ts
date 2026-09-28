@@ -10,7 +10,7 @@ import {
 } from '@polymarket/types';
 import { z } from 'zod';
 import {
-  createOrDeriveApiKey,
+  authenticateTradingCredentials,
   deleteApiKey,
   fetchApiKeys,
 } from './actions/auth';
@@ -42,6 +42,10 @@ import {
 } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
+import {
+  createPredictionsSessionManager,
+  type PredictionsSessionManager,
+} from './predictions-session';
 import type { RateLimitUpdateListener } from './rate-limit';
 import { JsonRpcClient } from './rpc';
 import type { ServiceRequest } from './ServiceClient';
@@ -266,7 +270,7 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
     .object({
       wallet: EvmAddressSchema,
       credentials: BeginAuthenticationCredentialsSchema.optional(),
-      nonce: z.number().int().nonnegative().optional(),
+      nonce: z.number().int().nonnegative().max(4_294_967_295).optional(),
     })
     .superRefine((value, context) => {
       if (value.credentials !== undefined && value.nonce !== undefined) {
@@ -492,7 +496,7 @@ class BasePublicClient<
             timestamp,
           }),
         };
-        const credentials = await createOrDeriveApiKey(this, {
+        const credentials = await authenticateTradingCredentials(this, {
           address: signerAddress,
           nonce,
           signature: expectEvmSignature(signature),
@@ -532,6 +536,7 @@ class BaseSecureClient<
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
+  #predictionsSessions: PredictionsSessionManager | undefined;
 
   /**
    * @remarks This is the choking point for all requests, so we can ensure that once
@@ -674,6 +679,19 @@ class BaseSecureClient<
    */
   get account(): AccountIdentity {
     return this.context.account;
+  }
+
+  /** @internal */
+  get predictionsSessions(): PredictionsSessionManager {
+    const context = this.context;
+    this.#predictionsSessions ??= createPredictionsSessionManager({
+      gateway: context.gateway,
+      signer: context.signer,
+      account: context.account,
+      chainId: context.environment.chainId,
+      identityIssuer: context.environment.gateway.identityIssuer,
+    });
+    return this.#predictionsSessions;
   }
 
   /** @internal */
