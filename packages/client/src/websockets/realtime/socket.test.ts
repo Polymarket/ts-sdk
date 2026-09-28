@@ -138,6 +138,25 @@ describe('price channel lifecycle', () => {
     expect(
       old?.operations.find((op) => op.op === 'subscribe')?.subscriptions,
     ).toEqual(expected);
+    old?.receive({
+      v: 1,
+      channel,
+      seq: 1,
+      ts: 123456,
+      payload: {
+        ...filter,
+        source: 'newvendor',
+        timestamp: 123456,
+        value: 123.45,
+        full_accuracy_value: '123.450000000000000001',
+      },
+    });
+    const update = await handle[Symbol.asyncIterator]().next();
+    expect(update.value).toMatchObject({
+      topic: spec.topic,
+      type: 'update',
+      payload: { source: 'newvendor', value: '123.450000000000000001' },
+    });
     old?.disconnect();
     await vi.advanceTimersByTimeAsync(800);
     const reopened = TestWebSocket.connections[1];
