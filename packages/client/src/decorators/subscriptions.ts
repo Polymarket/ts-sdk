@@ -36,9 +36,10 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
   EquityTwapPriceSubscription,
+  PriceSource,
   PriceSubscription,
 } from '../actions';
-export { SubscribeError } from '../actions';
+export { KnownPriceSource, SubscribeError } from '../actions';
 
 export type PublicSubscriptionsActions = {
   /**
@@ -71,6 +72,10 @@ export type SecureSubscriptionsActions = {
    * `prices.equity.twap` topics
    * require explicit filters and include history snapshots and live updates.
    * Legacy source-named topics retain their existing filter and event behavior.
+   * These four topics include `source`, identifying the source of the update
+   * or entire history batch, including empty batches. Unknown source names remain
+   * strings. Crypto sources are constant; equity sources may change across
+   * reconnects. Cached history starts fresh whenever the source changes.
    * Event `seq` values are scoped to one channel on one WebSocket connection
    * and reset after reconnecting. Subscriptions with more than 64 filters use
    * multiple connections, so their sequence values may interleave.

@@ -64,7 +64,9 @@ export type {
   EquityPricesEvent,
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
+  PriceSource,
 } from '@polymarket/bindings/subscriptions';
+export { KnownPriceSource } from '@polymarket/bindings/subscriptions';
 
 // Event types — re-exported from bindings for consumer convenience.
 export type {
@@ -514,6 +516,10 @@ const MarketSubscriptionSchema = z.union([
  * `prices.equity.twap` topics
  * require a secure client and explicit filters, and include history snapshots
  * and live updates. Legacy source-named topics retain their existing behavior.
+ * These four topics include `source`, identifying the source of the update
+ * or entire history batch, including empty batches. Unknown source names remain
+ * strings. Crypto sources are constant; equity sources may change across
+ * reconnects. Cached history starts fresh whenever the source changes.
  * Event `seq` values are scoped to one channel on one WebSocket connection and
  * reset after reconnecting. Subscriptions with more than 64 filters use
  * multiple connections, so their sequence values may interleave.

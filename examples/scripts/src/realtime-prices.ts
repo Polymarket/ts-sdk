@@ -21,8 +21,19 @@ try {
   let count = 0;
   for await (const event of prices) {
     if (event.type === 'subscribe')
-      console.log(event.topic, event.payload.symbol, event.payload.data);
-    else console.log(event.topic, event.payload.symbol, event.payload.value);
+      console.log(
+        event.topic,
+        event.payload.symbol,
+        event.payload.source,
+        event.payload.data,
+      );
+    else
+      console.log(
+        event.topic,
+        event.payload.symbol,
+        event.payload.source,
+        event.payload.value,
+      );
     if (++count === 20) break;
   }
 } finally {

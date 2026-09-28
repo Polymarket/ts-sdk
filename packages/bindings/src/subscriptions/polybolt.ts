@@ -25,6 +25,21 @@ export enum RealtimeKnownErrorCode {
  */
 export type RealtimeErrorCode = RealtimeKnownErrorCode | (string & {});
 
+/** Known sources reported by realtime price events. */
+export enum KnownPriceSource {
+  Pyth = 'pyth',
+  Chainlink = 'chainlink',
+  Massive = 'massive',
+}
+
+/**
+ * The source of a realtime price. Known values are enumerated in
+ * {@link KnownPriceSource}; newly introduced sources remain available as strings.
+ */
+export type PriceSource = KnownPriceSource | (string & {});
+
+const PriceSourceSchema = z.string().transform((value): PriceSource => value);
+
 export enum PolyboltChannel {
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
@@ -87,6 +102,7 @@ const PricePointSchema = z
 const PricePayloadSchema = z
   .object({
     symbol: z.string(),
+    source: PriceSourceSchema,
     timestamp: EpochMillisecondsSchema,
     value: DecimalishSchema,
     full_accuracy_value: DecimalStringSchema,
@@ -96,12 +112,14 @@ const PricePayloadSchema = z
   .transform(
     ({
       symbol,
+      source,
       timestamp,
       full_accuracy_value,
       received_at,
       is_carried_forward,
     }) => ({
       symbol,
+      source,
       timestamp,
       value: full_accuracy_value,
       receivedAt: received_at,
@@ -111,27 +129,33 @@ const PricePayloadSchema = z
 
 const SnapshotPayloadSchema = z.object({
   symbol: z.string(),
+  source: PriceSourceSchema,
   data: z.array(PricePointSchema),
 });
 const TwapWindowSchema = z.literal(60);
 const TwapPayloadSchema = z
   .object({
     symbol: z.string(),
+    source: PriceSourceSchema,
     timestamp: EpochMillisecondsSchema,
     value: DecimalishSchema,
     full_accuracy_value: DecimalStringSchema,
     window_seconds: TwapWindowSchema,
   })
-  .transform(({ symbol, timestamp, full_accuracy_value, window_seconds }) => ({
-    symbol,
-    timestamp,
-    value: full_accuracy_value,
-    windowSeconds: window_seconds,
-  }));
+  .transform(
+    ({ symbol, source, timestamp, full_accuracy_value, window_seconds }) => ({
+      symbol,
+      source,
+      timestamp,
+      value: full_accuracy_value,
+      windowSeconds: window_seconds,
+    }),
+  );
 const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
   window_seconds: TwapWindowSchema,
-}).transform(({ symbol, data, window_seconds }) => ({
+}).transform(({ symbol, source, data, window_seconds }) => ({
   symbol,
+  source,
   data,
   windowSeconds: window_seconds,
 }));
