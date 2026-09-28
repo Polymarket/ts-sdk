@@ -11,6 +11,22 @@ import {
 // not present in the original capture. Equity TWAP, source-validation,
 // unknown-code and precision/drop cases below are synthetic.
 describe('realtime frame normalization', () => {
+  it.each([
+    'pyth',
+    'chainlink',
+    'massive',
+    'future_provider',
+  ])('preserves served provider %s in subscription acknowledgements', (provider) => {
+    expect(
+      PolyboltAckSchema.parse({
+        op: 'subscribed',
+        channel: 'price.equity',
+        rid: '1',
+        provider,
+      }),
+    ).toHaveProperty('provider', provider);
+  });
+
   describe.each([
     'price.crypto',
     'price.crypto.twap',
