@@ -10,7 +10,7 @@ import {
 } from '@polymarket/types';
 import { z } from 'zod';
 import {
-  createOrDeriveApiKey,
+  authenticateTradingCredentials,
   deleteApiKey,
   fetchApiKeys,
 } from './actions/auth';
@@ -43,6 +43,10 @@ import {
 } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
+import {
+  createPredictionsSessionManager,
+  type PredictionsSessionManager,
+} from './predictions-session';
 import type { RateLimitUpdateListener } from './rate-limit';
 import { JsonRpcClient } from './rpc';
 import type { ServiceRequest } from './ServiceClient';
@@ -245,7 +249,7 @@ export type BeginAuthenticationRequest = {
   wallet: string;
 
   /**
-   * Nonce used when creating or deriving fresh credentials.
+   * Nonce used when creating or deriving fresh credentials (0 to 4,294,967,295).
    *
    * Mutually exclusive with `credentials`.
    *
@@ -267,7 +271,7 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
     .object({
       wallet: EvmAddressSchema,
       credentials: BeginAuthenticationCredentialsSchema.optional(),
-      nonce: z.number().int().nonnegative().optional(),
+      nonce: z.number().int().nonnegative().max(4_294_967_295).optional(),
     })
     .superRefine((value, context) => {
       if (value.credentials !== undefined && value.nonce !== undefined) {
@@ -493,7 +497,7 @@ class BasePublicClient<
             timestamp,
           }),
         };
-        const credentials = await createOrDeriveApiKey(this, {
+        const credentials = await authenticateTradingCredentials(this, {
           address: signerAddress,
           nonce,
           signature: expectEvmSignature(signature),
@@ -533,6 +537,7 @@ class BaseSecureClient<
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
+  #predictionsSessions: PredictionsSessionManager | undefined;
 
   /**
    * @remarks This is the choking point for all requests, so we can ensure that once
@@ -678,6 +683,19 @@ class BaseSecureClient<
   }
 
   /** @internal */
+  get predictionsSessions(): PredictionsSessionManager {
+    const context = this.context;
+    this.#predictionsSessions ??= createPredictionsSessionManager({
+      gateway: context.gateway,
+      signer: context.signer,
+      account: context.account,
+      chainId: context.environment.chainId,
+      identityIssuer: context.environment.gateway.identityIssuer,
+    });
+    return this.#predictionsSessions;
+  }
+
+  /** @internal */
   get signer(): Signer {
     return this.context.signer;
   }
@@ -777,7 +795,9 @@ class BaseSecureClient<
    *
    * @remarks
    * This revokes the current authenticated credential and invalidates the
-   * current `SecureClient` instance.
+   * current `SecureClient` instance. Independently owned predictions-session
+   * handles remain active; call `session.logout()` to end those sessions too.
+   * The returned public client retains the application's platform API key.
    *
    * @example
    * ```ts

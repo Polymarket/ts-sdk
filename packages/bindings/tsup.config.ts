@@ -9,6 +9,7 @@ export default defineConfig(() => ({
     'src/combos/index.ts',
     'src/data/index.ts',
     'src/gamma/index.ts',
+    'src/gateway/index.ts',
     'src/perps/index.ts',
     'src/relayer/index.ts',
     'src/subscriptions/index.ts',

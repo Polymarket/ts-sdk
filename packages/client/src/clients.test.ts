@@ -14,10 +14,13 @@ import {
   beforeAll,
   describe,
   expect,
+  expectTypeOf,
   it,
   vi,
 } from 'vitest';
-import { createSecureClient } from './clients';
+import { version } from '../package.json';
+import { fetchApiKeys } from './actions/auth';
+import { type createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
 import type { ApiKeyAuthorization, Signer } from './types';
 import {
@@ -31,6 +34,7 @@ import {
 const rpcRoot = 'http://localhost:4014';
 const relayerRoot = 'http://localhost:4015';
 const clobRoot = 'http://localhost:4016';
+const gatewayRoot = 'http://localhost:4017';
 const server = setupServer();
 const signerAddress = expectEvmAddress(
   '0x0000000000000000000000000000000000000001',
@@ -39,6 +43,7 @@ const signerAddress = expectEvmAddress(
 const environment = forkEnvironmentConfig({
   name: 'test',
   clob: { rest: clobRoot },
+  gateway: { rest: gatewayRoot },
   relayer: { rest: relayerRoot },
   rpc: rpcRoot,
 });
@@ -83,6 +88,7 @@ describe('secure client gasless wallet setup', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.restoreAllMocks();
   });
 
   afterAll(() => {
@@ -220,39 +226,214 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('accepts an explicit zero nonce for fresh authentication', async () => {
+    let signedTimestamp: number | undefined;
+    let loginRequests = 0;
+    let directRequests = 0;
+    const platformApiKey = 'pk_test_gateway_boundary';
+    const expectedMetadata = `@polymarket/client@${version}:nodejs@${process.versions.node}`;
     const signingSigner: Signer = {
       ...signer,
       signTypedData(payload) {
         expect(payload.message.nonce).toBe(0);
+        signedTimestamp = Number(payload.message.timestamp);
         return Promise.resolve(expectEvmSignature(`0x${'1'.repeat(130)}`));
       },
     };
 
     server.use(
-      http.post(`${clobRoot}/auth/api-key`, ({ request }) => {
-        expect(request.headers.get('POLY_NONCE')).toBe('0');
-
+      http.post(`${gatewayRoot}/next/login`, async ({ request }) => {
+        loginRequests += 1;
+        expect(await request.json()).toEqual({
+          type: 'L1_CREDENTIALS',
+          signer: signerAddress,
+          signature: `0x${'1'.repeat(130)}`,
+          timestamp: signedTimestamp,
+          nonce: 0,
+        });
+        expect(request.headers.get('POLY_NONCE')).toBeNull();
+        expect(request.headers.get('POLY_SIGNATURE')).toBeNull();
+        expect(request.headers.get('X-API-Key')).toBe(platformApiKey);
+        expect(request.headers.get('POLYMARKET_CLIENT')).toBe(expectedMetadata);
+        expect(request.headers.has('authorization')).toBe(false);
+        expect(
+          Array.from(request.headers.keys()).filter(
+            (header) => header === 'polymarket_client',
+          ),
+        ).toHaveLength(1);
         return HttpResponse.json({
-          apiKey: credentials.key,
+          type: 'L2_CREDENTIALS',
+          key: credentials.key,
           passphrase: credentials.passphrase,
           secret: credentials.secret,
         });
       }),
+      http.get(`${gatewayRoot}/next/me`, ({ request }) => {
+        expect(request.headers.get('X-API-Key')).toBe(platformApiKey);
+        expect(request.headers.get('POLYMARKET_CLIENT')).toBe(expectedMetadata);
+        expect(request.headers.has('POLY_API_KEY')).toBe(false);
+        expect(request.headers.has('authorization')).toBe(false);
+        return HttpResponse.json({
+          keyId: 'test-platform-key',
+          keyType: 'publishable',
+        });
+      }),
+      http.get(`${clobRoot}/auth/api-keys`, ({ request }) => {
+        directRequests += 1;
+        expect(request.headers.get('POLY_API_KEY')).toBe(credentials.key);
+        expect(request.headers.has('X-API-Key')).toBe(false);
+        expect(request.headers.has('POLYMARKET_CLIENT')).toBe(false);
+        expect(request.headers.has('authorization')).toBe(false);
+        return HttpResponse.json({ apiKeys: [credentials.key] });
+      }),
     );
 
     const client = await createSecureClient({
-      environment,
+      environment: forkEnvironmentConfig(
+        {
+          name: 'conflicting-metadata',
+          gateway: {
+            headers: {
+              POLYMARKET_CLIENT: 'wrong',
+              polymarket_client: 'also-wrong',
+            },
+          },
+        },
+        environment,
+      ),
+      platformApiKey,
       nonce: 0,
       signer: signingSigner,
       wallet: signerAddress,
     });
 
+    expect(loginRequests).toBe(1);
+    expect(directRequests).toBe(0);
+    await expect(client.fetchIdentity()).resolves.toEqual({
+      keyId: 'test-platform-key',
+      keyType: 'publishable',
+    });
+    await expect(fetchApiKeys(client)).resolves.toEqual([credentials.key]);
+    expect(directRequests).toBe(1);
     expect(client.account).toEqual({
       signer: signerAddress,
       signerType: SignerType.OWNER,
       wallet: signerAddress,
       walletType: WalletType.EOA,
     });
+  });
+
+  it.each([
+    400,
+    401,
+    429,
+    503,
+    'network',
+    'invalid-payload',
+  ] as const)('does not retry or use direct authentication when gateway login fails: %s', async (failure) => {
+    let loginRequests = 0;
+    let directRequests = 0;
+    server.use(
+      http.post(`${gatewayRoot}/next/login`, () => {
+        loginRequests += 1;
+        if (failure === 'network') return HttpResponse.error();
+        if (failure === 'invalid-payload')
+          return HttpResponse.json({ type: 'L2_CREDENTIALS', key: 123 });
+        return HttpResponse.json(
+          { code: 'LOGIN_FAILED', message: 'Login failed' },
+          { status: failure },
+        );
+      }),
+      http.all(`${clobRoot}/auth/*`, () => {
+        directRequests += 1;
+        return HttpResponse.json(
+          { error: 'Unexpected direct authentication' },
+          { status: 400 },
+        );
+      }),
+    );
+    const signTypedData = vi.fn(async () =>
+      expectEvmSignature(`0x${'1'.repeat(130)}`),
+    );
+    await expect(
+      createSecureClient({
+        environment,
+        signer: { ...signer, signTypedData },
+        wallet: signerAddress,
+      }),
+    ).rejects.toMatchObject({
+      name:
+        failure === 'network'
+          ? 'TransportError'
+          : failure === 'invalid-payload'
+            ? 'UnexpectedResponseError'
+            : failure === 429
+              ? 'RateLimitError'
+              : 'RequestRejectedError',
+    });
+    expect(signTypedData).toHaveBeenCalledOnce();
+    expect(loginRequests).toBe(1);
+    expect(directRequests).toBe(0);
+  });
+
+  it('reuses valid trading credentials without signing or logging in again', async () => {
+    let loginRequests = 0;
+    let validationRequests = 0;
+    server.use(
+      http.post(`${gatewayRoot}/next/login`, () => {
+        loginRequests += 1;
+        return HttpResponse.json(
+          { error: 'Unexpected login' },
+          { status: 400 },
+        );
+      }),
+      http.get(`${clobRoot}/auth/api-keys`, ({ request }) => {
+        validationRequests += 1;
+        expect(request.headers.has('X-API-Key')).toBe(false);
+        expect(request.headers.has('POLYMARKET_CLIENT')).toBe(false);
+        return HttpResponse.json({ apiKeys: [credentials.key] });
+      }),
+    );
+    const client = await createSecureClient({
+      environment,
+      credentials,
+      platformApiKey: 'pk_test_reused_credentials',
+      signer,
+      wallet: signerAddress,
+    });
+    expect(client.account.signer).toBe(signerAddress);
+    expect(validationRequests).toBe(1);
+    expect(loginRequests).toBe(0);
+  });
+
+  it.each([
+    -1, 1.5, 4_294_967_296,
+  ])('rejects nonce %s before signing or requesting credentials', async (nonce) => {
+    const observed = vi.spyOn(globalThis, 'fetch');
+    const signTypedData = vi.fn(async () =>
+      expectEvmSignature(`0x${'1'.repeat(130)}`),
+    );
+    await expect(
+      createSecureClient({
+        environment,
+        nonce,
+        signer: { ...signer, signTypedData },
+        wallet: signerAddress,
+      }),
+    ).rejects.toMatchObject({ name: 'UserInputError' });
+    expect(signTypedData).not.toHaveBeenCalled();
+    expect(observed).not.toHaveBeenCalled();
+  });
+
+  it('exposes session opening only on the authenticated client type', () => {
+    expectTypeOf<ReturnType<typeof createPublicClient>>().not.toHaveProperty(
+      'openPredictionsSession',
+    );
+    expectTypeOf<
+      Awaited<ReturnType<typeof createSecureClient>>
+    >().toHaveProperty('openPredictionsSession');
+    expectTypeOf<ReturnType<typeof createPublicClient>>().toHaveProperty(
+      'fetchIdentity',
+    );
   });
 
   it('keeps an explicit deployed Safe wallet bound to the Safe', async () => {
@@ -392,6 +573,33 @@ describe('secure client gasless wallet setup', () => {
 
     expect(perpsShutdown).toHaveBeenCalledTimes(1);
     expect(rfqShutdown).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves platform identity when returning to a public client', async () => {
+    mockApiKeys();
+    const identity = { keyId: 'application-key', keyType: 'publishable' };
+    const observedKeys: Array<string | null> = [];
+    server.use(
+      http.delete(`${clobRoot}/auth/api-key`, () => HttpResponse.json('OK')),
+      http.get(`${gatewayRoot}/next/me`, ({ request }) => {
+        observedKeys.push(request.headers.get('x-api-key'));
+        return HttpResponse.json(identity);
+      }),
+    );
+    const client = await createSecureClient({
+      platformApiKey: 'pm_pk_test_application',
+      credentials,
+      environment,
+      signer,
+      wallet: signerAddress,
+    });
+    await expect(client.fetchIdentity()).resolves.toEqual(identity);
+    const publicClient = await client.endAuthentication();
+    await expect(publicClient.fetchIdentity()).resolves.toEqual(identity);
+    expect(observedKeys).toEqual([
+      'pm_pk_test_application',
+      'pm_pk_test_application',
+    ]);
   });
 });
 
