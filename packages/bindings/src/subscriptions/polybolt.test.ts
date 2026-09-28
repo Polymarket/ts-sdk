@@ -7,8 +7,35 @@ import {
 
 // Representative frames captured from the staging edge on 2026-09-08; history
 // is reduced to two points. Auth was captured in shadow mode, not enforcement.
-// The equity TWAP, unknown-code and precision/drop cases below are synthetic.
+// The provenance, equity TWAP, unknown-code and precision/drop cases are synthetic.
 describe('realtime frame normalization', () => {
+  it.each([
+    ['price.crypto', 'btcusd', 'pyth'],
+    ['price.crypto', 'btcusd', 'chainlink'],
+    ['price.crypto.twap', 'btcusd', 'pyth'],
+    ['price.equity', 'aapl', 'massive'],
+    ['price.equity.twap', 'usdjpy', 'massive'],
+  ])('preserves %s %s provenance from %s', (channel, symbol, source) => {
+    const point = {
+      timestamp: 123456,
+      value: 123.45,
+      full_accuracy_value: '123.450000000000000001',
+    };
+    for (const payload of [point, { data: [point] }, { data: [] }]) {
+      const event = parsePolyboltEvent(
+        PolyboltEnvelopeSchema.parse({
+          v: 1,
+          channel,
+          seq: 1,
+          ts: 123456,
+          snapshot: 'data' in payload,
+          payload: { symbol, source, window_seconds: 60, ...payload },
+        }),
+      );
+      expect(event?.payload).toMatchObject({ symbol, source });
+    }
+  });
+
   describe('equity TWAP payload contract', () => {
     const point = {
       timestamp: 123456,
@@ -112,6 +139,15 @@ describe('realtime frame normalization', () => {
       channel: 'price.crypto',
       rid: 'future-rejection',
       code: 'future_error_code',
+    };
+    expect(PolyboltAckSchema.parse(frame)).toEqual(frame);
+  });
+  it('preserves the served provider when it differs from the requested pin', () => {
+    const frame = {
+      op: 'subscribed',
+      channel: 'price.equity.twap',
+      rid: 'pinned-pyth',
+      provider: 'massive',
     };
     expect(PolyboltAckSchema.parse(frame)).toEqual(frame);
   });

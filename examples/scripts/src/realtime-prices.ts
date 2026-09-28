@@ -1,4 +1,4 @@
-import { createSecureClient } from '@polymarket/client';
+import { createSecureClient, PriceProvider } from '@polymarket/client';
 import { privateKey } from '@polymarket/client/viem';
 import { requireEnv } from './lib/env';
 
@@ -16,10 +16,15 @@ try {
     {
       topic: 'prices.equity.twap',
       symbol: 'USDJPY',
+      provider: PriceProvider.Chainlink,
+      onSubscribed({ provider }) {
+        console.log('USDJPY served provider:', provider ?? 'not confirmed');
+      },
     },
   ]);
   let count = 0;
   for await (const event of prices) {
+    console.log('Price source:', event.payload.source);
     if (event.type === 'subscribe')
       console.log(event.topic, event.payload.symbol, event.payload.data);
     else console.log(event.topic, event.payload.symbol, event.payload.value);

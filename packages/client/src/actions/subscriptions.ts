@@ -25,6 +25,8 @@ import type {
   PerpsStatisticEvent,
   PerpsTickerEvent,
   PerpsTradeEvent,
+  PriceProvider,
+  PriceSource,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
@@ -65,6 +67,7 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
 } from '@polymarket/bindings/subscriptions';
+export { PriceProvider, PriceSource } from '@polymarket/bindings/subscriptions';
 
 // Event types — re-exported from bindings for consumer convenience.
 export type {
@@ -342,11 +345,27 @@ export type CryptoTwapPriceSubscription = {
   topic: 'prices.crypto.twap';
   symbols: readonly string[];
 };
+/** Confirmation of a price subscription, refreshed after every reconnect. */
+export type PriceSubscriptionConfirmation = {
+  /**
+   * The provider actually served, including fallback. Undefined when the
+   * server does not confirm provider selection; never inferred from the pin.
+   */
+  provider?: PriceSource;
+};
+
 /** Equity updates and recent history. Requires a secure client. */
 export type EquityPriceSubscription = {
   topic: 'prices.equity';
   symbol: string;
   types?: readonly ('subscribe' | 'update')[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called on acceptance and every reconnect, or immediately when joining an
+   * accepted subscription. A thrown error ends this handle with TransportError.
+   */
+  onSubscribed?: (confirmation: PriceSubscriptionConfirmation) => void;
 };
 /**
  * 60-second time-weighted equity prices and recent history. Requires a secure
@@ -356,6 +375,13 @@ export type EquityPriceSubscription = {
 export type EquityTwapPriceSubscription = {
   topic: 'prices.equity.twap';
   symbol: string;
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called on acceptance and every reconnect, or immediately when joining an
+   * accepted subscription. A thrown error ends this handle with TransportError.
+   */
+  onSubscribed?: (confirmation: PriceSubscriptionConfirmation) => void;
 };
 export type PriceSubscription =
   | CryptoPriceSubscription
@@ -517,6 +543,11 @@ const MarketSubscriptionSchema = z.union([
  * Event `seq` values are scoped to one channel on one WebSocket connection and
  * reset after reconnecting. Subscriptions with more than 64 filters use
  * multiple connections, so their sequence values may interleave.
+ * Price payloads expose `source` when provided, including at snapshot batch
+ * level. Re-read it after reconnects. Equity subscriptions accept an optional
+ * `provider` pin and synchronous `onSubscribed` confirmation callback; pins may
+ * fall back or be ignored where selection is disabled. Different provider
+ * choices use separate connections.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

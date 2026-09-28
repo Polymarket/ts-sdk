@@ -32,9 +32,22 @@ export enum PolyboltChannel {
   EquityTwap = 'price.equity.twap',
 }
 
+/** A provider that can be requested for a price subscription. */
+export enum PriceProvider {
+  Chainlink = 'chainlink',
+  Pyth = 'pyth',
+}
+
+/** The provider that produced a price payload. */
+export enum PriceSource {
+  Pyth = 'pyth',
+  Massive = 'massive',
+  Chainlink = 'chainlink',
+}
+
 /** A filter sent to a PolyBolt price channel. */
 export type PolyboltFilter =
-  | { symbol: string; window_seconds?: 60 }
+  | { symbol: string; window_seconds?: 60; provider?: PriceProvider }
   | { asset_id: string };
 
 /** One item in a PolyBolt subscription operation. */
@@ -55,6 +68,7 @@ export const PolyboltAckSchema = z.object({
   op: z.enum(PolyboltAckOp),
   channel: z.string().optional(),
   rid: z.string().optional(),
+  provider: z.enum(PriceSource).optional(),
   code: z
     .string()
     .transform((value): RealtimeErrorCode => value)
@@ -87,6 +101,7 @@ const PricePointSchema = z
 const PricePayloadSchema = z
   .object({
     symbol: z.string(),
+    source: z.enum(PriceSource).optional(),
     timestamp: EpochMillisecondsSchema,
     value: DecimalishSchema,
     full_accuracy_value: DecimalStringSchema,
@@ -96,12 +111,14 @@ const PricePayloadSchema = z
   .transform(
     ({
       symbol,
+      source,
       timestamp,
       full_accuracy_value,
       received_at,
       is_carried_forward,
     }) => ({
       symbol,
+      ...(source === undefined ? {} : { source }),
       timestamp,
       value: full_accuracy_value,
       receivedAt: received_at,
@@ -111,27 +128,33 @@ const PricePayloadSchema = z
 
 const SnapshotPayloadSchema = z.object({
   symbol: z.string(),
+  source: z.enum(PriceSource).optional(),
   data: z.array(PricePointSchema),
 });
 const TwapWindowSchema = z.literal(60);
 const TwapPayloadSchema = z
   .object({
     symbol: z.string(),
+    source: z.enum(PriceSource).optional(),
     timestamp: EpochMillisecondsSchema,
     value: DecimalishSchema,
     full_accuracy_value: DecimalStringSchema,
     window_seconds: TwapWindowSchema,
   })
-  .transform(({ symbol, timestamp, full_accuracy_value, window_seconds }) => ({
-    symbol,
-    timestamp,
-    value: full_accuracy_value,
-    windowSeconds: window_seconds,
-  }));
+  .transform(
+    ({ symbol, source, timestamp, full_accuracy_value, window_seconds }) => ({
+      symbol,
+      ...(source === undefined ? {} : { source }),
+      timestamp,
+      value: full_accuracy_value,
+      windowSeconds: window_seconds,
+    }),
+  );
 const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
   window_seconds: TwapWindowSchema,
-}).transform(({ symbol, data, window_seconds }) => ({
+}).transform(({ symbol, source, data, window_seconds }) => ({
   symbol,
+  ...(source === undefined ? {} : { source }),
   data,
   windowSeconds: window_seconds,
 }));

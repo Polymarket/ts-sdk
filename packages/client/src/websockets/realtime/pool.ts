@@ -1,9 +1,13 @@
-import type { PriceEvent } from '@polymarket/bindings/subscriptions';
+import type {
+  PriceEvent,
+  PriceProvider,
+} from '@polymarket/bindings/subscriptions';
 import { pushable } from 'it-pushable';
 import type {
   PriceSubscription,
   SubscriptionHandle,
 } from '../../actions/subscriptions';
+import { TransportError } from '../../errors';
 import { subscriptionsFor } from './protocol';
 import { type PriceListener, PriceSession } from './session';
 import { PolyboltConnection, type PolyboltConnectionOptions } from './socket';
@@ -11,7 +15,7 @@ import { PolyboltConnection, type PolyboltConnectionOptions } from './socket';
 /** @internal Keeps each filter on exactly one connection until it is removed. */
 export class SocketPool {
   readonly #options: PolyboltConnectionOptions;
-  readonly #sockets = new Set<PriceSession>();
+  readonly #sockets = new Map<PriceSession, PriceProvider | undefined>();
   readonly #closers = new Set<() => Promise<void>>();
   constructor(options: PolyboltConnectionOptions) {
     this.#options = options;
@@ -44,8 +48,19 @@ export class SocketPool {
     try {
       await Promise.all(
         subscriptions.map((subscription) => {
-          const socket = this.#place(subscription.key);
+          if (terminalError !== undefined) throw terminalError;
+          const socket = this.#place(subscription.key, subscription.provider);
           const listener: PriceListener = {
+            subscribed(confirmation) {
+              if (closed || !('onSubscribed' in spec)) return;
+              try {
+                spec.onSubscribed?.(confirmation);
+              } catch (cause) {
+                terminalError = TransportError.fromError(cause);
+                queue.end(terminalError);
+                void close();
+              }
+            },
             event(event) {
               if (closed) return;
               if (
@@ -81,9 +96,10 @@ export class SocketPool {
           return socket.add(subscription, listener);
         }),
       );
+      if (terminalError !== undefined) throw terminalError;
     } catch (error) {
       await close();
-      throw error;
+      throw terminalError ?? error;
     }
     return {
       close,
@@ -97,21 +113,24 @@ export class SocketPool {
     };
   }
 
-  #place(key: string): PriceSession {
-    for (const socket of this.#sockets) {
+  #place(key: string, provider: PriceProvider | undefined): PriceSession {
+    for (const socket of this.#sockets.keys()) {
       if (socket.closed) this.#sockets.delete(socket);
       else if (socket.has(key)) return socket;
     }
-    for (const socket of this.#sockets)
-      if (socket.size < socket.keyTarget) return socket;
+    // With selection disabled, different pins collapse to one server key.
+    // Separate connections also disambiguate fallback streams when enabled.
+    for (const [socket, requestedProvider] of this.#sockets)
+      if (requestedProvider === provider && socket.size < socket.keyTarget)
+        return socket;
     const socket = new PriceSession(new PolyboltConnection(this.#options));
-    this.#sockets.add(socket);
+    this.#sockets.set(socket, provider);
     return socket;
   }
 
   async close(): Promise<void> {
     await Promise.all([...this.#closers].map((close) => close()));
-    const sockets = [...this.#sockets];
+    const sockets = [...this.#sockets.keys()];
     this.#sockets.clear();
     await Promise.all(sockets.map((socket) => socket.close()));
   }

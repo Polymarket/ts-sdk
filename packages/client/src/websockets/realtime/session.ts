@@ -3,6 +3,7 @@ import {
   RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { setNonBlockingTimeout } from '@polymarket/types';
+import type { PriceSubscriptionConfirmation } from '../../actions/subscriptions';
 import {
   ConnectionLostError,
   RequestRejectedError,
@@ -20,8 +21,10 @@ type KeyState = {
   subscribed: boolean;
   accepted: boolean;
   snapshot?: PriceEvent;
+  confirmation?: PriceSubscriptionConfirmation;
 };
 export type PriceListener = {
+  subscribed?: (confirmation: PriceSubscriptionConfirmation) => void;
   event: (event: PriceEvent) => void;
   end: (error: Error) => void;
 };
@@ -34,6 +37,10 @@ export type PriceSubscriptionRejection = {
   error: RequestRejectedError;
 };
 export type PriceSessionEvents = {
+  subscribed: (
+    subscription: PriceKey,
+    confirmation: PriceSubscriptionConfirmation,
+  ) => void;
   event: (event: PriceEvent) => void;
   dropped: () => void;
   disconnected: (info: WebSocketCloseInfo) => void;
@@ -104,6 +111,8 @@ export class PriceSession {
         this.#enqueue(PriceSubscriptionOperation.Subscribe, [state]);
     }
     state.listeners.add(listener);
+    if (state.confirmation !== undefined)
+      listener.subscribed?.({ ...state.confirmation });
     if (state.snapshot !== undefined) listener.event(state.snapshot);
     if (
       !this.#authenticated &&
@@ -155,6 +164,8 @@ export class PriceSession {
   async #open(): Promise<void> {
     const generation = this.#generation;
     await this.#connection.open({
+      subscribed: (subscription, confirmation) =>
+        this.#subscribed(subscription, confirmation),
       event: (event) => this.#event(event),
       dropped: () => this.#recordDrop(),
       disconnected: (info) => this.#lost(info),
@@ -268,6 +279,17 @@ export class PriceSession {
     }
   }
 
+  #subscribed(
+    subscription: PriceKey,
+    confirmation: PriceSubscriptionConfirmation,
+  ): void {
+    const state = this.#keys.get(subscription.key);
+    if (state?.subscription !== subscription) return;
+    state.confirmation = { ...confirmation };
+    for (const listener of [...state.listeners])
+      listener.subscribed?.({ ...confirmation });
+  }
+
   #event(event: PriceEvent): void {
     for (const state of this.#keys.values()) {
       const subscription = state.subscription;
@@ -301,6 +323,7 @@ export class PriceSession {
     this.#flushTimer = undefined;
     for (const state of this.#keys.values()) {
       state.snapshot = undefined;
+      state.confirmation = undefined;
       if (!state.subscribed) continue;
       const { promise, resolve, reject } = Promise.withResolvers<void>();
       void promise.catch(() => undefined);
@@ -412,8 +435,12 @@ function refreshSnapshot(
   event: PriceEvent,
 ): PriceEvent | undefined {
   if (event.type === 'subscribe') return event;
-  const history = previous?.type === 'subscribe' ? previous.payload.data : [];
-  const { symbol, timestamp, value } = event.payload;
+  const history =
+    previous?.type === 'subscribe' &&
+    previous.payload.source === event.payload.source
+      ? previous.payload.data
+      : [];
+  const { symbol, timestamp, value, source } = event.payload;
   if ((history.at(-1)?.timestamp ?? 0) > timestamp) return previous;
   const data = [
     ...history.filter(
@@ -429,7 +456,12 @@ function refreshSnapshot(
     return {
       ...event,
       type: 'subscribe',
-      payload: { symbol, data, windowSeconds: event.payload.windowSeconds },
+      payload: {
+        symbol,
+        source,
+        data,
+        windowSeconds: event.payload.windowSeconds,
+      },
     };
-  return { ...event, type: 'subscribe', payload: { symbol, data } };
+  return { ...event, type: 'subscribe', payload: { symbol, source, data } };
 }

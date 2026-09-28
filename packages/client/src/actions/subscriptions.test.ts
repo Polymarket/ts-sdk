@@ -1,3 +1,4 @@
+import { PriceProvider } from '@polymarket/bindings/subscriptions';
 import { describe, expect, it, vi } from 'vitest';
 import { TransportError, UserInputError } from '../errors';
 import { createPublicClient, SubscribeError } from '../index';
@@ -5,6 +6,33 @@ import { subscriptionsFor } from '../websockets/realtime/protocol';
 import { parsePriceSubscription } from './price-subscriptions';
 
 describe('price subscription input', () => {
+  it.each([
+    'prices.equity',
+    'prices.equity.twap',
+  ] as const)('keeps %s provider intent and the acceptance callback', (topic) => {
+    const onSubscribed = vi.fn();
+    const spec = parsePriceSubscription({
+      topic,
+      symbol: 'USDJPY',
+      provider: PriceProvider.Pyth,
+      onSubscribed,
+    });
+    expect(spec).toMatchObject({ provider: PriceProvider.Pyth, onSubscribed });
+    const pinned = subscriptionsFor(spec);
+    expect(pinned[0]).toMatchObject({
+      provider: PriceProvider.Pyth,
+      symbol: 'usdjpy',
+    });
+    expect(pinned).not.toEqual(subscriptionsFor({ topic, symbol: 'usdjpy' }));
+    expect(pinned).not.toEqual(
+      subscriptionsFor({
+        topic,
+        symbol: 'usdjpy',
+        provider: PriceProvider.Chainlink,
+      }),
+    );
+  });
+
   it('canonicalizes an equity TWAP quote pair without imposing a USD suffix', () => {
     const spec = parsePriceSubscription({
       topic: 'prices.equity.twap',

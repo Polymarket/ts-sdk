@@ -2,6 +2,7 @@ import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
   type EquityTwapPriceEvent,
+  PriceSource,
   RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,7 +67,9 @@ function price(timestamp = Date.now()): CryptoPriceEvent {
     },
   };
 }
-function equityTwap(timestamp = Date.now()): EquityTwapPriceEvent {
+function equityTwap(
+  timestamp = Date.now(),
+): Extract<EquityTwapPriceEvent, { type: 'update' }> {
   return {
     topic: 'prices.equity.twap',
     type: 'update',
@@ -101,6 +104,103 @@ afterEach(async () => {
 });
 
 describe('price subscription policy', () => {
+  it('confirms a listener added during a callback only once', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const first = {
+      ...listener(),
+      subscribed: vi.fn(() => {
+        void harness.session.add(crypto(), joining);
+      }),
+    };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, { provider: PriceSource.Pyth });
+    expect(first.subscribed).toHaveBeenCalledTimes(1);
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      provider: PriceSource.Pyth,
+    });
+  });
+
+  it('replays source without mixing vendors in synthesized history', async () => {
+    const harness = setup();
+    const key: PriceKey = {
+      key: 'fx',
+      topic: 'prices.equity.twap',
+      symbol: 'usdjpy',
+      windowSeconds: 60,
+    };
+    await accept(harness.session, key);
+    const initial = equityTwap();
+    initial.payload.source = PriceSource.Chainlink;
+    harness.events.event(initial);
+    const joining = await accept(harness.session, key);
+    expect(joining.event).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        type: 'subscribe',
+        payload: expect.objectContaining({ source: PriceSource.Chainlink }),
+      }),
+    );
+    const switched = equityTwap(Date.now() + 1);
+    switched.payload.source = PriceSource.Pyth;
+    harness.events.event(switched);
+    const afterSwitch = await accept(harness.session, key);
+    expect(afterSwitch.event).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          source: PriceSource.Pyth,
+          data: [
+            {
+              timestamp: switched.payload.timestamp,
+              value: switched.payload.value,
+            },
+          ],
+        }),
+      }),
+    );
+  });
+
+  it('replays provider confirmation to late listeners and clears it on reconnect', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const first = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, { provider: PriceSource.Pyth });
+    expect(first.subscribed).toHaveBeenCalledWith({
+      provider: PriceSource.Pyth,
+    });
+    const joining = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), joining);
+    expect(joining.subscribed).toHaveBeenCalledWith({
+      provider: PriceSource.Pyth,
+    });
+    harness.events.disconnected({ code: 4002, reason: 'Slow consumer.' });
+    await vi.advanceTimersByTimeAsync(800);
+    const afterReconnect = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), afterReconnect);
+    expect(afterReconnect.subscribed).not.toHaveBeenCalled();
+    harness.events.subscribed(subscription, {});
+    expect(afterReconnect.subscribed).toHaveBeenCalledWith({});
+  });
+
+  it('does not confirm a replacement with the removed subscription acknowledgement', async () => {
+    const harness = setup();
+    const original = crypto();
+    const first = await accept(harness.session, original);
+    harness.session.remove(original.key, first);
+    const replacement = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const pending = harness.session.add(replacement, joining);
+    harness.events.subscribed(original, { provider: PriceSource.Pyth });
+    expect(joining.subscribed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(40);
+    await pending;
+    harness.events.subscribed(replacement, { provider: PriceSource.Chainlink });
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      provider: PriceSource.Chainlink,
+    });
+  });
+
   it('bounds acceptance independently of an operation that never settles', async () => {
     const { session, connection } = setup();
     const operation = Promise.withResolvers<PriceSubscriptionRejection[]>();

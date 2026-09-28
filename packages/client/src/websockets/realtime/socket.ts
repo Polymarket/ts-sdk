@@ -27,6 +27,7 @@ type PendingRejection = { index: number; error: RequestRejectedError };
 type PendingOp = {
   op: PolyboltAckOp;
   channels: (string | undefined)[];
+  subscriptions: readonly PriceKey[];
   rejections: PendingRejection[];
   resolve: (rejections: PendingRejection[]) => void;
   reject: (error: Error) => void;
@@ -117,6 +118,7 @@ export class PolyboltConnection implements PriceSessionConnection {
           ? PolyboltAckOp.Subscribed
           : PolyboltAckOp.Unsubscribed,
         batch.map(({ channel }) => channel),
+        subscriptions.slice(offset, offset + batch.length),
       );
       for (const { index, error } of rejections) {
         const subscription = subscriptions[offset + index];
@@ -132,12 +134,14 @@ export class PolyboltConnection implements PriceSessionConnection {
     frame: object,
     op: PolyboltAckOp,
     channels: PolyboltChannel[],
+    subscriptions: readonly PriceKey[] = [],
   ): Promise<PendingRejection[]> {
     const rid = String(++this.#requestId);
     return new Promise((resolve, reject) => {
       const pending: PendingOp = {
         op,
         channels: [...channels],
+        subscriptions,
         rejections: [],
         resolve,
         reject,
@@ -172,7 +176,7 @@ export class PolyboltConnection implements PriceSessionConnection {
   #message(message: unknown): void {
     const ack = PolyboltAckSchema.safeParse(message);
     if (ack.success) {
-      const { op, rid, code, channel } = ack.data;
+      const { op, rid, code, channel, provider } = ack.data;
       const pending = rid === undefined ? undefined : this.#pending.get(rid);
       if (pending === undefined) return;
       if (op === PolyboltAckOp.Error && code !== undefined) {
@@ -200,9 +204,15 @@ export class PolyboltConnection implements PriceSessionConnection {
         }
       } else if (op === pending.op) {
         if (pending.channels.length > 0) {
-          const index = pending.channels.indexOf(channel ?? '');
-          if (index < 0) return;
+          // Batch acknowledgements arrive in request order and omit symbols.
+          const index = pending.channels.findIndex(
+            (pendingChannel) => pendingChannel !== undefined,
+          );
+          if (index < 0 || pending.channels[index] !== channel) return;
           pending.channels[index] = undefined;
+          const subscription = pending.subscriptions[index];
+          if (op === PolyboltAckOp.Subscribed && subscription !== undefined)
+            this.#events?.subscribed(subscription, { provider });
           if (
             pending.channels.some(
               (pendingChannel) => pendingChannel !== undefined,
@@ -258,7 +268,10 @@ function toWireSubscription(subscription: PriceKey): PolyboltSubscription {
     case 'prices.equity':
       return {
         channel: PolyboltChannel.Equity,
-        filter: { symbol: subscription.symbol },
+        filter: {
+          symbol: subscription.symbol,
+          provider: subscription.provider,
+        },
       };
     case 'prices.equity.twap':
       return {
@@ -266,6 +279,7 @@ function toWireSubscription(subscription: PriceKey): PolyboltSubscription {
         filter: {
           symbol: subscription.symbol,
           window_seconds: subscription.windowSeconds,
+          provider: subscription.provider,
         },
       };
   }

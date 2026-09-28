@@ -25,6 +25,9 @@ import type * as ClientExports from '../index';
 import {
   createPublicClient,
   type EquityTwapPriceSubscription,
+  PriceProvider,
+  PriceSource,
+  type PriceSubscriptionConfirmation,
   type RealtimeErrorCode,
   RealtimeKnownErrorCode,
   type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
@@ -47,6 +50,42 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('price subscription contracts', () => {
+  it('infers source and provider confirmations through the public client', async () => {
+    const handle = await secureClient.subscribe([
+      {
+        topic: 'prices.equity',
+        symbol: 'xauusd',
+        provider: PriceProvider.Pyth,
+        onSubscribed(confirmation) {
+          expectTypeOf(
+            confirmation,
+          ).toEqualTypeOf<PriceSubscriptionConfirmation>();
+          expectTypeOf(confirmation.provider).toEqualTypeOf<
+            PriceSource | undefined
+          >();
+        },
+      },
+      {
+        topic: 'prices.equity.twap',
+        symbol: 'usdjpy',
+        provider: PriceProvider.Chainlink,
+      },
+    ]);
+    expectTypeOf(handle).toEqualTypeOf<
+      SubscriptionHandle<EquityPriceEvent | EquityTwapPriceEvent>
+    >();
+    for await (const event of handle)
+      expectTypeOf(event.payload.source).toEqualTypeOf<
+        PriceSource | undefined
+      >();
+    const invalidProvider: EquityTwapPriceSubscription = {
+      topic: 'prices.equity.twap',
+      symbol: 'usdjpy',
+      // @ts-expect-error Massive may produce prices but cannot be requested as a pin.
+      provider: PriceSource.Massive,
+    };
+    void invalidProvider;
+  });
   it('exports known realtime error codes while accepting future codes', () => {
     expectTypeOf(
       RealtimeKnownErrorCode.BadFilter,
@@ -139,6 +178,8 @@ describe('price subscription contracts', () => {
     expectTypeOf<EquityTwapPriceSubscription>().toEqualTypeOf<{
       topic: 'prices.equity.twap';
       symbol: string;
+      provider?: PriceProvider;
+      onSubscribed?: (confirmation: PriceSubscriptionConfirmation) => void;
     }>();
     expectTypeOf<RootEquityTwapPriceEvent>().toEqualTypeOf<EquityTwapPriceEvent>();
     expectTypeOf<RootEquityTwapPriceSnapshotEvent>().toEqualTypeOf<EquityTwapPriceSnapshotEvent>();

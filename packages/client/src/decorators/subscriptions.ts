@@ -37,8 +37,9 @@ export type {
   EquityTwapPriceSnapshotEvent,
   EquityTwapPriceSubscription,
   PriceSubscription,
+  PriceSubscriptionConfirmation,
 } from '../actions';
-export { SubscribeError } from '../actions';
+export { PriceProvider, PriceSource, SubscribeError } from '../actions';
 
 export type PublicSubscriptionsActions = {
   /**
@@ -74,6 +75,11 @@ export type SecureSubscriptionsActions = {
    * Event `seq` values are scoped to one channel on one WebSocket connection
    * and reset after reconnecting. Subscriptions with more than 64 filters use
    * multiple connections, so their sequence values may interleave.
+   * Price payloads expose `source` when provided, including at snapshot batch
+   * level. Re-read it after reconnects. Equity subscriptions accept an optional
+   * `provider` pin and synchronous `onSubscribed` confirmation callback; pins may
+   * fall back or be ignored where selection is disabled. Different provider
+   * choices use separate connections.
    *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.
