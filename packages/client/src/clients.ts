@@ -790,7 +790,8 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate } = this.context;
+    const { apiKey, platformApiKey, environment, onRateLimitUpdate } =
+      this.context;
 
     try {
       await deleteApiKey(this);
@@ -805,6 +806,7 @@ class BaseSecureClient<
 
     const client = new BasePublicClient({
       apiKey,
+      platformApiKey,
       environment,
       onRateLimitUpdate,
     });
