@@ -22,6 +22,7 @@ import {
   type WaitForGaslessTransactionError,
 } from './actions/gasless';
 import { createApiKeyAuthTypedDataPayload } from './authentication';
+import { createClientMetadata } from './client-metadata';
 import {
   allActions,
   type PublicActions,
@@ -1001,6 +1002,7 @@ function createGatewayClient(
   environment: EnvironmentConfig,
   platformApiKey?: string,
 ): ServiceClient {
+  const metadata = createClientMetadata();
   const headers = new Headers(environment.gateway.headers);
   if (platformApiKey !== undefined) {
     headers.set('X-API-Key', platformApiKey);
@@ -1010,6 +1012,7 @@ function createGatewayClient(
     headers,
     singleAttempt: true,
     responseDeadlineMs: 5_000,
+    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
   });
 }
 
