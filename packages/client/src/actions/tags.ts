@@ -7,7 +7,7 @@ import {
   type Tag,
   TagSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -18,6 +18,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
@@ -149,7 +150,7 @@ export function listTags(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
+    return client.gateway
       .get('/tags', {
         params: toSearchParams(
           {
@@ -161,6 +162,23 @@ export function listTags(
         ),
       })
       .andThen(validateWith(ListTagsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/tags', {
+            params: toSearchParams(
+              {
+                ...params,
+                limit: decoded.pageSize,
+                offset: decoded.offset,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListTagsResponseSchema));
+      })
       .map((tags) => {
         const hasMore = tags.length >= decoded.pageSize;
 
@@ -219,7 +237,7 @@ export async function fetchTag(
 
   if ('id' in params) {
     return unwrap(
-      client.gamma
+      client.gateway
         .get(`tags/${params.id}`, {
           params: toSearchParams(
             {
@@ -229,12 +247,28 @@ export async function fetchTag(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(TagSchema)),
+        .andThen(validateWith(TagSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get(`tags/${params.id}`, {
+              params: toSearchParams(
+                {
+                  includeTemplate: params.includeTemplate,
+                  locale: params.locale,
+                },
+                snakeCase(),
+              ),
+            })
+            .andThen(validateWith(TagSchema));
+        }),
     );
   }
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`tags/slug/${params.slug}`, {
         params: toSearchParams(
           {
@@ -243,7 +277,22 @@ export async function fetchTag(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(TagSchema)),
+      .andThen(validateWith(TagSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`tags/slug/${params.slug}`, {
+            params: toSearchParams(
+              {
+                locale: params.locale,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(TagSchema));
+      }),
   );
 }
 
@@ -289,7 +338,7 @@ export async function fetchRelatedTags(
     const params = parseUserInput(request, RelatedTagsByIdRequestSchema);
 
     return unwrap(
-      client.gamma
+      client.gateway
         .get(`tags/${params.id}/related-tags`, {
           params: toSearchParams(
             {
@@ -299,16 +348,40 @@ export async function fetchRelatedTags(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(ListRelatedTagsResponseSchema)),
+        .andThen(validateWith(ListRelatedTagsResponseSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get(`tags/${params.id}/related-tags`, {
+              params: toSearchParams(
+                {
+                  omitEmpty: params.omitEmpty,
+                  status: params.status,
+                },
+                snakeCase(),
+              ),
+            })
+            .andThen(validateWith(ListRelatedTagsResponseSchema));
+        }),
     );
   }
 
   const params = parseUserInput(request, RelatedTagsBySlugRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`tags/slug/${params.slug}/related-tags`)
-      .andThen(validateWith(ListRelatedTagsResponseSchema)),
+      .andThen(validateWith(ListRelatedTagsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`tags/slug/${params.slug}/related-tags`)
+          .andThen(validateWith(ListRelatedTagsResponseSchema));
+      }),
   );
 }
 
@@ -357,7 +430,7 @@ export async function fetchRelatedTagResources(
     );
 
     return unwrap(
-      client.gamma
+      client.gateway
         .get(`tags/${params.id}/related-tags/tags`, {
           params: toSearchParams(
             {
@@ -368,7 +441,24 @@ export async function fetchRelatedTagResources(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(ListRelatedTagResourcesResponseSchema)),
+        .andThen(validateWith(ListRelatedTagResourcesResponseSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get(`tags/${params.id}/related-tags/tags`, {
+              params: toSearchParams(
+                {
+                  locale: params.locale,
+                  omitEmpty: params.omitEmpty,
+                  status: params.status,
+                },
+                snakeCase(),
+              ),
+            })
+            .andThen(validateWith(ListRelatedTagResourcesResponseSchema));
+        }),
     );
   }
 
@@ -378,7 +468,7 @@ export async function fetchRelatedTagResources(
   );
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`tags/slug/${params.slug}/related-tags/tags`, {
         params: toSearchParams(
           {
@@ -389,6 +479,23 @@ export async function fetchRelatedTagResources(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListRelatedTagResourcesResponseSchema)),
+      .andThen(validateWith(ListRelatedTagResourcesResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`tags/slug/${params.slug}/related-tags/tags`, {
+            params: toSearchParams(
+              {
+                locale: params.locale,
+                omitEmpty: params.omitEmpty,
+                status: params.status,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListRelatedTagResourcesResponseSchema));
+      }),
   );
 }

@@ -9,7 +9,7 @@ import {
   ListCommentsResponseSchema,
   SeriesIdSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -20,6 +20,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
@@ -131,7 +132,7 @@ export function listComments(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
+    return client.gateway
       .get('/comments', {
         params: toSearchParams(
           {
@@ -148,6 +149,28 @@ export function listComments(
         ),
       })
       .andThen(validateWith(ListCommentsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/comments', {
+            params: toSearchParams(
+              {
+                ascending: params.ascending,
+                getPositions: params.getPositions,
+                holdersOnly: params.holdersOnly,
+                limit: decoded.pageSize,
+                offset: decoded.offset,
+                order: params.order,
+                parentEntityId: params.parentEntityId,
+                parentEntityType: params.parentEntityType,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListCommentsResponseSchema));
+      })
       .map((comments) => {
         const hasMore = comments.length >= decoded.pageSize;
 
@@ -205,7 +228,7 @@ export async function fetchCommentsById(
   const params = parseUserInput(request, FetchCommentsByIdRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`comments/${params.id}`, {
         params: toSearchParams(
           {
@@ -214,7 +237,22 @@ export async function fetchCommentsById(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListCommentsResponseSchema)),
+      .andThen(validateWith(ListCommentsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`comments/${params.id}`, {
+            params: toSearchParams(
+              {
+                getPositions: params.getPositions,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListCommentsResponseSchema));
+      }),
   );
 }
 
@@ -284,7 +322,7 @@ export function listCommentsByUserAddress(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
+    return client.gateway
       .get(`comments/user_address/${address}`, {
         params: toSearchParams(
           {
@@ -297,6 +335,24 @@ export function listCommentsByUserAddress(
         ),
       })
       .andThen(validateWith(ListCommentsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`comments/user_address/${address}`, {
+            params: toSearchParams(
+              {
+                ascending: params.ascending,
+                limit: decoded.pageSize,
+                offset: decoded.offset,
+                order: params.order,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListCommentsResponseSchema));
+      })
       .map((comments) => {
         const hasMore = comments.length >= decoded.pageSize;
 

@@ -4,7 +4,7 @@ import {
   type Series,
   SeriesSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -15,6 +15,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
@@ -111,7 +112,7 @@ export function listSeries(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
+    return client.gateway
       .get('/series', {
         params: toSearchParams(
           {
@@ -123,6 +124,23 @@ export function listSeries(
         ),
       })
       .andThen(validateWith(ListSeriesResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/series', {
+            params: toSearchParams(
+              {
+                ...params,
+                limit: decoded.pageSize,
+                offset: decoded.offset,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(ListSeriesResponseSchema));
+      })
       .map((series) => {
         const hasMore = series.length >= decoded.pageSize;
 
@@ -180,7 +198,7 @@ export async function fetchSeries(
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`series/${params.id}`, {
         params: toSearchParams(
           {
@@ -189,6 +207,21 @@ export async function fetchSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(SeriesSchema)),
+      .andThen(validateWith(SeriesSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`series/${params.id}`, {
+            params: toSearchParams(
+              {
+                locale: params.locale,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(SeriesSchema));
+      }),
   );
 }

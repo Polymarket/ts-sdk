@@ -28,7 +28,7 @@ import {
   MarketSchema,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -39,6 +39,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
@@ -190,7 +191,7 @@ export function listMarkets(
 
   return paginate(
     (cursor) =>
-      client.gamma
+      client.gateway
         .get('/markets/keyset', {
           params: toMarketsSearchParams({
             ...params,
@@ -198,6 +199,19 @@ export function listMarkets(
           }),
         })
         .andThen(validateWith(ListMarketsKeysetResponseSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get('/markets/keyset', {
+              params: toMarketsSearchParams({
+                ...params,
+                cursor: cursor ?? params.cursor,
+              }),
+            })
+            .andThen(validateWith(ListMarketsKeysetResponseSchema));
+        })
         .map((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
@@ -393,9 +407,17 @@ export async function fetchMarketTags(
   const params = parseUserInput(request, FetchMarketTagsRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`markets/${params.id}/tags`)
-      .andThen(validateWith(FetchMarketTagsResponseSchema)),
+      .andThen(validateWith(FetchMarketTagsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`markets/${params.id}/tags`)
+          .andThen(validateWith(FetchMarketTagsResponseSchema));
+      }),
   );
 }
 
@@ -790,7 +812,7 @@ async function fetchMarketBySlug(
   params: z.output<typeof FetchMarketBySlugRequestSchema>,
 ): Promise<Market> {
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`markets/slug/${params.slug}`, {
         params: toSearchParams(
           {
@@ -800,7 +822,23 @@ async function fetchMarketBySlug(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(MarketSchema)),
+      .andThen(validateWith(MarketSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`markets/slug/${params.slug}`, {
+            params: toSearchParams(
+              {
+                includeTag: params.includeTag,
+                locale: params.locale,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(MarketSchema));
+      }),
   );
 }
 
@@ -809,7 +847,7 @@ async function fetchMarketById(
   params: z.output<typeof FetchMarketByIdRequestSchema>,
 ): Promise<Market> {
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`markets/${params.id}`, {
         params: toSearchParams(
           {
@@ -819,6 +857,22 @@ async function fetchMarketById(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(MarketSchema)),
+      .andThen(validateWith(MarketSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`markets/${params.id}`, {
+            params: toSearchParams(
+              {
+                includeTag: params.includeTag,
+                locale: params.locale,
+              },
+              snakeCase(),
+            ),
+          })
+          .andThen(validateWith(MarketSchema));
+      }),
   );
 }

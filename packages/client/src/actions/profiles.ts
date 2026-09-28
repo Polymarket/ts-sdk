@@ -2,7 +2,7 @@ import {
   type PublicProfile,
   PublicProfileSchema,
 } from '@polymarket/bindings/gamma';
-import { err, ok, unwrap } from '@polymarket/types';
+import { err, errAsync, ok, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -13,6 +13,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
@@ -64,11 +65,21 @@ export async function fetchPublicProfile(
   const params = parseUserInput(request, FetchPublicProfileRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get('/public-profile', {
         params: toSearchParams(params, snakeCase()),
       })
       .andThen(validateWith(PublicProfileSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/public-profile', {
+            params: toSearchParams(params, snakeCase()),
+          })
+          .andThen(validateWith(PublicProfileSchema));
+      })
       .orElse((error) => {
         if (error instanceof RequestRejectedError && error.status === 404) {
           return ok(null);

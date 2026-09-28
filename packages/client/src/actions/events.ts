@@ -18,7 +18,7 @@ import {
   ListEventsKeysetResponseSchema,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -29,6 +29,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
@@ -189,7 +190,7 @@ export function listEvents(
 
   return paginate(
     (cursor) =>
-      client.gamma
+      client.gateway
         .get('/events/keyset', {
           params: toEventsSearchParams({
             ...params,
@@ -197,6 +198,19 @@ export function listEvents(
           }),
         })
         .andThen(validateWith(ListEventsKeysetResponseSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get('/events/keyset', {
+              params: toEventsSearchParams({
+                ...params,
+                cursor: cursor ?? params.cursor,
+              }),
+            })
+            .andThen(validateWith(ListEventsKeysetResponseSchema));
+        })
         .map((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
@@ -254,11 +268,21 @@ export async function fetchEvent(
 
   if ('id' in params) {
     return unwrap(
-      client.gamma
+      client.gateway
         .get(`events/${params.id}`, {
           params: toFetchEventByIdSearchParams(params),
         })
-        .andThen(validateWith(EventSchema)),
+        .andThen(validateWith(EventSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get(`events/${params.id}`, {
+              params: toFetchEventByIdSearchParams(params),
+            })
+            .andThen(validateWith(EventSchema));
+        }),
     );
   }
 
@@ -266,11 +290,21 @@ export async function fetchEvent(
     'url' in params ? parsePolymarketSlugUrl(params.url, 'event') : params.slug;
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`events/slug/${slug}`, {
         params: toFetchEventBySlugSearchParams(params),
       })
-      .andThen(validateWith(EventSchema)),
+      .andThen(validateWith(EventSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`events/slug/${slug}`, {
+            params: toFetchEventBySlugSearchParams(params),
+          })
+          .andThen(validateWith(EventSchema));
+      }),
   );
 }
 
@@ -313,9 +347,17 @@ export async function fetchEventTags(
   const params = parseUserInput(request, FetchEventTagsRequestSchema);
 
   return unwrap(
-    client.gamma
+    client.gateway
       .get(`events/${params.id}/tags`)
-      .andThen(validateWith(FetchEventTagsResponseSchema)),
+      .andThen(validateWith(FetchEventTagsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get(`events/${params.id}/tags`)
+          .andThen(validateWith(FetchEventTagsResponseSchema));
+      }),
   );
 }
 

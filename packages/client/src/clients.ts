@@ -73,6 +73,8 @@ import {
 
 type PublicContext = {
   /** @internal */
+  platformApiKey?: string;
+  /** @internal */
   apiKey?: ApiKeyAuthorization;
   /** @internal */
   environment: EnvironmentConfig;
@@ -86,6 +88,8 @@ type PublicContext = {
   rpc: JsonRpcClient;
   /** @internal */
   gamma: ServiceClient;
+  /** @internal */
+  gateway: ServiceClient;
   /** @internal */
   data: ServiceClient;
   /** @internal */
@@ -160,6 +164,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get gamma(): ServiceClient {
     return this.context.gamma;
+  }
+
+  /** @internal */
+  get gateway(): ServiceClient {
+    return this.context.gateway;
   }
 
   /** @internal */
@@ -290,6 +299,7 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
 
 type PublicClientConfig = {
   environment: EnvironmentConfig;
+  platformApiKey?: string;
   apiKey?: ApiKeyAuthorization;
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
@@ -300,6 +310,8 @@ class BasePublicClient<
 > extends AbstractClient<PublicContext> {
   constructor(config: PublicClientConfig) {
     super({
+      platformApiKey: config.platformApiKey,
+      gateway: createGatewayClient(config.environment, config.platformApiKey),
       apiKey: config.apiKey,
       environment: config.environment,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -498,6 +510,7 @@ class BasePublicClient<
     signer: Signer,
   ): SecureClient<TPublicActions, TSecureActions> {
     const client = new BaseSecureClient({
+      platformApiKey: this.context.platformApiKey,
       account: account,
       apiKey: this.context.apiKey,
       credentials,
@@ -545,6 +558,8 @@ class BaseSecureClient<
     });
     super({
       account: config.account,
+      platformApiKey: config.platformApiKey,
+      gateway: createGatewayClient(config.environment, config.platformApiKey),
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
@@ -888,6 +903,8 @@ export type Client<
   | SecureClient<TPublicActions, TSecureActions>;
 
 export type PublicClientOptions = {
+  /** Optional platform API key identifying your application. */
+  platformApiKey?: string;
   /**
    * The environment configuration used by the client.
    *
@@ -947,6 +964,9 @@ export type SecureClientOptions = PublicClientOptions & {
       }
   );
 
+export type CreatePublicClientError = UserInputError;
+export const CreatePublicClientError = makeErrorGuard(UserInputError);
+
 /**
  * Creates a new `PublicClient` instance.
  *
@@ -954,15 +974,41 @@ export type SecureClientOptions = PublicClientOptions & {
  * ```ts
  * const client = createPublicClient();
  * ```
+ *
+ * @throws {@link CreatePublicClientError}
+ * Thrown when a platform API key is invalid.
  */
 export function createPublicClient(
   options: PublicClientOptions = {},
 ): PublicClient<PublicActions, SecureActions> {
   return new BasePublicClient({
+    platformApiKey:
+      options.platformApiKey === undefined
+        ? undefined
+        : parseUserInput(
+            options.platformApiKey,
+            z.string().regex(/^[\x21-\x7e]+$/),
+          ),
     environment: options.environment ?? production,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
   }).extend(allActions);
+}
+
+function createGatewayClient(
+  environment: EnvironmentConfig,
+  platformApiKey?: string,
+): ServiceClient {
+  const headers = new Headers(environment.gateway.headers);
+  if (platformApiKey !== undefined) {
+    headers.set('X-API-Key', platformApiKey);
+  }
+  return new ServiceClient({
+    root: environment.gateway.rest,
+    headers,
+    singleAttempt: true,
+    responseDeadlineMs: 5_000,
+  });
 }
 
 export type CreateSecureClientError =
@@ -1010,6 +1056,7 @@ export async function createSecureClient(
   options: SecureClientOptions,
 ): Promise<SecureClient<PublicActions, SecureActions>> {
   const client = createPublicClient({
+    platformApiKey: options.platformApiKey,
     environment: options.environment,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
