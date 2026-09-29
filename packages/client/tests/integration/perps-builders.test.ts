@@ -1,5 +1,4 @@
 import type { Page, Paginated, PerpsBuilderEarning } from '@polymarket/client';
-import { Value } from 'ox';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const builderAddress = process.env.POLYMARKET_PERPS_BUILDER_ADDRESS;
@@ -9,64 +8,32 @@ const runBuilderTests =
 
 describe('Perps builder integration', () => {
   it.runIf(runBuilderTests)(
-    'restores saved consent on resume or requires explicit approval',
-    async ({ secureClientWithDepositWallet: client, skip }) => {
-      if (builderAddress === undefined) return skip();
-      const status = await client.fetchPerpsBuilderStatus({
-        address: builderAddress,
-      });
-      if (!status.registered || !status.enabled || !status.admissionEnabled)
-        return skip();
-
+    'opens and resumes a session without requiring builder consent',
+    async ({ secureClientWithDepositWallet: client, randomEoaSigner }) => {
+      const address = await randomEoaSigner.getAddress();
       const session = await client.openPerpsSession({
+        builderAttribution: address,
         expiresIn: 30 * 60_000,
       });
       try {
-        const approvals = await session.fetchBuilderApprovals({
-          builder: builderAddress,
-        });
-        const approval = approvals.find(
-          (grant) =>
-            grant.builder.toLowerCase() === builderAddress.toLowerCase(),
-        );
-        const restore = client.openPerpsSession({
+        const restored = await client.openPerpsSession({
           credentials: session.credentials,
-          builderAttribution: builderAddress,
+          builderAttribution: address,
         });
-        if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
-          await expect(restore).rejects.toThrow(
-            'Explicit builder fee approval is required',
-          );
-        } else {
-          const restored = await restore;
-          try {
-            expect(restored.builderAttribution?.feeRate).toBe(
-              Value.from(status.maxFeeRate, 28) <
-                Value.from(approval.maxFeeRate, 28)
-                ? status.maxFeeRate
-                : approval.maxFeeRate,
-            );
-          } finally {
-            await restored.close();
-          }
+        try {
+          expect(
+            restored.builderAttribution?.builderAddress.toLowerCase(),
+          ).toBe(address.toLowerCase());
+          const approvals = await restored.fetchBuilderApprovals({
+            builder: address,
+          });
+          expect(approvals).toEqual([]);
+        } finally {
+          await restored.close();
         }
       } finally {
         await session.close();
       }
-    },
-  );
-
-  it.runIf(runBuilderTests)(
-    'rejects attribution to an unregistered builder',
-    async ({ secureClientWithDepositWallet: client, randomEoaSigner }) => {
-      const unregisteredBuilderAddress = await randomEoaSigner.getAddress();
-      await expect(
-        client.openPerpsSession({
-          builderAttribution: unregisteredBuilderAddress,
-        }),
-      ).rejects.toThrow(
-        'Builder attribution is not active for this builder address',
-      );
     },
   );
 

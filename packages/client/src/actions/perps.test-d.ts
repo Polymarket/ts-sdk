@@ -63,13 +63,12 @@ import type {
 } from './perps';
 
 describe('session builder consent', () => {
-  it('requires explicit consent terms and keeps versions internal', () => {
+  it('supports default consent terms and keeps versions internal', () => {
     function approve(session: PerpsSession) {
       void session.approveBuilderFee({
         builderAddress: '0x1111111111111111111111111111111111111111',
         maxFeeRate: '0.0003',
       });
-      // @ts-expect-error Approval requires explicit consent terms.
       void session.approveBuilderFee();
       void session.revokeBuilderFee();
     }

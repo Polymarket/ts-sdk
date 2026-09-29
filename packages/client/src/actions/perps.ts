@@ -6,7 +6,6 @@ import {
 } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
-  FetchPerpsBuilderApprovalsResponseSchema,
   FetchPerpsCandlesResponseSchema,
   FetchPerpsFeesResponseSchema,
   FetchPerpsFundingHistoryResponseSchema,
@@ -16,7 +15,6 @@ import {
   FetchPerpsTradesResponseSchema,
   type PerpsBook,
   PerpsBookSchema,
-  type PerpsBuilderStatus,
   type PerpsCandle,
   PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
@@ -75,11 +73,6 @@ import {
   type TypedDataPayload,
 } from '../types';
 import { SignerType } from '../wallet';
-import {
-  minPerpsBuilderFeeRate,
-  type PerpsBuilderTermsInput,
-  PerpsBuilderTermsInputSchema,
-} from '../websockets/perps/actions/builder-terms';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
@@ -160,10 +153,7 @@ export {
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
-import {
-  approvePerpsBuilderFee,
-  fetchPerpsBuilderStatus,
-} from './perps/builders';
+import { approvePerpsBuilderFee } from './perps/builders';
 import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
@@ -1023,7 +1013,7 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
-  /** Builder address whose active trader approval supplies the default order fee. */
+  /** Builder address whose configured fee applies to new orders. Consent is enforced by the server. */
   builderAttribution?: string;
   /** Include builder receipts for this authenticated account in the session iterator. */
   includeBuilderFills?: boolean;
@@ -1040,7 +1030,7 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
-  /** Restore this builder's active trader approval. Credentials do not store attribution. */
+  /** Select this builder for resumed orders. Credentials do not store attribution. */
   builderAttribution?: string;
   /** Include builder receipts for this authenticated account in the session iterator. */
   includeBuilderFills?: boolean;
@@ -1269,14 +1259,13 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
- * When `builderAttribution` is provided, checks that the builder is registered,
- * enabled, and accepting attribution before creating or resuming credentials.
- * Restores the authenticated trader's active approval and uses the lower of
- * its approved maximum and the builder cap for new orders and TP/SL exits. Missing or revoked
- * approval fails setup; setup never grants consent.
- * Omit attribution to start without a builder, then explicitly approve one with
- * `session.approveBuilderFee({ builderAddress, maxFeeRate })`.
- * Successful approval or revocation updates the same session's order defaults.
+ * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+ * Opening or resuming reads the configured fee without requiring active consent.
+ * The server validates builder availability and consent when it receives orders.
+ * Call `session.approveBuilderFee()` once before the first attributed order.
+ * It uses the selected builder and defaults to its current configured fee.
+ * Opening a session never grants consent. Approval remains valid until revoked
+ * or replaced and does not need to be repeated for each session.
  * Set `includeBuilderFills` to receive builder receipts through the session iterator.
  *
  * @throws {@link OpenPerpsSessionError}
@@ -1289,59 +1278,13 @@ export async function openPerpsSession(
   request: OpenPerpsSessionRequest = {},
 ): Promise<PerpsSession> {
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
-  let builderAttribution: PerpsBuilderTermsInput | undefined;
-  let builderStatus: PerpsBuilderStatus | undefined;
-  if (params.builderAttribution !== undefined) {
-    const builderAddress = params.builderAttribution;
-    builderStatus = await fetchPerpsBuilderStatus(client, {
-      address: builderAddress,
-    });
-    if (
-      !builderStatus.registered ||
-      !builderStatus.enabled ||
-      !builderStatus.admissionEnabled
-    ) {
-      throw new UserInputError(
-        `Builder attribution is not active for this builder address: ${builderAddress}`,
-      );
-    }
-  }
   const credentials =
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  if (params.builderAttribution !== undefined && builderStatus !== undefined) {
-    const builderAddress = params.builderAttribution;
-    const approvals = await unwrap(
-      client.perps
-        .get('/v1/account/builder-approvals', {
-          headers: perpsCredentialHeaders(credentials),
-          params: toSearchParams({ builder: builderAddress }, snakeCase()),
-        })
-        .andThen(validateWith(FetchPerpsBuilderApprovalsResponseSchema)),
-    );
-    const approval = approvals.data.find((grant) =>
-      isSameEvmAddress(grant.builder, builderAddress),
-    );
-    if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
-      throw new UserInputError(
-        `Explicit builder fee approval is required for this builder address: ${builderAddress}`,
-      );
-    }
-    builderAttribution = parseUserInput(
-      {
-        builderAddress: approval.builder,
-        feeRate: minPerpsBuilderFeeRate(
-          builderStatus.maxFeeRate,
-          approval.maxFeeRate,
-        ),
-      },
-      PerpsBuilderTermsInputSchema,
-    );
-  }
   return client.webSockets.perpsSession.connect(
     credentials,
-    builderAttribution,
+    params.builderAttribution,
     approvePerpsBuilderFee.bind(null, client),
     params.includeBuilderFills,
   );

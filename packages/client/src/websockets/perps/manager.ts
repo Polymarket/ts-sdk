@@ -38,14 +38,14 @@ export class PerpsSessionManager {
   }
 
   /**
-   * Connects credentials with optional validated defaults for new orders.
+   * Connects credentials with an optional builder for new orders.
    * Builder defaults belong to this session, not the credentials.
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   connect(
     credentials: PerpsCredentials,
-    builderAttribution?: PerpsBuilderTermsInput,
+    builderAttribution?: string | PerpsBuilderTermsInput,
     approveBuilderFee?: PerpsBuilderFeeApprover,
     includeBuilderFills?: boolean,
   ): Promise<PerpsSession> {

@@ -88,18 +88,18 @@ const ResolvedPerpsBuilderFeeSchema = z.strictObject({
 });
 
 const ApprovePerpsBuilderFeeRequestSchema = z.strictObject({
-  builderAddress: EvmAddressSchema,
-  maxFeeRate: PerpsBuilderFeeRateInputSchema,
+  builderAddress: EvmAddressSchema.optional(),
+  maxFeeRate: PerpsBuilderFeeRateInputSchema.optional(),
 }) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ApprovePerpsBuilderFeeRequest = {
-  /** Builder account to explicitly authorize. */
-  builderAddress: string;
-  /** Approved maximum fee fraction; zero revokes permission. */
-  maxFeeRate: string;
+  /** Builder account to authorize. Defaults to the session builder. */
+  builderAddress?: string;
+  /** Defaults to the builder's current configured fee. Zero explicitly revokes permission. */
+  maxFeeRate?: string;
 };
 
 /**
@@ -147,6 +147,26 @@ export async function approvePerpsBuilderFee(
   request: ApprovePerpsBuilderFeeRequest,
 ): Promise<PerpsBuilderApproval> {
   const input = parseUserInput(request, ApprovePerpsBuilderFeeRequestSchema);
+  if (input.builderAddress === undefined) {
+    throw new UserInputError(
+      'A builder address is required when the session has no builder attribution.',
+    );
+  }
+  let maxFeeRate = input.maxFeeRate;
+  if (maxFeeRate === undefined) {
+    const status = await fetchPerpsBuilderStatus(client, {
+      address: input.builderAddress,
+    });
+    if (!status.registered || !status.enabled || !status.admissionEnabled) {
+      throw new UserInputError(
+        'Builder attribution is not active for this builder address.',
+      );
+    }
+    maxFeeRate = status.maxFeeRate;
+    if (!/[1-9]/.test(maxFeeRate)) {
+      throw new UserInputError('The builder has no positive fee to approve.');
+    }
+  }
   const approvalVersion = nextPerpsBuilderApprovalVersion(
     await session.fetchBuilderApprovals({ builder: input.builderAddress }),
     input.builderAddress,
@@ -154,7 +174,7 @@ export async function approvePerpsBuilderFee(
   const params = parseUserInput(
     {
       builder: input.builderAddress,
-      maxFeeRate: input.maxFeeRate,
+      maxFeeRate,
       approvalVersion,
     },
     ResolvedPerpsBuilderFeeSchema,

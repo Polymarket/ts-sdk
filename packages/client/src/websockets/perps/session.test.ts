@@ -96,6 +96,131 @@ describe('PerpsSession', () => {
       );
     });
 
+    it('uses the selected builder when approving without arguments', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, builderMaxFeeRate, 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      await session.approveBuilderFee();
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+      });
+      expect(session.builderAttribution?.feeRate).toBe(builderMaxFeeRate);
+      await session.close();
+    });
+
+    it.each([
+      'inactive',
+      'missing',
+      'revoked',
+    ] as const)('opens with %s consent and forwards server rejection without order-time reads', async (state) => {
+      const error =
+        state === 'inactive'
+          ? 'builder_not_enabled'
+          : 'builder_approval_required';
+      const frames = mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders'
+          ? [{ status: 'err', error }]
+          : responseForFrame(frame),
+      );
+      const statusRead = vi.fn(() =>
+        HttpResponse.json({
+          address: builderAddress,
+          registered: true,
+          enabled: state !== 'inactive',
+          admission_enabled: true,
+          max_fee_rate: builderMaxFeeRate,
+        }),
+      );
+      const approvalRead = vi.fn(() => HttpResponse.json({ data: [] }));
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, statusRead),
+        http.get(
+          `${production.perps.rest}/v1/account/builder-approvals`,
+          approvalRead,
+        ),
+        mockPortfolioPosition({ size: '1' }),
+      );
+      const session = createSession({ builderAttribution: builderAddress });
+      await session.connect();
+      expect(statusRead).toHaveBeenCalledTimes(1);
+      const order = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        timeInForce: PerpsTimeInForce.IOC,
+      } as const;
+      await expect(session.placeOrder(order)).rejects.toThrow(error);
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([{ status: 'err', error }]);
+      await expect(
+        session.placeOrder({ ...order, stopLoss: { triggerPrice: '90' } }),
+      ).rejects.toThrow(error);
+      await expect(
+        session.placePositionTpSl({
+          instrumentId: 1,
+          stopLoss: { triggerPrice: '90' },
+        }),
+      ).rejects.toThrow(error);
+      expect(frames).toHaveLength(6);
+      expect(statusRead).toHaveBeenCalledTimes(1);
+      expect(approvalRead).not.toHaveBeenCalled();
+      await session.close();
+    });
+
+    it('submits saved terms directly after approval and forwards later server rejections', async () => {
+      let approved = false;
+      const frames = mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders' && !approved
+          ? [{ status: 'err', error: 'builder_approval_required' }]
+          : responseForFrame(frame),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee: async () => {
+          approved = true;
+          return builderApproval(builderAddress, '0.0003', 1);
+        },
+      });
+      await session.connect();
+      const order = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        timeInForce: PerpsTimeInForce.IOC,
+      } as const;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.approveBuilderFee();
+      // Any fee/status lookup on the order path would now fail.
+      rejectCapRead = true;
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.error(),
+        ),
+      );
+      await session.postOrders({ orders: [order] });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0003' } }],
+        },
+      });
+      approved = false;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.close();
+    });
+
     it('refreshes the cap after approval and replaces the effective session rate', async () => {
       const approveBuilderFee = vi.fn(async () =>
         builderApproval(builderAddress, '0.0003', 1),

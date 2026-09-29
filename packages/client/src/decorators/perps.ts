@@ -327,14 +327,13 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
-   * When `builderAttribution` is provided, checks that the builder is registered,
-   * enabled, and accepting attribution before creating or resuming credentials.
-   * Restores the trader's active approval and uses the lower of its approved
-   * maximum and the builder cap for all new orders and generated TP/SL exits.
-   * Missing or revoked approval fails setup.
-   * Omit attribution to start without a builder, then call
-   * `session.approveBuilderFee({ builderAddress, maxFeeRate })` to grant consent.
-   * Successful approval or revocation updates the same session's defaults.
+   * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+   * Opening or resuming reads the configured fee without requiring active consent.
+   * The server validates builder availability and consent when it receives orders.
+   * Call `session.approveBuilderFee()` once before the first attributed order.
+   * It uses the selected builder and defaults to its current configured fee.
+   * Opening a session never grants consent. Approval remains valid until revoked
+   * or replaced and does not need to be repeated for each session.
    * Set `includeBuilderFills` to receive builder receipts in the session iterator.
    *
    * @example

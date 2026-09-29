@@ -1,3 +1,4 @@
+import { EvmAddressSchema } from '@polymarket/bindings';
 import {
   type PerpsAccountConfig,
   type PerpsAccountFill,
@@ -267,8 +268,8 @@ export {
 export type PerpsSessionOptions = {
   /** @internal Owner approval operation supplied by the parent client. */
   approveBuilderFee?: PerpsBuilderFeeApprover;
-  /** Confirmed trader consent applied to all orders in this session. */
-  builderAttribution?: PerpsBuilderTermsInput;
+  /** Builder selector or previously resolved terms. The server validates consent on order submission. */
+  builderAttribution?: string | PerpsBuilderTermsInput;
   chainId: number;
   credentials: PerpsCredentials;
   headers?: Record<string, string>;
@@ -346,6 +347,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly #eventWaiters = new Set<EventWaiter>();
   readonly #reconnectScheduler = new ReconnectScheduler();
   readonly #sequences = new Map<string, number>();
+  #builderAddress: string | undefined;
   #builderAttribution: PerpsBuilderTermsInput | undefined;
   #builderConsentChange: Promise<unknown> = Promise.resolve();
   readonly #includeBuilderFills: boolean;
@@ -359,7 +361,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.#approveBuilderFee = options.approveBuilderFee;
     this.#includeBuilderFills = options.includeBuilderFills ?? false;
     this.#builderAttribution =
-      options.builderAttribution === undefined
+      options.builderAttribution === undefined ||
+      typeof options.builderAttribution === 'string'
         ? undefined
         : Object.freeze(
             parseUserInput(
@@ -367,6 +370,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
               PerpsBuilderTermsInputSchema,
             ),
           );
+    this.#builderAddress =
+      typeof options.builderAttribution === 'string'
+        ? parseUserInput(options.builderAttribution, EvmAddressSchema)
+        : this.#builderAttribution?.builderAddress;
     this.#api = new ServiceClient({
       headers: options.headers,
       resolveHeaders: async () => this.#authenticatedHeaders(),
@@ -380,7 +387,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
-   * Confirmed builder consent applied to every order created by this session.
+   * Most recently resolved builder terms. Resolved when opening the session or granting approval.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   get builderAttribution(): PerpsBuilderTermsInput | undefined {
@@ -403,6 +410,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async connect(): Promise<void> {
+    if (
+      this.#builderAddress !== undefined &&
+      this.#builderAttribution === undefined
+    ) {
+      const status = await unwrap(
+        this.#api
+          .get('/v1/info/builder', {
+            params: new URLSearchParams({ address: this.#builderAddress }),
+          })
+          .andThen(validateWith(PerpsBuilderStatusSchema)),
+      );
+      this.#builderAttribution = Object.freeze({
+        builderAddress: this.#builderAddress,
+        feeRate: status.maxFeeRate,
+      });
+    }
     await this.#connect(false);
   }
 
@@ -444,6 +467,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Approves and adopts builder fees with the parent client's owner signer.
+   * With no arguments, approves the selected builder's current configured fee.
+   * Approval is needed once and remains valid until revoked or replaced.
    * The SDK increments the saved approval version automatically. Only a
    * confirmed approval refreshes the builder cap and stores the lower of that
    * cap and the approved maximum for future orders. If the cap read fails,
@@ -451,16 +476,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @example
    * ```ts
-   * await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+   * await session.approveBuilderFee();
    * ```
    * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async approveBuilderFee(
-    request: ApprovePerpsBuilderFeeRequest,
+    request: ApprovePerpsBuilderFeeRequest = {},
   ): Promise<PerpsBuilderApproval> {
     const approvalRequest = { ...request };
-    return this.#changeBuilderConsent(() => approvalRequest);
+    return this.#changeBuilderConsent(() => ({
+      ...approvalRequest,
+      builderAddress:
+        approvalRequest.builderAddress === undefined
+          ? this.#builderAddress
+          : approvalRequest.builderAddress,
+    }));
   }
 
   /**
@@ -480,8 +511,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     builderAddress?: string,
   ): Promise<PerpsBuilderApproval> {
     return this.#changeBuilderConsent(() => {
-      const builder =
-        builderAddress ?? this.#builderAttribution?.builderAddress;
+      const builder = builderAddress ?? this.#builderAddress;
       if (builder === undefined) {
         throw new UserInputError(
           'A builder address is required when the session has no active builder attribution.',
@@ -506,10 +536,11 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         const approval = await this.#approveBuilderFee(this, request());
         if (/^0+(?:\.0+)?$/.test(approval.maxFeeRate)) {
           if (
-            this.#builderAttribution?.builderAddress.toLowerCase() ===
+            this.#builderAddress?.toLowerCase() ===
             approval.builder.toLowerCase()
           ) {
             this.#builderAttribution = undefined;
+            this.#builderAddress = undefined;
           }
         } else {
           const status = await unwrap(
@@ -519,6 +550,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
               })
               .andThen(validateWith(PerpsBuilderStatusSchema)),
           );
+          this.#builderAddress = approval.builder;
           this.#builderAttribution = Object.freeze({
             builderAddress: approval.builder,
             feeRate: minPerpsBuilderFeeRate(
