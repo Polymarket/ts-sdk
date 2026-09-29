@@ -132,7 +132,7 @@ describe('Comments', () => {
       expect(createdAt).toEqual([...createdAt].sort((a, b) => b - a));
     });
 
-    it('continues from a saved cursor and sends only cursor parameters', async ({
+    it('continues from a saved cursor with the same order and direction', async ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -156,7 +156,33 @@ describe('Comments', () => {
       expect(urls[0]).not.toContain('offset=');
       expect(urls[0]).not.toContain('holders_only');
       expect(urls[0]).not.toContain('get_positions');
+      // Replaying the service token with the default direction would seek
+      // the wrong way, so the continuation re-sends the pinned direction.
       expect(urls[1]).toContain('after_cursor=');
+      expect(urls[1]).toContain('ascending=false');
+      expect(urls[1]).toContain('order=createdAt');
+    });
+
+    it('defaults to ascending when an order is given and stays on offset pages otherwise', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.listComments({ ...request, order: 'id' }).firstPage();
+      await publicClient
+        .listComments({ ...request, order: 'reactionCount' })
+        .firstPage();
+
+      const urls = fetchSpy.mock.calls.map(([input]) =>
+        input instanceof Request ? input.url : String(input),
+      );
+      expect(urls).toHaveLength(2);
+      expect(urls[0]).toContain('/comments/keyset?');
+      expect(urls[0]).toContain('order=id');
+      expect(urls[0]).toContain('ascending=true');
+      expect(urls[1]).toContain('/comments?');
+      expect(urls[1]).toContain('order=reactionCount');
+      expect(urls[1]).toContain('offset=0');
     });
 
     it('refuses a cursor reused for a different query before any request', async ({
@@ -174,10 +200,18 @@ describe('Comments', () => {
       ];
 
       for (const other of otherQueries) {
-        expect(() =>
+        await expect(
           publicClient.listComments(other).from(nextCursor).firstPage(),
-        ).toThrow(UserInputError);
+        ).rejects.toThrow(UserInputError);
       }
+
+      // A cursor of some other shape is not silently treated as an offset.
+      const foreignCursor = toPaginationCursor(
+        btoa(JSON.stringify({ kind: 'other', offset: 0, pageSize: 5 })),
+      );
+      await expect(
+        publicClient.listComments(request).from(foreignCursor).firstPage(),
+      ).rejects.toThrow(UserInputError);
 
       expect(fetchSpy).not.toHaveBeenCalled();
     });
@@ -196,7 +230,8 @@ describe('Comments', () => {
 
       expect(page.items.length).toBeGreaterThan(0);
       expect(page.hasMore).toBe(true);
-      expect(() => paginator.from(page.nextCursor).firstPage()).toThrow(
+      expect(page.limitReached).toBe(true);
+      await expect(paginator.from(page.nextCursor).firstPage()).rejects.toThrow(
         PaginationLimitError,
       );
     });
