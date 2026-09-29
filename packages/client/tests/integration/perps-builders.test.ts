@@ -1,4 +1,5 @@
 import type { Page, Paginated, PerpsBuilderEarning } from '@polymarket/client';
+import { Value } from 'ox';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 const builderAddress = process.env.POLYMARKET_PERPS_BUILDER_ADDRESS;
@@ -40,7 +41,10 @@ describe('Perps builder integration', () => {
           const restored = await restore;
           try {
             expect(restored.builderAttribution?.feeRate).toBe(
-              approval.maxFeeRate,
+              Value.from(status.maxFeeRate, 28) <
+                Value.from(approval.maxFeeRate, 28)
+                ? status.maxFeeRate
+                : approval.maxFeeRate,
             );
           } finally {
             await restored.close();

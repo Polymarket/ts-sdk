@@ -76,6 +76,47 @@ describe('PerpsSession', () => {
   describe('builder consent', () => {
     const builderAddress = '0xabababababababababababababababababababab';
     const terms = { builderAddress, feeRate: '0.0003' };
+    let builderMaxFeeRate = '0.0005';
+    let rejectCapRead = false;
+    beforeEach(() => {
+      builderMaxFeeRate = '0.0005';
+      rejectCapRead = false;
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          rejectCapRead
+            ? HttpResponse.json({ error: 'unavailable' }, { status: 400 })
+            : HttpResponse.json({
+                address: builderAddress,
+                registered: true,
+                enabled: true,
+                admission_enabled: true,
+                max_fee_rate: builderMaxFeeRate,
+              }),
+        ),
+      );
+    });
+
+    it('refreshes the cap after approval and replaces the effective session rate', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        approveBuilderFee,
+      });
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0002');
+      builderMaxFeeRate = '0.0005';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      rejectCapRead = true;
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' }),
+      ).rejects.toBeInstanceOf(RequestRejectedError);
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      expect(approveBuilderFee).toHaveBeenCalledTimes(3);
+      await session.close();
+    });
 
     it('serializes approval and revocation and adopts only confirmed terms', async () => {
       let confirmApproval!: (approval: PerpsBuilderApproval) => void;
@@ -129,6 +170,7 @@ describe('PerpsSession', () => {
     });
 
     it('keeps the selected builder when revoking a different builder', async () => {
+      rejectCapRead = true;
       const otherBuilder = '0x3333333333333333333333333333333333333333';
       const session = createSession({
         builderAttribution: terms,

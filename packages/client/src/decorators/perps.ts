@@ -329,8 +329,9 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * resume a previous session.
    * When `builderAttribution` is provided, checks that the builder is registered,
    * enabled, and accepting attribution before creating or resuming credentials.
-   * Restores the trader's active approval and uses its approved maximum for all
-   * new orders and generated TP/SL exits. Missing or revoked approval fails setup.
+   * Restores the trader's active approval and uses the lower of its approved
+   * maximum and the builder cap for all new orders and generated TP/SL exits.
+   * Missing or revoked approval fails setup.
    * Omit attribution to start without a builder, then call
    * `session.approveBuilderFee({ builderAddress, maxFeeRate })` to grant consent.
    * Successful approval or revocation updates the same session's defaults.

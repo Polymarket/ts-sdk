@@ -8,6 +8,7 @@ import {
   type PerpsBuilderApproval,
   type PerpsBuilderEarning,
   type PerpsBuilderEarningsSummary,
+  PerpsBuilderStatusSchema,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
@@ -86,6 +87,7 @@ import {
   markPerpsNotificationsRead,
 } from './actions/account';
 import {
+  minPerpsBuilderFeeRate,
   type PerpsBuilderTermsInput,
   PerpsBuilderTermsInputSchema,
 } from './actions/builder-terms';
@@ -443,7 +445,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   /**
    * Approves and adopts builder fees with the parent client's owner signer.
    * The SDK increments the saved approval version automatically. Only a
-   * confirmed approval changes the builder and default rate for future orders.
+   * confirmed approval refreshes the builder cap and stores the lower of that
+   * cap and the approved maximum for future orders. If the cap read fails,
+   * consent may already be committed; local terms stay unchanged and the error propagates.
    *
    * @example
    * ```ts
@@ -508,9 +512,19 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
             this.#builderAttribution = undefined;
           }
         } else {
+          const status = await unwrap(
+            this.#api
+              .get('/v1/info/builder', {
+                params: new URLSearchParams({ address: approval.builder }),
+              })
+              .andThen(validateWith(PerpsBuilderStatusSchema)),
+          );
           this.#builderAttribution = Object.freeze({
             builderAddress: approval.builder,
-            feeRate: approval.maxFeeRate,
+            feeRate: minPerpsBuilderFeeRate(
+              status.maxFeeRate,
+              approval.maxFeeRate,
+            ),
           });
         }
         return approval;

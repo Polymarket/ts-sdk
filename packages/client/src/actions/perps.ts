@@ -16,6 +16,7 @@ import {
   FetchPerpsTradesResponseSchema,
   type PerpsBook,
   PerpsBookSchema,
+  type PerpsBuilderStatus,
   type PerpsCandle,
   PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
@@ -75,6 +76,7 @@ import {
 } from '../types';
 import { SignerType } from '../wallet';
 import {
+  minPerpsBuilderFeeRate,
   type PerpsBuilderTermsInput,
   PerpsBuilderTermsInputSchema,
 } from '../websockets/perps/actions/builder-terms';
@@ -1269,9 +1271,9 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  *
  * When `builderAttribution` is provided, checks that the builder is registered,
  * enabled, and accepting attribution before creating or resuming credentials.
- * Restores the authenticated trader's active approval and uses its approved
- * maximum for all new orders and generated TP/SL exits. Missing or revoked
- * approval fails setup; setup never grants consent or uses the platform cap.
+ * Restores the authenticated trader's active approval and uses the lower of
+ * its approved maximum and the builder cap for new orders and TP/SL exits. Missing or revoked
+ * approval fails setup; setup never grants consent.
  * Omit attribution to start without a builder, then explicitly approve one with
  * `session.approveBuilderFee({ builderAddress, maxFeeRate })`.
  * Successful approval or revocation updates the same session's order defaults.
@@ -1288,12 +1290,17 @@ export async function openPerpsSession(
 ): Promise<PerpsSession> {
   const params = parseUserInput(request, OpenPerpsSessionRequestSchema);
   let builderAttribution: PerpsBuilderTermsInput | undefined;
+  let builderStatus: PerpsBuilderStatus | undefined;
   if (params.builderAttribution !== undefined) {
     const builderAddress = params.builderAttribution;
-    const status = await fetchPerpsBuilderStatus(client, {
+    builderStatus = await fetchPerpsBuilderStatus(client, {
       address: builderAddress,
     });
-    if (!status.registered || !status.enabled || !status.admissionEnabled) {
+    if (
+      !builderStatus.registered ||
+      !builderStatus.enabled ||
+      !builderStatus.admissionEnabled
+    ) {
       throw new UserInputError(
         `Builder attribution is not active for this builder address: ${builderAddress}`,
       );
@@ -1303,7 +1310,7 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  if (params.builderAttribution !== undefined) {
+  if (params.builderAttribution !== undefined && builderStatus !== undefined) {
     const builderAddress = params.builderAttribution;
     const approvals = await unwrap(
       client.perps
@@ -1322,7 +1329,13 @@ export async function openPerpsSession(
       );
     }
     builderAttribution = parseUserInput(
-      { builderAddress: approval.builder, feeRate: approval.maxFeeRate },
+      {
+        builderAddress: approval.builder,
+        feeRate: minPerpsBuilderFeeRate(
+          builderStatus.maxFeeRate,
+          approval.maxFeeRate,
+        ),
+      },
       PerpsBuilderTermsInputSchema,
     );
   }

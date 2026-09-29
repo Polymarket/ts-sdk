@@ -26,3 +26,20 @@ export const PerpsBuilderTermsInputSchema = z.object({
   builderAddress: EvmAddressSchema,
   feeRate: PerpsBuilderFeeRateInputSchema,
 }) satisfies z.ZodType<PerpsBuilderTermsInput>;
+
+/** @internal Compares fixed-point rates exactly, preserving the selected string. */
+export function minPerpsBuilderFeeRate(
+  builderMax: string,
+  approvedMax: string,
+): string {
+  const [builderWhole, builderFraction = ''] = builderMax.split('.');
+  const [approvedWhole, approvedFraction = ''] = approvedMax.split('.');
+  const scale = Math.max(builderFraction.length, approvedFraction.length);
+  const builder = BigInt(
+    `${builderWhole}${builderFraction.padEnd(scale, '0')}`,
+  );
+  const approved = BigInt(
+    `${approvedWhole}${approvedFraction.padEnd(scale, '0')}`,
+  );
+  return builder < approved ? builderMax : approvedMax;
+}

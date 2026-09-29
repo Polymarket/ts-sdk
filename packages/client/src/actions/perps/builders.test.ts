@@ -1,6 +1,7 @@
 import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { describe, expect, it } from 'vitest';
+import { minPerpsBuilderFeeRate } from '../../websockets/perps/actions/builder-terms';
 import {
   createPerpsBuilderFeeApprovalBody,
   createPerpsBuilderFeeApprovalTypedData,
@@ -12,6 +13,14 @@ const builder = expectEvmAddress('0xabababababababababababababababababababab');
 const otherBuilder = expectEvmAddress(
   '0x3333333333333333333333333333333333333333',
 );
+
+it('compares builder fee caps without losing decimal precision', () => {
+  expect(minPerpsBuilderFeeRate('0.0003', '0.0005')).toBe('0.0003');
+  expect(minPerpsBuilderFeeRate('0.0005', '0.0003')).toBe('0.0003');
+  expect(minPerpsBuilderFeeRate('0.1000000000000000000000000001', '0.1')).toBe(
+    '0.1',
+  );
+});
 
 describe('nextPerpsBuilderApprovalVersion', () => {
   it('increments the saved version for the matching builder', () => {

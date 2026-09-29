@@ -8,8 +8,9 @@ Approving a builder updates the session's attribution after confirmation; revoki
 clears it after confirmation. Approval versions are managed internally.
 
 An optional builder address at session setup restores the trader's active saved
-approval. Its maximum fee applies consistently to single orders, batches, and
-TP/SL exits. Setup never creates consent or substitutes the platform fee cap.
+approval. The lower of the approved maximum and builder cap applies consistently
+to single orders, batches, and TP/SL exits. New approvals refresh the builder cap
+and replace the session rate after confirmation. Setup never creates consent.
 
 Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
 `fee` continues to mean the exchange fee. Legacy responses normalize to zero
