@@ -156,7 +156,18 @@ describe('protected market order amounts', () => {
     await expect(
       resolveProtectedMarketOrderAmounts(buyParams(input), deps),
     ).rejects.toThrow('rounds to zero');
-    expect(deps.fetchCurrentMarket).toHaveBeenCalledTimes(1);
+    expect(deps.fetchCurrentMarket).not.toHaveBeenCalled();
+  });
+
+  it('skips the refresh when the cached tick is already the finest', async () => {
+    const deps = createProtectedDeps(metadata(0.0001), metadata(0.0001));
+    await expect(
+      resolveProtectedMarketOrderAmounts(
+        buyParams({ amount: 100, maxSpend: 0.005 }),
+        deps,
+      ),
+    ).rejects.toThrow('rounds to zero');
+    expect(deps.fetchCurrentMarket).not.toHaveBeenCalled();
   });
 
   it('reuses cached metadata for an exactly representable coarse-tick BUY', async () => {
@@ -192,13 +203,20 @@ describe('protected market order amounts', () => {
     expect(deps.fetchCurrentMarket).not.toHaveBeenCalled();
   });
 
-  it('propagates a refresh failure without another attempt', async () => {
+  it('keeps the input error when the refresh fails, with the failure as cause', async () => {
     const deps = createProtectedDeps(metadata(0.1));
     const error = new Error('refresh unavailable');
     deps.fetchCurrentMarket.mockRejectedValue(error);
-    await expect(
-      resolveProtectedMarketOrderAmounts(buyParams(), deps),
-    ).rejects.toBe(error);
+    const rejection = await resolveProtectedMarketOrderAmounts(
+      buyParams(),
+      deps,
+    ).catch((caught: unknown) => caught);
+
+    expect(rejection).toBeInstanceOf(UserInputError);
+    expect((rejection as UserInputError).message).toContain(
+      'Cannot preserve maxPrice',
+    );
+    expect((rejection as UserInputError).cause).toBe(error);
     expect(deps.fetchCurrentMarket).toHaveBeenCalledTimes(1);
   });
 

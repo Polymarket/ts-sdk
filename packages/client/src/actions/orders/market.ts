@@ -2,11 +2,11 @@ import {
   type BuilderCode,
   BuilderCodeSchema,
   type ClobAssetId,
+  MINIMUM_TICK_SIZE_VALUE,
   OrderSide,
   OrderType,
   PositiveDecimalNumberSchema,
   type TickSizeValue,
-  TickSizeValueSchema,
 } from '@polymarket/bindings';
 import { type EvmAddress, invariant } from '@polymarket/types';
 import { z } from 'zod';
@@ -189,6 +189,7 @@ export async function resolveProtectedMarketOrderAmounts(
       : 0,
   ]);
 
+  let rejection: UserInputError;
   try {
     return {
       amounts: buildProtectedMarketOrderAmounts(
@@ -202,9 +203,23 @@ export async function resolveProtectedMarketOrderAmounts(
     if (!(error instanceof UserInputError)) {
       throw error;
     }
+    rejection = error;
   }
 
-  const currentMetadata = await deps.fetchCurrentMarket();
+  // Ticks only get finer, so a market already on the finest grid cannot
+  // produce a different answer after a refresh.
+  if (metadata.tickSize === MINIMUM_TICK_SIZE_VALUE) {
+    throw rejection;
+  }
+
+  let currentMetadata: OrderMarketMetadata;
+  try {
+    currentMetadata = await deps.fetchCurrentMarket();
+  } catch (cause) {
+    // Keep the actionable input error; the refresh failure explains why it
+    // could not be retried.
+    throw new UserInputError(rejection.message, { cause });
+  }
   return {
     amounts: buildProtectedMarketOrderAmounts(
       params,
@@ -215,9 +230,7 @@ export async function resolveProtectedMarketOrderAmounts(
   };
 }
 
-const MIN_SUPPORTED_TICK_SIZE = toScaledPrice(
-  Math.min(...TickSizeValueSchema.options.map((option) => option.value)),
-);
+const MIN_SUPPORTED_TICK_SIZE = toScaledPrice(MINIMUM_TICK_SIZE_VALUE);
 
 function buildProtectedMarketOrderAmounts(
   params: PrepareMarketOrderDraftParams,
