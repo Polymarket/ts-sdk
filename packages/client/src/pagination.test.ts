@@ -1,11 +1,16 @@
+import { toPaginationCursor } from '@polymarket/bindings';
 import { okAsync } from '@polymarket/types';
 import { describe, expect, it } from 'vitest';
 import { PaginationLimitError, UserInputError } from './errors';
 import {
   decodeOffsetCursor,
+  encodeKeysetCursor,
   encodeOffsetCursor,
+  keysetCursorFromPayload,
+  offsetCursorFromPayload,
   type Page,
   paginate,
+  readCursorPayload,
 } from './pagination';
 
 const LIMITS = { maxOffset: 200, maxPageSize: 100 };
@@ -112,5 +117,94 @@ describe('decodeOffsetCursor', () => {
       offset: 5000,
       pageSize: 500,
     });
+  });
+});
+
+describe('keyset cursors', () => {
+  const query = {
+    ascending: false,
+    order: 'createdAt',
+    parentEntityId: '45915',
+  };
+
+  it('returns the service token only for the query the cursor was minted for', () => {
+    const cursor = encodeKeysetCursor(toPaginationCursor('token-1'), query);
+    const payload = readCursorPayload(cursor);
+
+    expect(keysetCursorFromPayload(payload, query)).toBe('token-1');
+    expect(
+      keysetCursorFromPayload(payload, {
+        parentEntityId: '45915',
+        order: 'createdAt',
+        ascending: false,
+        extra: undefined,
+      }),
+    ).toBe('token-1');
+    for (const other of [
+      { ...query, parentEntityId: '1' },
+      { ...query, order: 'id' },
+      { ...query, ascending: true },
+      undefined,
+    ]) {
+      expect(() => keysetCursorFromPayload(payload, other)).toThrow(
+        UserInputError,
+      );
+    }
+  });
+
+  it('re-encodes a continuation with the new service token, not the old one', () => {
+    const first = readCursorPayload(
+      encodeKeysetCursor(toPaginationCursor('token-1'), query),
+    );
+    const next = encodeKeysetCursor(toPaginationCursor('token-2'), query);
+
+    expect(keysetCursorFromPayload(first, query)).toBe('token-1');
+    expect(keysetCursorFromPayload(readCursorPayload(next), query)).toBe(
+      'token-2',
+    );
+  });
+
+  it('round-trips query text outside Latin-1 and keeps ASCII cursors unchanged', () => {
+    const unicodeQuery = { slug: ['日本-🚀'] };
+    const cursor = encodeKeysetCursor(
+      toPaginationCursor('token-1'),
+      unicodeQuery,
+    );
+
+    expect(
+      keysetCursorFromPayload(readCursorPayload(cursor), unicodeQuery),
+    ).toBe('token-1');
+    // Saved cursors predate UTF-8 encoding and must still decode.
+    expect(encodeOffsetCursor({ offset: 20, pageSize: 20 })).toBe(
+      btoa(JSON.stringify({ offset: 20, pageSize: 20 })),
+    );
+  });
+
+  it('rejects a damaged keyset envelope instead of treating it as foreign', () => {
+    expect(() =>
+      keysetCursorFromPayload(
+        { kind: 'keyset', fingerprint: 42, cursor: 'token' },
+        query,
+      ),
+    ).toThrow(UserInputError);
+  });
+
+  it('treats cursors of other shapes as foreign instead of failing', () => {
+    // A raw service token is base64url with a binary prefix, so it never
+    // reads as SDK state; an offset cursor reads as state of another shape.
+    expect(readCursorPayload(toPaginationCursor('0d4LIEDh_M-BNmjH'))).toBe(
+      undefined,
+    );
+    const offset = readCursorPayload(
+      encodeOffsetCursor({ offset: 20, pageSize: 20 }),
+    );
+    expect(keysetCursorFromPayload(offset, query)).toBe(undefined);
+    expect(offsetCursorFromPayload(offset, LIMITS)).toEqual({
+      offset: 20,
+      pageSize: 20,
+    });
+    expect(() =>
+      offsetCursorFromPayload({ kind: 'other', offset: 0, pageSize: 20 }),
+    ).toThrow(UserInputError);
   });
 });

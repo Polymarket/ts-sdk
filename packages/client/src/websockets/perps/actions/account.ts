@@ -50,9 +50,15 @@ import {
 import { invariant, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { snakeCase, toSearchParams } from '../../../actions/params';
-import { RequestRejectedError, UserInputError } from '../../../errors';
+import { RequestRejectedError } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import { type Page, type Paginated, paginate } from '../../../pagination';
+import {
+  decodeCursorState,
+  encodeCursorState,
+  type Page,
+  type Paginated,
+  paginate,
+} from '../../../pagination';
 import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 
@@ -409,9 +415,10 @@ export function listPerpsFundingPayments(
       );
       state = { kind: 'perpsFundingPayments', seenKeys: [], ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsDescendingAccountCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
@@ -506,9 +513,10 @@ export function listPerpsDeposits(
       invariant(params !== undefined, 'Expected initial Perps deposit params.');
       state = { kind: 'perpsDeposits', seenKeys: [], ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsDescendingAccountCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
@@ -604,9 +612,10 @@ export function listPerpsWithdrawals(
       );
       state = { kind: 'perpsWithdrawals', seenKeys: [], ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsDescendingAccountCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
@@ -698,9 +707,10 @@ export function listPerpsEquityHistory(
       );
       state = { kind: 'perpsEquityHistory', ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsAscendingAccountCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, ...searchParams } = state;
@@ -721,7 +731,7 @@ export function listPerpsEquityHistory(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsAccountCursor({
+            ? encodeCursorState({
                 ...state,
                 startTimestamp:
                   last.timestamp +
@@ -798,9 +808,10 @@ export function listPerpsPnlHistory(
       );
       state = { kind: 'perpsPnlHistory', ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsAscendingAccountCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, ...searchParams } = state;
@@ -821,7 +832,7 @@ export function listPerpsPnlHistory(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsAccountCursor({
+            ? encodeCursorState({
                 ...state,
                 startTimestamp:
                   last.timestamp +
@@ -913,9 +924,10 @@ export function listPerpsNotifications(
         'Expected initial Perps notifications params.',
       );
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsNotificationsCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const sinceSeq = state === undefined ? params?.sinceSeq : state.sinceSeq;
@@ -937,7 +949,7 @@ export function listPerpsNotifications(
           hasMore,
           nextCursor:
             hasMore && response.next_cursor !== null
-              ? encodePerpsAccountCursor({
+              ? encodeCursorState({
                   kind: 'perpsNotifications',
                   cursor: response.next_cursor,
                   limit,
@@ -1065,28 +1077,6 @@ function toPerpsIntervalHistoryParams(
   };
 }
 
-function decodePerpsAccountCursor<T>(
-  cursor: PaginationCursor,
-  schema: z.ZodType<T>,
-): T {
-  try {
-    return schema.parse(JSON.parse(atob(cursor)));
-  } catch (error) {
-    throw new UserInputError('Invalid Perps account pagination cursor', {
-      cause: error,
-    });
-  }
-}
-
-function encodePerpsAccountCursor(
-  state:
-    | PerpsAscendingAccountCursorState
-    | PerpsDescendingAccountCursorState
-    | PerpsNotificationsCursorState,
-): PaginationCursor {
-  return toPaginationCursor(btoa(JSON.stringify(state)));
-}
-
 function toPerpsSearchParams(params: object): URLSearchParams {
   return toSearchParams(
     params as Record<string, string | number | boolean | undefined>,
@@ -1136,7 +1126,7 @@ function toPerpsDescendingAccountPage<T>(request: {
   return {
     items: request.items,
     hasMore,
-    nextCursor: encodePerpsAccountCursor({
+    nextCursor: encodeCursorState({
       ...request.state,
       endTimestamp,
       seenKeys: Array.from(seen),
