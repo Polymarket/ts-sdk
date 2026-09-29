@@ -71,6 +71,11 @@ export type DiscoveryActions = {
    *
    * Defaults to open events. Pass `closed: true` to list settled events.
    *
+   * @remarks
+   * Cursors continue the exact query they were minted for and are rejected for
+   * a different one before any request. Cursors saved from earlier versions
+   * keep working with the same arguments.
+   *
    * @throws {@link ListEventsError}
    * Thrown on failure.
    *
