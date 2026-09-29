@@ -512,7 +512,7 @@ describe('PerpsSession', () => {
       connectionFrames = mockSuccessfulSessions();
     });
 
-    it('restores builder fills in the same subscription and emits one resync', async () => {
+    it('restores builder fills separately and emits one resync', async () => {
       const session = createSession({ includeBuilderFills: true });
       vi.useFakeTimers();
       try {
@@ -520,14 +520,83 @@ describe('PerpsSession', () => {
         connectionFrames[0]?.client.close();
         await vi.advanceTimersToNextTimerAsync();
         await vi.waitFor(() =>
-          expect(connectionFrames[1]?.frames[1]).toMatchObject({
+          expect(connectionFrames[1]?.frames[2]).toMatchObject({
             req: 'sub',
-            chs: expect.arrayContaining(['orders', 'builderFills']),
+            chs: ['builderFills'],
           }),
         );
         await expect(waitForNextEvent(session)).resolves.toMatchObject({
           value: { type: 'resync', reason: 'reconnect' },
         });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      'rejection',
+      'timeout',
+    ] as const)('keeps core events flowing through connect and reconnect after builder fills %s', async (failure) => {
+      server.resetHandlers();
+      const connections: Array<{
+        close(): void;
+        send(data: string): void;
+      }> = [];
+      const subscriptions: string[][] = [];
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          connections.push(client);
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.req === 'sub') subscriptions.push(frame.chs);
+            if (frame.chs?.includes('builderFills')) {
+              if (failure === 'rejection') {
+                client.send(
+                  JSON.stringify({
+                    id: frame.id,
+                    data: [{ status: 'err', error: 'builder_not_enabled' }],
+                  }),
+                );
+              }
+              return;
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession({ includeBuilderFills: true });
+      vi.useFakeTimers();
+      try {
+        // Readiness must not wait for the optional subscription's deadline.
+        await session.connect();
+        for (const index of [0, 1]) {
+          await vi.waitFor(() =>
+            expect(subscriptions).toHaveLength((index + 1) * 2),
+          );
+          expect(subscriptions[index * 2]).toContain('orders');
+          expect(subscriptions[index * 2]).not.toContain('builderFills');
+          expect(subscriptions[index * 2 + 1]).toEqual(['builderFills']);
+          for (const sequence of [1, 2]) {
+            if (sequence === 2) await vi.advanceTimersByTimeAsync(30_000);
+            const next = waitForNextEvent(session);
+            connections[index]?.send(
+              JSON.stringify(balanceUpdate({ balance: '1', sequence })),
+            );
+            await expect(next).resolves.toMatchObject({
+              value: { type: 'balance', sequence },
+            });
+          }
+          if (index === 0) {
+            connections[0]?.close();
+            await vi.advanceTimersToNextTimerAsync();
+            await expect(waitForNextEvent(session)).resolves.toMatchObject({
+              value: { type: 'resync', reason: 'reconnect' },
+            });
+          }
+        }
+        expect(connections).toHaveLength(2);
       } finally {
         await session.close();
       }

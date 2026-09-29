@@ -273,7 +273,10 @@ export type PerpsSessionOptions = {
   chainId: number;
   credentials: PerpsCredentials;
   headers?: Record<string, string>;
-  /** Include this authenticated account's builder receipts in the session iterator. */
+  /**
+   * Include this authenticated account's builder receipts in the session iterator.
+   * Subscription is best effort and retried on reconnect; failure does not block the session.
+   */
   includeBuilderFills?: boolean;
   onClose: (session: PerpsSession) => void;
   restUrl: string;
@@ -1200,14 +1203,27 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       {
         id: this.#nextRequestId++,
         req: 'sub',
-        chs: this.#includeBuilderFills
-          ? [...PERPS_SESSION_CHANNELS, 'builderFills']
-          : PERPS_SESSION_CHANNELS,
+        chs: PERPS_SESSION_CHANNELS,
       },
       PerpsSessionAckSchema,
       COMMAND_TIMEOUT_MS,
       'Perps session subscription timed out.',
     );
+
+    if (this.#includeBuilderFills) {
+      // Optional receipts must not delay or fail core session readiness. Retry
+      // on each reconnect; pending requests are cleaned up on timeout or close.
+      void this.#sendRequest(
+        {
+          id: this.#nextRequestId++,
+          req: 'sub',
+          chs: ['builderFills'],
+        },
+        PerpsSessionAckSchema,
+        COMMAND_TIMEOUT_MS,
+        'Perps builder fills subscription timed out.',
+      ).catch(() => undefined);
+    }
   }
 
   #authenticatedHeaders(): HeadersInit {
