@@ -77,6 +77,7 @@ import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -96,8 +97,11 @@ export type {
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  ListPerpsBuilderEarningsRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
@@ -108,6 +112,8 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
+  PerpsBuilderFillUpdateEvent,
+  PerpsBuilderTermsInput,
   PerpsCancelOptions,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
@@ -138,11 +144,16 @@ export type {
 } from '../websockets/perps/session';
 export {
   ArmPerpsAutoCancelError,
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+  RevokePerpsBuilderFeeError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { approvePerpsBuilderFee } from './perps/builders';
 import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
@@ -968,6 +979,8 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   expiresIn: z
     .number()
     .int()
@@ -977,6 +990,8 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -998,6 +1013,10 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
+  /** Builder address whose saved approval supplies the fee, limited by the builder cap. Zero disables attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1011,6 +1030,10 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
+  /** Select this builder for resumed orders. Credentials do not store attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1236,6 +1259,16 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
+ * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+ * Opening or resuming checks builder availability and uses the lower of the
+ * builder cap and the trader's saved approved maximum. Missing approval counts
+ * as zero. A zero effective fee disables attribution without failing setup.
+ * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+ * The builder address defaults to the session's selected builder.
+ * Opening a session never grants consent. Approval remains valid until revoked
+ * or replaced and does not need to be repeated for each session.
+ * Set `includeBuilderFills` to receive builder receipts through the session iterator.
+ *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
  *
@@ -1250,7 +1283,12 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+    approvePerpsBuilderFee.bind(null, client),
+    params.includeBuilderFills,
+  );
 }
 
 /**
@@ -1806,13 +1844,4 @@ function sendPerpsDepositTransaction(
     kind: 'sendPerpsDepositTransaction',
     request,
   };
-}
-
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
 }

@@ -2,7 +2,22 @@ import { type ClobAssetId, OrderSide } from '@polymarket/bindings';
 import { AssetType } from '@polymarket/bindings/clob';
 import { type EvmAddress, isSameEvmAddress } from '@polymarket/types';
 import type { BaseSecureClient } from '../../clients';
+import { isV2PositionId } from '../../protocol';
 import { fetchBalanceAllowance } from '../account';
+
+/** @internal */
+export function resolveBalanceAllowanceAssetType(
+  side: OrderSide,
+  assetId: ClobAssetId,
+): AssetType {
+  if (side === OrderSide.BUY) {
+    return AssetType.COLLATERAL;
+  }
+
+  return isV2PositionId(assetId)
+    ? AssetType.CONDITIONAL_V2
+    : AssetType.CONDITIONAL;
+}
 
 export type ResolveCurrentAllowanceParams = {
   assetId: ClobAssetId;
@@ -15,10 +30,10 @@ export async function resolveCurrentAllowance(
   client: BaseSecureClient,
   params: ResolveCurrentAllowanceParams,
 ): Promise<bigint> {
-  const assetType =
-    params.side === OrderSide.BUY
-      ? AssetType.COLLATERAL
-      : AssetType.CONDITIONAL;
+  const assetType = resolveBalanceAllowanceAssetType(
+    params.side,
+    params.assetId,
+  );
   const { allowances } = await fetchBalanceAllowance(
     client,
     params.side === OrderSide.BUY

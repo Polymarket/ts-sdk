@@ -1,7 +1,13 @@
-import { OrderSide } from '@polymarket/bindings';
+import {
+  OrderSide,
+  toDecimalString,
+  toEpochMilliseconds,
+} from '@polymarket/bindings';
 import {
   PerpsCancelOrderResultSchema,
+  PerpsInstrumentIdSchema,
   PerpsKnownCancelOrderErrorCode,
+  type PerpsPortfolio,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 import { TypedData } from 'ox';
@@ -14,11 +20,13 @@ import {
   UnexpectedResponseError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
+import type { PerpsBuilderTermsInput } from './builder-terms';
 import {
   cancelPerpsOrder,
   cancelPerpsOrders,
   type PerpsCommandExecutor,
   type PerpsCommandRequest,
+  placePerpsPositionTpSl,
   postPerpsOrders,
   toPerpsCommandBodyOp,
   updatePerpsMargin,
@@ -35,7 +43,188 @@ afterEach(() => {
 });
 
 describe('Perps trading actions', () => {
+  describe('builder attribution', () => {
+    const builder = {
+      builderAddress: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0005000000000000000000000000',
+    };
+    const order = {
+      instrumentId: 1,
+      quantity: '10',
+      side: OrderSide.BUY,
+      timeInForce: PerpsTimeInForce.IOC,
+    } as const;
+
+    it('captures session terms once for the entire signed batch without rounding', async () => {
+      let attributionReads = 0;
+      const executor: PerpsCommandExecutor = {
+        get builderAttribution() {
+          attributionReads += 1;
+          return attributionReads === 1 ? builder : undefined;
+        },
+        async executeCommand(request, schema) {
+          expect(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: request.op,
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          ).toEqual(
+            createPerpsOpTypedDataPayload({
+              chainId: 31337,
+              op: [
+                'createOrders',
+                Array.from({ length: 2 }, () => [
+                  1,
+                  true,
+                  '10',
+                  'ioc',
+                  false,
+                  [builder.builderAddress, builder.feeRate],
+                ]),
+              ],
+              salt: 1,
+              timestamp: 1739491200000,
+            }).message.data,
+          );
+          return schema.parse([{ oid: 123, status: 'ok' }]);
+        },
+      };
+      await postPerpsOrders(executor, {
+        orders: [order, order],
+      });
+    });
+  });
+  it('keeps the placement snapshot when attribution changes during the position read', async () => {
+    const initialTerms = {
+      builderAddress: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0003',
+    };
+    let activeTerms: PerpsBuilderTermsInput | undefined = initialTerms;
+    const zero = toDecimalString('0');
+    const executor: PerpsCommandExecutor & {
+      fetchPortfolio(): Promise<PerpsPortfolio>;
+    } = {
+      get builderAttribution() {
+        return activeTerms;
+      },
+      async fetchPortfolio() {
+        activeTerms = undefined;
+        return {
+          positions: [
+            {
+              instrumentId: PerpsInstrumentIdSchema.parse(1),
+              symbol: 'BTC',
+              size: toDecimalString('1'),
+              entryPrice: zero,
+              leverage: 1,
+              cross: true,
+              initialMargin: zero,
+              maintenanceMargin: zero,
+              positionValue: zero,
+              liquidationPrice: zero,
+              unrealizedPnl: zero,
+              returnOnEquity: zero,
+              cumulativeFunding: zero,
+            },
+          ],
+          margin: {
+            totalAccountValue: zero,
+            totalInitialMargin: zero,
+            totalMaintenanceMargin: zero,
+            totalPositionValue: zero,
+          },
+          withdrawable: zero,
+          inLiquidation: false,
+          timestamp: toEpochMilliseconds(1),
+        };
+      },
+      async executeCommand(request, schema) {
+        expect(toPerpsCommandBodyOp(request.op)).toMatchObject({
+          args: [
+            {
+              builder: {
+                address: initialTerms.builderAddress,
+                fee_rate: initialTerms.feeRate,
+              },
+            },
+            {
+              builder: {
+                address: initialTerms.builderAddress,
+                fee_rate: initialTerms.feeRate,
+              },
+            },
+          ],
+        });
+        return schema.parse([
+          { oid: 123, status: 'ok' },
+          { oid: 124, status: 'ok' },
+        ]);
+      },
+    };
+    await placePerpsPositionTpSl(executor, {
+      instrumentId: 1,
+      takeProfit: { triggerPrice: '110' },
+      stopLoss: { triggerPrice: '90' },
+    });
+  });
   describe('createPerpsOpTypedDataPayload', () => {
+    it('matches backend approval bytes and binds the version and maximum rate', () => {
+      function approvalHash(maxFeeRate: string, approvalVersion: number) {
+        return createPerpsOpTypedDataPayload({
+          chainId: 31_337,
+          op: [
+            'approveBuilder',
+            [
+              '0x0000000000000000000000000000000000001234',
+              maxFeeRate,
+              approvalVersion,
+            ],
+          ],
+          salt: 1,
+          timestamp: 1_739_491_200_000,
+        }).message.data;
+      }
+      // This serializer fixture comes from the backend; its above-cap rate
+      // deliberately bypasses user-input validation to pin the signed bytes.
+      const hash = approvalHash('0.002', 1);
+      expect(hash).toBe(
+        '0x3f1cc1f398302e8b00fa75c4f5d2ca0e8464014785a365873fd41582b7280a9b',
+      );
+      expect(approvalHash('0.002', 2)).not.toBe(hash);
+      expect(approvalHash('0', 1)).not.toBe(hash);
+    });
+    it('matches the backend nested builder signing fixture', () => {
+      // This backend serializer fixture intentionally exceeds the admission
+      // cap; it tests signing independently of SDK user-input validation.
+      const payload = createPerpsOpTypedDataPayload({
+        chainId: 31_337,
+        op: [
+          'createOrders',
+          [
+            [
+              1,
+              true,
+              '100.50',
+              '10',
+              'gtc',
+              false,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              ['0x0000000000000000000000000000000000001234', '0.002'],
+            ],
+          ],
+        ],
+        salt: 1,
+        timestamp: 1_739_491_200_000,
+      });
+      expect(payload.message.data).toBe(
+        '0xb712d9d3d4ba4c722daf48c55e3b0c5450abb64477c7c6765fa5c09e1d4805c2',
+      );
+    });
     it('signs entry orders with backend-compatible createOrders bytes', async () => {
       const client: PerpsCommandExecutor = {
         async executeCommand(request, responseSchema) {
