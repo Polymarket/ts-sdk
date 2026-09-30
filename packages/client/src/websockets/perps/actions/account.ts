@@ -725,9 +725,10 @@ export function listPerpsInternalTransfers(
       );
       state = { kind: 'perpsInternalTransfers', seenKeys: [], ...params };
     } else {
-      state = decodePerpsAccountCursor(
+      state = decodeCursorState(
         pageCursor,
         PerpsInternalTransfersCursorStateSchema,
+        'Invalid Perps account pagination cursor',
       );
     }
     const { kind: _kind, seenKeys: _seenKeys, ...searchParams } = state;
