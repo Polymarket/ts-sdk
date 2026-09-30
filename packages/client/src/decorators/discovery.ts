@@ -71,6 +71,11 @@ export type DiscoveryActions = {
    *
    * Defaults to open events. Pass `closed: true` to list settled events.
    *
+   * @remarks
+   * Cursors continue the exact query they were minted for and are rejected for
+   * a different one before any request. Cursors saved from earlier versions
+   * keep working with the same arguments.
+   *
    * @throws {@link ListEventsError}
    * Thrown on failure.
    *
@@ -539,10 +544,23 @@ export type DiscoveryActions = {
    * Lists comments for an event or series.
    *
    * @remarks
-   * Pages starting past offset 200 are not served. Automatic iteration yields
-   * the last accessible full page with `limitReached: true` and stops normally;
-   * `hasMore` stays true because completeness cannot be established. Explicitly
-   * following its cursor throws {@link PaginationLimitError} before any request.
+   * Without `order`, pages are newest first and `ascending` is ignored. With
+   * `order` (`id` or `createdAt`), pages are ascending unless `ascending` is
+   * `false`.
+   *
+   * Reads without `holdersOnly` or `getPositions` and with one of those orders
+   * page through the whole thread. Their cursors continue that exact query and
+   * are rejected for a different parent, order or direction.
+   *
+   * Reads with `holdersOnly`, `getPositions` or another order serve pages up to
+   * offset 200. Automatic iteration yields the last accessible full page with
+   * `limitReached: true` and stops normally; `hasMore` stays true because
+   * completeness cannot be established. Explicitly following its cursor throws
+   * {@link PaginationLimitError} before any request. Cursors saved from earlier
+   * versions keep working with the same arguments.
+   *
+   * `pageSize` counts top-level comments; replies ride along in the same page.
+   * A thread ending exactly on a page boundary may return one final empty page.
    *
    * @throws {@link ListCommentsError}
    * Thrown on failure.

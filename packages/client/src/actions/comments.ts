@@ -1,15 +1,20 @@
 import {
   CommentIdSchema,
+  type CommentParentEntityType,
   CommentParentEntityTypeSchema,
+  type EventId,
   EventIdSchema,
+  type PaginationCursor,
   PaginationCursorSchema,
+  type SeriesId,
 } from '@polymarket/bindings';
 import {
   type Comment,
+  ListCommentsKeysetResponseSchema,
   ListCommentsResponseSchema,
   SeriesIdSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { type ResultAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -24,10 +29,15 @@ import {
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
+  encodeKeysetCursor,
   encodeOffsetCursor,
+  keysetCursorFromPayload,
+  offsetCursorFromPayload,
+  type Page,
   PageSizeSchema,
   type Paginated,
   paginate,
+  readCursorPayload,
 } from '../pagination';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
@@ -89,16 +99,87 @@ export const ListCommentsError = makeErrorGuard(
   UserInputError,
 );
 
+type ListCommentsParams = Omit<
+  z.output<typeof ListCommentsRequestSchema>,
+  'cursor' | 'pageSize'
+>;
+
+/** The orders the cursor-paginated comments listing accepts. */
+const KeysetCommentOrderSchema = z.enum(['id', 'createdAt']);
+
+type KeysetCommentOrder = z.infer<typeof KeysetCommentOrderSchema>;
+
+type KeysetCommentsQuery = {
+  ascending: boolean;
+  order: KeysetCommentOrder;
+  parentEntityId: EventId | SeriesId;
+  parentEntityType: CommentParentEntityType;
+};
+
+/**
+ * Decides whether a parent-entity comments read can page by server cursor and,
+ * if so, the exact query to send. Reads that filter by holders, include
+ * positions or sort by anything other than `id`/`createdAt` stay on offset
+ * pages, where the service still honours those options.
+ *
+ * Without `order` the offset listing serves newest first and ignores
+ * `ascending`; the cursor listing defaults to oldest first, so the direction
+ * is pinned explicitly to keep the first page identical. With `order` both
+ * listings default to ascending.
+ */
+function toKeysetCommentsQuery(
+  params: ListCommentsParams,
+): KeysetCommentsQuery | undefined {
+  if (params.holdersOnly === true || params.getPositions === true) {
+    return undefined;
+  }
+
+  if (params.order === undefined) {
+    return {
+      ascending: false,
+      order: 'createdAt',
+      parentEntityId: params.parentEntityId,
+      parentEntityType: params.parentEntityType,
+    };
+  }
+
+  const order = KeysetCommentOrderSchema.safeParse(params.order);
+
+  if (!order.success) {
+    return undefined;
+  }
+
+  return {
+    ascending: params.ascending ?? true,
+    order: order.data,
+    parentEntityId: params.parentEntityId,
+    parentEntityType: params.parentEntityType,
+  };
+}
+
 /**
  * Lists comments for an event or series.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
- * Pages starting past offset 200 are not served. Automatic iteration yields
- * the last accessible full page with `limitReached: true` and stops normally;
- * `hasMore` stays true because completeness cannot be established. Explicitly
- * following its cursor throws {@link PaginationLimitError} before any request.
+ * Without `order`, pages are newest first and `ascending` is ignored. With
+ * `order` (`id` or `createdAt`), pages are ascending unless `ascending` is
+ * `false`.
+ *
+ * Reads without `holdersOnly` or `getPositions` and with one of those orders
+ * page through the whole thread. Their cursors continue that exact query and
+ * are rejected for a different parent, order or direction.
+ *
+ * Reads with `holdersOnly`, `getPositions` or another order serve pages up to
+ * offset 200. Automatic iteration yields the last accessible full page with
+ * `limitReached: true` and stops normally; `hasMore` stays true because
+ * completeness cannot be established. Explicitly following its cursor throws
+ * {@link PaginationLimitError} before any request. Cursors saved from earlier
+ * versions keep working with the same arguments.
+ *
+ * `pageSize` counts top-level comments; replies ride along in the same page.
+ * A thread ending exactly on a page boundary may return one final empty page.
  *
  * @throws {@link ListCommentsError}
  * Thrown on failure.
@@ -142,50 +223,112 @@ export function listComments(
     request,
     ListCommentsRequestSchema,
   );
+  const keysetQuery = toKeysetCommentsQuery(params);
 
   return paginate((cursor) => {
-    const decoded = decodeOffsetCursor(cursor, pageSize, COMMENT_CURSOR_LIMITS);
+    if (cursor === undefined) {
+      return keysetQuery === undefined
+        ? fetchCommentsOffsetPage(client, params, { offset: 0, pageSize })
+        : fetchCommentsKeysetPage(client, keysetQuery, pageSize);
+    }
 
-    return client.gamma
-      .get('/comments', {
-        params: toSearchParams(
-          {
-            ascending: params.ascending,
-            getPositions: params.getPositions,
-            holdersOnly: params.holdersOnly,
-            limit: decoded.pageSize,
-            offset: decoded.offset,
-            order: params.order,
-            parentEntityId: params.parentEntityId,
-            parentEntityType: params.parentEntityType,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(ListCommentsResponseSchema))
-      .map((comments) => {
-        // The page size bounds top-level comments; their replies ride along
-        // in the same array, so count the roots to judge whether the page
-        // was full.
-        const rootCount = comments.filter(
-          (comment) => comment.parentCommentID == null,
-        ).length;
-        const hasMore = rootCount >= decoded.pageSize;
+    // Cursors minted before cursor pagination carry only offset state and
+    // continue on offset pages under the same limits as before.
+    const payload = readCursorPayload(cursor);
+    if (payload === undefined) {
+      throw new UserInputError('Invalid pagination cursor');
+    }
 
-        return {
-          items: comments,
-          hasMore,
-          limitReached:
-            hasMore && decoded.offset + decoded.pageSize > MAX_COMMENTS_OFFSET,
-          nextCursor: hasMore
-            ? encodeOffsetCursor({
-                offset: decoded.offset + decoded.pageSize,
-                pageSize: decoded.pageSize,
-              })
-            : undefined,
-        };
-      });
+    const afterCursor = keysetCursorFromPayload(payload, keysetQuery);
+    if (afterCursor === undefined || keysetQuery === undefined) {
+      return fetchCommentsOffsetPage(
+        client,
+        params,
+        offsetCursorFromPayload(payload, COMMENT_CURSOR_LIMITS),
+      );
+    }
+
+    return fetchCommentsKeysetPage(client, keysetQuery, pageSize, afterCursor);
   }, cursor);
+}
+
+type ListCommentsPageError = Exclude<ListCommentsError, PaginationLimitError>;
+
+function fetchCommentsOffsetPage(
+  client: BaseClient,
+  params: ListCommentsParams,
+  page: { offset: number; pageSize: number },
+): ResultAsync<Page<Comment[]>, ListCommentsPageError> {
+  return client.gamma
+    .get('/comments', {
+      params: toSearchParams(
+        {
+          ascending: params.ascending,
+          getPositions: params.getPositions,
+          holdersOnly: params.holdersOnly,
+          limit: page.pageSize,
+          offset: page.offset,
+          order: params.order,
+          parentEntityId: params.parentEntityId,
+          parentEntityType: params.parentEntityType,
+        },
+        snakeCase(),
+      ),
+    })
+    .andThen(validateWith(ListCommentsResponseSchema))
+    .map((comments) => {
+      // The page size bounds top-level comments; their replies ride along
+      // in the same array, so count the roots to judge whether the page
+      // was full.
+      const rootCount = comments.filter(
+        (comment) => comment.parentCommentID == null,
+      ).length;
+      const hasMore = rootCount >= page.pageSize;
+
+      return {
+        items: comments,
+        hasMore,
+        limitReached:
+          hasMore && page.offset + page.pageSize > MAX_COMMENTS_OFFSET,
+        nextCursor: hasMore
+          ? encodeOffsetCursor({
+              offset: page.offset + page.pageSize,
+              pageSize: page.pageSize,
+            })
+          : undefined,
+      };
+    });
+}
+
+function fetchCommentsKeysetPage(
+  client: BaseClient,
+  query: KeysetCommentsQuery,
+  pageSize: number,
+  afterCursor?: PaginationCursor,
+): ResultAsync<Page<Comment[]>, ListCommentsPageError> {
+  return client.gamma
+    .get('/comments/keyset', {
+      params: toSearchParams(
+        {
+          afterCursor,
+          ascending: query.ascending,
+          limit: pageSize,
+          order: query.order,
+          parentEntityId: query.parentEntityId,
+          parentEntityType: query.parentEntityType,
+        },
+        snakeCase(),
+      ),
+    })
+    .andThen(validateWith(ListCommentsKeysetResponseSchema))
+    .map((response) => ({
+      items: response.items,
+      hasMore: response.nextCursor !== undefined,
+      nextCursor:
+        response.nextCursor === undefined
+          ? undefined
+          : encodeKeysetCursor(response.nextCursor, query),
+    }));
 }
 
 export type FetchCommentsByIdError =

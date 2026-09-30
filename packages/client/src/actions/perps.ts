@@ -2,7 +2,6 @@ import {
   EvmAddressSchema,
   type PaginationCursor,
   PaginationCursorSchema,
-  toPaginationCursor,
 } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -64,7 +63,12 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { type Paginated, paginate } from '../pagination';
+import {
+  decodeCursorState,
+  encodeCursorState,
+  type Paginated,
+  paginate,
+} from '../pagination';
 import { validateWith } from '../response';
 import {
   expectTransactionHandle,
@@ -520,7 +524,7 @@ export function listPerpsCandles(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 startTimestamp:
                   last.timestamp +
@@ -654,7 +658,7 @@ export function listPerpsFundingHistory(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp: last.timestamp - 1,
               })
@@ -758,7 +762,7 @@ export function listPerpsTrades(
           items,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp:
                   last === undefined ? cursorTimestamp - 1 : cursorTimestamp,
@@ -891,41 +895,31 @@ function createInitialPerpsTradesCursor(
 function decodePerpsCandlesCursor(
   cursor: PaginationCursor,
 ): PerpsCandlesCursorState {
-  return decodePerpsCursor(cursor, PerpsCandlesCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsCandlesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsFundingCursor(
   cursor: PaginationCursor,
 ): PerpsFundingCursorState {
-  return decodePerpsCursor(cursor, PerpsFundingCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsFundingCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsTradesCursor(
   cursor: PaginationCursor,
 ): PerpsTradesCursorState {
-  return decodePerpsCursor(cursor, PerpsTradesCursorStateSchema);
-}
-
-function decodePerpsCursor<T>(
-  cursor: PaginationCursor,
-  schema: z.ZodType<T>,
-): T {
-  try {
-    return schema.parse(JSON.parse(atob(cursor)));
-  } catch (error) {
-    throw new UserInputError('Invalid Perps pagination cursor', {
-      cause: error,
-    });
-  }
-}
-
-function encodePerpsCursor(
-  state:
-    | PerpsCandlesCursorState
-    | PerpsFundingCursorState
-    | PerpsTradesCursorState,
-): PaginationCursor {
-  return toPaginationCursor(btoa(JSON.stringify(state)));
+  return decodeCursorState(
+    cursor,
+    PerpsTradesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function perpsKlineIntervalMilliseconds(interval: PerpsKlineInterval): number {
