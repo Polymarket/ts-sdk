@@ -6,6 +6,7 @@ export {
 } from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
 export {
+  AssetType,
   NotificationType,
   OrderPostStatus,
   OrderResponseErrorCode,
@@ -27,7 +28,10 @@ export {
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsKnownCancelOrderErrorCode,
+  PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
+  PerpsLiquidityRole,
   PerpsMarginType,
   PerpsNotificationOrderType,
   PerpsNotificationType,

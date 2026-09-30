@@ -1,6 +1,10 @@
-import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
+import {
+  type PerpsCredentials,
+  PerpsInstrumentCategory,
+} from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
@@ -17,10 +21,18 @@ import type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsCancelOptions,
+  PerpsCancelOrderErrorCode,
+  PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
+  PerpsInternalTransfer,
+  PerpsInternalTransferId,
+  PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -28,14 +40,65 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecureClientOptions,
+  SecurePerpsActions,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
-import type { FetchPerpsInstrumentsRequest } from './perps';
+import {
+  FetchPerpsTickerError,
+  PerpsCancelRetryError,
+  PerpsKnownCancelOrderErrorCode,
+  UpdatePerpsMarginError,
+} from '../index';
+import type {
+  CreatePerpsSessionRequest,
+  FetchPerpsInstrumentsRequest,
+  ResumePerpsSessionRequest,
+} from './perps';
+
+describe('session builder consent', () => {
+  it('requires an explicit maximum and keeps versions internal', () => {
+    function approve(session: PerpsSession) {
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        maxFeeRate: '0.0003',
+      });
+      void session.approveBuilderFee({ maxFeeRate: '0.0005' });
+      // @ts-expect-error Consent requires an explicit maximum.
+      void session.approveBuilderFee();
+      // @ts-expect-error Selecting a builder does not specify an approved maximum.
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+      });
+      void session.revokeBuilderFee();
+    }
+    void approve;
+    expectTypeOf<ApprovePerpsBuilderFeeRequest>().not.toHaveProperty(
+      'approvalVersion',
+    );
+  });
+
+  it('accepts an address selector and receipts option on creation and resume', () => {
+    const create: CreatePerpsSessionRequest = {
+      builderAttribution: '0x1111111111111111111111111111111111111111',
+      includeBuilderFills: true,
+    };
+    function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
+      return { ...create, credentials };
+    }
+    expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
+  });
+});
 
 describe('FetchPerpsInstrumentsRequest', () => {
   it('allows current instrument filters', () => {
@@ -78,6 +141,7 @@ describe('public Perps exports', () => {
       FetchPerpsOrdersRequest,
       ListPerpsFillsRequest,
       ListPerpsFundingPaymentsRequest,
+      ListPerpsInternalTransfersRequest,
       ListPerpsDepositsRequest,
       ListPerpsWithdrawalsRequest,
       ListPerpsEquityHistoryRequest,
@@ -89,8 +153,11 @@ describe('public Perps exports', () => {
       CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
+      PerpsCancelOptions,
+      PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
+      TransferPerpsCollateralRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -106,5 +173,52 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exposes owner transfers only on secure Perps actions', () => {
+    const secureActions = {} as SecurePerpsActions;
+    const publicActions = {} as PublicPerpsActions;
+
+    expectTypeOf(secureActions.transferPerpsCollateral).returns.toEqualTypeOf<
+      Promise<PerpsInternalTransferId>
+    >();
+    // @ts-expect-error Collateral movement requires an owner-capable secure client.
+    void publicActions.transferPerpsCollateral;
+  });
+
+  it('exposes normalized internal-transfer history on Perps sessions', () => {
+    const session = {} as import('../index').PerpsSession;
+
+    expectTypeOf(session.listInternalTransfers).returns.toMatchTypeOf<
+      import('../index').Paginated<PerpsInternalTransfer[]>
+    >();
+  });
+
+  it('exports known cancel rejections and narrows rejected results', () => {
+    const result = undefined as unknown as PerpsCancelOrderResult;
+
+    if (result.status === 'err') {
+      expectTypeOf(result.error).toEqualTypeOf<PerpsCancelOrderErrorCode>();
+    } else {
+      expectTypeOf(result.error).toEqualTypeOf<undefined>();
+    }
+    void PerpsKnownCancelOrderErrorCode.OrderInFlight;
+  });
+
+  it('exposes retry failures with typed historical results for reconciliation', () => {
+    const error = new PerpsCancelRetryError('Retry failed', {
+      results: [],
+      pendingIndexes: [],
+      cause: new Error('Connection lost'),
+    });
+
+    expectTypeOf(error.results).toEqualTypeOf<
+      readonly PerpsCancelOrderResult[]
+    >();
+    expectTypeOf(error.pendingIndexes).toEqualTypeOf<readonly number[]>();
+    expectTypeOf(error.cause).toEqualTypeOf<unknown>();
+    expectTypeOf<
+      Extract<PerpsSessionTradingError, PerpsCancelRetryError>
+    >().toEqualTypeOf<PerpsCancelRetryError>();
   });
 });

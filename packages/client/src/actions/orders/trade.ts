@@ -1,6 +1,5 @@
 import { OrderSide } from '@polymarket/bindings';
 import type { OrderResponse } from '@polymarket/bindings/clob';
-import { AssetType } from '@polymarket/bindings/clob';
 import type { BaseSecureClient } from '../../clients';
 import {
   CancelledSigningError,
@@ -19,7 +18,10 @@ import { isV2PositionId } from '../../protocol';
 import { completeWith } from '../../workflow';
 import { updateBalanceAllowance } from '../account';
 import { approveErc20, approveErc1155ForAll } from '../approvals';
-import { resolveCurrentAllowance } from './allowance';
+import {
+  resolveBalanceAllowanceAssetType,
+  resolveCurrentAllowance,
+} from './allowance';
 import { resolveOrderMarketMetadata } from './cache';
 import { resolveOrderExchangeAddress } from './context';
 import { type PostOrderError, postOrder } from './post';
@@ -279,10 +281,7 @@ async function ensureOrderApproval(
   await handle.wait();
 
   await updateBalanceAllowance(client, {
-    assetType:
-      order.side === OrderSide.BUY
-        ? AssetType.COLLATERAL
-        : AssetType.CONDITIONAL,
+    assetType: resolveBalanceAllowanceAssetType(order.side, assetId),
     tokenId: order.side === OrderSide.SELL ? assetId : undefined,
   });
 

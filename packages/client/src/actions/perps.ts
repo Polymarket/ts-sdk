@@ -1,4 +1,5 @@
 import {
+  EvmAddressSchema,
   type PaginationCursor,
   PaginationCursorSchema,
 } from '@polymarket/bindings';
@@ -17,6 +18,8 @@ import {
   PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
   PerpsCredentialsResponseSchema,
+  type PerpsDecimalInput,
+  PerpsDecimalInputSchema,
   PerpsDeleteProxyResponseSchema,
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
@@ -24,6 +27,8 @@ import {
   type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
+  type PerpsInternalTransferId,
+  PerpsInternalTransferResponseSchema,
   type PerpsKlineInterval,
   PerpsKlineIntervalSchema,
   type PerpsPublicTrade,
@@ -71,10 +76,12 @@ import {
   type TransactionHandle,
   type TypedDataPayload,
 } from '../types';
+import { SignerType } from '../wallet';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -94,18 +101,26 @@ export type {
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  ListPerpsBuilderEarningsRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
+  PerpsBuilderFillUpdateEvent,
+  PerpsBuilderTermsInput,
+  PerpsCancelOptions,
   PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
@@ -133,11 +148,17 @@ export type {
 } from '../websockets/perps/session';
 export {
   ArmPerpsAutoCancelError,
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+  RevokePerpsBuilderFeeError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { approvePerpsBuilderFee } from './perps/builders';
+import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
   | RateLimitError
@@ -952,6 +973,8 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   expiresIn: z
     .number()
     .int()
@@ -961,6 +984,8 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -982,6 +1007,10 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
+  /** Builder address whose saved approval supplies the fee, limited by the builder cap. Zero disables attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -995,6 +1024,10 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
+  /** Select this builder for resumed orders. Credentials do not store attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1041,6 +1074,25 @@ const WithdrawFromPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
 }) satisfies z.ZodType<WithdrawFromPerpsRequest>;
 
+const PositivePerpsDecimalInputSchema = PerpsDecimalInputSchema.refine(
+  (value) => /^\d+(?:\.\d+)?$/.test(value) && /[1-9]/.test(value),
+  'Expected a positive fixed-point decimal amount.',
+);
+
+const PerpsInternalTransferLabelSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => new TextEncoder().encode(value).byteLength <= 64,
+    'Expected a label no longer than 64 UTF-8 bytes.',
+  );
+
+const TransferPerpsCollateralRequestSchema = z.object({
+  recipient: EvmAddressSchema,
+  amount: PositivePerpsDecimalInputSchema,
+  label: PerpsInternalTransferLabelSchema.optional(),
+}) satisfies z.ZodType<TransferPerpsCollateralRequest>;
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -1057,6 +1109,18 @@ export type DepositToPerpsRequest = {
 export type WithdrawFromPerpsRequest = {
   /** Collateral amount in base units. */
   amount: bigint;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralRequest = {
+  /** Main address of the receiving Perps account. */
+  recipient: string;
+  /** Positive collateral amount in decimalized token units. */
+  amount: PerpsDecimalInput;
+  /** Optional reconciliation label, up to 64 UTF-8 bytes. */
+  label?: string;
 };
 
 /**
@@ -1159,6 +1223,28 @@ export const WithdrawFromPerpsError = makeErrorGuard(
 );
 
 /**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralError =
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const TransferPerpsCollateralError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
  * Opens a Perps account session.
  *
  * @remarks
@@ -1166,6 +1252,16 @@ export const WithdrawFromPerpsError = makeErrorGuard(
  * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
+ *
+ * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+ * Opening or resuming checks builder availability and uses the lower of the
+ * builder cap and the trader's saved approved maximum. Missing approval counts
+ * as zero. A zero effective fee disables attribution without failing setup.
+ * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+ * The builder address defaults to the session's selected builder.
+ * Opening a session never grants consent. Approval remains valid until revoked
+ * or replaced and does not need to be repeated for each session.
+ * Set `includeBuilderFills` to receive builder receipts through the session iterator.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
@@ -1181,7 +1277,12 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+    approvePerpsBuilderFee.bind(null, client),
+    params.includeBuilderFills,
+  );
 }
 
 /**
@@ -1360,6 +1461,79 @@ export async function withdrawFromPerps(
   }
 
   return response.withdrawalId;
+}
+
+/**
+ * Transfers Perps collateral to another account.
+ *
+ * @remarks
+ * The exact decimal amount is signed by the owner account and sent unchanged.
+ * The request is attempted once. A timeout or server error after submission
+ * has an unknown outcome; reconcile through internal-transfer history using a
+ * caller-supplied label before submitting another transfer.
+ *
+ * @throws {@link TransferPerpsCollateralError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function transferPerpsCollateral(
+  client: BaseSecureClient,
+  request: TransferPerpsCollateralRequest,
+): Promise<PerpsInternalTransferId> {
+  assertPerpsOwnerSigner(client);
+  const params = parseUserInput(request, TransferPerpsCollateralRequestSchema);
+
+  if (isSameEvmAddress(params.recipient, client.account.signer)) {
+    throw new UserInputError(
+      'Perps collateral cannot be transferred to the authenticated account.',
+    );
+  }
+
+  return executePerpsCollateralTransfer(
+    {
+      signTransfer({ account, token, amount, recipient, salt, timestamp }) {
+        return signPerpsOwnerOp(client, {
+          salt,
+          signedOp: ['internalTransfer', [account, token, amount, recipient]],
+          timestamp,
+        });
+      },
+      async submitTransfer(transfer) {
+        const body: Record<string, unknown> = {
+          op: {
+            type: 'internalTransfer',
+            args: {
+              account: transfer.account,
+              token: transfer.token,
+              amount: transfer.amount,
+              to: transfer.recipient,
+            },
+          },
+          salt: transfer.salt,
+          sig: transfer.signature,
+          ts: transfer.timestamp,
+        };
+        if (transfer.label !== undefined) body.label = transfer.label;
+
+        const response = await unwrap(
+          client.perps
+            .post('/v1/account/internal-transfer', { json: body })
+            .andThen(validateWith(PerpsInternalTransferResponseSchema)),
+        );
+        return response.transferId;
+      },
+    },
+    {
+      account: client.account.signer,
+      token: client.environment.contracts.collateralToken,
+      amount: params.amount,
+      recipient: params.recipient,
+      label: params.label,
+      salt: randomUint32(),
+      timestamp: Date.now(),
+    },
+  );
 }
 
 async function createPerpsCredentials(
@@ -1640,6 +1814,14 @@ function assertPerpsCredentialsKeyMatchesProxy(
   }
 }
 
+function assertPerpsOwnerSigner(client: BaseSecureClient): void {
+  if (client.account.signerType !== SignerType.OWNER) {
+    throw new UserInputError(
+      'Perps collateral transfers must be signed by the account owner.',
+    );
+  }
+}
+
 function perpsCredentialHeaders(
   credentials: Pick<PerpsCredentials, 'proxy' | 'secret'>,
 ): HeadersInit {
@@ -1656,13 +1838,4 @@ function sendPerpsDepositTransaction(
     kind: 'sendPerpsDepositTransaction',
     request,
   };
-}
-
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
 }

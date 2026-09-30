@@ -83,7 +83,21 @@ export type SecureListComboActivityRequest =
 
 export type PublicAccountActions = Prettify<{
   /**
-   * Lists current positions for a wallet.
+   * Lists positions for a wallet, or a market's holders when anchored on a
+   * single `conditionId` without a `user`.
+   *
+   * `OPEN` (the default) includes settled-but-unredeemed winners;
+   * `REDEEMABLE` narrows to those winners, `REDEEMABLE_LOST` lists held
+   * zero-payout positions, `MERGEABLE` lists live complementary pairs, and
+   * `CLOSED` lists exited positions. Lost rows report `status: 'REDEEMABLE'`;
+   * mergeable rows report `status: 'OPEN'`.
+   *
+   * `REDEEMABLE_LOST` requires `user`. For `MERGEABLE`, provide `user` to
+   * filter to mergeable positions; a `conditionId`-only request falls back
+   * to the broader `OPEN` listing.
+   *
+   * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
+   * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
    *
    * @throws {@link ListPositionsError}
    * Thrown on failure.
@@ -331,11 +345,23 @@ export type PublicAccountActions = Prettify<{
 
 export type SecureAccountActions = Prettify<{
   /**
-   * Lists current positions for a wallet.
+   * Lists positions for a wallet across their lifecycle.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
+   * This also supplies the wallet required by `REDEEMABLE_LOST` and scopes
+   * `MERGEABLE` to that wallet's live complementary pairs.
    * To list a market's holders (a `conditionId` anchor with no wallet), use
-   * a public client's `listPositions` instead.
+   * a public client's `listPositions` instead; its `MERGEABLE` filter falls
+   * back to `OPEN` without `user`, and `REDEEMABLE_LOST` requires `user`.
+   *
+   * `OPEN` (the default) includes settled-but-unredeemed winners;
+   * `REDEEMABLE` narrows to those winners, `REDEEMABLE_LOST` lists held
+   * zero-payout positions, `MERGEABLE` lists live complementary pairs, and
+   * `CLOSED` lists exited positions. Lost rows report `status: 'REDEEMABLE'`;
+   * mergeable rows report `status: 'OPEN'`.
+   *
+   * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
+   * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
    *
    * @throws {@link ListPositionsError}
    * Thrown on failure.
