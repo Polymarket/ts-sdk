@@ -10,7 +10,11 @@ import {
   MarketIdSchema,
   PositionIdSchema,
 } from '@polymarket/bindings';
-import { type Market, WalletType } from '@polymarket/bindings/gamma';
+import {
+  type Market,
+  ProtocolVersion,
+  WalletType,
+} from '@polymarket/bindings/gamma';
 import {
   type EvmAddress,
   type EvmSignature,
@@ -1224,6 +1228,31 @@ function normalizeMarketPositionContext(
   const yesPositionId = market.outcomes.yes.positionId;
   const noPositionId = market.outcomes.no.positionId;
 
+  if (
+    market.version === ProtocolVersion.V2 ||
+    (!isPresent(market.version) &&
+      (isPresent(yesPositionId) || isPresent(noPositionId)))
+  ) {
+    if (isPresent(yesPositionId) !== isPresent(noPositionId)) {
+      throw new UnexpectedResponseError(
+        `Incomplete market position IDs for ${context}`,
+      );
+    }
+
+    if (!isPresent(yesPositionId) || !isPresent(noPositionId)) {
+      throw new UnexpectedResponseError(
+        `Missing market position IDs for ${context}`,
+      );
+    }
+
+    return {
+      marketId: market.id,
+      conditionId: market.conditionId,
+      protocol: PositionProtocol.V2,
+      outcomeIds: [yesPositionId, noPositionId],
+    };
+  }
+
   if (isPresent(yesTokenId) !== isPresent(noTokenId)) {
     throw new UnexpectedResponseError(
       `Incomplete market token IDs for ${context}`,
@@ -1246,23 +1275,10 @@ function normalizeMarketPositionContext(
     };
   }
 
-  if (isPresent(yesPositionId) !== isPresent(noPositionId)) {
-    throw new UnexpectedResponseError(
-      `Incomplete market position IDs for ${context}`,
-    );
-  }
-
-  if (isPresent(yesPositionId) && isPresent(noPositionId)) {
-    return {
-      marketId: market.id,
-      conditionId: market.conditionId,
-      protocol: PositionProtocol.V2,
-      outcomeIds: [yesPositionId, noPositionId],
-    };
-  }
-
   throw new UnexpectedResponseError(
-    `Missing tradeable outcome IDs for ${context}`,
+    market.version === ProtocolVersion.V1
+      ? `Missing market token IDs for ${context}`
+      : `Missing tradeable outcome IDs for ${context}`,
   );
 }
 
