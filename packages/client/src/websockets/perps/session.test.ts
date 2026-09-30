@@ -1,5 +1,11 @@
-import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
+  OrderSide,
+  toDecimalString,
+  toEpochMilliseconds,
+  toPaginationCursor,
+} from '@polymarket/bindings';
+import {
+  type PerpsBuilderApproval,
   type PerpsCredentials,
   PerpsKnownInternalTransferType,
   PerpsPnlInterval,
@@ -25,6 +31,7 @@ import {
   RequestRejectedError,
   TimeoutError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import {
@@ -32,7 +39,11 @@ import {
   expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
-import { PerpsSession } from './session';
+import {
+  type PerpsOrderRequest,
+  PerpsSession,
+  type PerpsSessionOptions,
+} from './session';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
@@ -66,11 +77,337 @@ describe('PerpsSession', () => {
     server.close();
   });
 
+  describe('builder consent', () => {
+    const builderAddress = '0xabababababababababababababababababababab';
+    const terms = { builderAddress, feeRate: '0.0003' };
+    let builderMaxFeeRate = '0.0005';
+    let approvedMaxFeeRate: string | undefined = '0.0003';
+    let rejectCapRead = false;
+    beforeEach(() => {
+      builderMaxFeeRate = '0.0005';
+      approvedMaxFeeRate = '0.0003';
+      rejectCapRead = false;
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          rejectCapRead
+            ? HttpResponse.json({ error: 'unavailable' }, { status: 400 })
+            : HttpResponse.json({
+                address: builderAddress,
+                registered: true,
+                enabled: true,
+                admission_enabled: true,
+                max_fee_rate: builderMaxFeeRate,
+              }),
+        ),
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.json({
+            data:
+              approvedMaxFeeRate === undefined
+                ? []
+                : [
+                    {
+                      trader: credentials.proxy,
+                      builder: builderAddress,
+                      max_fee_rate: approvedMaxFeeRate,
+                      approval_version: 1,
+                      timestamp: 1_767_225_600_000,
+                      sequence: 1,
+                    },
+                  ],
+          }),
+        ),
+      );
+    });
+
+    it.each([
+      undefined,
+      {},
+    ])('rejects a missing maximum before owner approval (%s)', async (request) => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, builderMaxFeeRate, 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      // @ts-expect-error Exercise untyped callers omitting the required maximum.
+      await expect(session.approveBuilderFee(request)).rejects.toBeInstanceOf(
+        UserInputError,
+      );
+      expect(approveBuilderFee).not.toHaveBeenCalled();
+      await session.close();
+    });
+
+    it('uses the selected builder and the explicitly approved maximum', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      await session.close();
+    });
+
+    it('rejects an inactive builder at setup', async () => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          HttpResponse.json({
+            address: builderAddress,
+            registered: true,
+            enabled: false,
+            admission_enabled: true,
+            max_fee_rate: builderMaxFeeRate,
+          }),
+        ),
+      );
+      const session = createSession({ builderAttribution: builderAddress });
+      await expect(session.connect()).rejects.toThrow(
+        'Builder attribution is not active for this builder address.',
+      );
+      await session.close();
+    });
+
+    it.each([
+      'missing',
+      'revoked',
+      'zero builder cap',
+    ] as const)('omits attribution with %s until approval enables it', async (state) => {
+      approvedMaxFeeRate =
+        state === 'missing' ? undefined : state === 'revoked' ? '0' : '0.0003';
+      if (state === 'zero builder cap') builderMaxFeeRate = '0';
+      const frames = mockCommandSession(responseForFrame);
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      const orders: PerpsOrderRequest[] = [
+        {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1',
+          timeInForce: PerpsTimeInForce.IOC,
+        },
+      ];
+      await session.connect();
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).not.toHaveProperty('op.args.0.builder');
+
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0002' } }],
+        },
+      });
+      await session.close();
+    });
+
+    it.each([
+      ['0.0005', '0.0003'],
+      ['0.0002', '0.0002'],
+    ])('restores the lower saved cap when the builder cap is %s', async (cap, expected) => {
+      builderMaxFeeRate = cap;
+      mockCommandSession(responseForFrame);
+      const session = createSession({ builderAttribution: builderAddress });
+      await session.connect();
+      expect(session.builderAttribution?.feeRate).toBe(expected);
+      await session.close();
+    });
+
+    it('submits saved terms directly after approval and forwards later server rejections', async () => {
+      let approved = false;
+      const frames = mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders' && !approved
+          ? [{ status: 'err', error: 'builder_approval_required' }]
+          : responseForFrame(frame),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee: async () => {
+          approved = true;
+          return builderApproval(builderAddress, '0.0003', 1);
+        },
+      });
+      await session.connect();
+      const order = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        timeInForce: PerpsTimeInForce.IOC,
+      } as const;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      // Any fee/status lookup on the order path would now fail.
+      rejectCapRead = true;
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.error(),
+        ),
+      );
+      await session.postOrders({ orders: [order] });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0003' } }],
+        },
+      });
+      approved = false;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.close();
+    });
+
+    it('refreshes the cap after approval and replaces the effective session rate', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        approveBuilderFee,
+      });
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0002');
+      builderMaxFeeRate = '0';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution).toBeUndefined();
+      builderMaxFeeRate = '0.0005';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      rejectCapRead = true;
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' }),
+      ).rejects.toBeInstanceOf(RequestRejectedError);
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      expect(approveBuilderFee).toHaveBeenCalledTimes(4);
+      await session.close();
+    });
+
+    it('serializes approval and revocation and adopts only confirmed terms', async () => {
+      let confirmApproval!: (approval: PerpsBuilderApproval) => void;
+      const approval = new Promise<PerpsBuilderApproval>((resolve) => {
+        confirmApproval = resolve;
+      });
+      const approveBuilderFee = vi
+        .fn()
+        .mockReturnValueOnce(approval)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0', 2));
+      const session = createSession({ approveBuilderFee });
+      const approving = session.approveBuilderFee({
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      const revoking = session.revokeBuilderFee();
+      await vi.waitFor(() =>
+        expect(approveBuilderFee).toHaveBeenCalledTimes(1),
+      );
+      expect(session.builderAttribution).toBeUndefined();
+      confirmApproval(builderApproval(builderAddress, '0.0003', 1));
+      await approving;
+      await revoking;
+      expect(approveBuilderFee).toHaveBeenLastCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0',
+      });
+      expect(session.builderAttribution).toBeUndefined();
+      await session.close();
+    });
+
+    it('preserves active terms after rejected changes and recovers the consent queue', async () => {
+      const rejected = new RequestRejectedError('rejected', { status: 400 });
+      const approveBuilderFee = vi
+        .fn()
+        .mockRejectedValueOnce(rejected)
+        .mockRejectedValueOnce(rejected)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0.0004', 2));
+      const session = createSession({
+        approveBuilderFee,
+        builderAttribution: terms,
+      });
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' }),
+      ).rejects.toBe(rejected);
+      await expect(session.revokeBuilderFee()).rejects.toBe(rejected);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0004');
+      await session.close();
+    });
+
+    it('keeps the selected builder when revoking a different builder', async () => {
+      rejectCapRead = true;
+      const otherBuilder = '0x3333333333333333333333333333333333333333';
+      const session = createSession({
+        builderAttribution: terms,
+        approveBuilderFee: async () => builderApproval(otherBuilder, '0', 2),
+      });
+      await session.revokeBuilderFee(otherBuilder);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.close();
+    });
+  });
+
   describe('successful session', () => {
     let frames: unknown[];
 
     beforeEach(() => {
       frames = mockSuccessfulSession();
+    });
+
+    it('keeps pre-ack builder frames and treats sparse sequences as valid', async () => {
+      server.resetHandlers();
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.chs?.includes('builderFills')) {
+              for (const sequence of [10, 100])
+                client.send(
+                  JSON.stringify({
+                    ch: 'builderFills',
+                    ts: 1_700_000_000_000,
+                    sq: sequence,
+                    data: [],
+                  }),
+                );
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession({ includeBuilderFills: true });
+      await session.connect();
+      for (const sequence of [10, 100]) {
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
+          value: {
+            type: 'builderFill',
+            sequence,
+          },
+        });
+      }
+      await session.close();
     });
 
     it('authenticates and subscribes to session channels', async () => {
@@ -233,6 +570,96 @@ describe('PerpsSession', () => {
 
     beforeEach(() => {
       connectionFrames = mockSuccessfulSessions();
+    });
+
+    it('restores builder fills separately and emits one resync', async () => {
+      const session = createSession({ includeBuilderFills: true });
+      vi.useFakeTimers();
+      try {
+        await session.connect();
+        connectionFrames[0]?.client.close();
+        await vi.advanceTimersToNextTimerAsync();
+        await vi.waitFor(() =>
+          expect(connectionFrames[1]?.frames[2]).toMatchObject({
+            req: 'sub',
+            chs: ['builderFills'],
+          }),
+        );
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
+          value: { type: 'resync', reason: 'reconnect' },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      'rejection',
+      'timeout',
+    ] as const)('keeps core events flowing through connect and reconnect after builder fills %s', async (failure) => {
+      server.resetHandlers();
+      const connections: Array<{
+        close(): void;
+        send(data: string): void;
+      }> = [];
+      const subscriptions: string[][] = [];
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          connections.push(client);
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.req === 'sub') subscriptions.push(frame.chs);
+            if (frame.chs?.includes('builderFills')) {
+              if (failure === 'rejection') {
+                client.send(
+                  JSON.stringify({
+                    id: frame.id,
+                    data: [{ status: 'err', error: 'builder_not_enabled' }],
+                  }),
+                );
+              }
+              return;
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession({ includeBuilderFills: true });
+      vi.useFakeTimers();
+      try {
+        // Readiness must not wait for the optional subscription's deadline.
+        await session.connect();
+        for (const index of [0, 1]) {
+          await vi.waitFor(() =>
+            expect(subscriptions).toHaveLength((index + 1) * 2),
+          );
+          expect(subscriptions[index * 2]).toContain('orders');
+          expect(subscriptions[index * 2]).not.toContain('builderFills');
+          expect(subscriptions[index * 2 + 1]).toEqual(['builderFills']);
+          for (const sequence of [1, 2]) {
+            if (sequence === 2) await vi.advanceTimersByTimeAsync(30_000);
+            const next = waitForNextEvent(session);
+            connections[index]?.send(
+              JSON.stringify(balanceUpdate({ balance: '1', sequence })),
+            );
+            await expect(next).resolves.toMatchObject({
+              value: { type: 'balance', sequence },
+            });
+          }
+          if (index === 0) {
+            connections[0]?.close();
+            await vi.advanceTimersToNextTimerAsync();
+            await expect(waitForNextEvent(session)).resolves.toMatchObject({
+              value: { type: 'resync', reason: 'reconnect' },
+            });
+          }
+        }
+        expect(connections).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
     });
 
     it('reauthenticates, resubscribes, and emits resync', async () => {
@@ -1447,6 +1874,68 @@ describe('PerpsSession', () => {
   });
 
   describe('account reads', () => {
+    // Malformed continuation responses cannot be produced reliably by live APIs.
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('rejects builder earnings with more=true and cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: true,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        const pages = session.listBuilderEarnings();
+        if (cursor === undefined) {
+          await expect(pages.firstPage()).rejects.toThrow(
+            UnexpectedResponseError,
+          );
+        }
+        await expect(
+          pages.from(toPaginationCursor('current-cursor')).firstPage(),
+        ).rejects.toThrow(UnexpectedResponseError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('accepts final builder earnings with cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: false,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session
+            .listBuilderEarnings()
+            .from(toPaginationCursor('current-cursor'))
+            .firstPage(),
+        ).resolves.toEqual({ items: [], hasMore: false });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('sends session credentials as REST auth headers', async () => {
       server.use(
         http.get(
@@ -1852,13 +2341,16 @@ describe('PerpsSession', () => {
   });
 });
 
-function createSession(): PerpsSession {
+function createSession(
+  options: Partial<PerpsSessionOptions> = {},
+): PerpsSession {
   return new PerpsSession({
     chainId: production.chainId,
     credentials,
     onClose: () => undefined,
     restUrl: production.perps.rest,
     wsUrl: production.perps.ws,
+    ...options,
   });
 }
 
@@ -2241,4 +2733,19 @@ function mockPortfolioPosition(request: { size: string }) {
       timestamp: 1_700_000_000_000,
     }),
   );
+}
+
+function builderApproval(
+  builder: string,
+  maxFeeRate: string,
+  approvalVersion: number,
+): PerpsBuilderApproval {
+  return {
+    trader: credentials.proxy,
+    builder: expectEvmAddress(builder),
+    maxFeeRate: toDecimalString(maxFeeRate),
+    approvalVersion,
+    timestamp: toEpochMilliseconds(1_767_225_600_000),
+    sequence: approvalVersion,
+  };
 }

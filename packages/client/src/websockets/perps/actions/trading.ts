@@ -55,6 +55,7 @@ import { parseUserInput } from '../../../input';
 import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
+import type { PerpsBuilderTermsInput } from './builder-terms';
 
 const PerpsOrderBaseInputSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
@@ -215,6 +216,7 @@ export type PerpsCommandRequest = {
 
 /** @internal */
 export type PerpsCommandExecutor = {
+  readonly builderAttribution?: PerpsBuilderTermsInput;
   /** @internal */
   executeCommand<T>(
     request: PerpsCommandRequest,
@@ -275,9 +277,15 @@ export async function postPerpsOrders(
   request: PostPerpsOrdersRequest,
 ): Promise<PerpsPostOrderAck[]> {
   const params = parseUserInput(request, PostPerpsOrdersRequestSchema);
+  const builderAttribution = client.builderAttribution;
   return await client.executeCommand(
     {
-      op: ['createOrders', params.orders.map(toRawPerpsOrder)],
+      op: [
+        'createOrders',
+        params.orders.map((order) =>
+          toRawPerpsOrder(order, builderAttribution),
+        ),
+      ],
       expiresAt: params.expiresAt,
     },
     z.array(PerpsPostOrderAckSchema),
@@ -607,9 +615,10 @@ export async function placePerpsOrder(
   }
 
   const params = parseUserInput(request, PlacePerpsOrderRequestSchema);
+  const builderAttribution = client.builderAttribution;
   const [, update] = await client.executeCommandWithEvent(
     {
-      op: ['createOrders', [toRawPerpsOrder(params)]],
+      op: ['createOrders', [toRawPerpsOrder(params, builderAttribution)]],
       expiresAt: params.expiresAt,
     },
     SuccessfulPerpsPostOrderAcksSchema,
@@ -623,7 +632,10 @@ async function placePerpsOrderWithTpSl(
   request: PlacePerpsOrderWithTpSlRequest,
 ): Promise<PlacePerpsOrderWithTpSlResult> {
   const params = parseUserInput(request, PlacePerpsOrderWithTpSlRequestSchema);
-  const orders: RawPerpsOrderInput[] = [toRawPerpsOrder(params)];
+  const builderAttribution = client.builderAttribution;
+  const orders: RawPerpsOrderInput[] = [
+    toRawPerpsOrder(params, builderAttribution),
+  ];
   const exitBuy = params.side === OrderSide.SELL;
 
   if (params.takeProfit !== undefined) {
@@ -633,6 +645,7 @@ async function placePerpsOrderWithTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: toDecimalString(params.quantity),
+        builderAttribution,
         trigger: params.takeProfit,
       }),
     );
@@ -644,6 +657,7 @@ async function placePerpsOrderWithTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: toDecimalString(params.quantity),
+        builderAttribution,
         trigger: params.stopLoss,
       }),
     );
@@ -743,6 +757,7 @@ export async function placePerpsPositionTpSl(
   request: PlacePerpsPositionTpSlRequest,
 ): Promise<PlacePerpsPositionTpSlResult> {
   const params = parseUserInput(request, PlacePerpsPositionTpSlRequestSchema);
+  const builderAttribution = client.builderAttribution;
   const buy = positionTpSlExitBuy(
     await client.fetchPortfolio(),
     params.instrumentId,
@@ -756,6 +771,7 @@ export async function placePerpsPositionTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
         quantity: '0',
+        builderAttribution,
         trigger: params.takeProfit,
       }),
     );
@@ -767,6 +783,7 @@ export async function placePerpsPositionTpSl(
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
         quantity: '0',
+        builderAttribution,
         trigger: params.stopLoss,
       }),
     );
@@ -1508,6 +1525,8 @@ type RawPerpsOrderInput = readonly [
   true | undefined,
   string | undefined,
   RawPerpsTpSlTriggerInput | undefined,
+  undefined,
+  readonly [string, string] | undefined,
 ];
 
 type RawPerpsTpSlTriggerInput = readonly [
@@ -1518,6 +1537,7 @@ type RawPerpsTpSlTriggerInput = readonly [
 
 function toRawPerpsOrder(
   order: z.output<typeof PerpsOrderRequestSchema>,
+  builderAttribution: PerpsBuilderTermsInput | undefined,
 ): RawPerpsOrderInput {
   return [
     order.instrumentId,
@@ -1529,6 +1549,10 @@ function toRawPerpsOrder(
     order.reduceOnly === true ? true : undefined,
     order.clientOrderId,
     undefined,
+    undefined,
+    builderAttribution === undefined
+      ? undefined
+      : [builderAttribution.builderAddress, builderAttribution.feeRate],
   ];
 }
 
@@ -1537,6 +1561,7 @@ function toRawPerpsTpSlOrder(request: {
   instrumentId: PerpsInstrumentId;
   kind: PerpsTpSlKind;
   quantity: string;
+  builderAttribution?: PerpsBuilderTermsInput;
   trigger: z.output<typeof PerpsTpSlTriggerSchema>;
 }): RawPerpsOrderInput {
   return [
@@ -1555,6 +1580,13 @@ function toRawPerpsTpSlOrder(request: {
       toDecimalString(request.trigger.triggerPrice),
       request.kind,
     ],
+    undefined,
+    request.builderAttribution == null
+      ? undefined
+      : [
+          request.builderAttribution.builderAddress,
+          request.builderAttribution.feeRate,
+        ],
   ];
 }
 
@@ -1631,6 +1663,9 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
   if (order[2] !== undefined) body.p = order[2];
   if (order[7] !== undefined) body.c = order[7];
   if (order[8] !== undefined) body.tr = toPerpsTpSlTriggerBody(order[8]);
+  if (order[10] !== undefined) {
+    body.builder = { address: order[10][0], fee_rate: order[10][1] };
+  }
   return body;
 }
 

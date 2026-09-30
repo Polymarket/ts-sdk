@@ -1,9 +1,12 @@
 import { z } from 'zod';
 import {
+  type DecimalString,
   DecimalStringSchema,
   EpochMillisecondsSchema,
   OrderSide,
+  toDecimalString,
 } from '../shared';
+import { PerpsBuilderTermsSchema } from './builders';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -17,6 +20,35 @@ import {
   PerpsTradeIdSchema,
   PerpsTxHashSchema,
 } from './common';
+
+const FeeDecimalSchema = z
+  .string()
+  .regex(/^-?\d+(?:\.\d+)?$/)
+  .pipe(DecimalStringSchema);
+
+// Fees can include rebates. Align decimal scales before adding so large values
+// and fractions never pass through floating-point arithmetic.
+function totalFee(
+  exchangeFee: DecimalString,
+  builderFee: DecimalString,
+): DecimalString {
+  const [exchangeWhole = '0', exchangeFraction = ''] = exchangeFee.split('.');
+  const [builderWhole = '0', builderFraction = ''] = builderFee.split('.');
+  const scale = Math.max(exchangeFraction.length, builderFraction.length);
+  const exchangeUnits = BigInt(
+    `${exchangeWhole}${exchangeFraction.padEnd(scale, '0')}`,
+  );
+  const builderUnits = BigInt(
+    `${builderWhole}${builderFraction.padEnd(scale, '0')}`,
+  );
+  const sum = exchangeUnits + builderUnits;
+  const digits = (sum < 0n ? -sum : sum).toString().padStart(scale + 1, '0');
+  const fraction = scale === 0 ? '' : digits.slice(-scale).replace(/0+$/, '');
+  const whole = scale === 0 ? digits : digits.slice(0, -scale);
+  return toDecimalString(
+    `${sum < 0n ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`,
+  );
+}
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -153,6 +185,7 @@ export const PerpsPostOrderAckSchema = z
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((ack, ctx) => {
     if (ack.status === 'err') {
@@ -175,6 +208,7 @@ export const PerpsPostOrderAckSchema = z
       status: 'ok' as const,
       orderId: ack.oid,
       clientOrderId: ack.coid,
+      ...(ack.builder === undefined ? {} : { builder: ack.builder }),
     };
   });
 
@@ -286,6 +320,7 @@ export const PerpsOrderSchema = z
     updated_timestamp: EpochMillisecondsSchema,
     client_order_id: z.string().optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((order) => ({
     id: order.order_id,
@@ -303,6 +338,7 @@ export const PerpsOrderSchema = z
     updatedTimestamp: order.updated_timestamp,
     clientOrderId: order.client_order_id,
     tpSl: order.tpsl ?? undefined,
+    ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
 
 /**
@@ -340,6 +376,7 @@ export const PerpsOrderUpdateSchema = z
     uts: EpochMillisecondsSchema,
     coid: z.string().optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((order) => ({
     id: order.oid,
@@ -357,6 +394,7 @@ export const PerpsOrderUpdateSchema = z
     updatedTimestamp: order.uts,
     clientOrderId: order.coid,
     tpSl: order.tpsl ?? undefined,
+    ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
 
 /**
@@ -371,7 +409,10 @@ export const PerpsAccountFillSchema = z
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     taker: z.boolean(),
-    fee: DecimalStringSchema,
+    fee: FeeDecimalSchema,
+    builder_fee: FeeDecimalSchema.optional(),
+    total_fee: FeeDecimalSchema.optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
     fee_asset: PerpsAssetSchema,
     previous_size: DecimalStringSchema,
     previous_entry_price: DecimalStringSchema,
@@ -388,7 +429,15 @@ export const PerpsAccountFillSchema = z
     price: fill.price,
     quantity: fill.quantity,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
+    builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
+    totalFee:
+      fill.total_fee ??
+      totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),
+    ...(fill.builder === undefined ? {} : { builder: fill.builder }),
     feeAsset: fill.fee_asset,
     previousSize: fill.previous_size,
     previousEntryPrice: fill.previous_entry_price,
@@ -422,7 +471,10 @@ export const PerpsAccountFillUpdateSchema = z
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     taker: z.boolean(),
-    fee: DecimalStringSchema,
+    fee: FeeDecimalSchema,
+    builder_fee: FeeDecimalSchema.optional(),
+    total_fee: FeeDecimalSchema.optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
     fea: PerpsAssetSchema,
     psz: DecimalStringSchema,
     pep: DecimalStringSchema,
@@ -439,7 +491,15 @@ export const PerpsAccountFillUpdateSchema = z
     price: fill.p,
     quantity: fill.qty,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
+    builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
+    totalFee:
+      fill.total_fee ??
+      totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),
+    ...(fill.builder === undefined ? {} : { builder: fill.builder }),
     feeAsset: fill.fea,
     previousSize: fill.psz,
     previousEntryPrice: fill.pep,
