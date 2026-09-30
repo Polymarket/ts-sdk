@@ -63,13 +63,19 @@ import type {
 } from './perps';
 
 describe('session builder consent', () => {
-  it('supports default consent terms and keeps versions internal', () => {
+  it('requires an explicit maximum and keeps versions internal', () => {
     function approve(session: PerpsSession) {
       void session.approveBuilderFee({
         builderAddress: '0x1111111111111111111111111111111111111111',
         maxFeeRate: '0.0003',
       });
+      void session.approveBuilderFee({ maxFeeRate: '0.0005' });
+      // @ts-expect-error Consent requires an explicit maximum.
       void session.approveBuilderFee();
+      // @ts-expect-error Selecting a builder does not specify an approved maximum.
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+      });
       void session.revokeBuilderFee();
     }
     void approve;

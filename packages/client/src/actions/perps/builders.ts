@@ -87,9 +87,10 @@ const ResolvedPerpsBuilderFeeSchema = z.strictObject({
   approvalVersion: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
 });
 
-const ApprovePerpsBuilderFeeRequestSchema = z.strictObject({
+/** @internal */
+export const ApprovePerpsBuilderFeeRequestSchema = z.strictObject({
   builderAddress: EvmAddressSchema.optional(),
-  maxFeeRate: PerpsBuilderFeeRateInputSchema.optional(),
+  maxFeeRate: PerpsBuilderFeeRateInputSchema,
 }) satisfies z.ZodType<ApprovePerpsBuilderFeeRequest>;
 
 /**
@@ -98,8 +99,8 @@ const ApprovePerpsBuilderFeeRequestSchema = z.strictObject({
 export type ApprovePerpsBuilderFeeRequest = {
   /** Builder account to authorize. Defaults to the session builder. */
   builderAddress?: string;
-  /** Defaults to the builder's current configured fee. Zero explicitly revokes permission. */
-  maxFeeRate?: string;
+  /** Explicit maximum fee to authorize. Zero revokes permission. */
+  maxFeeRate: string;
 };
 
 /**
@@ -152,21 +153,6 @@ export async function approvePerpsBuilderFee(
       'A builder address is required when the session has no builder attribution.',
     );
   }
-  let maxFeeRate = input.maxFeeRate;
-  if (maxFeeRate === undefined) {
-    const status = await fetchPerpsBuilderStatus(client, {
-      address: input.builderAddress,
-    });
-    if (!status.registered || !status.enabled || !status.admissionEnabled) {
-      throw new UserInputError(
-        'Builder attribution is not active for this builder address.',
-      );
-    }
-    maxFeeRate = status.maxFeeRate;
-    if (!/[1-9]/.test(maxFeeRate)) {
-      throw new UserInputError('The builder has no positive fee to approve.');
-    }
-  }
   const approvalVersion = nextPerpsBuilderApprovalVersion(
     await session.fetchBuilderApprovals({ builder: input.builderAddress }),
     input.builderAddress,
@@ -174,7 +160,7 @@ export async function approvePerpsBuilderFee(
   const params = parseUserInput(
     {
       builder: input.builderAddress,
-      maxFeeRate,
+      maxFeeRate: input.maxFeeRate,
       approvalVersion,
     },
     ResolvedPerpsBuilderFeeSchema,

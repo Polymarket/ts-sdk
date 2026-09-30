@@ -119,7 +119,10 @@ describe('PerpsSession', () => {
       );
     });
 
-    it('uses the selected builder when approving without arguments', async () => {
+    it.each([
+      undefined,
+      {},
+    ])('rejects a missing maximum before owner approval (%s)', async (request) => {
       const approveBuilderFee = vi.fn(async () =>
         builderApproval(builderAddress, builderMaxFeeRate, 1),
       );
@@ -127,11 +130,28 @@ describe('PerpsSession', () => {
         builderAttribution: builderAddress,
         approveBuilderFee,
       });
-      await session.approveBuilderFee();
+      // @ts-expect-error Exercise untyped callers omitting the required maximum.
+      await expect(session.approveBuilderFee(request)).rejects.toBeInstanceOf(
+        UserInputError,
+      );
+      expect(approveBuilderFee).not.toHaveBeenCalled();
+      await session.close();
+    });
+
+    it('uses the selected builder and the explicitly approved maximum', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
       expect(approveBuilderFee).toHaveBeenCalledWith(session, {
         builderAddress,
+        maxFeeRate: '0.0003',
       });
-      expect(session.builderAttribution?.feeRate).toBe(builderMaxFeeRate);
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
       await session.close();
     });
 
@@ -183,9 +203,10 @@ describe('PerpsSession', () => {
       expect(frames.at(-1)).not.toHaveProperty('op.args.0.builder');
 
       builderMaxFeeRate = '0.0002';
-      await session.approveBuilderFee();
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
       expect(approveBuilderFee).toHaveBeenCalledWith(session, {
         builderAddress,
+        maxFeeRate: '0.0003',
       });
       await session.postOrders({ orders });
       expect(frames.at(-1)).toMatchObject({
@@ -234,7 +255,7 @@ describe('PerpsSession', () => {
       ).resolves.toMatchObject([
         { status: 'err', error: 'builder_approval_required' },
       ]);
-      await session.approveBuilderFee();
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
       // Any fee/status lookup on the order path would now fail.
       rejectCapRead = true;
       server.use(

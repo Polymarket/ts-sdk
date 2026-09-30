@@ -6,6 +6,8 @@
 Add Perps Builder Codes with explicit owner-signed fee approval and revocation.
 Approving a builder updates the session's attribution after confirmation; revoking
 clears it after confirmation. Approval versions are managed internally.
+Approval requires an explicit `maxFeeRate`, while the builder address defaults
+to the session's selected builder.
 
 An optional builder address at session setup reads the trader's saved approval.
 The lower of the approved maximum and builder cap applies consistently to single

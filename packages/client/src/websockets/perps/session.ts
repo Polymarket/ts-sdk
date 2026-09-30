@@ -33,10 +33,11 @@ import {
 import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
-import type {
-  ApprovePerpsBuilderFeeError,
-  ApprovePerpsBuilderFeeRequest,
-  PerpsBuilderFeeApprover,
+import {
+  type ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  ApprovePerpsBuilderFeeRequestSchema,
+  type PerpsBuilderFeeApprover,
 } from '../../actions/perps/builders';
 import {
   makeErrorGuard,
@@ -491,7 +492,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Approves and adopts builder fees with the parent client's owner signer.
-   * With no arguments, approves the selected builder's current configured fee.
+   * Requires an explicit maximum fee. The builder address defaults to the selected builder.
    * Approval is needed once and remains valid until revoked or replaced.
    * The SDK increments the saved approval version automatically. Only a
    * confirmed approval refreshes the builder cap and stores the lower of that
@@ -501,15 +502,18 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @example
    * ```ts
-   * await session.approveBuilderFee();
+   * await session.approveBuilderFee({ maxFeeRate: '0.0005' });
    * ```
    * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async approveBuilderFee(
-    request: ApprovePerpsBuilderFeeRequest = {},
+    request: ApprovePerpsBuilderFeeRequest,
   ): Promise<PerpsBuilderApproval> {
-    const approvalRequest = { ...request };
+    const approvalRequest = parseUserInput(
+      request,
+      ApprovePerpsBuilderFeeRequestSchema,
+    );
     return this.#changeBuilderConsent(() => ({
       ...approvalRequest,
       builderAddress:

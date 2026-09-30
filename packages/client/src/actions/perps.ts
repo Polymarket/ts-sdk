@@ -1263,7 +1263,8 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * Opening or resuming checks builder availability and uses the lower of the
  * builder cap and the trader's saved approved maximum. Missing approval counts
  * as zero. A zero effective fee disables attribution without failing setup.
- * The selected builder remains available to `session.approveBuilderFee()`.
+ * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+ * The builder address defaults to the session's selected builder.
  * Opening a session never grants consent. Approval remains valid until revoked
  * or replaced and does not need to be repeated for each session.
  * Set `includeBuilderFills` to receive builder receipts through the session iterator.
