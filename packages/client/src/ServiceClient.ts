@@ -1,6 +1,7 @@
 import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { RateLimitError, RequestRejectedError, TransportError } from './errors';
+import { ServiceUnavailableError } from './gateway-fallback';
 import {
   parseRateLimitHeaders,
   type RateLimitBucket,
@@ -8,8 +9,10 @@ import {
   type RateLimitUpdateListener,
 } from './rate-limit';
 
+type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+
 export type ServiceRequest = {
-  method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
+  method: ServiceRequestMethod;
   path: string;
   body?: string;
   headers?: HeadersInit;
@@ -26,11 +29,16 @@ export type ServiceClientConfig = {
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
   onRateLimitUpdate?: RateLimitUpdateListener;
+  /** Send each request once, including reads and network failures. */
+  singleAttempt?: boolean;
+  /** Bound the full response body, buffering it before returning. */
+  responseDeadlineMs?: number;
 };
 
 /**
  * Request timeout in milliseconds, or `false` to disable the timeout.
- * Defaults to the transport's standard timeout.
+ * Defaults to the configured full-response deadline or the transport's standard
+ * timeout. For buffered services this also bounds body consumption.
  */
 type ServiceClientTimeout = number | false;
 
@@ -69,17 +77,54 @@ export class ServiceClient {
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
+  readonly #responseDeadlineMs?: number;
 
   constructor({
     root,
     headers,
     resolveHeaders,
     onRateLimitUpdate,
+    singleAttempt,
+    responseDeadlineMs,
   }: ServiceClientConfig) {
-    this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
+    this.#client = ky.create({
+      prefixUrl: root,
+      throwHttpErrors: false,
+      ...(singleAttempt && { retry: 0 }),
+      ...(responseDeadlineMs !== undefined && {
+        fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+          // Request construction happens in ky before this boundary. A fetch
+          // TypeError can therefore identify network failure, but unsupported
+          // protocols must still be rejected as configuration errors.
+          const url = input instanceof Request ? input.url : String(input);
+          if (!/^https?:/.test(url)) {
+            throw new TypeError('Service URL must use HTTP or HTTPS');
+          }
+          try {
+            return await globalThis.fetch(input, init);
+          } catch (error) {
+            const signal =
+              init?.signal ??
+              (input instanceof Request ? input.signal : undefined);
+            if (
+              !signal?.aborted &&
+              (error instanceof TypeError ||
+                (error instanceof DOMException &&
+                  error.name === 'NetworkError'))
+            ) {
+              throw new ServiceUnavailableError('Unable to reach the service', {
+                cause: error,
+              });
+            }
+            throw error;
+          }
+        },
+      }),
+    });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
+    this.#responseDeadlineMs = responseDeadlineMs;
   }
 
   get(
@@ -127,7 +172,7 @@ export class ServiceClient {
   }
 
   #request(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -145,7 +190,7 @@ export class ServiceClient {
   }
 
   async #send(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -165,17 +210,124 @@ export class ServiceClient {
       headers.set('content-type', 'application/json');
     }
 
-    return this.#client(this.#normalizePath(path), {
+    const requestOptions = {
       body: request.body,
       headers,
       method,
       searchParams: request.params,
       ...(options.timeout !== undefined && { timeout: options.timeout }),
+    };
+
+    if (this.#responseDeadlineMs === undefined) {
+      return this.#client(this.#normalizePath(path), requestOptions);
+    }
+
+    return this.#sendWithDeadline(
+      this.#normalizePath(path),
+      requestOptions,
+      options.timeout ?? this.#responseDeadlineMs,
+    );
+  }
+
+  async #sendWithDeadline(
+    path: string,
+    options: {
+      body?: string;
+      headers: Headers;
+      method: ServiceRequestMethod;
+      searchParams?: URLSearchParams;
+    },
+    deadlineMs: ServiceClientTimeout,
+  ): Promise<Response> {
+    if (
+      deadlineMs !== false &&
+      (!Number.isFinite(deadlineMs) ||
+        deadlineMs <= 0 ||
+        deadlineMs > 2_147_483_647)
+    ) {
+      throw new RangeError(
+        'Response deadline must be a positive supported duration',
+      );
+    }
+    const controller = new AbortController();
+    let response: Response | undefined;
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const receive = async () => {
+      response = await this.#client(path, {
+        ...options,
+        signal: controller.signal,
+        timeout: false,
+      });
+      reader = response.body?.getReader();
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      if (reader !== undefined) {
+        try {
+          for (;;) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            chunks.push(chunk.value.slice());
+          }
+        } finally {
+          reader.releaseLock();
+        }
+      }
+      return this.#bufferedResponse(
+        response,
+        response.body === null ? null : new Blob(chunks),
+      );
+    };
+
+    try {
+      const pending = receive();
+      if (deadlineMs === false) return await pending;
+      return await Promise.race([
+        pending,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            reject(
+              new ServiceUnavailableError('Service response deadline exceeded'),
+            );
+            controller.abort();
+            void reader?.cancel().catch(() => undefined);
+          }, deadlineMs);
+        }),
+      ]);
+    } catch (error) {
+      controller.abort();
+      // Once the service has rejected a request, body failures cannot change
+      // that status into a connection failure eligible for another service.
+      if (response !== undefined && !response.ok) {
+        return this.#bufferedResponse(response, null);
+      }
+      if (
+        reader !== undefined &&
+        !(error instanceof ServiceUnavailableError) &&
+        !(error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        throw new ServiceUnavailableError('Service response stream failed', {
+          cause: error,
+        });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  #bufferedResponse(response: Response, body: Blob | null): Response {
+    const buffered = new Response(body, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
     });
+    Object.defineProperty(buffered, 'url', { value: response.url });
+    return buffered;
   }
 
   #createRequest(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -261,7 +413,8 @@ export class ServiceClient {
       (error) => {
         if (
           error instanceof RateLimitError ||
-          error instanceof RequestRejectedError
+          error instanceof RequestRejectedError ||
+          error instanceof TransportError
         ) {
           return error;
         }
@@ -297,14 +450,23 @@ export class ServiceClient {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
-      const {
-        error,
-        code,
-        retry_after_seconds: retryAfterSeconds,
-      } = await response
+      const payload: unknown = await response
         .clone()
         .json()
-        .catch(() => ({}));
+        .catch(() => undefined);
+      const {
+        error: legacyError,
+        message,
+        code,
+        retry_after_seconds: retryAfterSeconds,
+      } = (payload !== null && typeof payload === 'object' ? payload : {}) as {
+        error?: unknown;
+        message?: unknown;
+        code?: unknown;
+        retry_after_seconds?: unknown;
+      };
+      const error =
+        legacyError || (typeof message === 'string' ? message : undefined);
       if (error) {
         const explicitCode =
           typeof code === 'string' && code !== '' ? code : undefined;

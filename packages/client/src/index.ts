@@ -50,6 +50,7 @@ export type {
 export { relayerApiKey, remoteBuilderSigning } from './authorization';
 export type * from './clients';
 export {
+  CreatePublicClientError,
   CreateSecureClientError,
   createPublicClient,
   createSecureClient,

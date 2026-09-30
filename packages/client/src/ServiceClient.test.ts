@@ -1,7 +1,18 @@
 import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import { z } from 'zod';
+import { shouldFallbackToGamma } from './gateway-fallback';
+import { validateWith } from './response';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -14,6 +25,7 @@ describe('ServiceClient', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.restoreAllMocks();
   });
 
   afterAll(() => {
@@ -646,5 +658,258 @@ describe('ServiceClient', () => {
       name: 'RequestRejectedError',
       status: 500,
     });
+  });
+});
+
+describe('gateway transport boundary', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('applies the request timeout override through body completion and clears it', async () => {
+    const responseBody = new ReadableStream({
+      start(controller) {
+        setTimeout(() => {
+          controller.enqueue(new TextEncoder().encode('{"value":"ready"}'));
+          controller.close();
+        }, 30);
+      },
+    });
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(responseBody));
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 10,
+    });
+    const response = await unwrap(client.get('/delayed-body', { timeout: 60 }));
+    await expect(response.json()).resolves.toEqual({ value: 'ready' });
+    expect(responseBody.locked).toBe(false);
+    await new Promise<void>((resolve) => setTimeout(resolve, 70));
+    const request = fetch.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    expect((request as Request).signal.aborted).toBe(false);
+  });
+
+  it.each([
+    'null',
+    '{broken',
+  ])('preserves HTTP status when an error body is not an error object: %s', async (body) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(body, {
+        status: 500,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/invalid-error');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(response.error).toMatchObject({
+      name: 'RequestRejectedError',
+      status: 500,
+    });
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
+  });
+
+  it('rejects invalid deadline configuration before any network attempt', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: Number.NaN,
+    });
+    const response = await client.get('/invalid-deadline');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    400, 401, 403, 404, 429, 500, 501, 502, 503, 504,
+  ])('makes one attempt for HTTP %s and preserves fallback eligibility', async (status) => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json(
+          { code: 'UPSTREAM_ERROR', message: 'Upstream unavailable' },
+          { status, headers: { 'retry-after': '7' } },
+        ),
+      );
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/gateway-error');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(
+      [502, 503, 504].includes(status),
+    );
+    expect(response.error).toMatchObject({
+      name: status === 429 ? 'RateLimitError' : 'RequestRejectedError',
+      retryAfter: 7,
+      ...(status !== 429 && { code: 'UPSTREAM_ERROR', status }),
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a failed network attempt as unavailable', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new TypeError('Failed to fetch'));
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/network-error');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds a request stalled before response headers and aborts it', async () => {
+    const fetch = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => new Promise<Response>(() => {}));
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 20,
+    });
+    const response = await client.get('/header-stall');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(true);
+    const request = fetch.mock.calls[0]?.[0];
+    expect(request).toBeInstanceOf(Request);
+    expect((request as Request).signal.aborted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    200, 500, 503,
+  ])('bounds a stalled HTTP %s body without losing known status policy', async (status) => {
+    const cancel = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(new ReadableStream({ cancel }), {
+        status,
+        headers: { 'content-type': 'application/json', 'retry-after': '9' },
+      }),
+    );
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 20,
+    });
+    const response = await client.get('/body-stall');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(status !== 500);
+    expect(response.error).toMatchObject(
+      status === 200
+        ? { name: 'TransportError' }
+        : { name: 'RequestRejectedError', status, retryAfter: 9 },
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    200, 500, 503,
+  ])('classifies an interrupted HTTP %s stream without losing status policy', async (status) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"incomplete":'));
+            controller.error(new TypeError('terminated'));
+          },
+        }),
+        { status },
+      ),
+    );
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/stream-error');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(status !== 500);
+  });
+
+  it.each([
+    '{broken',
+    '{"value":42}',
+  ])('keeps complete invalid payloads out of fallback: %s', async (body) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body));
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client
+      .get('/invalid-payload')
+      .andThen(validateWith(z.object({ value: z.string() })));
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(response.error.name).toBe('UnexpectedResponseError');
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
+  });
+
+  it('does not treat header construction errors as network failures', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+      resolveHeaders: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+    const response = await client.get('/bad-headers');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not treat an unsupported protocol as network failure', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const client = new ServiceClient({
+      root: 'ftp://localhost',
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/configuration-error');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not treat explicit cancellation as network failure', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new DOMException('The operation was aborted', 'AbortError'),
+    );
+    const client = new ServiceClient({
+      root,
+      singleAttempt: true,
+      responseDeadlineMs: 100,
+    });
+    const response = await client.get('/cancelled');
+    expect(response.isErr()).toBe(true);
+    if (!response.isErr()) return;
+    expect(shouldFallbackToGamma(response.error)).toBe(false);
   });
 });

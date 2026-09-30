@@ -1,5 +1,6 @@
 import { PaginationCursorSchema } from '@polymarket/bindings';
 import { ListTeamsResponseSchema, type Team } from '@polymarket/bindings/gamma';
+import { errAsync } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -10,6 +11,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
@@ -99,7 +101,7 @@ export function listTeams(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
+    return client.gateway
       .get('/teams', {
         params: toSearchParams(
           {
@@ -111,6 +113,23 @@ export function listTeams(
         ),
       })
       .andThen(validateWith(ListTeamsResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/teams', {
+            params: toSearchParams(
+              {
+                ...params,
+                limit: decoded.pageSize,
+                offset: decoded.offset,
+              },
+              snakeCase({ providerId: 'provider_id' }),
+            ),
+          })
+          .andThen(validateWith(ListTeamsResponseSchema));
+      })
       .map((teams) => {
         const hasMore = teams.length >= decoded.pageSize;
 

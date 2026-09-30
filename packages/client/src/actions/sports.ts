@@ -4,7 +4,7 @@ import {
   SportsMarketTypesResponseSchema,
   type SportsMetadata,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
+import { errAsync, unwrap } from '@polymarket/types';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
@@ -13,6 +13,7 @@ import {
   TransportError,
   UnexpectedResponseError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { validateWith } from '../response';
 
 export type ListSportsError =
@@ -47,9 +48,17 @@ export async function listSports(
   client: BaseClient,
 ): Promise<SportsMetadata[]> {
   return unwrap(
-    client.gamma
+    client.gateway
       .get('/sports')
-      .andThen(validateWith(ListSportsMetadataResponseSchema)),
+      .andThen(validateWith(ListSportsMetadataResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/sports')
+          .andThen(validateWith(ListSportsMetadataResponseSchema));
+      }),
   );
 }
 
@@ -85,8 +94,16 @@ export async function fetchSportsMarketTypes(
   client: BaseClient,
 ): Promise<SportsMarketTypesResponse> {
   return unwrap(
-    client.gamma
+    client.gateway
       .get('/sports/market-types')
-      .andThen(validateWith(SportsMarketTypesResponseSchema)),
+      .andThen(validateWith(SportsMarketTypesResponseSchema))
+      .orElse((error) => {
+        if (!shouldFallbackToGamma(error)) {
+          return errAsync(error);
+        }
+        return client.gamma
+          .get('/sports/market-types')
+          .andThen(validateWith(SportsMarketTypesResponseSchema));
+      }),
   );
 }

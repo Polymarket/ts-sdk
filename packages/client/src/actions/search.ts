@@ -6,6 +6,7 @@ import {
   PublicSearchResponseSchema,
   type SearchTag,
 } from '@polymarket/bindings/gamma';
+import { errAsync } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -16,6 +17,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { shouldFallbackToGamma } from '../gateway-fallback';
 import { parseUserInput } from '../input';
 import {
   decodeOffsetCursor,
@@ -126,7 +128,7 @@ export function search(
     (cursor) => {
       const decoded = decodeOffsetCursor(cursor, pageSize);
 
-      return client.gamma
+      return client.gateway
         .get('/public-search', {
           params: toSearchParams(
             {
@@ -140,6 +142,25 @@ export function search(
           ),
         })
         .andThen(validateWith(PublicSearchResponseSchema))
+        .orElse((error) => {
+          if (!shouldFallbackToGamma(error)) {
+            return errAsync(error);
+          }
+          return client.gamma
+            .get('/public-search', {
+              params: toSearchParams(
+                {
+                  ...params,
+                  limitPerType: decoded.pageSize,
+                  page: decoded.offset,
+                },
+                snakeCase<PublicSearchParams>({
+                  excludeTagIds: 'exclude_tag_id',
+                }),
+              ),
+            })
+            .andThen(validateWith(PublicSearchResponseSchema));
+        })
         .map((response) => ({
           items: toSearchResults(response),
           hasMore: response.pagination?.hasMore ?? false,
