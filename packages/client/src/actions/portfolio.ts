@@ -20,6 +20,7 @@ import {
   type Position,
   PositionFilterTypeSchema,
   PositionSortBySchema,
+  PositionStatus,
   PositionStatusSchema,
   SortDirectionSchema,
   UserPnlFidelitySchema,
@@ -80,13 +81,23 @@ const ListPositionsRequestSchema = z
         distinctIdList(CanonicalMarketConditionIdSchema, 20),
       ])
       .optional(),
-    /** OPEN (default, includes REDEEMABLE rows) | REDEEMABLE | CLOSED. */
+    /**
+     * OPEN (default, includes REDEEMABLE rows) | REDEEMABLE |
+     * REDEEMABLE_LOST | MERGEABLE | CLOSED.
+     *
+     * REDEEMABLE_LOST (still-held, zero-payout positions) requires `user`.
+     * MERGEABLE (live complementary pairs) is user-scoped too, but a
+     * `conditionId`-only request falls back to OPEN rather than failing.
+     */
     status: PositionStatusSchema.optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
     filterType: PositionFilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
     includeArchived: z.boolean().optional(),
-    /** Defaults by status: CURRENT_VALUE for OPEN/REDEEMABLE, REALIZED_PNL for CLOSED. */
+    /**
+     * Defaults by status: CURRENT_VALUE for OPEN/REDEEMABLE/REDEEMABLE_LOST,
+     * TOKENS for MERGEABLE, REALIZED_PNL for CLOSED.
+     */
     sortBy: PositionSortBySchema.optional(),
     sortDirection: SortDirectionSchema.optional(),
     /** Bounds the rows' last economics event. */
@@ -120,7 +131,19 @@ const ListPositionsRequestSchema = z
   .refine((value) => !(value.includeArchived && value.status === 'CLOSED'), {
     message: 'includeArchived does not apply to CLOSED positions',
     path: ['includeArchived'],
-  });
+  })
+  // Lost positions are only defined relative to a wallet, so the service
+  // rejects a market-anchored request outright instead of falling back the
+  // way MERGEABLE does — mirror it so the 400 is unreachable.
+  .refine(
+    (value) =>
+      value.status !== PositionStatus.RedeemableLost ||
+      value.user !== undefined,
+    {
+      message: 'REDEEMABLE_LOST requires user',
+      path: ['user'],
+    },
+  );
 
 export type ListPositionsRequest = z.input<typeof ListPositionsRequestSchema>;
 
@@ -144,12 +167,21 @@ export const ListPositionsError = makeErrorGuard(
  *
  * One method serves the whole lifecycle: `status: 'OPEN'` (the default) is
  * the superset including settled-but-unredeemed winners, `'REDEEMABLE'`
- * narrows to exactly those, and `'CLOSED'` lists exited positions. Every row
- * carries `redeemable`/`mergeable` flags and fee-exclusive entry economics. A
- * dust floor of 0.1 shares applies on OPEN/REDEEMABLE unless
- * `filterType`/`filterAmount` say otherwise. `conditionId` accepts at most
- * 20 distinct ids (with `user`). `pageSize` defaults to 100 (max 1000).
- * Transient rate limits are retried automatically.
+ * narrows to exactly those, `'REDEEMABLE_LOST'` lists still-held zero-payout
+ * positions, `'MERGEABLE'` lists live complementary pairs, and `'CLOSED'`
+ * lists exited positions. The two narrow filters are request vocabulary only:
+ * a lost row still reports `status: 'REDEEMABLE'` and a mergeable one
+ * `'OPEN'`. Every row carries `redeemable`/`mergeable` flags and
+ * fee-exclusive entry economics. A dust floor of 0.1 shares applies on every
+ * status but CLOSED unless `filterType`/`filterAmount` say otherwise.
+ * `conditionId` accepts at most 20 distinct ids (with `user`). `pageSize`
+ * defaults to 100 (max 1000). Transient rate limits are retried
+ * automatically.
+ *
+ * `REDEEMABLE_LOST` requires `user`. For `MERGEABLE`, provide `user` to
+ * filter to mergeable positions; a `conditionId`-only request falls back
+ * to the broader `OPEN` listing. `sortBy` defaults to `TOKENS` for
+ * `MERGEABLE`, `REALIZED_PNL` for `CLOSED`, and `CURRENT_VALUE` otherwise.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

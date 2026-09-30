@@ -17,14 +17,15 @@ describe('SubscribeError', () => {
 describe('PublicClient.subscribe', () => {
   it('validates a batch before opening any subscriptions', async () => {
     const client = createPublicClient();
-    const subscribe = vi.spyOn(client.webSockets.rtds, 'subscribe');
+    const subscribe = vi.spyOn(client.webSockets.clobMarket, 'subscribe');
 
     const error = await client
       .subscribe([
-        { topic: 'prices.crypto.chainlink' },
+        { topic: 'market', assetIds: ['123'] },
         {
-          topic: 'prices.crypto.chainlink.twap',
-          windowSeconds: 45,
+          topic: 'market',
+          assetIds: ['123'],
+          tokenIds: ['456'],
         } as never,
       ])
       .catch((cause: unknown) => cause);
@@ -32,7 +33,7 @@ describe('PublicClient.subscribe', () => {
     expect(error).toBeInstanceOf(UserInputError);
     expect(error).toHaveProperty(
       'message',
-      expect.stringContaining('- windowSeconds: Invalid input'),
+      expect.stringContaining('Invalid input'),
     );
     expect(subscribe).not.toHaveBeenCalled();
   });

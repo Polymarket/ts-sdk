@@ -121,3 +121,24 @@ export class PerpsWebSocketHeartbeat implements WebSocketHeartbeat {
     }
   }
 }
+
+export class PolyboltWebSocketHeartbeat implements WebSocketHeartbeat {
+  #lastMessageAt = 0;
+  #timer: ReturnType<typeof setInterval> | undefined;
+  start(send: (message: string) => void): void {
+    this.stop();
+    this.#lastMessageAt = Date.now();
+    this.#timer = setNonBlockingInterval(() => send('{"op":"ping"}'), 30_000);
+  }
+  handleMessage(_message: string): boolean {
+    this.#lastMessageAt = Date.now();
+    return false;
+  }
+  isStale(now: number): boolean {
+    return now - this.#lastMessageAt >= 90_000;
+  }
+  stop(): void {
+    clearInterval(this.#timer);
+    this.#timer = undefined;
+  }
+}
