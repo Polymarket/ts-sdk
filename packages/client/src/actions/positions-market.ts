@@ -37,16 +37,16 @@ export function normalizeMarketPositionContext(
     throw new UnexpectedResponseError(`Missing condition ID for ${context}`);
   }
 
+  if (!isPresent(market.version)) {
+    throw new UnexpectedResponseError(`Missing market version for ${context}`);
+  }
+
   const yesTokenId = market.outcomes.yes.tokenId;
   const noTokenId = market.outcomes.no.tokenId;
   const yesPositionId = market.outcomes.yes.positionId;
   const noPositionId = market.outcomes.no.positionId;
 
-  if (
-    market.version === ProtocolVersion.V2 ||
-    (!isPresent(market.version) &&
-      (isPresent(yesPositionId) || isPresent(noPositionId)))
-  ) {
+  if (market.version === ProtocolVersion.V2) {
     if (isPresent(yesPositionId) !== isPresent(noPositionId)) {
       throw new UnexpectedResponseError(
         `Incomplete market position IDs for ${context}`,
@@ -89,9 +89,5 @@ export function normalizeMarketPositionContext(
     };
   }
 
-  throw new UnexpectedResponseError(
-    market.version === ProtocolVersion.V1
-      ? `Missing market token IDs for ${context}`
-      : `Missing tradeable outcome IDs for ${context}`,
-  );
+  throw new UnexpectedResponseError(`Missing market token IDs for ${context}`);
 }

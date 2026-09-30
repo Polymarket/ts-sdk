@@ -2,4 +2,4 @@
 "@polymarket/client": patch
 ---
 
-Honor market version when splitting, merging, and redeeming positions. When version is absent, prefer Protocol V2 position IDs over legacy token IDs.
+Route splitting, merging, and redeeming positions solely by market version: `v1` uses CTF and `v2` uses Protocol V2. Raise `UnexpectedResponseError` when the version or selected protocol's IDs are missing.
