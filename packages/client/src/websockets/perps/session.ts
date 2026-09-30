@@ -396,6 +396,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Most recently resolved builder terms. Resolved when opening the session or granting approval.
+   * Undefined when the effective fee is zero or no builder is selected.
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   get builderAttribution(): PerpsBuilderTermsInput | undefined {
@@ -441,15 +442,13 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         (entry) =>
           entry.builder.toLowerCase() === this.#builderAddress?.toLowerCase(),
       );
-      if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
-        throw new UserInputError(
-          'An active builder fee approval is required for this builder address.',
-        );
-      }
-      this.#builderAttribution = Object.freeze({
-        builderAddress: this.#builderAddress,
-        feeRate: minPerpsBuilderFeeRate(status.maxFeeRate, approval.maxFeeRate),
-      });
+      const feeRate = minPerpsBuilderFeeRate(
+        status.maxFeeRate,
+        approval?.maxFeeRate ?? '0',
+      );
+      this.#builderAttribution = /[1-9]/.test(feeRate)
+        ? Object.freeze({ builderAddress: this.#builderAddress, feeRate })
+        : undefined;
     }
     await this.#connect(false);
   }
@@ -498,6 +497,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * confirmed approval refreshes the builder cap and stores the lower of that
    * cap and the approved maximum for future orders. If the cap read fails,
    * consent may already be committed; local terms stay unchanged and the error propagates.
+   * A zero effective fee disables attribution while retaining the selected builder.
    *
    * @example
    * ```ts
@@ -576,13 +576,13 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
               .andThen(validateWith(PerpsBuilderStatusSchema)),
           );
           this.#builderAddress = approval.builder;
-          this.#builderAttribution = Object.freeze({
-            builderAddress: approval.builder,
-            feeRate: minPerpsBuilderFeeRate(
-              status.maxFeeRate,
-              approval.maxFeeRate,
-            ),
-          });
+          const feeRate = minPerpsBuilderFeeRate(
+            status.maxFeeRate,
+            approval.maxFeeRate,
+          );
+          this.#builderAttribution = /[1-9]/.test(feeRate)
+            ? Object.freeze({ builderAddress: approval.builder, feeRate })
+            : undefined;
         }
         return approval;
       });

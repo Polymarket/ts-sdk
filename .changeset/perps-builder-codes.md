@@ -7,9 +7,11 @@ Add Perps Builder Codes with explicit owner-signed fee approval and revocation.
 Approving a builder updates the session's attribution after confirmation; revoking
 clears it after confirmation. Approval versions are managed internally.
 
-An optional builder address at session setup restores the trader's active saved
-approval. The lower of the approved maximum and builder cap applies consistently
-to single orders, batches, and TP/SL exits. New approvals refresh the builder cap
+An optional builder address at session setup reads the trader's saved approval.
+The lower of the approved maximum and builder cap applies consistently to single
+orders, batches, and TP/SL exits. Missing or revoked approval disables attribution
+without failing setup. The selected builder remains available for approval.
+New approvals refresh the builder cap
 and replace the session rate after confirmation. Setup never creates consent.
 
 Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;

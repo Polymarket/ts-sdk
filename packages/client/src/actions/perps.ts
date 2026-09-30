@@ -1013,7 +1013,7 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
-  /** Builder address whose active saved approval supplies the fee, limited by the builder cap. */
+  /** Builder address whose saved approval supplies the fee, limited by the builder cap. Zero disables attribution. */
   builderAttribution?: string;
   /** Include builder receipts for this authenticated account in the session iterator. */
   includeBuilderFills?: boolean;
@@ -1260,10 +1260,10 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * resume a previous session.
  *
  * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
- * Opening or resuming requires an active builder and saved approval, and uses
- * the lower of the builder cap and the trader's approved maximum.
- * To grant consent first, open without attribution and call
- * `session.approveBuilderFee({ builderAddress, maxFeeRate })`.
+ * Opening or resuming checks builder availability and uses the lower of the
+ * builder cap and the trader's saved approved maximum. Missing approval counts
+ * as zero. A zero effective fee disables attribution without failing setup.
+ * The selected builder remains available to `session.approveBuilderFee()`.
  * Opening a session never grants consent. Approval remains valid until revoked
  * or replaced and does not need to be repeated for each session.
  * Set `includeBuilderFills` to receive builder receipts through the session iterator.

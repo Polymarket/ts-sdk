@@ -328,10 +328,10 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
    * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
-   * Opening or resuming requires an active builder and saved approval, and uses
-   * the lower of the builder cap and the trader's approved maximum.
-   * To grant consent first, open without attribution and call
-   * `session.approveBuilderFee({ builderAddress, maxFeeRate })`.
+   * Opening or resuming checks builder availability and uses the lower of the
+   * builder cap and the trader's saved approved maximum. Missing approval counts
+   * as zero. A zero effective fee disables attribution without failing setup.
+   * The selected builder remains available to `session.approveBuilderFee()`.
    * Opening a session never grants consent. Approval remains valid until revoked
    * or replaced and does not need to be repeated for each session.
    * Set `includeBuilderFills` to receive builder receipts in the session iterator.

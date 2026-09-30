@@ -16,7 +16,7 @@ describe('Perps builder integration', () => {
       });
       const session = await client.openPerpsSession({ expiresIn: 30 * 60_000 });
       try {
-        // Requires this trader to have an existing grant. This test never changes consent.
+        // This test reads existing consent without granting or changing it.
         const approvals = await session.fetchBuilderApprovals({
           builder: builderAddress,
         });
@@ -24,15 +24,16 @@ describe('Perps builder integration', () => {
           (entry) =>
             entry.builder.toLowerCase() === builderAddress.toLowerCase(),
         );
-        if (approval === undefined || Number(approval.maxFeeRate) === 0)
-          return skip();
         const restored = await client.openPerpsSession({
           credentials: session.credentials,
           builderAttribution: builderAddress,
         });
         try {
-          expect(Number(restored.builderAttribution?.feeRate)).toBe(
-            Math.min(Number(status.maxFeeRate), Number(approval.maxFeeRate)),
+          expect(Number(restored.builderAttribution?.feeRate ?? '0')).toBe(
+            Math.min(
+              Number(status.maxFeeRate),
+              Number(approval?.maxFeeRate ?? '0'),
+            ),
           );
         } finally {
           await restored.close();

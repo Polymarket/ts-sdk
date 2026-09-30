@@ -39,7 +39,11 @@ import {
   expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
-import { PerpsSession, type PerpsSessionOptions } from './session';
+import {
+  type PerpsOrderRequest,
+  PerpsSession,
+  type PerpsSessionOptions,
+} from './session';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
@@ -131,30 +135,64 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it.each([
-      'inactive',
-      'missing',
-      'revoked',
-    ] as const)('rejects attributed setup when consent is %s', async (state) => {
-      approvedMaxFeeRate = state === 'missing' ? undefined : '0';
-      const statusRead = vi.fn(() =>
-        HttpResponse.json({
-          address: builderAddress,
-          registered: true,
-          enabled: state !== 'inactive',
-          admission_enabled: true,
-          max_fee_rate: builderMaxFeeRate,
-        }),
-      );
+    it('rejects an inactive builder at setup', async () => {
       server.use(
-        http.get(`${production.perps.rest}/v1/info/builder`, statusRead),
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          HttpResponse.json({
+            address: builderAddress,
+            registered: true,
+            enabled: false,
+            admission_enabled: true,
+            max_fee_rate: builderMaxFeeRate,
+          }),
+        ),
       );
       const session = createSession({ builderAttribution: builderAddress });
       await expect(session.connect()).rejects.toThrow(
-        state === 'inactive'
-          ? 'Builder attribution is not active for this builder address.'
-          : 'An active builder fee approval is required for this builder address.',
+        'Builder attribution is not active for this builder address.',
       );
+      await session.close();
+    });
+
+    it.each([
+      'missing',
+      'revoked',
+      'zero builder cap',
+    ] as const)('omits attribution with %s until approval enables it', async (state) => {
+      approvedMaxFeeRate =
+        state === 'missing' ? undefined : state === 'revoked' ? '0' : '0.0003';
+      if (state === 'zero builder cap') builderMaxFeeRate = '0';
+      const frames = mockCommandSession(responseForFrame);
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      const orders: PerpsOrderRequest[] = [
+        {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1',
+          timeInForce: PerpsTimeInForce.IOC,
+        },
+      ];
+      await session.connect();
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).not.toHaveProperty('op.args.0.builder');
+
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee();
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+      });
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0002' } }],
+        },
+      });
       await session.close();
     });
 
@@ -229,6 +267,9 @@ describe('PerpsSession', () => {
       builderMaxFeeRate = '0.0002';
       await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
       expect(session.builderAttribution?.feeRate).toBe('0.0002');
+      builderMaxFeeRate = '0';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution).toBeUndefined();
       builderMaxFeeRate = '0.0005';
       await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
       expect(session.builderAttribution?.feeRate).toBe('0.0003');
@@ -237,7 +278,7 @@ describe('PerpsSession', () => {
         session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' }),
       ).rejects.toBeInstanceOf(RequestRejectedError);
       expect(session.builderAttribution?.feeRate).toBe('0.0003');
-      expect(approveBuilderFee).toHaveBeenCalledTimes(3);
+      expect(approveBuilderFee).toHaveBeenCalledTimes(4);
       await session.close();
     });
 
