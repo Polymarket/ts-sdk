@@ -8,26 +8,32 @@ const runBuilderTests =
 
 describe('Perps builder integration', () => {
   it.runIf(runBuilderTests)(
-    'opens and resumes a session without requiring builder consent',
-    async ({ secureClientWithDepositWallet: client, randomEoaSigner }) => {
-      const address = await randomEoaSigner.getAddress();
-      const session = await client.openPerpsSession({
-        builderAttribution: address,
-        expiresIn: 30 * 60_000,
+    'restores saved consent limited by the current builder cap',
+    async ({ secureClientWithDepositWallet: client, skip }) => {
+      if (builderAddress === undefined) return skip();
+      const status = await client.fetchPerpsBuilderStatus({
+        address: builderAddress,
       });
+      const session = await client.openPerpsSession({ expiresIn: 30 * 60_000 });
       try {
+        // Requires this trader to have an existing grant. This test never changes consent.
+        const approvals = await session.fetchBuilderApprovals({
+          builder: builderAddress,
+        });
+        const approval = approvals.find(
+          (entry) =>
+            entry.builder.toLowerCase() === builderAddress.toLowerCase(),
+        );
+        if (approval === undefined || Number(approval.maxFeeRate) === 0)
+          return skip();
         const restored = await client.openPerpsSession({
           credentials: session.credentials,
-          builderAttribution: address,
+          builderAttribution: builderAddress,
         });
         try {
-          expect(
-            restored.builderAttribution?.builderAddress.toLowerCase(),
-          ).toBe(address.toLowerCase());
-          const approvals = await restored.fetchBuilderApprovals({
-            builder: address,
-          });
-          expect(approvals).toEqual([]);
+          expect(Number(restored.builderAttribution?.feeRate)).toBe(
+            Math.min(Number(status.maxFeeRate), Number(approval.maxFeeRate)),
+          );
         } finally {
           await restored.close();
         }

@@ -77,9 +77,11 @@ describe('PerpsSession', () => {
     const builderAddress = '0xabababababababababababababababababababab';
     const terms = { builderAddress, feeRate: '0.0003' };
     let builderMaxFeeRate = '0.0005';
+    let approvedMaxFeeRate: string | undefined = '0.0003';
     let rejectCapRead = false;
     beforeEach(() => {
       builderMaxFeeRate = '0.0005';
+      approvedMaxFeeRate = '0.0003';
       rejectCapRead = false;
       server.use(
         http.get(`${production.perps.rest}/v1/info/builder`, () =>
@@ -92,6 +94,23 @@ describe('PerpsSession', () => {
                 admission_enabled: true,
                 max_fee_rate: builderMaxFeeRate,
               }),
+        ),
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.json({
+            data:
+              approvedMaxFeeRate === undefined
+                ? []
+                : [
+                    {
+                      trader: credentials.proxy,
+                      builder: builderAddress,
+                      max_fee_rate: approvedMaxFeeRate,
+                      approval_version: 1,
+                      timestamp: 1_767_225_600_000,
+                      sequence: 1,
+                    },
+                  ],
+          }),
         ),
       );
     });
@@ -116,16 +135,8 @@ describe('PerpsSession', () => {
       'inactive',
       'missing',
       'revoked',
-    ] as const)('opens with %s consent and forwards server rejection without order-time reads', async (state) => {
-      const error =
-        state === 'inactive'
-          ? 'builder_not_enabled'
-          : 'builder_approval_required';
-      const frames = mockCommandSession((frame) =>
-        frame.op?.type === 'createOrders'
-          ? [{ status: 'err', error }]
-          : responseForFrame(frame),
-      );
+    ] as const)('rejects attributed setup when consent is %s', async (state) => {
+      approvedMaxFeeRate = state === 'missing' ? undefined : '0';
       const statusRead = vi.fn(() =>
         HttpResponse.json({
           address: builderAddress,
@@ -135,40 +146,27 @@ describe('PerpsSession', () => {
           max_fee_rate: builderMaxFeeRate,
         }),
       );
-      const approvalRead = vi.fn(() => HttpResponse.json({ data: [] }));
       server.use(
         http.get(`${production.perps.rest}/v1/info/builder`, statusRead),
-        http.get(
-          `${production.perps.rest}/v1/account/builder-approvals`,
-          approvalRead,
-        ),
-        mockPortfolioPosition({ size: '1' }),
       );
       const session = createSession({ builderAttribution: builderAddress });
+      await expect(session.connect()).rejects.toThrow(
+        state === 'inactive'
+          ? 'Builder attribution is not active for this builder address.'
+          : 'An active builder fee approval is required for this builder address.',
+      );
+      await session.close();
+    });
+
+    it.each([
+      ['0.0005', '0.0003'],
+      ['0.0002', '0.0002'],
+    ])('restores the lower saved cap when the builder cap is %s', async (cap, expected) => {
+      builderMaxFeeRate = cap;
+      mockCommandSession(responseForFrame);
+      const session = createSession({ builderAttribution: builderAddress });
       await session.connect();
-      expect(statusRead).toHaveBeenCalledTimes(1);
-      const order = {
-        instrumentId: 1,
-        side: OrderSide.BUY,
-        quantity: '1',
-        timeInForce: PerpsTimeInForce.IOC,
-      } as const;
-      await expect(session.placeOrder(order)).rejects.toThrow(error);
-      await expect(
-        session.postOrders({ orders: [order] }),
-      ).resolves.toMatchObject([{ status: 'err', error }]);
-      await expect(
-        session.placeOrder({ ...order, stopLoss: { triggerPrice: '90' } }),
-      ).rejects.toThrow(error);
-      await expect(
-        session.placePositionTpSl({
-          instrumentId: 1,
-          stopLoss: { triggerPrice: '90' },
-        }),
-      ).rejects.toThrow(error);
-      expect(frames).toHaveLength(6);
-      expect(statusRead).toHaveBeenCalledTimes(1);
-      expect(approvalRead).not.toHaveBeenCalled();
+      expect(session.builderAttribution?.feeRate).toBe(expected);
       await session.close();
     });
 

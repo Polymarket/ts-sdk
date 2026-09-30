@@ -268,7 +268,7 @@ export {
 export type PerpsSessionOptions = {
   /** @internal Owner approval operation supplied by the parent client. */
   approveBuilderFee?: PerpsBuilderFeeApprover;
-  /** Builder selector or previously resolved terms. The server validates consent on order submission. */
+  /** Builder selector whose saved approval is restored, or previously resolved terms. */
   builderAttribution?: string | PerpsBuilderTermsInput;
   chainId: number;
   credentials: PerpsCredentials;
@@ -286,7 +286,12 @@ export type PerpsSessionOptions = {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsSessionLifecycleError = RequestRejectedError | TransportError;
+export type PerpsSessionLifecycleError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
 
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type RevokePerpsBuilderFeeError =
@@ -424,9 +429,26 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
           })
           .andThen(validateWith(PerpsBuilderStatusSchema)),
       );
+      if (!status.registered || !status.enabled || !status.admissionEnabled) {
+        throw new UserInputError(
+          'Builder attribution is not active for this builder address.',
+        );
+      }
+      const approvals = await this.fetchBuilderApprovals({
+        builder: this.#builderAddress,
+      });
+      const approval = approvals.find(
+        (entry) =>
+          entry.builder.toLowerCase() === this.#builderAddress?.toLowerCase(),
+      );
+      if (approval === undefined || !/[1-9]/.test(approval.maxFeeRate)) {
+        throw new UserInputError(
+          'An active builder fee approval is required for this builder address.',
+        );
+      }
       this.#builderAttribution = Object.freeze({
         builderAddress: this.#builderAddress,
-        feeRate: status.maxFeeRate,
+        feeRate: minPerpsBuilderFeeRate(status.maxFeeRate, approval.maxFeeRate),
       });
     }
     await this.#connect(false);
