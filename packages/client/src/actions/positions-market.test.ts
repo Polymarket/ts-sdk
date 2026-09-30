@@ -63,7 +63,7 @@ describe('market position routing', () => {
   it.each([
     ProtocolVersion.V2,
     undefined,
-  ])('rejects incomplete native IDs with version %s', (version) => {
+  ])('rejects incomplete Protocol V2 position IDs with version %s', (version) => {
     const market = marketWithBothIds(version);
     market.outcomes.no.positionId = null;
 
@@ -87,7 +87,7 @@ describe('market position routing', () => {
     );
   });
 
-  it('ignores incomplete native IDs for an explicitly V1 market', () => {
+  it('ignores incomplete Protocol V2 position IDs for an explicitly V1 market', () => {
     const market = marketWithBothIds(ProtocolVersion.V1);
     market.outcomes.no.positionId = null;
 
