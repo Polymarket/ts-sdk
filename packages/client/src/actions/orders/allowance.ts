@@ -6,7 +6,7 @@ import { isV2PositionId } from '../../protocol';
 import { fetchBalanceAllowance } from '../account';
 
 /** @internal */
-export function resolveOrderAssetType(
+export function resolveBalanceAllowanceAssetType(
   side: OrderSide,
   assetId: ClobAssetId,
 ): AssetType {
@@ -30,7 +30,10 @@ export async function resolveCurrentAllowance(
   client: BaseSecureClient,
   params: ResolveCurrentAllowanceParams,
 ): Promise<bigint> {
-  const assetType = resolveOrderAssetType(params.side, params.assetId);
+  const assetType = resolveBalanceAllowanceAssetType(
+    params.side,
+    params.assetId,
+  );
   const { allowances } = await fetchBalanceAllowance(
     client,
     params.side === OrderSide.BUY
