@@ -219,6 +219,7 @@ export const TeamSchema = z.object({
 export const SportsMetadataSchema = z.object({
   id: SportIdSchema,
   sport: z.string(),
+  name: z.string().nullish(),
   image: z.string(),
   resolution: z.string(),
   ordering: z.string(),

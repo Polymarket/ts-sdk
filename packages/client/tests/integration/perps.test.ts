@@ -9,6 +9,8 @@ import {
   OrderSide,
   PerpsTimeInForce,
   RequestRejectedError,
+  TransferPerpsCollateralError,
+  UserInputError,
 } from '@polymarket/client';
 import { expectNonEmptyArray } from '@polymarket/types';
 import { vi } from 'vitest';
@@ -31,6 +33,30 @@ const [ticker] = await publicClient
   .then(expectNonEmptyArray);
 
 describe('Perps integration', () => {
+  it('rejects malformed and self-transfer recipients before signing or sending', async ({
+    secureClientWithDepositWallet: client,
+  }) => {
+    const signing = vi.spyOn(client.signer, 'signTypedData');
+    const sending = vi.spyOn(globalThis, 'fetch');
+
+    try {
+      for (const recipient of ['not-an-address', client.account.signer]) {
+        await expect(
+          client.transferPerpsCollateral({ amount: '1', recipient }),
+        ).rejects.toSatisfy(
+          (error: unknown) =>
+            error instanceof UserInputError &&
+            TransferPerpsCollateralError.isError(error),
+        );
+      }
+      expect(signing).not.toHaveBeenCalled();
+      expect(sending).not.toHaveBeenCalled();
+    } finally {
+      signing.mockRestore();
+      sending.mockRestore();
+    }
+  });
+
   it.runIf(runMeteredTests)(
     'deposits and withdraws the same Perps amount',
     async ({ secureClientWithDepositWallet }) => {

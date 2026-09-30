@@ -1,18 +1,54 @@
-import { PerpsKlineInterval } from '@polymarket/bindings/perps';
+import {
+  PerpsInternalTransferIdSchema,
+  PerpsKlineInterval,
+} from '@polymarket/bindings/perps';
+import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import type { BaseClient } from '../clients';
+import { RequestRejectedError, SigningError, TransportError } from '../errors';
 import { ServiceClient } from '../ServiceClient';
 import {
   listPerpsCandles,
   listPerpsFundingHistory,
   listPerpsTrades,
 } from './perps';
+import {
+  executePerpsCollateralTransfer,
+  type PerpsCollateralTransfer,
+  type PerpsCollateralTransferOperation,
+  type SignedPerpsCollateralTransfer,
+} from './perps/internal-transfer';
 
 const root = 'http://localhost:4017';
 const server = setupServer();
 const txHash = `0x${'1'.repeat(64)}`;
+const signerAddress = expectEvmAddress(
+  '0x0000000000000000000000000000000000000001',
+);
+const recipientAddress = expectEvmAddress(
+  '0x0000000000000000000000000000000000000002',
+);
+const signature = expectEvmSignature(`0x${'1'.repeat(130)}`);
+const transferId = PerpsInternalTransferIdSchema.parse(42);
+const transfer: PerpsCollateralTransfer = {
+  account: signerAddress,
+  token: expectEvmAddress('0x0000000000000000000000000000000000000003'),
+  recipient: recipientAddress,
+  amount: '100.00',
+  label: 'treasury-rebalance-42',
+  salt: 123,
+  timestamp: 1_789_704_000_000,
+};
 
 describe('Perps actions', () => {
   beforeAll(() => {
@@ -189,6 +225,75 @@ describe('Perps actions', () => {
       '2000',
       '1999',
     ]);
+  });
+
+  it('signs and submits the exact transfer once, keeping the label unsigned', async () => {
+    const { label, ...operation } = transfer;
+    const calls: string[] = [];
+    const signTransfer = vi.fn(
+      async (request: PerpsCollateralTransferOperation) => {
+        calls.push('sign');
+        expect(request).toEqual(operation);
+        return signature;
+      },
+    );
+    const submitTransfer = vi.fn(
+      async (request: SignedPerpsCollateralTransfer) => {
+        calls.push('submit');
+        expect(request).toEqual({ ...operation, label, signature });
+        return transferId;
+      },
+    );
+
+    await expect(
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
+      ),
+    ).resolves.toBe(transferId);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
+    expect(calls).toEqual(['sign', 'submit']);
+  });
+
+  it('does not submit when transfer signing fails', async () => {
+    const error = new SigningError('Signing declined.');
+    const signTransfer = vi.fn(async () => {
+      throw error;
+    });
+    const submitTransfer = vi.fn(async () => transferId);
+
+    await expect(
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
+      ),
+    ).rejects.toBe(error);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new RequestRejectedError('Owner signing rejected.', {
+      code: 'signer_does_not_match_account',
+      status: 422,
+    }),
+    new RequestRejectedError('Unknown transfer outcome.', { status: 500 }),
+    new TransportError('Connection lost after submission.'),
+  ])('does not retry a transfer after $name ($message)', async (error) => {
+    const signTransfer = vi.fn(async () => signature);
+    const submitTransfer = vi.fn(async () => {
+      throw error;
+    });
+
+    await expect(
+      executePerpsCollateralTransfer(
+        { signTransfer, submitTransfer },
+        transfer,
+      ),
+    ).rejects.toBe(error);
+    expect(signTransfer).toHaveBeenCalledTimes(1);
+    expect(submitTransfer).toHaveBeenCalledTimes(1);
   });
 });
 

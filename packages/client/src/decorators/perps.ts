@@ -1,9 +1,11 @@
 import type {
   PerpsBook,
+  PerpsBuilderStatus,
   PerpsCandle,
   PerpsFeeScheduleEntry,
   PerpsFundingRate,
   PerpsInstrument,
+  PerpsInternalTransferId,
   PerpsPublicTrade,
   PerpsTicker,
   PerpsWithdrawalId,
@@ -31,9 +33,15 @@ import {
   type PerpsSession,
   type RevokePerpsCredentialsRequest,
   revokePerpsCredentials,
+  type TransferPerpsCollateralRequest,
+  transferPerpsCollateral,
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
 } from '../actions';
+import {
+  type FetchPerpsBuilderStatusRequest,
+  fetchPerpsBuilderStatus,
+} from '../actions/perps/builders';
 import type {
   BaseClient,
   BasePublicClient,
@@ -63,6 +71,7 @@ export type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
@@ -71,7 +80,9 @@ export type {
   OpenPerpsSessionRequest,
   PerpsAutoCancelStatus,
   PerpsBookDepth,
+  PerpsCancelOptions,
   PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
@@ -96,6 +107,7 @@ export type {
   PostPerpsOrdersRequest,
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
@@ -113,15 +125,43 @@ export {
   ListPerpsTradesError,
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
+  TransferPerpsCollateralError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  FetchPerpsBuilderStatusError,
+  type FetchPerpsBuilderStatusRequest,
+} from '../actions/perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsBuilderApprovalsError,
+  type FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryError,
+  type FetchPerpsBuilderEarningsSummaryRequest,
+  ListPerpsBuilderEarningsError,
+  type ListPerpsBuilderEarningsRequest,
+  type PerpsBuilderFillUpdateEvent,
+  type PerpsBuilderTermsInput,
+  RevokePerpsBuilderFeeError,
+} from '../websockets/perps/session';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /**
+   * Fetches public builder availability and the platform fee cap.
+   * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsBuilderStatus(
+    request: FetchPerpsBuilderStatusRequest,
+  ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
    *
@@ -287,10 +327,21 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
+   * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+   * Opening or resuming checks builder availability and uses the lower of the
+   * builder cap and the trader's saved approved maximum. Missing approval counts
+   * as zero. A zero effective fee disables attribution without failing setup.
+   * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+   * The builder address defaults to the session's selected builder.
+   * Opening a session never grants consent. Approval remains valid until revoked
+   * or replaced and does not need to be repeated for each session.
+   * Set `includeBuilderFills` to receive builder receipts in the session iterator.
    *
    * @example
    * ```ts
-   * const session = await client.openPerpsSession();
+   * const session = await client.openPerpsSession({
+   *   builderAttribution: builderAddress,
+   * });
    * ```
    *
    * @throws {@link OpenPerpsSessionError}
@@ -317,6 +368,32 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   revokePerpsCredentials(request: RevokePerpsCredentialsRequest): Promise<void>;
+
+  /**
+   * Transfers Perps collateral to another account.
+   *
+   * @remarks
+   * This owner-signed request is attempted once. If a timeout or server error
+   * occurs after submission, reconcile through internal-transfer history using
+   * the label before submitting another transfer.
+   *
+   * @example
+   * ```ts
+   * const transferId = await client.transferPerpsCollateral({
+   *   recipient: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+   *   amount: '100.00',
+   *   label: 'treasury-rebalance-42',
+   * });
+   * ```
+   *
+   * @throws {@link TransferPerpsCollateralError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  transferPerpsCollateral(
+    request: TransferPerpsCollateralRequest,
+  ): Promise<PerpsInternalTransferId>;
 
   /**
    * Requests a Perps withdrawal to the authenticated wallet.
@@ -356,6 +433,7 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
+    fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
     fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),
@@ -375,6 +453,7 @@ export function perpsActions(
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>
       revokePerpsCredentials(client, request),
+    transferPerpsCollateral: transferPerpsCollateral.bind(null, client),
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }

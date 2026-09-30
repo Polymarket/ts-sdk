@@ -253,6 +253,7 @@ export type ClobTradesPage = z.infer<typeof ClobTradesPageSchema>;
 export enum AssetType {
   COLLATERAL = 'COLLATERAL',
   CONDITIONAL = 'CONDITIONAL',
+  CONDITIONAL_V2 = 'CONDITIONAL-V2',
 }
 
 export const AssetTypeSchema = z.enum(AssetType);
