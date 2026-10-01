@@ -50,6 +50,21 @@ export type SignGaslessMessageRequest = {
   payload: HexString;
 };
 
+export type SendConvertTransactionRequest = {
+  kind: 'sendConvertTransaction';
+  request: SignerTransactionRequest;
+};
+
+export type SendHorizontalSplitTransactionRequest = {
+  kind: 'sendHorizontalSplitTransaction';
+  request: SignerTransactionRequest;
+};
+
+export type SendHorizontalMergeTransactionRequest = {
+  kind: 'sendHorizontalMergeTransaction';
+  request: SignerTransactionRequest;
+};
+
 export type SendSplitPositionTransactionRequest = {
   kind: 'sendSplitPositionTransaction';
   request: SignerTransactionRequest;
@@ -103,6 +118,9 @@ export type CompleteWorkflowRequest =
   | SendPerpsDepositTransactionRequest
   | SignGaslessTypedDataRequest
   | SignGaslessMessageRequest
+  | SendConvertTransactionRequest
+  | SendHorizontalSplitTransactionRequest
+  | SendHorizontalMergeTransactionRequest
   | SendSplitPositionTransactionRequest
   | SendMergePositionsTransactionRequest
   | SendRedeemPositionsTransactionRequest
@@ -174,6 +192,9 @@ export function completeWith(signer: Signer): CompleteWith {
           case 'sendPerpsDepositTransaction':
           case 'sendMergePositionsTransaction':
           case 'sendRedeemPositionsTransaction':
+          case 'sendConvertTransaction':
+          case 'sendHorizontalSplitTransaction':
+          case 'sendHorizontalMergeTransaction':
           case 'sendSplitPositionTransaction':
             result = await workflow.next(
               await signer.sendTransaction(result.value.request),
