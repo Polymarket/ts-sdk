@@ -7,8 +7,64 @@ import {
 
 // Representative frames captured from the staging edge on 2026-09-08; history
 // is reduced to two points. Auth was captured in shadow mode, not enforcement.
-// The unknown-code and precision/drop cases below are synthetic.
+// The equity TWAP, unknown-code and precision/drop cases below are synthetic.
 describe('realtime frame normalization', () => {
+  describe('equity TWAP payload contract', () => {
+    const point = {
+      timestamp: 123456,
+      value: 123.45,
+      full_accuracy_value: '123.450000000000000001',
+    };
+
+    function parse(payload: object, snapshot = false) {
+      return parsePolyboltEvent(
+        PolyboltEnvelopeSchema.parse({
+          v: 1,
+          channel: 'price.equity.twap',
+          seq: 1,
+          ts: 123456,
+          snapshot,
+          payload: {
+            symbol: 'usdjpy',
+            window_seconds: 60,
+            ...payload,
+          },
+        }),
+      );
+    }
+
+    it('normalizes live, populated and empty history payloads', () => {
+      expect(parse(point)).toMatchObject({
+        topic: 'prices.equity.twap',
+        type: 'update',
+        payload: {
+          symbol: 'usdjpy',
+          value: point.full_accuracy_value,
+          windowSeconds: 60,
+        },
+      });
+      for (const data of [[], [point]]) {
+        expect(parse({ data }, true)).toMatchObject({
+          topic: 'prices.equity.twap',
+          type: 'subscribe',
+          payload: {
+            symbol: 'usdjpy',
+            data: data.map(({ timestamp, full_accuracy_value }) => ({
+              timestamp,
+              value: full_accuracy_value,
+            })),
+            windowSeconds: 60,
+          },
+        });
+      }
+    });
+
+    it('drops unsupported 30-second live and history windows', () => {
+      expect(parse({ ...point, window_seconds: 30 })).toBeUndefined();
+      expect(parse({ data: [], window_seconds: 30 }, true)).toBeUndefined();
+    });
+  });
+
   it.each([
     {
       op: 'error',

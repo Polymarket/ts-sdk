@@ -275,7 +275,8 @@ export class PriceSession {
       const payload = event.payload;
       if (payload.symbol.toLowerCase() !== subscription.symbol) continue;
       if (
-        subscription.topic === 'prices.crypto.twap' &&
+        (subscription.topic === 'prices.crypto.twap' ||
+          subscription.topic === 'prices.equity.twap') &&
         (!('windowSeconds' in payload) ||
           payload.windowSeconds !== subscription.windowSeconds)
       )
@@ -421,7 +422,10 @@ function refreshSnapshot(
     ),
     { timestamp, value },
   ];
-  if (event.topic === 'prices.crypto.twap')
+  if (
+    event.topic === 'prices.crypto.twap' ||
+    event.topic === 'prices.equity.twap'
+  )
     return {
       ...event,
       type: 'subscribe',

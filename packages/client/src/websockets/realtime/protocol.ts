@@ -5,21 +5,19 @@ export type PriceKey =
   | { key: string; topic: 'prices.crypto'; symbol: string }
   | {
       key: string;
-      topic: 'prices.crypto.twap';
+      topic: 'prices.crypto.twap' | 'prices.equity.twap';
       symbol: string;
       windowSeconds: 60;
     }
   | { key: string; topic: 'prices.equity'; symbol: string };
 
 export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
-  if (spec.topic === 'prices.equity') {
-    const symbol = spec.symbol.toLowerCase();
-    return [
-      { key: JSON.stringify([spec.topic, symbol]), topic: spec.topic, symbol },
-    ];
-  }
-  return spec.symbols.map((symbol) => {
-    if (spec.topic === 'prices.crypto.twap') {
+  const symbols = 'symbol' in spec ? [spec.symbol.toLowerCase()] : spec.symbols;
+  return symbols.map((symbol) => {
+    if (
+      spec.topic === 'prices.crypto.twap' ||
+      spec.topic === 'prices.equity.twap'
+    ) {
       return {
         key: JSON.stringify([spec.topic, symbol, 60]),
         topic: spec.topic,

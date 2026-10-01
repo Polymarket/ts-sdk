@@ -33,6 +33,10 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
   }),
+  z.strictObject({
+    topic: z.literal('prices.equity.twap'),
+    symbol: SymbolSchema,
+  }),
 ]);
 
 /** @internal Validates the complete price subscription before allocating connections. */

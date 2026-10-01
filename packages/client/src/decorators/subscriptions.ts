@@ -33,6 +33,9 @@ export type {
   EquityPriceSubscription,
   EquityPricesEvent,
   EquityPricesSubscription,
+  EquityTwapPriceEvent,
+  EquityTwapPriceSnapshotEvent,
+  EquityTwapPriceSubscription,
   PriceSubscription,
   SubscriptionHandle,
 } from '../actions';
@@ -65,7 +68,8 @@ export type SecureSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
    *
-   * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+   * The `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and
+   * `prices.equity.twap` topics
    * require explicit filters and include history snapshots and live updates.
    * Legacy source-named topics retain their existing filter and event behavior.
    * Event `seq` values are scoped to one channel on one WebSocket connection

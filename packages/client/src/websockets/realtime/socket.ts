@@ -260,5 +260,13 @@ function toWireSubscription(subscription: PriceKey): PolyboltSubscription {
         channel: PolyboltChannel.Equity,
         filter: { symbol: subscription.symbol },
       };
+    case 'prices.equity.twap':
+      return {
+        channel: PolyboltChannel.EquityTwap,
+        filter: {
+          symbol: subscription.symbol,
+          window_seconds: subscription.windowSeconds,
+        },
+      };
   }
 }

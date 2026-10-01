@@ -1,6 +1,7 @@
 import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
+  type EquityTwapPriceEvent,
   RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -62,6 +63,19 @@ function price(timestamp = Date.now()): CryptoPriceEvent {
       value: toDecimalString('1'),
       receivedAt: undefined,
       isCarriedForward: undefined,
+    },
+  };
+}
+function equityTwap(timestamp = Date.now()): EquityTwapPriceEvent {
+  return {
+    topic: 'prices.equity.twap',
+    type: 'update',
+    timestamp: toEpochMilliseconds(timestamp),
+    payload: {
+      symbol: 'USDJPY',
+      timestamp: toEpochMilliseconds(timestamp),
+      value: toDecimalString('150.01'),
+      windowSeconds: 60,
     },
   };
 }
@@ -341,5 +355,29 @@ describe('price subscription policy', () => {
         },
       }),
     );
+  });
+
+  it('routes mixed-case equity TWAP updates and replays fixed-window snapshots', async () => {
+    const harness = setup();
+    const key: PriceKey = {
+      key: 'equity-twap',
+      topic: 'prices.equity.twap',
+      symbol: 'usdjpy',
+      windowSeconds: 60,
+    };
+    const observer = await accept(harness.session, key);
+    const event = equityTwap();
+    harness.events.event(event);
+    expect(observer.event).toHaveBeenCalledWith(event);
+    const joining = await accept(harness.session, key);
+    expect(joining.event).toHaveBeenCalledWith({
+      ...event,
+      type: 'subscribe',
+      payload: {
+        symbol: 'USDJPY',
+        windowSeconds: 60,
+        data: [{ timestamp: event.timestamp, value: '150.01' }],
+      },
+    });
   });
 });
