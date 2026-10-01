@@ -31,8 +31,9 @@ export type PublicWalletActions = {
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
-   * This method only reads on-chain state. It does not require a signer or
-   * submit transactions.
+   * Reads the wallet's current approval state. Recent grants and revocations
+   * may take time to appear. It does not require a signer or submit
+   * transactions. Trading setup re-checks approvals before preparing them.
    *
    * @throws {@link FetchTradingApprovalsStateError}
    * Thrown on failure.
@@ -53,8 +54,9 @@ export type SecureWalletActions = {
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
-   * This method reads the authenticated account's wallet state. It only reads
-   * on-chain state and does not submit transactions.
+   * Reads the authenticated account's wallet approval state. Recent grants
+   * and revocations may take time to appear. It does not submit transactions.
+   * Trading setup re-checks approvals before preparing them.
    *
    * @throws {@link FetchTradingApprovalsStateError}
    * Thrown on failure.

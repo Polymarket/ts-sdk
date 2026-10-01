@@ -1,3 +1,4 @@
+import { toPaginationCursor } from '@polymarket/bindings';
 import { createPublicClient, UserInputError } from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { afterEach, vi } from 'vitest';
@@ -34,6 +35,71 @@ describe('Events', () => {
 
       expect(firstPage.items.length).toBeGreaterThan(0);
       await expectPageWindow(paginator, firstPage, 99);
+    });
+
+    it('refuses a cursor reused for a different query before any request', async ({
+      publicClient,
+    }) => {
+      const { nextCursor } = await publicClient
+        .listEvents({ closed: false, pageSize: 2 })
+        .firstPage()
+        .then(expectNonEmptyPage);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        publicClient
+          .listEvents({ closed: true, pageSize: 2 })
+          .from(nextCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // A damaged envelope is rejected locally rather than sent as a token.
+      const damagedCursor = toPaginationCursor(
+        btoa(JSON.stringify({ kind: 'keyset', fingerprint: 42, cursor: 't' })),
+      );
+      await expect(
+        publicClient
+          .listEvents({ closed: false, pageSize: 2 })
+          .from(damagedCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // The same query with another page size continues the walk.
+      const secondPage = await publicClient
+        .listEvents({ closed: false, pageSize: 3 })
+        .from(nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+      expect(secondPage.items.length).toBeLessThanOrEqual(3);
+    });
+
+    it('continues a raw cursor minted before query binding', async ({
+      publicClient,
+    }) => {
+      // Cursors saved by earlier versions are the service's own tokens.
+      const raw = (await fetch(
+        `${environment.gamma.rest}/events/keyset?closed=false&limit=2`,
+      ).then((response) => response.json())) as { next_cursor?: string };
+      const legacyCursor = toPaginationCursor(expectPresent(raw.next_cursor));
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const page = await publicClient
+        .listEvents({ closed: false, pageSize: 2 })
+        .from(legacyCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      expect(page.items.length).toBeLessThanOrEqual(2);
+      const url = new URL(
+        fetchSpy.mock.calls
+          .map(([input]) =>
+            input instanceof Request ? input.url : String(input),
+          )
+          .find((url) => url.includes('/events/keyset')) ?? '',
+      );
+      expect(url.searchParams.get('after_cursor')).toBe(raw.next_cursor);
     });
   });
 

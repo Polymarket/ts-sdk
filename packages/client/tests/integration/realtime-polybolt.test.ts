@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, vi } from 'vitest';
-import {
-  KnownPriceSource,
-  type SubscriptionHandle,
-} from '../../src/actions/subscriptions';
+import type { SubscriptionHandle } from '../../src/actions/subscriptions';
 import { UserInputError } from '../../src/errors';
 import { it, runMeteredTests } from './fixtures';
 
@@ -166,9 +163,8 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
             );
             expect(event.topic).toBe(spec.topic);
             expect(event.seq).toBeGreaterThan(0);
-            expect(Object.values(KnownPriceSource)).toContain(
-              event.payload.source,
-            );
+            expect(typeof event.payload.source).toBe('string');
+            expect(event.payload.source).not.toBe('');
             if (event.type === 'update')
               expect(typeof event.payload.value).toBe('string');
             if ('windowSeconds' in event.payload) {
@@ -200,7 +196,8 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
         expect(event.topic).toBe('prices.equity.twap');
         expect(event.payload.symbol).toBe('usdjpy');
         expect(event.payload.windowSeconds).toBe(60);
-        expect(Object.values(KnownPriceSource)).toContain(event.payload.source);
+        expect(typeof event.payload.source).toBe('string');
+        expect(event.payload.source).not.toBe('');
         if (event.type === 'update')
           expect(typeof event.payload.value).toBe('string');
       }

@@ -2,7 +2,6 @@ import {
   EvmAddressSchema,
   type PaginationCursor,
   PaginationCursorSchema,
-  toPaginationCursor,
 } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -64,7 +63,12 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { type Paginated, paginate } from '../pagination';
+import {
+  decodeCursorState,
+  encodeCursorState,
+  type Paginated,
+  paginate,
+} from '../pagination';
 import { validateWith } from '../response';
 import {
   expectTransactionHandle,
@@ -77,6 +81,7 @@ import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -96,8 +101,11 @@ export type {
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  ListPerpsBuilderEarningsRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
@@ -108,6 +116,8 @@ export type {
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
+  PerpsBuilderFillUpdateEvent,
+  PerpsBuilderTermsInput,
   PerpsCancelOptions,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
@@ -138,11 +148,16 @@ export type {
 } from '../websockets/perps/session';
 export {
   ArmPerpsAutoCancelError,
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+  RevokePerpsBuilderFeeError,
   UpdatePerpsLeverageError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { approvePerpsBuilderFee } from './perps/builders';
 import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
@@ -509,7 +524,7 @@ export function listPerpsCandles(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 startTimestamp:
                   last.timestamp +
@@ -643,7 +658,7 @@ export function listPerpsFundingHistory(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp: last.timestamp - 1,
               })
@@ -747,7 +762,7 @@ export function listPerpsTrades(
           items,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp:
                   last === undefined ? cursorTimestamp - 1 : cursorTimestamp,
@@ -880,41 +895,31 @@ function createInitialPerpsTradesCursor(
 function decodePerpsCandlesCursor(
   cursor: PaginationCursor,
 ): PerpsCandlesCursorState {
-  return decodePerpsCursor(cursor, PerpsCandlesCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsCandlesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsFundingCursor(
   cursor: PaginationCursor,
 ): PerpsFundingCursorState {
-  return decodePerpsCursor(cursor, PerpsFundingCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsFundingCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsTradesCursor(
   cursor: PaginationCursor,
 ): PerpsTradesCursorState {
-  return decodePerpsCursor(cursor, PerpsTradesCursorStateSchema);
-}
-
-function decodePerpsCursor<T>(
-  cursor: PaginationCursor,
-  schema: z.ZodType<T>,
-): T {
-  try {
-    return schema.parse(JSON.parse(atob(cursor)));
-  } catch (error) {
-    throw new UserInputError('Invalid Perps pagination cursor', {
-      cause: error,
-    });
-  }
-}
-
-function encodePerpsCursor(
-  state:
-    | PerpsCandlesCursorState
-    | PerpsFundingCursorState
-    | PerpsTradesCursorState,
-): PaginationCursor {
-  return toPaginationCursor(btoa(JSON.stringify(state)));
+  return decodeCursorState(
+    cursor,
+    PerpsTradesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function perpsKlineIntervalMilliseconds(interval: PerpsKlineInterval): number {
@@ -968,6 +973,8 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   expiresIn: z
     .number()
     .int()
@@ -977,6 +984,8 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -998,6 +1007,10 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
+  /** Builder address whose saved approval supplies the fee, limited by the builder cap. Zero disables attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1011,6 +1024,10 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
+  /** Select this builder for resumed orders. Credentials do not store attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1236,6 +1253,16 @@ export const TransferPerpsCollateralError = makeErrorGuard(
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
  *
+ * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+ * Opening or resuming checks builder availability and uses the lower of the
+ * builder cap and the trader's saved approved maximum. Missing approval counts
+ * as zero. A zero effective fee disables attribution without failing setup.
+ * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+ * The builder address defaults to the session's selected builder.
+ * Opening a session never grants consent. Approval remains valid until revoked
+ * or replaced and does not need to be repeated for each session.
+ * Set `includeBuilderFills` to receive builder receipts through the session iterator.
+ *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
  *
@@ -1250,7 +1277,12 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+    approvePerpsBuilderFee.bind(null, client),
+    params.includeBuilderFills,
+  );
 }
 
 /**
@@ -1806,13 +1838,4 @@ function sendPerpsDepositTransaction(
     kind: 'sendPerpsDepositTransaction',
     request,
   };
-}
-
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
 }

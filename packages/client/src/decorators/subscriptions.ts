@@ -39,6 +39,7 @@ export type {
   PriceSource,
   PriceSubscription,
   PriceSubscriptionConfirmation,
+  SubscriptionHandle,
 } from '../actions';
 export { KnownPriceSource, PriceProvider, SubscribeError } from '../actions';
 

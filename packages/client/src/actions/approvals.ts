@@ -1,6 +1,7 @@
 import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
+import { FetchApprovalsResponseSchema } from '@polymarket/bindings/data';
 import { WalletType } from '@polymarket/bindings/gamma';
-import type { EvmSignature, HexString } from '@polymarket/types';
+import { type EvmSignature, type HexString, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
   decodeErc20AllowanceResult,
@@ -25,6 +26,8 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import { validateWith } from '../response';
+import { withRateLimitRetry } from '../retry';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
@@ -36,12 +39,14 @@ import {
   type SendErc1155ApprovalForAllTransactionRequest,
   signerTransactionRequest,
 } from '../workflow';
+import { resolveIndexedTradingApprovals } from './approvals-state';
 import {
   GaslessTransactionMetadataSchema,
   type GaslessWorkflowRequest,
   prepareGaslessTransaction,
   type WaitForGaslessTransactionError,
 } from './gasless';
+import { toDataSearchParams } from './params';
 
 export type Erc20ApprovalWorkflowRequest =
   | GaslessWorkflowRequest
@@ -352,11 +357,13 @@ export type TradingApprovalsState = {
 };
 
 export type FetchTradingApprovalsStateError =
+  | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTradingApprovalsStateError = makeErrorGuard(
+  RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -366,8 +373,9 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
 /**
  * Reads the approvals a wallet is missing for supported trading workflows.
  *
- * This action only reads on-chain state. It does not require a signer or submit
- * transactions.
+ * Reads the wallet's current approval state. Recent grants and revocations
+ * may take time to appear. It does not require a signer or submit
+ * transactions. Trading setup re-checks approvals before preparing them.
  *
  * @example
  * ```ts
@@ -391,7 +399,19 @@ export async function fetchTradingApprovalsState(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const missing = await resolveMissingTradingApprovals(client, user);
+  const snapshot = await unwrap(
+    withRateLimitRetry(() =>
+      client.data.get('/v2/approvals', {
+        params: toDataSearchParams({ user }),
+      }),
+    ).andThen(validateWith(FetchApprovalsResponseSchema)),
+  );
+  const missing = resolveIndexedTradingApprovals(
+    snapshot,
+    user,
+    client.environment.chainId,
+    getRequiredTradingApprovals(client),
+  );
 
   return {
     isFullyApproved: missing.erc20.length === 0 && missing.erc1155.length === 0,
