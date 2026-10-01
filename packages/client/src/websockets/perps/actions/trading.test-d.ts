@@ -25,6 +25,14 @@ const gtcOrder = {
 } as const;
 
 describe('PlacePerpsOrderRequest', () => {
+  it('does not accept per-order builder overrides', () => {
+    const request: PlacePerpsOrderRequest = {
+      ...gtcOrder,
+      // @ts-expect-error Builder terms belong to the session.
+      builderAttribution: null,
+    };
+    void request;
+  });
   it('allows priced GTC orders to be post-only', () => {
     const request: PerpsPlaceGtcOrderRequest = {
       ...baseOrder,
@@ -179,6 +187,15 @@ describe('PerpsSession.placeOrder', () => {
 });
 
 describe('PlacePerpsPositionTpSlRequest', () => {
+  it('does not accept builder overrides for generated exits', () => {
+    const request: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      // @ts-expect-error Builder terms belong to the session.
+      builderAttribution: null,
+      stopLoss: { triggerPrice: '90' },
+    };
+    void request;
+  });
   it('rejects position side', () => {
     const request: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,
