@@ -4,6 +4,7 @@ import {
   PerpsBalanceSchema,
   PerpsPortfolioSchema,
 } from '../perps/account';
+import { PerpsBuilderEarningSchema } from '../perps/builders';
 import {
   PerpsInstrumentIdSchema,
   type PerpsKlineInterval,
@@ -286,6 +287,27 @@ export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
 
 /**
+ * Live builder receipts. Sequence numbers are sparse engine sequences.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsBuilderFillUpdateEventSchema =
+  PerpsUpdateEnvelopeSchema.extend({
+    ch: z.literal('builderFills'),
+    data: z.array(PerpsBuilderEarningSchema),
+  }).transform(({ ch, ts, sq, data }) => ({
+    type: 'builderFill' as const,
+    channel: ch,
+    timestamp: ts,
+    sequence: sq,
+    payload: data,
+  }));
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type PerpsBuilderFillUpdateEvent = z.infer<
+  typeof PerpsBuilderFillUpdateEventSchema
+>;
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsFundingUpdateEventSchema = perpsSessionEventSchema(
@@ -402,6 +424,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsPortfolioUpdateEventSchema,
   PerpsOrderUpdateEventSchema,
   PerpsFillUpdateEventSchema,
+  PerpsBuilderFillUpdateEventSchema,
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,

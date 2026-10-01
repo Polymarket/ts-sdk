@@ -38,6 +38,7 @@ export type {
   EquityTwapPriceSubscription,
   PriceSource,
   PriceSubscription,
+  SubscriptionHandle,
 } from '../actions';
 export { KnownPriceSource, SubscribeError } from '../actions';
 

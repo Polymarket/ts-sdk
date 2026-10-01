@@ -33,6 +33,24 @@ export class UserInputError extends PolymarketError {
 }
 
 /**
+ * Error thrown when pagination would pass the deepest page the service serves
+ * for a list.
+ *
+ * Some list endpoints cap how far an offset-paginated read may go and reject
+ * requests past the cap. The SDK throws this before sending such a request;
+ * the pages already returned stay valid, but whether more items exist past
+ * the cap cannot be established. Automatic iteration stops normally on a page
+ * with `limitReached: true`; explicitly resuming past the cap still throws.
+ */
+export class PaginationLimitError extends PolymarketError {
+  override name = 'PaginationLimitError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+}
+
+/**
  * Error thrown when a service response does not match the action's expected
  * response shape.
  */
