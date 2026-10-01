@@ -61,6 +61,76 @@ export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
   params?: URLSearchParams;
 };
 
+const HTTP_DATE_MONTHS: readonly string[] = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+const HTTP_DATE_MONTH = `(?<month>${HTTP_DATE_MONTHS.join('|')})`;
+const HTTP_DATE_TIME = '(?<hour>\\d{2}):(?<minute>\\d{2}):(?<second>\\d{2})';
+// RFC 9110 section 5.6.7: recipients accept IMF-fixdate and the two obsolete
+// forms. The fields are read as UTC here rather than through `Date.parse`,
+// which treats the asctime form as local time and accepts strings such as
+// `120` or `10 Sep 2026` as dates.
+const HTTP_DATE_PATTERNS = [
+  new RegExp(
+    `^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), (?<day>\\d{2}) ${HTTP_DATE_MONTH} (?<year>\\d{4}) ${HTTP_DATE_TIME} GMT$`,
+  ),
+  new RegExp(
+    `^(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (?<day>\\d{2})-${HTTP_DATE_MONTH}-(?<year>\\d{2}) ${HTTP_DATE_TIME} GMT$`,
+  ),
+  new RegExp(
+    `^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) ${HTTP_DATE_MONTH} (?<day> \\d|\\d{2}) ${HTTP_DATE_TIME} (?<year>\\d{4})$`,
+  ),
+];
+const FIFTY_YEARS_MS = 50 * 365.25 * 24 * 60 * 60 * 1000;
+
+/**
+ * Parses an RFC 9110 HTTP-date into epoch milliseconds, or undefined when the
+ * value is not a well-formed date. A two-digit year more than fifty years in
+ * the future is read as the most recent past year with those digits.
+ */
+function parseHttpDate(value: string, now: number): number | undefined {
+  let groups: Record<string, string | undefined> | undefined;
+  for (const pattern of HTTP_DATE_PATTERNS) {
+    groups = pattern.exec(value)?.groups;
+    if (groups !== undefined) break;
+  }
+  if (groups === undefined) return undefined;
+  const month = HTTP_DATE_MONTHS.indexOf(groups.month ?? '');
+  if (month < 0) return undefined;
+  const day = Number(groups.day);
+  const hour = Number(groups.hour);
+  const minute = Number(groups.minute);
+  const second = Number(groups.second);
+  if (hour > 23 || minute > 59 || second > 59) return undefined;
+  const yearDigits = groups.year ?? '';
+  let year = Number(yearDigits);
+  if (yearDigits.length === 2) {
+    year += Math.floor(new Date(now).getUTCFullYear() / 100) * 100;
+    if (Date.UTC(year, month, day, hour, minute, second) - now > FIFTY_YEARS_MS)
+      year -= 100;
+  }
+  const time = Date.UTC(year, month, day, hour, minute, second);
+  const parsed = new Date(time);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month ||
+    parsed.getUTCDate() !== day
+  )
+    return undefined;
+  return time;
+}
+
 /**
  * Internal wrapper around a service-scoped `ky` instance.
  */
@@ -284,11 +354,23 @@ export class ServiceClient {
   #parseRetryAfterHeader(response: Response): number | undefined {
     const value = response.headers.get('retry-after');
 
-    if (value === null || !/^\d+$/.test(value)) {
+    if (value === null) {
       return undefined;
     }
 
-    return Number(value);
+    if (/^\d+$/.test(value)) {
+      return Number(value);
+    }
+
+    // RFC 9110 section 10.2.3 also allows an HTTP-date. Report whole seconds
+    // from now, never rounding a future deadline down, and clamp past dates.
+    const now = Date.now();
+    const deadline = parseHttpDate(value, now);
+    if (deadline === undefined) {
+      return undefined;
+    }
+
+    return Math.max(0, Math.ceil((deadline - now) / 1000));
   }
 
   async #extractResponseError(

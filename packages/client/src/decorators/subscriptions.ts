@@ -37,6 +37,7 @@ export type {
   EquityTwapPriceSnapshotEvent,
   EquityTwapPriceSubscription,
   PriceSubscription,
+  SubscriptionHandle,
 } from '../actions';
 export { SubscribeError } from '../actions';
 
