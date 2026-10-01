@@ -26,7 +26,9 @@ import {
   createPublicClient,
   type EquityTwapPriceSubscription,
   KnownPriceSource,
+  PriceProvider,
   type PriceSource,
+  type PriceSubscriptionConfirmation,
   type RealtimeErrorCode,
   RealtimeKnownErrorCode,
   type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
@@ -49,6 +51,62 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('price subscription contracts', () => {
+  it('exports provider selection only for the four vendor-neutral price topics', () => {
+    expectTypeOf<PriceProvider>().toEqualTypeOf<BindingExports.PriceProvider>();
+    expectTypeOf<BindingExports.PolyboltAck>()
+      .toHaveProperty('provider')
+      .toEqualTypeOf<PriceSource | undefined>();
+    expectTypeOf<PriceProvider>().toEqualTypeOf<
+      PriceProvider.Pyth | PriceProvider.Chainlink
+    >();
+    expectTypeOf<KnownPriceSource.Massive>().not.toExtend<PriceProvider>();
+    expectTypeOf<ClientExports.CryptoPriceSubscription>()
+      .toHaveProperty('provider')
+      .toEqualTypeOf<PriceProvider | undefined>();
+    expectTypeOf<ClientExports.CryptoTwapPriceSubscription>()
+      .toHaveProperty('provider')
+      .toEqualTypeOf<PriceProvider | undefined>();
+    expectTypeOf<ClientExports.EquityPriceSubscription>()
+      .toHaveProperty('provider')
+      .toEqualTypeOf<PriceProvider | undefined>();
+    expectTypeOf<ClientExports.EquityTwapPriceSubscription>()
+      .toHaveProperty('provider')
+      .toEqualTypeOf<PriceProvider | undefined>();
+    expectTypeOf<ClientExports.CryptoPricesSubscription>().not.toHaveProperty(
+      'provider',
+    );
+    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapSubscription>().not.toHaveProperty(
+      'provider',
+    );
+    expectTypeOf<ClientExports.EquityPricesSubscription>().not.toHaveProperty(
+      'provider',
+    );
+    expectTypeOf<MarketSubscription>().not.toHaveProperty('provider');
+    expectTypeOf<PriceSubscriptionConfirmation>().toEqualTypeOf<{
+      symbol: string;
+      provider?: PriceSource;
+    }>();
+    expectTypeOf<ClientExports.EquityPriceSubscription>()
+      .toHaveProperty('onSubscribed')
+      .toEqualTypeOf<
+        | ((
+            confirmation: PriceSubscriptionConfirmation,
+          ) => void | Promise<void>)
+        | undefined
+      >();
+    void secureClient.subscribe([
+      {
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+        onSubscribed(confirmation) {
+          expectTypeOf(
+            confirmation,
+          ).toEqualTypeOf<PriceSubscriptionConfirmation>();
+        },
+      },
+    ]);
+  });
+
   it('exports known price sources while accepting future source names', () => {
     expectTypeOf<KnownPriceSource>().toEqualTypeOf<BindingExports.KnownPriceSource>();
     expectTypeOf<PriceSource>().toEqualTypeOf<BindingExports.PriceSource>();
@@ -79,22 +137,34 @@ describe('price subscription contracts', () => {
     expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<{
       topic: 'prices.crypto.twap';
       symbols: readonly string[];
+      provider?: PriceProvider;
+      onSubscribed?: (
+        confirmation: PriceSubscriptionConfirmation,
+      ) => void | Promise<void>;
     }>();
     expectTypeOf<RootCryptoTwapPriceEvent>().toEqualTypeOf<CryptoTwapPriceEvent>();
     const crypto = secureClient.subscribe([
-      { topic: 'prices.crypto', symbols: ['btcusd'] },
+      {
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+        provider: PriceProvider.Pyth,
+      },
     ]);
     expectTypeOf(crypto).resolves.toEqualTypeOf<
       SubscriptionHandle<CryptoPriceEvent>
     >();
     const twap = secureClient.subscribe([
-      { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+      {
+        topic: 'prices.crypto.twap',
+        symbols: ['btcusd'],
+        provider: PriceProvider.Chainlink,
+      },
     ]);
     expectTypeOf(twap).resolves.toEqualTypeOf<
       SubscriptionHandle<CryptoTwapPriceEvent>
     >();
     const equity = secureClient.subscribe([
-      { topic: 'prices.equity', symbol: 'aapl' },
+      { topic: 'prices.equity', symbol: 'aapl', provider: PriceProvider.Pyth },
     ]);
     expectTypeOf(equity).resolves.toEqualTypeOf<
       SubscriptionHandle<EquityPriceEvent>
@@ -103,6 +173,7 @@ describe('price subscription contracts', () => {
       {
         topic: 'prices.equity.twap',
         symbol: 'USDJPY',
+        provider: PriceProvider.Chainlink,
       },
     ]);
     expectTypeOf(equityTwap).resolves.toEqualTypeOf<
@@ -157,6 +228,10 @@ describe('price subscription contracts', () => {
     expectTypeOf<EquityTwapPriceSubscription>().toEqualTypeOf<{
       topic: 'prices.equity.twap';
       symbol: string;
+      provider?: PriceProvider;
+      onSubscribed?: (
+        confirmation: PriceSubscriptionConfirmation,
+      ) => void | Promise<void>;
     }>();
     expectTypeOf<RootEquityTwapPriceEvent>().toEqualTypeOf<EquityTwapPriceEvent>();
     expectTypeOf<RootEquityTwapPriceSnapshotEvent>().toEqualTypeOf<EquityTwapPriceSnapshotEvent>();

@@ -47,9 +47,15 @@ export enum PolyboltChannel {
   EquityTwap = 'price.equity.twap',
 }
 
+/** A provider that can be requested for a price subscription. */
+export enum PriceProvider {
+  Chainlink = 'chainlink',
+  Pyth = 'pyth',
+}
+
 /** A filter sent to a PolyBolt price channel. */
 export type PolyboltFilter =
-  | { symbol: string; window_seconds?: 60 }
+  | { symbol: string; window_seconds?: 60; provider?: PriceProvider }
   | { asset_id: string };
 
 /** One item in a PolyBolt subscription operation. */
@@ -70,6 +76,7 @@ export const PolyboltAckSchema = z.object({
   op: z.enum(PolyboltAckOp),
   channel: z.string().optional(),
   rid: z.string().optional(),
+  provider: PriceSourceSchema.optional(),
   code: z
     .string()
     .transform((value): RealtimeErrorCode => value)

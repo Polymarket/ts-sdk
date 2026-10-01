@@ -2,6 +2,7 @@ import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
   type EquityTwapPriceEvent,
+  KnownPriceSource,
   type PriceSource,
   RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
@@ -436,5 +437,82 @@ describe('price subscription policy', () => {
       const later = await accept(harness.session, key);
       expect(later.event).toHaveBeenCalledWith(expected);
     }
+  });
+
+  it('confirms a listener added during a callback only once', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const first = {
+      ...listener(),
+      subscribed: vi.fn(() => {
+        void harness.session.add(crypto(), joining);
+      }),
+    };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(first.subscribed).toHaveBeenCalledTimes(1);
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+  });
+
+  it('replays provider confirmation to late listeners and clears it on reconnect', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const first = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(first.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    const joining = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), joining);
+    expect(joining.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    harness.events.disconnected({ code: 4002, reason: 'Slow consumer.' });
+    await vi.advanceTimersByTimeAsync(800);
+    const afterReconnect = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), afterReconnect);
+    expect(afterReconnect.subscribed).not.toHaveBeenCalled();
+    harness.events.subscribed(subscription, { symbol: 'btcusd' });
+    expect(afterReconnect.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+    });
+  });
+
+  it('does not confirm a replacement with the removed subscription acknowledgement', async () => {
+    const harness = setup();
+    const original = crypto();
+    const first = await accept(harness.session, original);
+    harness.session.remove(original.key, first);
+    const replacement = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const pending = harness.session.add(replacement, joining);
+    harness.events.subscribed(original, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(joining.subscribed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(40);
+    await pending;
+    harness.events.subscribed(replacement, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Chainlink,
+    });
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Chainlink,
+    });
   });
 });
