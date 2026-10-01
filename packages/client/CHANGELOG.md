@@ -1,5 +1,65 @@
 # @polymarket/client
 
+## 0.12.0
+
+### Minor Changes
+
+- 348977a: Add `REDEEMABLE_LOST` and `MERGEABLE` to `PositionStatus` as `listPositions` filters. `REDEEMABLE_LOST` lists still-held zero-payout positions and requires `user`, so a request without one now fails locally with `UserInputError`. `MERGEABLE` lists live complementary pairs a wallet can merge back to collateral, sorted by `TOKENS` by default. Without `user` it falls back to the broader `OPEN` listing. Rows still report only `OPEN`, `REDEEMABLE`, or `CLOSED`, so `Position.status` is now typed as `PositionRowStatus`. Lost rows report `REDEEMABLE` and mergeable rows report `OPEN`.
+- 2393b48: Type known Perps cancellation rejections while preserving unrecognized identifiers, and retry transient `order_in_flight` results with configurable bounded backoff.
+
+  When a later cancellation attempt fails, throw `PerpsCancelRetryError` with the last received results in original request order, the pending request indexes, and the underlying cause. Earlier confirmed outcomes remain available; pending entries describe the previous attempt and must be reconciled if the retry's response was lost. Initial-attempt failures keep their existing error types.
+
+- a56f27f: `listComments` pages through a whole thread by server cursor when the read has no `holdersOnly` or `getPositions` and sorts by nothing, `id` or `createdAt`; the first page keeps today's newest-first order. Cursors carry the parent, order and direction they were minted for and are rejected before any request when reused for a different query. Reads with those options or another order stay on offset pages under the existing 200 cap, and cursors saved from earlier versions keep working with the same arguments. Adds `ListCommentsKeysetResponseSchema` to the bindings.
+
+  `listEvents` cursors likewise carry the query they were minted for and are rejected before any request when reused for a different one; cursors saved from earlier versions keep working with the same arguments.
+
+- efbb2bf: Stop automatic comment and search pagination normally at the supported depth, returning the final accessible page with `limitReached: true` when more items may exist. `hasMore` retains that meaning; the flag indicates unknown completeness, not proof of missing rows. Comment pages start at offset 200 at most, while `search` serves up to 100 pages. Explicitly following a cursor past either limit throws the new `PaginationLimitError` before any request, and the pages already returned stay valid. `firstPage()` consistently rejects its promise when cursor validation fails. Page fullness for `listComments` counts top-level comments only, since replies ride along in the same page. The by-address comments limit is a hard stop with no range filters to retrieve the remaining comments.
+- e7b7af1: Add owner-signed Perps internal transfers and normalized transfer history.
+
+  Preserve submillisecond transfers at history page boundaries. If a full
+  millisecond cannot be paged safely, report an error instead of omitting records.
+
+- f3ba735: Add Perps Builder Codes with explicit owner-signed fee approval and revocation.
+  Approving a builder updates the session's attribution after confirmation; revoking
+  clears it after confirmation. Approval versions are managed internally.
+  Approval requires an explicit `maxFeeRate`, while the builder address defaults
+  to the session's selected builder.
+
+  An optional builder address at session setup reads the trader's saved approval.
+  The lower of the approved maximum and builder cap applies consistently to single
+  orders, batches, and TP/SL exits. Missing or revoked approval disables attribution
+  without failing setup. The selected builder remains available for approval.
+  New approvals refresh the builder cap
+  and replace the session rate after confirmation. Setup never creates consent.
+
+  Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
+  `fee` continues to mean the exchange fee. Legacy responses normalize to zero
+  builder fee. Existing untagged order signatures are unchanged.
+
+  Expose typed builder earnings reporting and opt-in builder receipts through the
+  existing session iterator with `includeBuilderFills`. This extends the experimental
+  `PerpsSessionEvent` union with `builderFill`. Historical reconciliation remains
+  application-owned. Failed consent submissions are not automatically retried.
+
+### Patch Changes
+
+- 5e30528: Accept account trades without a transaction hash so a fill without one does not invalidate the entire page. Missing and empty hashes normalize to `undefined`; populated hashes are unchanged.
+- a195c64: Preserve each sport's `name` on sports-list and event responses.
+- 62035dc: Route splitting, merging, and redeeming positions solely by market version: `v1` uses CTF and `v2` uses Protocol V2. Raise `UnexpectedResponseError` when the version or selected protocol's IDs are missing.
+- 54337ed: Support `CONDITIONAL-V2` balance and allowance reads and refreshes. Use the Protocol
+  V2 position selector for both allowance checks and post-approval refreshes when
+  automatically recovering a Protocol V2 sell order. Export `AssetType` from
+  `@polymarket/client` for explicit balance and allowance calls.
+- Updated dependencies [5e30528]
+- Updated dependencies [348977a]
+- Updated dependencies [2393b48]
+- Updated dependencies [a56f27f]
+- Updated dependencies [a195c64]
+- Updated dependencies [e7b7af1]
+- Updated dependencies [54337ed]
+- Updated dependencies [f3ba735]
+  - @polymarket/bindings@0.12.0
+
 ## 0.11.0
 
 ### Minor Changes

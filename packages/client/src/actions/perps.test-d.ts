@@ -1,6 +1,10 @@
-import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
+import {
+  type PerpsCredentials,
+  PerpsInstrumentCategory,
+} from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
@@ -28,6 +32,7 @@ import type {
   PerpsCancelRetryOptions,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
@@ -38,6 +43,7 @@ import type {
   PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecureClientOptions,
   SecurePerpsActions,
   TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
@@ -50,7 +56,49 @@ import {
   PerpsKnownCancelOrderErrorCode,
   UpdatePerpsMarginError,
 } from '../index';
-import type { FetchPerpsInstrumentsRequest } from './perps';
+import type {
+  CreatePerpsSessionRequest,
+  FetchPerpsInstrumentsRequest,
+  ResumePerpsSessionRequest,
+} from './perps';
+
+describe('session builder consent', () => {
+  it('requires an explicit maximum and keeps versions internal', () => {
+    function approve(session: PerpsSession) {
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        maxFeeRate: '0.0003',
+      });
+      void session.approveBuilderFee({ maxFeeRate: '0.0005' });
+      // @ts-expect-error Consent requires an explicit maximum.
+      void session.approveBuilderFee();
+      // @ts-expect-error Selecting a builder does not specify an approved maximum.
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+      });
+      void session.revokeBuilderFee();
+    }
+    void approve;
+    expectTypeOf<ApprovePerpsBuilderFeeRequest>().not.toHaveProperty(
+      'approvalVersion',
+    );
+  });
+
+  it('accepts an address selector and receipts option on creation and resume', () => {
+    const create: CreatePerpsSessionRequest = {
+      builderAttribution: '0x1111111111111111111111111111111111111111',
+      includeBuilderFills: true,
+    };
+    function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
+      return { ...create, credentials };
+    }
+    expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
+  });
+});
 
 describe('FetchPerpsInstrumentsRequest', () => {
   it('allows current instrument filters', () => {
