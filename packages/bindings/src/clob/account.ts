@@ -11,6 +11,7 @@ import {
   EpochMillisecondsToIsoDateTimeStringSchema,
   EvmAddressSchema,
   emptyStringToNull,
+  emptyStringToUndefined,
   type IsoDateTimeString,
   OptionalEpochLikeToIsoDateTimeStringSchema,
   type PositionId,
@@ -188,7 +189,11 @@ export type ClobTrade = {
   status: string;
   feeRateBps: DecimalString;
   bucketIndex: number;
-  transactionHash: string;
+  /**
+   * Transaction hash, or undefined when unavailable (for example, while
+   * broadcast is pending or after a failure before broadcast).
+   */
+  transactionHash: string | undefined;
   makerOrders: MakerOrder[];
   matchedAt: IsoDateTimeString;
   updatedAt: IsoDateTimeString;
@@ -213,7 +218,10 @@ export const ClobTradeSchema = z
     status: TradeStatusSchema,
     taker_order_id: z.string(),
     trader_side: z.enum(['TAKER', 'MAKER']),
-    transaction_hash: z.string(),
+    transaction_hash: z.preprocess(
+      emptyStringToUndefined,
+      z.string().optional(),
+    ),
   })
   .transform(
     ({
@@ -253,6 +261,7 @@ export type ClobTradesPage = z.infer<typeof ClobTradesPageSchema>;
 export enum AssetType {
   COLLATERAL = 'COLLATERAL',
   CONDITIONAL = 'CONDITIONAL',
+  CONDITIONAL_V2 = 'CONDITIONAL-V2',
 }
 
 export const AssetTypeSchema = z.enum(AssetType);

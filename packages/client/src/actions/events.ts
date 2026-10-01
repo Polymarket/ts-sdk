@@ -1,6 +1,7 @@
 import {
   IsoCalendarDateStringSchema,
   IsoDateTimeStringSchema,
+  type PaginationCursor,
   PaginationCursorSchema,
   QuestionIdSchema,
 } from '@polymarket/bindings';
@@ -30,7 +31,14 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { PageSizeSchema, type Paginated, paginate } from '../pagination';
+import {
+  encodeKeysetCursor,
+  keysetCursorFromPayload,
+  PageSizeSchema,
+  type Paginated,
+  paginate,
+  readCursorPayload,
+} from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
@@ -149,6 +157,10 @@ export const ListEventsError = makeErrorGuard(
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
+ * Cursors continue the exact query they were minted for and are rejected for a
+ * different one before any request. Cursors saved from earlier versions keep
+ * working with the same arguments.
+ *
  * @throws {@link ListEventsError}
  * Thrown on failure.
  *
@@ -185,25 +197,45 @@ export function listEvents(
   client: BaseClient,
   request: ListEventsRequest = {},
 ): Paginated<Event[]> {
-  const params = parseUserInput(request, ListEventsRequestSchema);
+  const {
+    cursor: initialCursor,
+    pageSize,
+    ...query
+  } = parseUserInput(request, ListEventsRequestSchema);
 
   return paginate(
     (cursor) =>
       client.gamma
         .get('/events/keyset', {
           params: toEventsSearchParams({
-            ...params,
-            cursor: cursor ?? params.cursor,
+            ...query,
+            pageSize,
+            cursor:
+              cursor === undefined ? undefined : toEventsCursor(cursor, query),
           }),
         })
         .andThen(validateWith(ListEventsKeysetResponseSchema))
         .map((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
-          nextCursor: response.nextCursor,
+          nextCursor:
+            response.nextCursor === undefined
+              ? undefined
+              : encodeKeysetCursor(response.nextCursor, query),
         })),
-    params.cursor,
+    initialCursor,
   );
+}
+
+// Cursors minted before query binding are raw service tokens; they continue
+// unchecked so saved cursors keep working.
+function toEventsCursor(cursor: PaginationCursor, query: object) {
+  const payload = readCursorPayload(cursor);
+  if (payload === undefined) {
+    return cursor;
+  }
+
+  return keysetCursorFromPayload(payload, query) ?? cursor;
 }
 
 export type FetchEventError =

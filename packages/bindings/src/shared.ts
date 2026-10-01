@@ -563,6 +563,15 @@ export function emptyStringToNull(value: unknown): unknown {
 }
 
 /**
+ * Preprocess helper for upstream fields that omit missing values or serialize
+ * them as empty strings. Normalizes `''` to `undefined` so the field can parse
+ * as `Schema.optional()`.
+ */
+export function emptyStringToUndefined(value: unknown): unknown {
+  return value === '' ? undefined : value;
+}
+
+/**
  * Optional decimal field whose upstream serialization uses an empty string
  * for missing values. Normalizes `''` to `null` so consumers never receive
  * an empty `DecimalString`; populated values parse as `DecimalStringSchema`.
