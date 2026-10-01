@@ -1,5 +1,33 @@
 # @polymarket/client
 
+## 0.13.0
+
+### Minor Changes
+
+- ea1237e: Read trading approval state from the indexed approvals endpoint while keeping
+  trading setup checks on chain. Recent grants and revocations may take time to
+  appear in reads. Return shapes and required approvals are unchanged.
+
+  Reads now follow the configured data endpoint, independently of RPC overrides,
+  and surface its failures without an RPC fallback. This includes rejected zero
+  and protocol-contract wallets, rate limits, and unavailable environments.
+  Incomplete or mismatched approval snapshots raise `UnexpectedResponseError`.
+
+- 61f140f: Add 60-second equity TWAP subscriptions with typed live updates and history snapshots.
+- d0be2fd: Add optional Chainlink and Pyth provider selection to cryptocurrency, equity, and their 60-second TWAP subscriptions. Keep different requested providers on separate connections so fallback and disabled selection do not mix subscriptions. Price sources continue to identify the actual producer. An optional `onSubscribed` callback reports the provider the server confirms, on acceptance and after every reconnect.
+- bbbcb20: Expose the source of realtime price updates and history snapshots. Known sources
+  are available through `KnownPriceSource`, while `PriceSource` accepts future source
+  names. Cached history starts fresh when the source changes.
+
+### Patch Changes
+
+- c7b7e1f: `RequestRejectedError.retryAfter` and `RateLimitError.retryAfter` now also honor the HTTP-date form of the `Retry-After` header, converted to whole seconds from now and never below zero, instead of dropping it. The existing retry policy and the set of retried requests are unchanged.
+- Updated dependencies [ea1237e]
+- Updated dependencies [61f140f]
+- Updated dependencies [d0be2fd]
+- Updated dependencies [bbbcb20]
+  - @polymarket/bindings@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes
