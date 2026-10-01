@@ -140,7 +140,7 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
     }
   });
 
-  it('delivers source-neutral live events with connection-local sequences', async ({
+  it('delivers price history and updates with sources and connection-local sequences', async ({
     secureClientWithDepositWallet: client,
   }) => {
     try {
@@ -156,17 +156,21 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
       // subscriptions span sockets whose independent sequences may interleave.
       await Promise.all(
         specs.map(async (spec) => {
-          const event = await first(
-            await client.subscribe([spec]),
-            (event) => event.type === 'update',
-          );
-          expect(event.topic).toBe(spec.topic);
-          expect(event.seq).toBeGreaterThan(0);
-          if (event.type === 'update')
-            expect(typeof event.payload.value).toBe('string');
-          if ('windowSeconds' in event.payload) {
-            expect(event.payload.windowSeconds).toBe(60);
-            expect(event.payload.symbol).toBe('btcusd');
+          for (const type of ['subscribe', 'update'] as const) {
+            const event = await first(
+              await client.subscribe([spec]),
+              (event) => event.type === type,
+            );
+            expect(event.topic).toBe(spec.topic);
+            expect(event.seq).toBeGreaterThan(0);
+            expect(typeof event.payload.source).toBe('string');
+            expect(event.payload.source).not.toBe('');
+            if (event.type === 'update')
+              expect(typeof event.payload.value).toBe('string');
+            if ('windowSeconds' in event.payload) {
+              expect(event.payload.windowSeconds).toBe(60);
+              expect(event.payload.symbol).toBe('btcusd');
+            }
           }
         }),
       );
@@ -192,6 +196,8 @@ describe.runIf(runMeteredTests)('realtime price transport', () => {
         expect(event.topic).toBe('prices.equity.twap');
         expect(event.payload.symbol).toBe('usdjpy');
         expect(event.payload.windowSeconds).toBe(60);
+        expect(typeof event.payload.source).toBe('string');
+        expect(event.payload.source).not.toBe('');
         if (event.type === 'update')
           expect(typeof event.payload.value).toBe('string');
       }

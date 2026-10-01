@@ -7,8 +7,80 @@ import {
 
 // Representative frames captured from the staging edge on 2026-09-08; history
 // is reduced to two points. Auth was captured in shadow mode, not enforcement.
-// The equity TWAP, unknown-code and precision/drop cases below are synthetic.
+// Source fields were added to match the current payload contract; they were
+// not present in the original capture. Equity TWAP, source-validation,
+// unknown-code and precision/drop cases below are synthetic.
 describe('realtime frame normalization', () => {
+  describe.each([
+    'price.crypto',
+    'price.crypto.twap',
+    'price.equity',
+    'price.equity.twap',
+  ])('%s source contract', (channel) => {
+    const point = {
+      timestamp: 123456,
+      value: 123.45,
+      full_accuracy_value: '123.450000000000000001',
+    };
+
+    function parse(source: unknown, data?: object[]) {
+      return parsePolyboltEvent(
+        PolyboltEnvelopeSchema.parse({
+          v: 1,
+          channel,
+          seq: 1,
+          ts: 123456,
+          snapshot: data !== undefined,
+          payload: {
+            symbol: 'btcusd',
+            window_seconds: 60,
+            ...(source === undefined ? {} : { source }),
+            ...(data === undefined ? point : { data }),
+          },
+        }),
+      );
+    }
+
+    it('preserves known and future sources on updates and history batches', () => {
+      for (const source of ['pyth', 'chainlink', 'massive', 'newvendor']) {
+        expect(parse(source)).toMatchObject({
+          type: 'update',
+          payload: { source, value: point.full_accuracy_value },
+        });
+        for (const data of [[], [point]]) {
+          expect(parse(source, data)).toMatchObject({
+            type: 'subscribe',
+            payload: {
+              source,
+              data: data.map(({ timestamp, full_accuracy_value }) => ({
+                timestamp,
+                value: full_accuracy_value,
+              })),
+            },
+          });
+        }
+      }
+    });
+
+    it('rejects missing or non-string sources on updates and history batches', () => {
+      for (const source of [undefined, null, 42, {}]) {
+        expect(parse(source)).toBeUndefined();
+        expect(parse(source, [point])).toBeUndefined();
+        expect(parse(source, [])).toBeUndefined();
+      }
+    });
+
+    it('keeps source on the batch, not individual history points', () => {
+      expect(parse(undefined, [{ ...point, source: 'pyth' }])).toBeUndefined();
+      const event = parse('pyth', [{ ...point, source: 'chainlink' }]);
+      expect(event?.type).toBe('subscribe');
+      if (event?.type === 'subscribe')
+        expect(event.payload.data).toEqual([
+          { timestamp: point.timestamp, value: point.full_accuracy_value },
+        ]);
+    });
+  });
+
   describe('equity TWAP payload contract', () => {
     const point = {
       timestamp: 123456,
@@ -26,6 +98,7 @@ describe('realtime frame normalization', () => {
           snapshot,
           payload: {
             symbol: 'usdjpy',
+            source: 'chainlink',
             window_seconds: 60,
             ...payload,
           },
@@ -137,6 +210,7 @@ describe('realtime frame normalization', () => {
             },
           ],
           symbol: 'btcusd',
+          source: 'pyth',
         },
       }),
     );
@@ -147,6 +221,7 @@ describe('realtime frame normalization', () => {
       seq: 1,
       payload: {
         symbol: 'btcusd',
+        source: 'pyth',
         data: [
           {
             timestamp: 1788886057000,
@@ -183,6 +258,7 @@ describe('realtime frame normalization', () => {
             },
           ],
           symbol: 'ethusd',
+          source: 'pyth',
         },
       }),
     );
@@ -193,6 +269,7 @@ describe('realtime frame normalization', () => {
       seq: 2,
       payload: {
         symbol: 'ethusd',
+        source: 'pyth',
         data: [
           {
             timestamp: 1788886057000,
@@ -218,6 +295,7 @@ describe('realtime frame normalization', () => {
         payload: {
           data: [],
           symbol: 'btcusdt',
+          source: 'pyth',
         },
       }),
     );
@@ -228,6 +306,7 @@ describe('realtime frame normalization', () => {
       seq: 3,
       payload: {
         symbol: 'btcusdt',
+        source: 'pyth',
         data: [],
       },
     });
@@ -245,6 +324,7 @@ describe('realtime frame normalization', () => {
           data: [],
           symbol: 'btcusd',
           window_seconds: 30,
+          source: 'chainlink',
         },
       }),
     );
@@ -274,6 +354,7 @@ describe('realtime frame normalization', () => {
           ],
           symbol: 'btcusd',
           window_seconds: 60,
+          source: 'chainlink',
         },
       }),
     );
@@ -284,6 +365,7 @@ describe('realtime frame normalization', () => {
       seq: 2,
       payload: {
         symbol: 'btcusd',
+        source: 'chainlink',
         data: [
           {
             timestamp: 1788886057000,
@@ -321,6 +403,7 @@ describe('realtime frame normalization', () => {
             },
           ],
           symbol: 'aapl',
+          source: 'pyth',
         },
       }),
     );
@@ -331,6 +414,7 @@ describe('realtime frame normalization', () => {
       seq: 1,
       payload: {
         symbol: 'aapl',
+        source: 'pyth',
         data: [
           {
             timestamp: 1788886056800,
@@ -356,6 +440,7 @@ describe('realtime frame normalization', () => {
           full_accuracy_value: '316.1',
           received_at: 1788886176600,
           symbol: 'aapl',
+          source: 'pyth',
           timestamp: 1788886176600,
           value: 316.1,
         },
@@ -368,6 +453,7 @@ describe('realtime frame normalization', () => {
       seq: 2,
       payload: {
         symbol: 'aapl',
+        source: 'pyth',
         timestamp: 1788886176600,
         value: '316.1',
         receivedAt: 1788886176600,
@@ -385,6 +471,7 @@ describe('realtime frame normalization', () => {
         payload: {
           full_accuracy_value: '2497.38586148',
           symbol: 'ethusd',
+          source: 'pyth',
           timestamp: 1788886177000,
           value: 2497.38586148,
         },
@@ -397,6 +484,7 @@ describe('realtime frame normalization', () => {
       seq: 4,
       payload: {
         symbol: 'ethusd',
+        source: 'pyth',
         timestamp: 1788886177000,
         value: '2497.38586148',
       },
@@ -413,6 +501,7 @@ describe('realtime frame normalization', () => {
         payload: {
           full_accuracy_value: '78794.15450441',
           symbol: 'btcusd',
+          source: 'pyth',
           timestamp: 1788886177000,
           value: 78794.15450441,
         },
@@ -425,6 +514,7 @@ describe('realtime frame normalization', () => {
       seq: 5,
       payload: {
         symbol: 'btcusd',
+        source: 'pyth',
         timestamp: 1788886177000,
         value: '78794.15450441',
       },
@@ -441,6 +531,7 @@ describe('realtime frame normalization', () => {
         payload: {
           full_accuracy_value: '78803.715261094101516288',
           symbol: 'btcusd',
+          source: 'chainlink',
           timestamp: 1788886177000,
           value: 78803.7152610941,
           window_seconds: 60,
@@ -454,6 +545,7 @@ describe('realtime frame normalization', () => {
       seq: 3,
       payload: {
         symbol: 'btcusd',
+        source: 'chainlink',
         timestamp: 1788886177000,
         value: '78803.715261094101516288',
         windowSeconds: 60,
@@ -471,6 +563,7 @@ describe('realtime frame normalization', () => {
         payload: {
           symbol: 'aapl',
           timestamp: 123455,
+          source: 'pyth',
           value: 123.45,
           full_accuracy_value: '123.450000000000000001',
           received_at: 123457,

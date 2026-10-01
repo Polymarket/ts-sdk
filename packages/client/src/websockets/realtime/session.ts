@@ -412,8 +412,11 @@ function refreshSnapshot(
   event: PriceEvent,
 ): PriceEvent | undefined {
   if (event.type === 'subscribe') return event;
-  const history = previous?.type === 'subscribe' ? previous.payload.data : [];
-  const { symbol, timestamp, value } = event.payload;
+  const { symbol, source, timestamp, value } = event.payload;
+  const history =
+    previous?.type === 'subscribe' && previous.payload.source === source
+      ? previous.payload.data
+      : [];
   if ((history.at(-1)?.timestamp ?? 0) > timestamp) return previous;
   const data = [
     ...history.filter(
@@ -429,7 +432,12 @@ function refreshSnapshot(
     return {
       ...event,
       type: 'subscribe',
-      payload: { symbol, data, windowSeconds: event.payload.windowSeconds },
+      payload: {
+        symbol,
+        source,
+        data,
+        windowSeconds: event.payload.windowSeconds,
+      },
     };
-  return { ...event, type: 'subscribe', payload: { symbol, data } };
+  return { ...event, type: 'subscribe', payload: { symbol, source, data } };
 }

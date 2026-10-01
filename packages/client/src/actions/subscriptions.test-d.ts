@@ -25,6 +25,8 @@ import type * as ClientExports from '../index';
 import {
   createPublicClient,
   type EquityTwapPriceSubscription,
+  KnownPriceSource,
+  type PriceSource,
   type RealtimeErrorCode,
   RealtimeKnownErrorCode,
   type CryptoTwapPriceEvent as RootCryptoTwapPriceEvent,
@@ -47,6 +49,22 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('price subscription contracts', () => {
+  it('exports known price sources while accepting future source names', () => {
+    expectTypeOf<KnownPriceSource>().toEqualTypeOf<BindingExports.KnownPriceSource>();
+    expectTypeOf<PriceSource>().toEqualTypeOf<BindingExports.PriceSource>();
+    expectTypeOf(KnownPriceSource.Pyth).toExtend<PriceSource>();
+    expectTypeOf(KnownPriceSource.Chainlink).toExtend<PriceSource>();
+    expectTypeOf(KnownPriceSource.Massive).toExtend<PriceSource>();
+    expectTypeOf<'future_price_source'>().toExtend<PriceSource>();
+    expectTypeOf<number>().not.toExtend<PriceSource>();
+    expectTypeOf<
+      | CryptoPriceEvent
+      | CryptoTwapPriceEvent
+      | EquityPriceEvent
+      | EquityTwapPriceEvent
+    >().toExtend<{ payload: { source: PriceSource } }>();
+  });
+
   it('exports known realtime error codes while accepting future codes', () => {
     expectTypeOf(
       RealtimeKnownErrorCode.BadFilter,
