@@ -1,6 +1,9 @@
 import { toDecimalString, toEpochMilliseconds } from '@polymarket/bindings';
 import {
   type CryptoPriceEvent,
+  type EquityTwapPriceEvent,
+  KnownPriceSource,
+  type PriceSource,
   RealtimeKnownErrorCode,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -51,17 +54,38 @@ function listener() {
 function crypto(symbol = 'btcusd'): PriceKey {
   return { key: symbol, topic: 'prices.crypto', symbol };
 }
-function price(timestamp = Date.now()): CryptoPriceEvent {
+function price(
+  timestamp = Date.now(),
+  source: PriceSource = 'pyth',
+): CryptoPriceEvent {
   return {
     topic: 'prices.crypto',
     type: 'update',
     timestamp: toEpochMilliseconds(timestamp),
     payload: {
       symbol: 'btcusd',
+      source,
       timestamp: toEpochMilliseconds(timestamp),
       value: toDecimalString('1'),
       receivedAt: undefined,
       isCarriedForward: undefined,
+    },
+  };
+}
+function equityTwap(
+  timestamp = Date.now(),
+  source: PriceSource = 'chainlink',
+): EquityTwapPriceEvent {
+  return {
+    topic: 'prices.equity.twap',
+    type: 'update',
+    timestamp: toEpochMilliseconds(timestamp),
+    payload: {
+      symbol: 'USDJPY',
+      source,
+      timestamp: toEpochMilliseconds(timestamp),
+      value: toDecimalString('150.01'),
+      windowSeconds: 60,
     },
   };
 }
@@ -330,6 +354,7 @@ describe('price subscription policy', () => {
     const { session } = harness;
     await accept(session);
     harness.events.event(price(Date.now() - 120_001));
+    harness.events.event(price(Date.now() - 10));
     harness.events.event(price());
     const joining = await accept(session);
     expect(joining.event).toHaveBeenCalledWith(
@@ -337,9 +362,157 @@ describe('price subscription policy', () => {
         type: 'subscribe',
         payload: {
           symbol: 'btcusd',
-          data: [{ timestamp: Date.now() - 20, value: '1' }],
+          source: 'pyth',
+          data: [
+            { timestamp: Date.now() - 30, value: '1' },
+            { timestamp: Date.now() - 20, value: '1' },
+          ],
         },
       }),
     );
+  });
+
+  it('routes mixed-case equity TWAP updates and replays fixed-window snapshots', async () => {
+    const harness = setup();
+    const key: PriceKey = {
+      key: 'equity-twap',
+      topic: 'prices.equity.twap',
+      symbol: 'usdjpy',
+      windowSeconds: 60,
+    };
+    const observer = await accept(harness.session, key);
+    const event = equityTwap();
+    harness.events.event(event);
+    expect(observer.event).toHaveBeenCalledWith(event);
+    const joining = await accept(harness.session, key);
+    expect(joining.event).toHaveBeenCalledWith({
+      ...event,
+      type: 'subscribe',
+      payload: {
+        symbol: 'USDJPY',
+        source: 'chainlink',
+        windowSeconds: 60,
+        data: [{ timestamp: event.timestamp, value: '150.01' }],
+      },
+    });
+  });
+
+  it.each([
+    false,
+    true,
+  ])('keeps replayed history within its current source (equity TWAP: %s)', async (twap) => {
+    const harness = setup();
+    const key: PriceKey = twap
+      ? {
+          key: 'equity-twap',
+          topic: 'prices.equity.twap',
+          symbol: 'usdjpy',
+          windowSeconds: 60,
+        }
+      : crypto();
+    await accept(harness.session, key);
+    const eventFor = twap ? equityTwap : price;
+    const timestamp = Date.now();
+    // Source changes take priority over the within-source timestamp guard.
+    for (const [source, offset] of [
+      ['newer_vendor', 1],
+      ['equal_vendor', 0],
+      ['older_vendor', -1],
+    ] as const) {
+      harness.events.event(eventFor(timestamp - 10));
+      harness.events.event(eventFor(timestamp));
+      harness.events.event(eventFor(timestamp + offset, source));
+      const joining = await accept(harness.session, key);
+      const expected = expect.objectContaining({
+        type: 'subscribe',
+        payload: expect.objectContaining({
+          source,
+          data: [
+            { timestamp: timestamp + offset, value: twap ? '150.01' : '1' },
+          ],
+        }),
+      });
+      expect(joining.event).toHaveBeenCalledWith(expected);
+      harness.events.event(eventFor(timestamp - 20, source));
+      const later = await accept(harness.session, key);
+      expect(later.event).toHaveBeenCalledWith(expected);
+    }
+  });
+
+  it('confirms a listener added during a callback only once', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const first = {
+      ...listener(),
+      subscribed: vi.fn(() => {
+        void harness.session.add(crypto(), joining);
+      }),
+    };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(first.subscribed).toHaveBeenCalledTimes(1);
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+  });
+
+  it('replays provider confirmation to late listeners and clears it on reconnect', async () => {
+    const harness = setup();
+    const subscription = crypto();
+    const first = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, subscription, first);
+    harness.events.subscribed(subscription, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(first.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    const joining = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), joining);
+    expect(joining.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    harness.events.disconnected({ code: 4002, reason: 'Slow consumer.' });
+    await vi.advanceTimersByTimeAsync(800);
+    const afterReconnect = { ...listener(), subscribed: vi.fn() };
+    await accept(harness.session, crypto(), afterReconnect);
+    expect(afterReconnect.subscribed).not.toHaveBeenCalled();
+    harness.events.subscribed(subscription, { symbol: 'btcusd' });
+    expect(afterReconnect.subscribed).toHaveBeenCalledWith({
+      symbol: 'btcusd',
+    });
+  });
+
+  it('does not confirm a replacement with the removed subscription acknowledgement', async () => {
+    const harness = setup();
+    const original = crypto();
+    const first = await accept(harness.session, original);
+    harness.session.remove(original.key, first);
+    const replacement = crypto();
+    const joining = { ...listener(), subscribed: vi.fn() };
+    const pending = harness.session.add(replacement, joining);
+    harness.events.subscribed(original, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Pyth,
+    });
+    expect(joining.subscribed).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(40);
+    await pending;
+    harness.events.subscribed(replacement, {
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Chainlink,
+    });
+    expect(joining.subscribed).toHaveBeenCalledExactlyOnceWith({
+      symbol: 'btcusd',
+      provider: KnownPriceSource.Chainlink,
+    });
   });
 });

@@ -1,3 +1,4 @@
+import { EvmAddressSchema } from '@polymarket/bindings';
 import {
   type PerpsAccountConfig,
   type PerpsAccountFill,
@@ -5,12 +6,17 @@ import {
   type PerpsAccountStats,
   type PerpsAutoCancelStatus,
   type PerpsBalance,
+  type PerpsBuilderApproval,
+  type PerpsBuilderEarning,
+  type PerpsBuilderEarningsSummary,
+  PerpsBuilderStatusSchema,
   type PerpsCancelOrderResult,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
   type PerpsDeposit,
   type PerpsEquityPoint,
+  type PerpsInternalTransfer,
   type PerpsNotificationEntry,
   type PerpsOrder,
   type PerpsPnlPoint,
@@ -29,14 +35,24 @@ import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
-  type RateLimitError,
+  type ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  ApprovePerpsBuilderFeeRequestSchema,
+  type PerpsBuilderFeeApprover,
+} from '../../actions/perps/builders';
+import {
+  makeErrorGuard,
+  type OperationAbortedError,
+  type PerpsCancelRetryError,
+  RateLimitError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
   TransportError,
-  type UnexpectedResponseError,
-  type UserInputError,
+  UnexpectedResponseError,
+  UserInputError,
 } from '../../errors';
+import { parseUserInput } from '../../input';
 import type { Paginated } from '../../pagination';
 import { validateWith } from '../../response';
 import { ServiceClient } from '../../ServiceClient';
@@ -58,6 +74,7 @@ import {
   type ListPerpsEquityHistoryRequest,
   type ListPerpsFillsRequest,
   type ListPerpsFundingPaymentsRequest,
+  type ListPerpsInternalTransfersRequest,
   type ListPerpsNotificationsRequest,
   type ListPerpsPnlHistoryRequest,
   type ListPerpsWithdrawalsRequest,
@@ -65,12 +82,26 @@ import {
   listPerpsEquityHistory,
   listPerpsFills,
   listPerpsFundingPayments,
+  listPerpsInternalTransfers,
   listPerpsNotifications,
   listPerpsPnlHistory,
   listPerpsWithdrawals,
   type MarkPerpsNotificationsReadRequest,
   markPerpsNotificationsRead,
 } from './actions/account';
+import {
+  minPerpsBuilderFeeRate,
+  type PerpsBuilderTermsInput,
+  PerpsBuilderTermsInputSchema,
+} from './actions/builder-terms';
+import {
+  type FetchPerpsBuilderApprovalsRequest,
+  type FetchPerpsBuilderEarningsSummaryRequest,
+  fetchPerpsBuilderApprovals,
+  fetchPerpsBuilderEarningsSummary,
+  type ListPerpsBuilderEarningsRequest,
+  listPerpsBuilderEarnings,
+} from './actions/builders';
 import {
   type ArmPerpsAutoCancelRequest,
   armPerpsAutoCancel,
@@ -121,13 +152,16 @@ const PERPS_SESSION_CHANNELS = [
   'tpsl',
 ] as const;
 
-// Notification frames carry the source event's engine sequence, which is not
+// Notification and builder-fill frames carry the source event's engine sequence, which is not
 // dense per channel: unrelated engine events skip values and one event can
 // emit several notifications sharing one sequence. Local sequence-gap
 // detection would misfire, so the server signals dropped frames with resync
 // control frames instead. Those frames are parsed and dropped without a
 // public event until DEV-428 unifies them with SDK-synthesized resyncs.
-const SERVER_RESYNC_CHANNELS: ReadonlySet<string> = new Set(['notifications']);
+const SERVER_RESYNC_CHANNELS: ReadonlySet<string> = new Set([
+  'notifications',
+  'builderFills',
+]);
 
 const PerpsResponseEnvelopeSchema = z
   .object({
@@ -135,6 +169,9 @@ const PerpsResponseEnvelopeSchema = z
     data: z.unknown().optional(),
   })
   .passthrough();
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type { ApprovePerpsBuilderFeeError };
 
 const PerpsSessionAckSchema = z
   .union([PerpsCommandAckSchema, z.array(PerpsCommandAckSchema)])
@@ -158,6 +195,7 @@ type EventWaiter = {
   timeout?: ReturnType<typeof setNonBlockingTimeout>;
 };
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   PerpsAutoCancelStatus,
   PerpsCancelOrderResult,
@@ -166,7 +204,11 @@ export type {
   PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
 } from '@polymarket/bindings/perps';
-export type { PerpsSessionEvent } from '@polymarket/bindings/subscriptions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type {
+  PerpsBuilderFillUpdateEvent,
+  PerpsSessionEvent,
+} from '@polymarket/bindings/subscriptions';
 export type {
   FetchPerpsAccountConfigRequest,
   FetchPerpsOpenOrdersRequest,
@@ -175,17 +217,35 @@ export type {
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
 } from './actions/account';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type { PerpsBuilderTermsInput } from './actions/builder-terms';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type {
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
+  ListPerpsBuilderEarningsRequest,
+} from './actions/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+} from './actions/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
+  PerpsCancelOptions,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
@@ -205,6 +265,7 @@ export type {
   UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from './actions/trading';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
   UpdatePerpsLeverageError,
@@ -216,9 +277,18 @@ export {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsSessionOptions = {
+  /** @internal Owner approval operation supplied by the parent client. */
+  approveBuilderFee?: PerpsBuilderFeeApprover;
+  /** Builder selector whose saved approval is restored, or previously resolved terms. */
+  builderAttribution?: string | PerpsBuilderTermsInput;
   chainId: number;
   credentials: PerpsCredentials;
   headers?: Record<string, string>;
+  /**
+   * Include this authenticated account's builder receipts in the session iterator.
+   * Subscription is best effort and retried on reconnect; failure does not block the session.
+   */
+  includeBuilderFills?: boolean;
   onClose: (session: PerpsSession) => void;
   restUrl: string;
   wsUrl: string;
@@ -227,7 +297,31 @@ export type PerpsSessionOptions = {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsSessionLifecycleError = RequestRejectedError | TransportError;
+export type PerpsSessionLifecycleError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type RevokePerpsBuilderFeeError =
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export const RevokePerpsBuilderFeeError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -243,6 +337,8 @@ export type PerpsSessionAccountError =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsSessionTradingError =
+  | OperationAbortedError
+  | PerpsCancelRetryError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -256,6 +352,7 @@ export type PerpsSessionTradingError =
  */
 export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly credentials: PerpsCredentials;
+  readonly #approveBuilderFee: PerpsBuilderFeeApprover | undefined;
   readonly #api: ServiceClient;
   readonly #chainId: number;
   readonly #headers: Record<string, string> | undefined;
@@ -269,6 +366,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   readonly #eventWaiters = new Set<EventWaiter>();
   readonly #reconnectScheduler = new ReconnectScheduler();
   readonly #sequences = new Map<string, number>();
+  #builderAddress: string | undefined;
+  #builderAttribution: PerpsBuilderTermsInput | undefined;
+  #builderConsentChange: Promise<unknown> = Promise.resolve();
+  readonly #includeBuilderFills: boolean;
   #nextRequestId = 1;
   #closing: Promise<void> | undefined;
 
@@ -276,6 +377,22 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   constructor(options: PerpsSessionOptions) {
+    this.#approveBuilderFee = options.approveBuilderFee;
+    this.#includeBuilderFills = options.includeBuilderFills ?? false;
+    this.#builderAttribution =
+      options.builderAttribution === undefined ||
+      typeof options.builderAttribution === 'string'
+        ? undefined
+        : Object.freeze(
+            parseUserInput(
+              options.builderAttribution,
+              PerpsBuilderTermsInputSchema,
+            ),
+          );
+    this.#builderAddress =
+      typeof options.builderAttribution === 'string'
+        ? parseUserInput(options.builderAttribution, EvmAddressSchema)
+        : this.#builderAttribution?.builderAddress;
     this.#api = new ServiceClient({
       headers: options.headers,
       resolveHeaders: async () => this.#authenticatedHeaders(),
@@ -286,6 +403,15 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     this.#headers = options.headers;
     this.#onClose = options.onClose;
     this.#wsUrl = options.wsUrl;
+  }
+
+  /**
+   * Most recently resolved builder terms. Resolved when opening the session or granting approval.
+   * Undefined when the effective fee is zero or no builder is selected.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  get builderAttribution(): PerpsBuilderTermsInput | undefined {
+    return this.#builderAttribution;
   }
 
   /**
@@ -304,6 +430,37 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   async connect(): Promise<void> {
+    if (
+      this.#builderAddress !== undefined &&
+      this.#builderAttribution === undefined
+    ) {
+      const status = await unwrap(
+        this.#api
+          .get('/v1/info/builder', {
+            params: new URLSearchParams({ address: this.#builderAddress }),
+          })
+          .andThen(validateWith(PerpsBuilderStatusSchema)),
+      );
+      if (!status.registered || !status.enabled || !status.admissionEnabled) {
+        throw new UserInputError(
+          'Builder attribution is not active for this builder address.',
+        );
+      }
+      const approvals = await this.fetchBuilderApprovals({
+        builder: this.#builderAddress,
+      });
+      const approval = approvals.find(
+        (entry) =>
+          entry.builder.toLowerCase() === this.#builderAddress?.toLowerCase(),
+      );
+      const feeRate = minPerpsBuilderFeeRate(
+        status.maxFeeRate,
+        approval?.maxFeeRate ?? '0',
+      );
+      this.#builderAttribution = /[1-9]/.test(feeRate)
+        ? Object.freeze({ builderAddress: this.#builderAddress, feeRate })
+        : undefined;
+    }
     await this.#connect(false);
   }
 
@@ -324,6 +481,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Iterates authenticated Perps account events emitted by this session.
+   * With `includeBuilderFills`, also emits receipts earned by this authenticated
+   * account as a builder. After resync, reconcile receipts with
+   * `listBuilderEarnings` and deduplicate by `earningId`.
    *
    * @example
    * ```ts
@@ -338,6 +498,149 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    */
   [Symbol.asyncIterator](): AsyncIterator<PerpsSessionEvent> {
     return this.#queue[Symbol.asyncIterator]();
+  }
+
+  /**
+   * Approves and adopts builder fees with the parent client's owner signer.
+   * Requires an explicit maximum fee. The builder address defaults to the selected builder.
+   * Approval is needed once and remains valid until revoked or replaced.
+   * The SDK increments the saved approval version automatically. Only a
+   * confirmed approval refreshes the builder cap and stores the lower of that
+   * cap and the approved maximum for future orders. If the cap read fails,
+   * consent may already be committed; local terms stay unchanged and the error propagates.
+   * A zero effective fee disables attribution while retaining the selected builder.
+   *
+   * @example
+   * ```ts
+   * await session.approveBuilderFee({ maxFeeRate: '0.0005' });
+   * ```
+   * @throws {@link ApprovePerpsBuilderFeeError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async approveBuilderFee(
+    request: ApprovePerpsBuilderFeeRequest,
+  ): Promise<PerpsBuilderApproval> {
+    const approvalRequest = parseUserInput(
+      request,
+      ApprovePerpsBuilderFeeRequestSchema,
+    );
+    return this.#changeBuilderConsent(() => ({
+      ...approvalRequest,
+      builderAddress:
+        approvalRequest.builderAddress === undefined
+          ? this.#builderAddress
+          : approvalRequest.builderAddress,
+    }));
+  }
+
+  /**
+   * Revokes builder consent with the parent client's owner signer.
+   * The address defaults to the session's active builder. Confirmation clears
+   * that builder from future orders; accepted orders retain their saved terms.
+   * Revocation remains available when the builder is inactive.
+   *
+   * @example
+   * ```ts
+   * await session.revokeBuilderFee();
+   * ```
+   * @throws {@link RevokePerpsBuilderFeeError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async revokeBuilderFee(
+    builderAddress?: string,
+  ): Promise<PerpsBuilderApproval> {
+    return this.#changeBuilderConsent(() => {
+      const builder = builderAddress ?? this.#builderAddress;
+      if (builder === undefined) {
+        throw new UserInputError(
+          'A builder address is required when the session has no active builder attribution.',
+        );
+      }
+      return { builderAddress: builder, maxFeeRate: '0' };
+    });
+  }
+
+  #changeBuilderConsent(
+    request: () => ApprovePerpsBuilderFeeRequest,
+  ): Promise<PerpsBuilderApproval> {
+    const change = this.#builderConsentChange
+      .catch(() => undefined)
+      .then(async () => {
+        if (this.closed) throw new TransportError('Perps session closed.');
+        if (this.#approveBuilderFee === undefined) {
+          throw new UserInputError(
+            'Builder approval requires a session opened with a secure client.',
+          );
+        }
+        const approval = await this.#approveBuilderFee(this, request());
+        if (/^0+(?:\.0+)?$/.test(approval.maxFeeRate)) {
+          if (
+            this.#builderAddress?.toLowerCase() ===
+            approval.builder.toLowerCase()
+          ) {
+            this.#builderAttribution = undefined;
+            this.#builderAddress = undefined;
+          }
+        } else {
+          const status = await unwrap(
+            this.#api
+              .get('/v1/info/builder', {
+                params: new URLSearchParams({ address: approval.builder }),
+              })
+              .andThen(validateWith(PerpsBuilderStatusSchema)),
+          );
+          this.#builderAddress = approval.builder;
+          const feeRate = minPerpsBuilderFeeRate(
+            status.maxFeeRate,
+            approval.maxFeeRate,
+          );
+          this.#builderAttribution = /[1-9]/.test(feeRate)
+            ? Object.freeze({ builderAddress: approval.builder, feeRate })
+            : undefined;
+        }
+        return approval;
+      });
+    this.#builderConsentChange = change;
+    return change;
+  }
+
+  /**
+   * Fetches this trader's builder grants, including revoked grants.
+   * @throws {@link FetchPerpsBuilderApprovalsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchBuilderApprovals(
+    request?: FetchPerpsBuilderApprovalsRequest,
+  ): Promise<PerpsBuilderApproval[]> {
+    return await fetchPerpsBuilderApprovals(this.#api, request);
+  }
+
+  /**
+   * Lists fee receipts earned by this authenticated account as a builder.
+   * To reconcile with totals, call `fetchBuilderEarningsSummary` first and pass
+   * its `snapshot` here; the snapshot pins the window and indexed sequence cutoff.
+   * Continuations keep the original window and cutoff.
+   * The configured order builder does not change whose earnings are read.
+   * @throws {@link ListPerpsBuilderEarningsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  listBuilderEarnings(
+    request?: ListPerpsBuilderEarningsRequest,
+  ): Paginated<PerpsBuilderEarning[]> {
+    return listPerpsBuilderEarnings(this.#api, request);
+  }
+
+  /**
+   * Fetches this builder account's earnings totals at a reporting cutoff.
+   * Pass the returned `snapshot` to `listBuilderEarnings` to page the matching history.
+   * Active approval count reflects current grants, independently of the cutoff.
+   * @throws {@link FetchPerpsBuilderEarningsSummaryError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchBuilderEarningsSummary(
+    request?: FetchPerpsBuilderEarningsSummaryRequest,
+  ): Promise<PerpsBuilderEarningsSummary> {
+    return await fetchPerpsBuilderEarningsSummary(this.#api, request);
   }
 
   /**
@@ -474,6 +777,25 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: ListPerpsDepositsRequest = {},
   ): Paginated<PerpsDeposit[]> {
     return listPerpsDeposits(this.#api, request);
+  }
+
+  /**
+   * Lists settled Perps internal transfers with SDK-owned pagination.
+   *
+   * @remarks
+   * Overlapping timestamp boundaries are deduplicated. Throws
+   * `UnexpectedResponseError` if a full millisecond cannot be paged without
+   * risking omitted transfers.
+   *
+   * @throws {@link PerpsSessionAccountError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  listInternalTransfers(
+    request: ListPerpsInternalTransfersRequest = {},
+  ): Paginated<PerpsInternalTransfer[]> {
+    return listPerpsInternalTransfers(this.#api, request);
   }
 
   /**
@@ -693,7 +1015,16 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * Cancels one Perps order and returns the cancel result.
    *
    * @remarks
-   * The returned status reflects whether the cancel happened.
+   * The SDK retries only `order_in_flight` rejections with bounded exponential
+   * backoff and jitter. Pass `retry: false` to make one attempt. If the retry
+   * budget is exhausted, the final `order_in_flight` result is returned. A
+   * rejection of the cancellation request throws; an order-specific rejection
+   * is returned in the result.
+   * If a later attempt fails, {@link PerpsCancelRetryError} retains the last
+   * received result and the failure as `cause`. Its `pendingIndexes` contains
+   * `0`; that result describes the earlier attempt, not the failed retry.
+   * A lost response may hide a completed cancellation, so reconcile the order
+   * before submitting another cancellation.
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
@@ -710,7 +1041,19 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * Cancels one or more Perps orders and returns one result per requested order.
    *
    * @remarks
-   * Each returned status reflects whether that cancel happened.
+   * The SDK retries only orders rejected with `order_in_flight`; terminal
+   * results are retained while transient orders are retried as a smaller batch.
+   * Pass `retry: false` to make one attempt. Exhausted transient results retain
+   * their final `order_in_flight` rejection. A rejection of the whole
+   * cancellation request throws; order-specific rejections remain in their
+   * result positions.
+   * If a later attempt fails, {@link PerpsCancelRetryError} retains the last
+   * received `results` in the original request order and the failure as `cause`.
+   * Its `pendingIndexes` identifies the original request positions included in
+   * that failed attempt. Those entries are historical rejections, not outcomes
+   * of the failed retry; other entries retain their confirmed outcomes. A lost
+   * response may hide completed cancellations, so reconcile the pending orders
+   * before submitting another cancellation.
    *
    * @throws {@link PerpsSessionTradingError}
    * Thrown on failure.
@@ -849,7 +1192,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    * ```
    *
    * @throws {@link UpdatePerpsLeveragesError}
-   * Thrown when the complete request is rejected or cannot be sent.
+   * Thrown when the complete request is rejected, cannot be sent, or returns inconsistent results.
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
@@ -934,6 +1277,21 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       COMMAND_TIMEOUT_MS,
       'Perps session subscription timed out.',
     );
+
+    if (this.#includeBuilderFills) {
+      // Optional receipts must not delay or fail core session readiness. Retry
+      // on each reconnect; pending requests are cleaned up on timeout or close.
+      void this.#sendRequest(
+        {
+          id: this.#nextRequestId++,
+          req: 'sub',
+          chs: ['builderFills'],
+        },
+        PerpsSessionAckSchema,
+        COMMAND_TIMEOUT_MS,
+        'Perps builder fills subscription timed out.',
+      ).catch(() => undefined);
+    }
   }
 
   #authenticatedHeaders(): HeadersInit {

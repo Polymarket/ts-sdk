@@ -16,6 +16,7 @@ import type {
   EquityPriceEvent,
   EquityPricesEvent,
   EquityPricesTopic,
+  EquityTwapPriceEvent,
   MarketEvent,
   PerpsBboEvent,
   PerpsBookEvent,
@@ -24,6 +25,8 @@ import type {
   PerpsStatisticEvent,
   PerpsTickerEvent,
   PerpsTradeEvent,
+  PriceProvider,
+  PriceSource,
   SportsEvent,
   StandardMarketEvent,
   UserEvent,
@@ -61,6 +64,13 @@ export type {
   CryptoTwapPriceSnapshotEvent,
   EquityPriceEvent,
   EquityPricesEvent,
+  EquityTwapPriceEvent,
+  EquityTwapPriceSnapshotEvent,
+  PriceSource,
+} from '@polymarket/bindings/subscriptions';
+export {
+  KnownPriceSource,
+  PriceProvider,
 } from '@polymarket/bindings/subscriptions';
 
 // Event types — re-exported from bindings for consumer convenience.
@@ -321,6 +331,17 @@ export type PublicSubscriptionSpec =
   | EquityPricesSubscription
   | PerpsMarketDataSubscription;
 
+/** Confirmation of one price subscription, refreshed after every reconnect. */
+export type PriceSubscriptionConfirmation = {
+  /** Canonical lowercase symbol the confirmation is for. */
+  symbol: string;
+  /**
+   * The provider actually served, including fallback. Undefined when the
+   * server does not confirm provider selection; never inferred from the pin.
+   */
+  provider?: PriceSource;
+};
+
 /**
  * Symbol-filtered cryptocurrency updates and recent history. Requires a secure
  * client and canonical lowercase USD pairs such as `btcusd`.
@@ -329,6 +350,16 @@ export type PublicSubscriptionSpec =
 export type CryptoPriceSubscription = {
   topic: 'prices.crypto';
   symbols: readonly string[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called once per symbol on acceptance and every reconnect, or immediately
+   * when joining an accepted subscription. A thrown error or rejected promise
+   * ends this handle with TransportError.
+   */
+  onSubscribed?: (
+    confirmation: PriceSubscriptionConfirmation,
+  ) => void | Promise<void>;
 };
 /**
  * 60-second time-weighted prices and recent history. Requires a secure client
@@ -338,17 +369,57 @@ export type CryptoPriceSubscription = {
 export type CryptoTwapPriceSubscription = {
   topic: 'prices.crypto.twap';
   symbols: readonly string[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called once per symbol on acceptance and every reconnect, or immediately
+   * when joining an accepted subscription. A thrown error or rejected promise
+   * ends this handle with TransportError.
+   */
+  onSubscribed?: (
+    confirmation: PriceSubscriptionConfirmation,
+  ) => void | Promise<void>;
 };
 /** Equity updates and recent history. Requires a secure client. */
 export type EquityPriceSubscription = {
   topic: 'prices.equity';
   symbol: string;
   types?: readonly ('subscribe' | 'update')[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called once per symbol on acceptance and every reconnect, or immediately
+   * when joining an accepted subscription. A thrown error or rejected promise
+   * ends this handle with TransportError.
+   */
+  onSubscribed?: (
+    confirmation: PriceSubscriptionConfirmation,
+  ) => void | Promise<void>;
+};
+/**
+ * 60-second time-weighted equity prices and recent history. Requires a secure
+ * client. Symbols such as `eurusd` and `usdjpy` are case-insensitive; prices
+ * use the symbol's quote currency. Returned events include `windowSeconds: 60`.
+ */
+export type EquityTwapPriceSubscription = {
+  topic: 'prices.equity.twap';
+  symbol: string;
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /**
+   * Called once per symbol on acceptance and every reconnect, or immediately
+   * when joining an accepted subscription. A thrown error or rejected promise
+   * ends this handle with TransportError.
+   */
+  onSubscribed?: (
+    confirmation: PriceSubscriptionConfirmation,
+  ) => void | Promise<void>;
 };
 export type PriceSubscription =
   | CryptoPriceSubscription
   | CryptoTwapPriceSubscription
-  | EquityPriceSubscription;
+  | EquityPriceSubscription
+  | EquityTwapPriceSubscription;
 export type SecureSubscriptionSpec =
   | PublicSubscriptionSpec
   | UserSubscription
@@ -368,7 +439,8 @@ export type SecureRealtimeEvent =
   | UserEvent
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
-  | EquityPriceEvent;
+  | EquityPriceEvent
+  | EquityTwapPriceEvent;
 
 // Topics derived from event unions so bindings remain the single source of
 // truth for topic literals.
@@ -386,6 +458,7 @@ type EventByTopic = {
   'prices.crypto': CryptoPriceEvent;
   'prices.crypto.twap': CryptoTwapPriceEvent;
   'prices.equity': EquityPriceEvent;
+  'prices.equity.twap': EquityTwapPriceEvent;
   comments: CommentsEvent;
   'prices.crypto.binance': CryptoPricesBinanceEvent;
   'prices.crypto.chainlink': CryptoPricesChainlinkEvent;
@@ -457,6 +530,7 @@ enum SubscriptionTopic {
   Crypto = 'prices.crypto',
   Twap = 'prices.crypto.twap',
   Equity = 'prices.equity',
+  EquityTwap = 'prices.equity.twap',
   Comments = 'comments',
   LegacyBinance = 'prices.crypto.binance',
   LegacyChainlink = 'prices.crypto.chainlink',
@@ -494,9 +568,20 @@ const MarketSubscriptionSchema = z.union([
 /**
  * Starts one or more realtime subscriptions on this client.
  *
- * The new `prices.crypto`, `prices.crypto.twap`, and `prices.equity` topics
+ * The `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and
+ * `prices.equity.twap` topics
  * require a secure client and explicit filters, and include history snapshots
  * and live updates. Legacy source-named topics retain their existing behavior.
+ * These four topics include `source`, identifying the source of the update
+ * or entire history batch, including empty batches. Unknown source names remain
+ * strings. Crypto sources are constant; equity sources may change across
+ * reconnects. Cached history starts fresh whenever the source changes.
+ * These four topics accept an optional `provider` pin. Omit it to follow the
+ * default. A pin may fall back or be ignored when selection is disabled;
+ * `source` always identifies the actual producer. Different provider choices,
+ * including omission, use separate connections, even if they serve the same source.
+ * An optional `onSubscribed` callback reports the provider the server confirms,
+ * on acceptance and after every reconnect.
  * Event `seq` values are scoped to one channel on one WebSocket connection and
  * reset after reconnecting. Subscriptions with more than 64 filters use
  * multiple connections, so their sequence values may interleave.
@@ -540,6 +625,7 @@ export async function subscribe(
       case 'prices.crypto':
       case 'prices.crypto.twap':
       case 'prices.equity':
+      case 'prices.equity.twap':
         if (!client.isSecureClient())
           throw new UserInputError(
             'This subscription requires a secure client.',
@@ -581,6 +667,7 @@ function subscribeOne(
     case 'prices.crypto':
     case 'prices.crypto.twap':
     case 'prices.equity':
+    case 'prices.equity.twap':
       if (!client.isSecureClient())
         throw new UserInputError('This subscription requires a secure client.');
       return client.webSockets.realtime.subscribe(spec);

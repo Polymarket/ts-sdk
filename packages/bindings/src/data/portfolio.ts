@@ -30,13 +30,39 @@ export enum ComboPositionStatus {
 
 export const ComboPositionStatusSchema = z.enum(ComboPositionStatus);
 
+/** Lifecycle filter for a positions listing. */
 export enum PositionStatus {
   Open = 'OPEN',
   Redeemable = 'REDEEMABLE',
+  /** Still-held, zero-payout (lost) positions, ranked on frozen values. */
+  RedeemableLost = 'REDEEMABLE_LOST',
+  /**
+   * Live complementary pairs the wallet can merge back to collateral (holds >= 2
+   * live outcome tokens of a condition). Settled pairs are excluded; they are a
+   * redeem, not a merge.
+   */
+  Mergeable = 'MERGEABLE',
   Closed = 'CLOSED',
 }
 
 export const PositionStatusSchema = z.enum(PositionStatus);
+
+/**
+ * The statuses a position row itself reports, which is narrower than the
+ * listing filter: `REDEEMABLE_LOST` and `MERGEABLE` are filter vocabulary
+ * only. A lost holding still reports `REDEEMABLE`, and a mergeable one
+ * reports `OPEN`.
+ */
+export type PositionRowStatus =
+  | PositionStatus.Open
+  | PositionStatus.Redeemable
+  | PositionStatus.Closed;
+
+export const PositionRowStatusSchema = z.enum([
+  PositionStatus.Open,
+  PositionStatus.Redeemable,
+  PositionStatus.Closed,
+]) satisfies z.ZodType<PositionRowStatus>;
 
 /** Sort key for position listings. */
 export enum PositionSortBy {
@@ -113,9 +139,10 @@ export type Position = {
   percentRealizedPnl: DecimalString;
   /**
    * The row's actual state — can be narrower than the requested status,
-   * since an OPEN request also returns REDEEMABLE rows.
+   * since an OPEN request also returns REDEEMABLE rows, and a
+   * REDEEMABLE_LOST or MERGEABLE listing reports REDEEMABLE or OPEN rows.
    */
-  status: PositionStatus;
+  status: PositionRowStatus;
   redeemable: boolean;
   mergeable: boolean;
   negativeRisk: boolean;
@@ -170,7 +197,7 @@ export const PositionSchema = z
     total_pnl: DecimalishSchema,
     percent_pnl: DecimalishSchema,
     percent_realized_pnl: DecimalishSchema,
-    status: PositionStatusSchema,
+    status: PositionRowStatusSchema,
     redeemable: z.boolean(),
     mergeable: z.boolean(),
     negative_risk: z.boolean(),
