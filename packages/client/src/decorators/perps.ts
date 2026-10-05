@@ -457,3 +457,18 @@ export function perpsActions(
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type {
+  PerpsChase,
+  PerpsChaseAccepted,
+  PerpsChaseId,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsChaseError,
+  type CancelPerpsChaseRequest,
+  CreatePerpsChaseError,
+  type CreatePerpsChaseRequest,
+  FetchPerpsChasesError,
+} from '../websockets/perps/actions/chases';
