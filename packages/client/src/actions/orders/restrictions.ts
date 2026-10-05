@@ -1,13 +1,22 @@
 import {
   type RateLimitError,
+  type RequestAbortedError,
   RequestRejectedError,
   TradingRestriction,
   type TransportError,
 } from '../../errors';
 
 export function mapTradingRestrictionError(
-  error: RateLimitError | RequestRejectedError | TransportError,
-): RateLimitError | RequestRejectedError | TransportError {
+  error:
+    | RateLimitError
+    | RequestAbortedError
+    | RequestRejectedError
+    | TransportError,
+):
+  | RateLimitError
+  | RequestAbortedError
+  | RequestRejectedError
+  | TransportError {
   if (!(error instanceof RequestRejectedError)) {
     return error;
   }

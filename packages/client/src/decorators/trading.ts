@@ -33,6 +33,7 @@ import {
 import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type { OrderSignature, SignedOrder } from '../actions';
 
@@ -331,7 +332,10 @@ export type SecureTradingActions = {
    * }
    * ```
    */
-  listOpenOrders(request?: ListOpenOrdersRequest): Paginated<OpenOrder[]>;
+  listOpenOrders(
+    request?: ListOpenOrdersRequest,
+    options?: RequestOptions,
+  ): Paginated<OpenOrder[]>;
   /**
    * Fetches a single order for the authenticated account.
    *
@@ -343,7 +347,10 @@ export type SecureTradingActions = {
    * const order = await client.fetchOrder({ orderId: '123' });
    * ```
    */
-  fetchOrder(request: FetchOrderRequest): Promise<OpenOrder>;
+  fetchOrder(
+    request: FetchOrderRequest,
+    options?: RequestOptions,
+  ): Promise<OpenOrder>;
 };
 
 export function tradingActions(client: BaseSecureClient): SecureTradingActions;

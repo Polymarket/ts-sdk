@@ -1,6 +1,7 @@
 import type { PerpsCredentials } from '@polymarket/bindings/perps';
 import type { PerpsBuilderFeeApprover } from '../../actions/perps/builders';
 import { TransportError } from '../../errors';
+import type { Fetch } from '../../request-options';
 import type { PerpsBuilderTermsInput } from './actions/builder-terms';
 import { PerpsSession } from './session';
 
@@ -9,7 +10,9 @@ import { PerpsSession } from './session';
  */
 export type PerpsSessionManagerOptions = {
   chainId: number;
+  fetch?: Fetch;
   headers?: Record<string, string>;
+  retry?: boolean;
   restUrl: string;
   wsUrl: string;
 };
@@ -19,7 +22,9 @@ export type PerpsSessionManagerOptions = {
  */
 export class PerpsSessionManager {
   readonly #chainId: number;
+  readonly #fetch: Fetch | undefined;
   readonly #headers: Record<string, string> | undefined;
+  readonly #retry: boolean | undefined;
   readonly #restUrl: string;
   readonly #wsUrl: string;
   readonly #sessions = new Set<PerpsSession>();
@@ -32,7 +37,9 @@ export class PerpsSessionManager {
    */
   constructor(options: PerpsSessionManagerOptions) {
     this.#chainId = options.chainId;
+    this.#fetch = options.fetch;
     this.#headers = options.headers;
+    this.#retry = options.retry;
     this.#restUrl = options.restUrl;
     this.#wsUrl = options.wsUrl;
   }
@@ -61,7 +68,9 @@ export class PerpsSessionManager {
       includeBuilderFills,
       chainId: this.#chainId,
       credentials,
+      fetch: this.#fetch,
       headers: this.#headers,
+      retry: this.#retry,
       onClose: (closedSession) => this.#clearSession(closedSession),
       restUrl: this.#restUrl,
       wsUrl: this.#wsUrl,

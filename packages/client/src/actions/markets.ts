@@ -34,6 +34,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -42,6 +43,7 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
@@ -128,12 +130,14 @@ export type FetchMarketTagsRequest = z.input<
 type ListMarketsParams = z.output<typeof ListMarketsRequestSchema>;
 
 export type ListMarketsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListMarketsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -185,6 +189,7 @@ export const ListMarketsError = makeErrorGuard(
 export function listMarkets(
   client: BaseClient,
   request: ListMarketsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Market[]> {
   const params = parseUserInput(request, ListMarketsRequestSchema);
 
@@ -192,12 +197,13 @@ export function listMarkets(
     (cursor) =>
       client.gamma
         .get('/markets/keyset', {
+          signal: options.signal,
           params: toMarketsSearchParams({
             ...params,
             cursor: cursor ?? params.cursor,
           }),
         })
-        .andThen(validateWith(ListMarketsKeysetResponseSchema))
+        .andThen(validateWith(ListMarketsKeysetResponseSchema, options))
         .map((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
@@ -218,12 +224,14 @@ export type ListComboMarketsRequest = z.input<
 >;
 
 export type ListComboMarketsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListComboMarketsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -267,6 +275,7 @@ export const ListComboMarketsError = makeErrorGuard(
 export function listComboMarkets(
   client: BaseClient,
   request: ListComboMarketsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<ComboMarket[]> {
   const params = parseUserInput(request, ListComboMarketsRequestSchema);
 
@@ -274,12 +283,13 @@ export function listComboMarkets(
     (cursor) =>
       client.rfq
         .get('/v1/rfq/combo-markets', {
+          signal: options.signal,
           params: toComboMarketsSearchParams({
             ...params,
             cursor: cursor ?? params.cursor,
           }),
         })
-        .andThen(validateWith(ListComboMarketsResponseSchema))
+        .andThen(validateWith(ListComboMarketsResponseSchema, options))
         .map((response) => ({
           items: response.markets,
           hasMore: response.nextCursor !== undefined,
@@ -290,12 +300,14 @@ export function listComboMarkets(
 }
 
 export type FetchMarketError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchMarketError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -336,31 +348,38 @@ export const FetchMarketError = makeErrorGuard(
 export async function fetchMarket(
   client: BaseClient,
   request: FetchMarketRequest,
+  options: RequestOptions = {},
 ): Promise<Market> {
   const params = parseUserInput(request, FetchMarketRequestSchema);
 
   if ('id' in params) {
-    return fetchMarketById(client, params);
+    return fetchMarketById(client, params, options);
   }
 
   if ('url' in params) {
-    return fetchMarketBySlug(client, {
-      includeTag: params.includeTag,
-      locale: params.locale,
-      slug: parsePolymarketSlugUrl(params.url, 'market'),
-    });
+    return fetchMarketBySlug(
+      client,
+      {
+        includeTag: params.includeTag,
+        locale: params.locale,
+        slug: parsePolymarketSlugUrl(params.url, 'market'),
+      },
+      options,
+    );
   }
 
-  return fetchMarketBySlug(client, params);
+  return fetchMarketBySlug(client, params, options);
 }
 
 export type FetchMarketTagsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchMarketTagsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -389,13 +408,14 @@ export const FetchMarketTagsError = makeErrorGuard(
 export async function fetchMarketTags(
   client: BaseClient,
   request: FetchMarketTagsRequest,
+  options: RequestOptions = {},
 ): Promise<TagReference[]> {
   const params = parseUserInput(request, FetchMarketTagsRequestSchema);
 
   return unwrap(
     client.gamma
-      .get(`markets/${params.id}/tags`)
-      .andThen(validateWith(FetchMarketTagsResponseSchema)),
+      .get(`markets/${params.id}/tags`, options)
+      .andThen(validateWith(FetchMarketTagsResponseSchema, options)),
   );
 }
 
@@ -431,12 +451,14 @@ export type ListMarketHoldersRequest = z.input<
   typeof ListMarketHoldersRequestSchema
 >;
 export type ListMarketHoldersError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListMarketHoldersError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -454,7 +476,7 @@ export const ListMarketHoldersError = makeErrorGuard(
  * equivalent to 1,000,000 base units.
  * Amounts are net holdings by default. `includePnl` switches to per-outcome
  * gross holdings and adds position economics; it requires one condition ID and
- * a page size of at most 100. Transient rate limits are retried automatically.
+ * a page size of at most 100. Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -477,23 +499,27 @@ export const ListMarketHoldersError = makeErrorGuard(
 export function listMarketHolders(
   client: BaseClient,
   request: ListMarketHoldersRequest,
+  options: RequestOptions = {},
 ): Paginated<MetaHolder[]> {
   const { conditionIds, cursor, includePnl, minBalance, pageSize } =
     parseUserInput(request, ListMarketHoldersRequestSchema);
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/holders', {
-          params: toDataSearchParams({
-            condition: conditionIds,
-            limit: pageSize,
-            cursor,
-            includePnl,
-            minBalance,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/holders', {
+            signal: options.signal,
+            params: toDataSearchParams({
+              condition: conditionIds,
+              limit: pageSize,
+              cursor,
+              includePnl,
+              minBalance,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListMarketHoldersResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListMarketHoldersResponseSchema, options)),
     cursor,
   );
 }
@@ -619,12 +645,14 @@ const ListPriceHistoryRequestSchema = z.union([
 ]) satisfies z.ZodType<ListPriceHistoryRequest, ListPriceHistoryRequest>;
 
 export type ListPriceHistoryError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListPriceHistoryError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -645,7 +673,7 @@ export const ListPriceHistoryError = makeErrorGuard(
  * strings and returned timestamps are Unix epoch milliseconds. Series pages
  * are ordered oldest first; an `asOf` request returns at most one item. Series
  * page sizes default to and are capped at 10,000 points. Transient rate limits
- * are retried automatically.
+ * are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -669,6 +697,7 @@ export const ListPriceHistoryError = makeErrorGuard(
 export function listPriceHistory(
   client: BaseClient,
   request: ListPriceHistoryRequest,
+  options: RequestOptions = {},
 ): Paginated<PriceHistoryPoint[]> {
   const { assetId, cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -677,16 +706,19 @@ export function listPriceHistory(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/prices-history', {
-          params: toDataSearchParams({
-            ...params,
-            tokenId: assetId,
-            limit: pageSize,
-            cursor,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/prices-history', {
+            signal: options.signal,
+            params: toDataSearchParams({
+              ...params,
+              tokenId: assetId,
+              limit: pageSize,
+              cursor,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListPriceHistoryResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListPriceHistoryResponseSchema, options)),
     cursor,
   );
 }
@@ -700,12 +732,14 @@ export type FetchOpenInterestRequest = z.input<
 >;
 
 export type FetchOpenInterestError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOpenInterestError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -720,7 +754,7 @@ export const FetchOpenInterestError = makeErrorGuard(
  * the global aggregate, whose `conditionId` is `null`. A requested servable
  * market with no holdings has a zero value; an absent row means the market is
  * not servable. Values are in USDC. Transient rate limits are retried
- * automatically.
+ * by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -740,6 +774,7 @@ export const FetchOpenInterestError = makeErrorGuard(
 export async function fetchOpenInterest(
   client: BaseClient,
   request: FetchOpenInterestRequest = {},
+  options: RequestOptions = {},
 ): Promise<OpenInterest[]> {
   const { conditionIds } = parseUserInput(
     request,
@@ -747,11 +782,14 @@ export async function fetchOpenInterest(
   );
 
   return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/oi', {
-        params: toDataSearchParams({ condition: conditionIds }),
-      }),
-    ).andThen(validateWith(FetchOpenInterestResponseSchema)),
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/oi', {
+          signal: options.signal,
+          params: toDataSearchParams({ condition: conditionIds }),
+        }),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(validateWith(FetchOpenInterestResponseSchema, options)),
   );
 }
 
@@ -788,10 +826,12 @@ function toComboMarketsSearchParams(
 async function fetchMarketBySlug(
   client: BaseClient,
   params: z.output<typeof FetchMarketBySlugRequestSchema>,
+  options: RequestOptions = {},
 ): Promise<Market> {
   return unwrap(
     client.gamma
       .get(`markets/slug/${params.slug}`, {
+        signal: options.signal,
         params: toSearchParams(
           {
             includeTag: params.includeTag,
@@ -800,17 +840,19 @@ async function fetchMarketBySlug(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(MarketSchema)),
+      .andThen(validateWith(MarketSchema, options)),
   );
 }
 
 async function fetchMarketById(
   client: BaseClient,
   params: z.output<typeof FetchMarketByIdRequestSchema>,
+  options: RequestOptions = {},
 ): Promise<Market> {
   return unwrap(
     client.gamma
       .get(`markets/${params.id}`, {
+        signal: options.signal,
         params: toSearchParams(
           {
             includeTag: params.includeTag,
@@ -819,6 +861,6 @@ async function fetchMarketById(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(MarketSchema)),
+      .andThen(validateWith(MarketSchema, options)),
   );
 }

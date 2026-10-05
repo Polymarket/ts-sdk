@@ -5,6 +5,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -18,6 +19,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
@@ -36,12 +38,14 @@ const ListTeamsRequestSchema = z.object({
 export type ListTeamsRequest = z.input<typeof ListTeamsRequestSchema>;
 
 export type ListTeamsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListTeamsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -90,6 +94,7 @@ export const ListTeamsError = makeErrorGuard(
 export function listTeams(
   client: BaseClient,
   request: ListTeamsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Team[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -101,6 +106,7 @@ export function listTeams(
 
     return client.gamma
       .get('/teams', {
+        signal: options.signal,
         params: toSearchParams(
           {
             ...params,
@@ -110,7 +116,7 @@ export function listTeams(
           snakeCase({ providerId: 'provider_id' }),
         ),
       })
-      .andThen(validateWith(ListTeamsResponseSchema))
+      .andThen(validateWith(ListTeamsResponseSchema, options))
       .map((teams) => {
         const hasMore = teams.length >= decoded.pageSize;
 

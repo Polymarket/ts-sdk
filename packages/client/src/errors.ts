@@ -92,6 +92,15 @@ export class TransportError extends PolymarketError {
   }
 }
 
+/** Error thrown when a caller cancels a read through its AbortSignal. */
+export class RequestAbortedError extends PolymarketError {
+  override name = 'RequestAbortedError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+}
+
 /**
  * WebSocket close codes defined by RFC 6455 and the IANA WebSocket Close Code
  * Number registry. Codes 4000-4999 are reserved for application use and are

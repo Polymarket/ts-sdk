@@ -43,6 +43,7 @@ import {
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type { RateLimitUpdateListener } from './rate-limit';
+import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
@@ -72,6 +73,10 @@ import {
 } from './workflow';
 
 type PublicContext = {
+  /** @internal */
+  fetch?: Fetch;
+  /** @internal */
+  retry: boolean;
   /** @internal */
   apiKey?: ApiKeyAuthorization;
   /** @internal */
@@ -138,6 +143,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
+  get retry(): boolean {
+    return this.context.retry;
+  }
+
+  /** @internal */
   get environment(): EnvironmentConfig {
     return this.context.environment;
   }
@@ -201,7 +211,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return Promise.resolve({});
   }
@@ -210,7 +223,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.supportGasless) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return Promise.resolve({});
   }
@@ -289,6 +305,8 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
     });
 
 type PublicClientConfig = {
+  fetch?: Fetch;
+  retry?: boolean;
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
   onRateLimitUpdate?: RateLimitUpdateListener;
@@ -302,35 +320,53 @@ class BasePublicClient<
     super({
       apiKey: config.apiKey,
       environment: config.environment,
+      fetch: config.fetch,
+      retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
       data: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       gamma: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       clob: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
       relayer: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rfq: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
-      rpc: new JsonRpcClient({ url: config.environment.rpc }),
+      rpc: new JsonRpcClient({
+        url: config.environment.rpc,
+        fetch: config.fetch,
+        retry: config.retry,
+      }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
@@ -503,6 +539,8 @@ class BasePublicClient<
       credentials,
       environment: this.environment,
       onRateLimitUpdate: this.context.onRateLimitUpdate,
+      fetch: this.context.fetch,
+      retry: this.context.retry,
       signer,
     });
 
@@ -548,37 +586,57 @@ class BaseSecureClient<
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
+      fetch: config.fetch,
+      retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
       clob: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
       relayer: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
-      rpc: new JsonRpcClient({ url: config.environment.rpc }),
+      rpc: new JsonRpcClient({
+        url: config.environment.rpc,
+        fetch: config.fetch,
+        retry: config.retry,
+      }),
       gamma: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       data: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       rfq: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
       secureClob: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => ({
@@ -588,11 +646,15 @@ class BaseSecureClient<
         root: config.environment.clob.rest,
       }),
       combos: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.combos.collateralReturn.rest,
       }),
       builderGateway: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
         headers: config.environment.combos.builderGateway.headers,
         resolveHeaders: async (request) => ({
           ...(await this.#resolveBuilderGatewayHeaders(request)),
@@ -633,6 +695,8 @@ class BaseSecureClient<
           url: config.environment.perps.ws,
         }),
         perpsSession: new PerpsSessionManager({
+          fetch: config.fetch,
+          retry: config.retry,
           chainId: config.environment.chainId,
           headers: config.environment.perps.headers,
           restUrl: config.environment.perps.rest,
@@ -775,7 +839,8 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate } = this.context;
+    const { apiKey, environment, onRateLimitUpdate, fetch, retry } =
+      this.context;
 
     try {
       await deleteApiKey(this);
@@ -792,6 +857,8 @@ class BaseSecureClient<
       apiKey,
       environment,
       onRateLimitUpdate,
+      fetch,
+      retry,
     });
 
     for (const decorator of this.decorators) {
@@ -807,7 +874,10 @@ class BaseSecureClient<
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return {};
   }
@@ -888,6 +958,14 @@ export type Client<
   | SecureClient<TPublicActions, TSecureActions>;
 
 export type PublicClientOptions = {
+  /** Fetch-compatible implementation for SDK-owned HTTP requests. Defaults to native fetch. */
+  fetch?: Fetch;
+  /**
+   * Set false to disable HTTP transport retries and automatic read retries.
+   * Does not disable wallet workflow recovery or WebSocket command retries.
+   * @defaultValue true
+   */
+  retry?: boolean;
   /**
    * The environment configuration used by the client.
    *
@@ -962,6 +1040,8 @@ export function createPublicClient(
     environment: options.environment ?? production,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
+    fetch: options.fetch,
+    retry: options.retry,
   }).extend(allActions);
 }
 
@@ -1013,6 +1093,8 @@ export async function createSecureClient(
     environment: options.environment,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
+    fetch: options.fetch,
+    retry: options.retry,
   });
   const wallet = await resolveRequestedWallet(client, options);
 

@@ -20,6 +20,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -27,6 +28,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import { toDataSearchParams } from './params';
@@ -50,12 +52,14 @@ export type ListBuilderLeaderboardRequest = z.input<
 >;
 
 export type ListBuilderLeaderboardError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListBuilderLeaderboardError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -69,7 +73,7 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
  * Builders are ranked by attributed share volume within `window`, which
  * defaults to one day. `builderCode` is the stable identifier; names and
  * profile images are display metadata. `pageSize` defaults to 100 (max 1000).
- * Transient rate limits are retried automatically.
+ * Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -109,6 +113,7 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
 export function listBuilderLeaderboard(
   client: BaseClient,
   request: ListBuilderLeaderboardRequest = {},
+  options: RequestOptions = {},
 ): Paginated<BuilderStanding[]> {
   const { cursor, pageSize, window } = parseUserInput(
     request,
@@ -117,17 +122,20 @@ export function listBuilderLeaderboard(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/builders/leaderboard', {
-          // Retain the original window across the cursor walk. The cursor pins
-          // it, while the server rejects a contradictory window explicitly.
-          params: toDataSearchParams({
-            timePeriod: window,
-            limit: pageSize,
-            cursor,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/builders/leaderboard', {
+            signal: options.signal,
+            // Retain the original window across the cursor walk. The cursor pins
+            // it, while the server rejects a contradictory window explicitly.
+            params: toDataSearchParams({
+              timePeriod: window,
+              limit: pageSize,
+              cursor,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListBuilderLeaderboardResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListBuilderLeaderboardResponseSchema, options)),
     cursor,
   );
 }
@@ -143,12 +151,14 @@ export type FetchBuilderVolumeRequest = z.input<
 >;
 
 export type FetchBuilderVolumeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchBuilderVolumeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -163,7 +173,7 @@ export const FetchBuilderVolumeError = makeErrorGuard(
  * {@link BuilderVolumeInterval.Year} for one bucket per calendar year.
  * `bucketLimit` returns that many complete recent buckets (default 30, max 90),
  * not that many builder rows. Results are newest bucket first, and volume is
- * measured in shares. Transient rate limits are retried automatically.
+ * measured in shares. Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -184,6 +194,7 @@ export const FetchBuilderVolumeError = makeErrorGuard(
 export async function fetchBuilderVolume(
   client: BaseClient,
   request: FetchBuilderVolumeRequest = {},
+  options: RequestOptions = {},
 ): Promise<BuilderVolumePoint[]> {
   const { interval, bucketLimit } = parseUserInput(
     request,
@@ -191,11 +202,14 @@ export async function fetchBuilderVolume(
   );
 
   return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/builders/volume', {
-        params: toDataSearchParams({ interval, limit: bucketLimit }),
-      }),
-    ).andThen(validateWith(FetchBuilderVolumeResponseSchema)),
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/builders/volume', {
+          signal: options.signal,
+          params: toDataSearchParams({ interval, limit: bucketLimit }),
+        }),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(validateWith(FetchBuilderVolumeResponseSchema, options)),
   );
 }
 
@@ -215,12 +229,14 @@ export type ListTraderLeaderboardRequest = z.input<
 >;
 
 export type ListTraderLeaderboardError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListTraderLeaderboardError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -276,6 +292,7 @@ export const ListTraderLeaderboardError = makeErrorGuard(
 export function listTraderLeaderboard(
   client: BaseClient,
   request: ListTraderLeaderboardRequest = {},
+  options: RequestOptions = {},
 ): Paginated<TraderLeaderboardEntry[]> {
   const { category, cursor, pageSize, sortBy, window } = parseUserInput(
     request,
@@ -284,19 +301,22 @@ export function listTraderLeaderboard(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/leaderboard', {
-          // Retain the selected board across the cursor walk. The cursor pins
-          // these values and the server rejects contradictory restatements.
-          params: toDataSearchParams({
-            category,
-            cursor,
-            limit: pageSize,
-            sortBy,
-            timePeriod: window,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/leaderboard', {
+            signal: options.signal,
+            // Retain the selected board across the cursor walk. The cursor pins
+            // these values and the server rejects contradictory restatements.
+            params: toDataSearchParams({
+              category,
+              cursor,
+              limit: pageSize,
+              sortBy,
+              timePeriod: window,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListTraderLeaderboardResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListTraderLeaderboardResponseSchema, options)),
     cursor,
   );
 }
@@ -312,12 +332,14 @@ export type FetchTraderLeaderboardStandingRequest = z.input<
 >;
 
 export type FetchTraderLeaderboardStandingError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTraderLeaderboardStandingError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -350,6 +372,7 @@ export const FetchTraderLeaderboardStandingError = makeErrorGuard(
 export async function fetchTraderLeaderboardStanding(
   client: BaseClient,
   request: FetchTraderLeaderboardStandingRequest,
+  options: RequestOptions = {},
 ): Promise<TraderLeaderboardStanding | null> {
   const { category, user, window } = parseUserInput(
     request,
@@ -357,15 +380,20 @@ export async function fetchTraderLeaderboardStanding(
   );
 
   return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/leaderboard', {
-        params: toDataSearchParams({
-          category,
-          timePeriod: window,
-          user,
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/leaderboard', {
+          signal: options.signal,
+          params: toDataSearchParams({
+            category,
+            timePeriod: window,
+            user,
+          }),
         }),
-      }),
-    ).andThen(validateWith(FetchTraderLeaderboardStandingResponseSchema)),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(
+      validateWith(FetchTraderLeaderboardStandingResponseSchema, options),
+    ),
   );
 }
 
@@ -382,12 +410,14 @@ export type ListBiggestWinnersRequest = z.input<
 >;
 
 export type ListBiggestWinnersError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListBiggestWinnersError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -426,6 +456,7 @@ export const ListBiggestWinnersError = makeErrorGuard(
 export function listBiggestWinners(
   client: BaseClient,
   request: ListBiggestWinnersRequest = {},
+  options: RequestOptions = {},
 ): Paginated<BiggestWinner[]> {
   const { category, cursor, pageSize, window } = parseUserInput(
     request,
@@ -434,16 +465,19 @@ export function listBiggestWinners(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/biggest-winners', {
-          params: toDataSearchParams({
-            category,
-            cursor,
-            limit: pageSize,
-            timePeriod: window,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/biggest-winners', {
+            signal: options.signal,
+            params: toDataSearchParams({
+              category,
+              cursor,
+              limit: pageSize,
+              timePeriod: window,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListBiggestWinnersResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListBiggestWinnersResponseSchema, options)),
     cursor,
   );
 }

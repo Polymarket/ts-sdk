@@ -22,6 +22,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -29,6 +30,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import { distinctIdList, TimeWindowSchema, toDataSearchParams } from './params';
@@ -76,12 +78,14 @@ const ListTradesRequestSchema = z
 
 export type ListTradesRequest = z.input<typeof ListTradesRequestSchema>;
 export type ListTradesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListTradesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -99,7 +103,7 @@ export const ListTradesError = makeErrorGuard(
  * sent alone. `conditionId` accepts at most 20 distinct ids. `pageSize`
  * defaults to 100 (max 1000). `window: 'full'` requests the complete
  * history; an omitted window serves the recent feed. Transient rate limits
- * are retried automatically.
+ * are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -139,6 +143,7 @@ export const ListTradesError = makeErrorGuard(
 export function listTrades(
   client: BaseClient,
   request: ListTradesRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Trade[]> {
   const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
@@ -147,19 +152,22 @@ export function listTrades(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/trades', {
-          // The full original filter set rides along with every cursor: the
-          // cursor binds only its paging anchor, and a filter dropped on a
-          // follow-up page would silently widen the result set.
-          params: toDataSearchParams({
-            ...params,
-            ...window,
-            limit: pageSize,
-            cursor,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/trades', {
+            signal: options.signal,
+            // The full original filter set rides along with every cursor: the
+            // cursor binds only its paging anchor, and a filter dropped on a
+            // follow-up page would silently widen the result set.
+            params: toDataSearchParams({
+              ...params,
+              ...window,
+              limit: pageSize,
+              cursor,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListTradesResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListTradesResponseSchema, options)),
     cursor,
   );
 }
@@ -192,12 +200,14 @@ const ListActivityRequestSchema = z
 export type ListActivityRequest = z.input<typeof ListActivityRequestSchema>;
 
 export type ListActivityError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListActivityError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -213,7 +223,7 @@ export const ListActivityError = makeErrorGuard(
  * results. `window: 'full'`
  * requests the complete history (an omitted window serves the service's
  * default range — the most recent three years). `pageSize` defaults to 100
- * (max 1000). Transient rate limits are retried automatically.
+ * (max 1000). Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -253,6 +263,7 @@ export const ListActivityError = makeErrorGuard(
 export function listActivity(
   client: BaseClient,
   request: ListActivityRequest,
+  options: RequestOptions = {},
 ): Paginated<Activity[]> {
   const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
@@ -261,20 +272,23 @@ export function listActivity(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/activity', {
-          params: toDataSearchParams({
-            ...params,
-            ...window,
-            // The service defaults exclude_deposits_withdrawals=true; opt out
-            // unconditionally and let the type filter decide which rows come
-            // back.
-            excludeDepositsWithdrawals: false,
-            limit: pageSize,
-            cursor,
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/activity', {
+            signal: options.signal,
+            params: toDataSearchParams({
+              ...params,
+              ...window,
+              // The service defaults exclude_deposits_withdrawals=true; opt out
+              // unconditionally and let the type filter decide which rows come
+              // back.
+              excludeDepositsWithdrawals: false,
+              limit: pageSize,
+              cursor,
+            }),
           }),
-        }),
-      ).andThen(validateWith(ListActivityResponseSchema)),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListActivityResponseSchema, options)),
     cursor,
   );
 }
@@ -296,12 +310,14 @@ export type ListComboActivityRequest = z.input<
 >;
 
 export type ListComboActivityError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListComboActivityError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -315,7 +331,7 @@ export const ListComboActivityError = makeErrorGuard(
  * Every row carries the Combo position id and its legs enriched with market
  * metadata; redeem rows additionally carry payout semantics. `pageSize`
  * defaults to 100 (max 1000). Transient rate limits are retried
- * automatically.
+ * by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -342,6 +358,7 @@ export const ListComboActivityError = makeErrorGuard(
 export function listComboActivity(
   client: BaseClient,
   request: ListComboActivityRequest,
+  options: RequestOptions = {},
 ): Paginated<ComboActivity[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -350,11 +367,14 @@ export function listComboActivity(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/activity/combos', {
-          params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
-        }),
-      ).andThen(validateWith(ListComboActivityResponseSchema)),
+      withRateLimitRetry(
+        () =>
+          client.data.get('/v2/activity/combos', {
+            signal: options.signal,
+            params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
+          }),
+        { retry: client.retry, signal: options.signal },
+      ).andThen(validateWith(ListComboActivityResponseSchema, options)),
     cursor,
   );
 }

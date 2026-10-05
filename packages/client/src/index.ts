@@ -69,5 +69,6 @@ export type {
   RateLimitUpdate,
   RateLimitUpdateListener,
 } from './rate-limit';
+export type { Fetch, RequestOptions } from './request-options';
 export * from './types';
 export { type AccountIdentity, SignerType } from './wallet';

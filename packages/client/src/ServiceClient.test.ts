@@ -11,6 +11,8 @@ import {
   it,
   vi,
 } from 'vitest';
+import { z } from 'zod';
+import { readBlob, validateWith } from './response';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -28,6 +30,96 @@ describe('ServiceClient', () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  it.each([
+    [false, 1],
+    [undefined, 3],
+  ])('uses retry=%s for transport failures (%i attempts)', async (retry, attempts) => {
+    let requests = 0;
+    server.use(
+      http.get(`${root}/connection-reset`, () => {
+        requests += 1;
+        return HttpResponse.error();
+      }),
+    );
+    const client = new ServiceClient({ retry, root });
+
+    await expect(unwrap(client.get('/connection-reset'))).rejects.toMatchObject(
+      {
+        name: 'TransportError',
+      },
+    );
+    expect(requests).toBe(attempts);
+  });
+
+  it.each([
+    'resolves',
+    'rejects',
+  ] as const)('stops waiting for authorization headers on abort and never dispatches when signing later %s', async (outcome) => {
+    let markStarted: () => void = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const headers = Promise.withResolvers<HeadersInit>();
+    const fetch = vi.fn(globalThis.fetch);
+    const client = new ServiceClient({
+      fetch,
+      root,
+      resolveHeaders: () => {
+        markStarted();
+        return headers.promise;
+      },
+    });
+    const controller = new AbortController();
+    const pending = unwrap(
+      client.get('/headers', { signal: controller.signal }),
+    );
+    await started;
+    controller.abort('query cancelled while signing');
+
+    await expect(pending).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: 'query cancelled while signing',
+    });
+    if (outcome === 'resolves') {
+      headers.resolve({ Authorization: 'late signature' });
+    } else {
+      headers.reject(new Error('late signing failure'));
+    }
+    await Promise.resolve();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'json',
+    'blob',
+  ] as const)('preserves cancellation during %s body consumption', async (format) => {
+    const controller = new AbortController();
+    const reason = new Error('body read cancelled');
+    const response = new Response(
+      new ReadableStream({
+        start(stream) {
+          stream.enqueue(new TextEncoder().encode('"partial'));
+          controller.signal.addEventListener(
+            'abort',
+            () => stream.error(reason),
+            { once: true },
+          );
+        },
+      }),
+    );
+    const options = { signal: controller.signal };
+    const pending =
+      format === 'json'
+        ? unwrap(validateWith(z.string(), options)(response))
+        : unwrap(readBlob(response, options));
+    controller.abort(reason);
+
+    await expect(pending).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
   });
 
   it('uses JSON error fields as rejected request messages', async () => {
