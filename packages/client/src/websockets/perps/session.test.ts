@@ -288,6 +288,20 @@ describe('PerpsSession', () => {
       ).rejects.toBeInstanceOf(UserInputError);
       expect(writes).toBe(0);
     });
+    it('does not retry a TWAP cancellation after a lost response', async () => {
+      let writes = 0;
+      server.use(
+        http.delete(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.error();
+        }),
+      );
+      const session = createSession();
+      await expect(session.cancelTwap({ twapId: 1 })).rejects.toBeInstanceOf(
+        TransportError,
+      );
+      expect(writes).toBe(1);
+    });
     it('surfaces uncertain and malformed creates without resubmission', async () => {
       let writes = 0;
       server.use(

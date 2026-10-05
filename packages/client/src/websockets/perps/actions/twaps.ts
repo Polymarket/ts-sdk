@@ -197,6 +197,7 @@ export async function createPerpsTwap(
   const accepted = await unwrap(
     client
       .post('/v1/trade/twaps', {
+        retry: false,
         json: {
           ...signCommand(op, params.expiresAt),
           op: { type: 'createTwap', args },
@@ -289,6 +290,7 @@ export async function pausePerpsTwap(
   const response = await unwrap(
     client
       .patch('/v1/trade/twaps', {
+        retry: false,
         json: { ...signCommand(op, params.expiresAt), op: body },
       })
       .andThen(validateWith(PerpsCommandAckSchema)),
@@ -340,6 +342,7 @@ export async function resumePerpsTwap(
   const response = await unwrap(
     client
       .patch('/v1/trade/twaps', {
+        retry: false,
         json: { ...signCommand(op, params.expiresAt), op: body },
       })
       .andThen(validateWith(PerpsCommandAckSchema)),
@@ -385,6 +388,7 @@ export async function cancelPerpsTwap(
   const response = await unwrap(
     client
       .del('/v1/trade/twaps', {
+        retry: false,
         json: { ...signCommand(op, params.expiresAt), op: body },
       })
       .andThen(validateWith(PerpsCommandAckSchema)),
