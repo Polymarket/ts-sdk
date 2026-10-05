@@ -977,7 +977,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * The exit side is inferred from the current position for the requested
-   * instrument.
+   * instrument. Each trigger may specify a positive `quantity` for a partial
+   * close; omission closes the full position at trigger time. A partial fill
+   * leaves the other trigger armed while a same-side position remains.
    *
    * @example
    * ```ts
