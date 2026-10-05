@@ -59,43 +59,6 @@ describe('Portfolio', () => {
   }
 
   describe('listPositions', () => {
-    for (const sortDirection of [SortDirection.Asc, SortDirection.Desc]) {
-      it(`sorts positions by price (${sortDirection}) across pages`, async ({
-        publicClient,
-      }) => {
-        const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        const pages = publicClient.listPositions({
-          user: TEST_USER,
-          sortBy: PositionSortBy.Price,
-          sortDirection,
-          pageSize: 5,
-        });
-        let pageCount = 0;
-
-        for await (const page of pages) {
-          expect(page.items.length).toBeGreaterThan(1);
-          const prices = page.items.map((position) =>
-            Number(position.currentPrice),
-          );
-          const ordered = [...prices].sort((left, right) =>
-            sortDirection === SortDirection.Asc ? left - right : right - left,
-          );
-          expect(prices).toEqual(ordered);
-          pageCount += 1;
-          if (pageCount === 2) break;
-        }
-
-        expect(pageCount).toBe(2);
-        const requests = dataRequests(fetchSpy, '/v2/positions');
-        expect(requests).toHaveLength(2);
-        for (const request of requests) {
-          expect(request.get('sort_by')).toBe('PRICE');
-          expect(request.get('sort_direction')).toBe(sortDirection);
-        }
-        expect(requests[1]?.get('cursor')).toBeTruthy();
-      });
-    }
-
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({
         user: TEST_USER,
@@ -136,6 +99,43 @@ describe('Portfolio', () => {
         ).toThrow(UserInputError);
       }
     });
+
+    for (const sortDirection of [SortDirection.Asc, SortDirection.Desc]) {
+      it(`sorts positions by price (${sortDirection}) across pages`, async ({
+        publicClient,
+      }) => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const pages = publicClient.listPositions({
+          user: TEST_USER,
+          sortBy: PositionSortBy.Price,
+          sortDirection,
+          pageSize: 5,
+        });
+        let pageCount = 0;
+
+        for await (const page of pages) {
+          expect(page.items.length).toBeGreaterThan(1);
+          const prices = page.items.map((position) =>
+            Number(position.currentPrice),
+          );
+          const ordered = [...prices].sort((left, right) =>
+            sortDirection === SortDirection.Asc ? left - right : right - left,
+          );
+          expect(prices).toEqual(ordered);
+          pageCount += 1;
+          if (pageCount === 2) break;
+        }
+
+        expect(pageCount).toBe(2);
+        const requests = dataRequests(fetchSpy, '/v2/positions');
+        expect(requests).toHaveLength(2);
+        for (const request of requests) {
+          expect(request.get('sort_by')).toBe('PRICE');
+          expect(request.get('sort_direction')).toBe(sortDirection);
+        }
+        expect(requests[1]?.get('cursor')).toBeTruthy();
+      });
+    }
   });
 
   describe('listPositions status arms', () => {
