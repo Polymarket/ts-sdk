@@ -92,7 +92,11 @@ export class TransportError extends PolymarketError {
   }
 }
 
-/** Error thrown when a caller cancels a read through its AbortSignal. */
+/**
+ * Error thrown when a caller cancels a read through its AbortSignal.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export class RequestAbortedError extends PolymarketError {
   override name = 'RequestAbortedError' as const;
 

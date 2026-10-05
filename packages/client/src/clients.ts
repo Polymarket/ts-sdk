@@ -958,12 +958,17 @@ export type Client<
   | SecureClient<TPublicActions, TSecureActions>;
 
 export type PublicClientOptions = {
-  /** Fetch-compatible implementation for SDK-owned HTTP requests. Defaults to native fetch. */
+  /**
+   * Fetch-compatible implementation for SDK-owned HTTP requests. Defaults to native fetch.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   fetch?: Fetch;
   /**
    * Set false to disable HTTP transport retries and automatic read retries.
    * Does not disable wallet workflow recovery or WebSocket command retries.
    * @defaultValue true
+   * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   retry?: boolean;
   /**

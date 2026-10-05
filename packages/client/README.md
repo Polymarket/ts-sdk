@@ -27,6 +27,10 @@ for await (const page of result) {
 
 ## HTTP request controls
 
+HTTP request controls are experimental and may change in a breaking way in any
+release, including patch releases. This includes the `fetch` and `retry` client
+options, per-operation `signal`, and `RequestAbortedError`.
+
 Provide a custom `fetch` for instrumentation or your application's transport.
 Set `retry: false` when a query library owns retries:
 

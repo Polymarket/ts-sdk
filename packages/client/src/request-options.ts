@@ -1,14 +1,26 @@
 import { RequestAbortedError } from './errors';
 
-/** A Fetch-compatible function used for SDK HTTP requests. */
+/**
+ * A Fetch-compatible function used for SDK HTTP requests.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type Fetch = (
   input: RequestInfo | URL,
   init?: RequestInit,
 ) => Promise<Response>;
 
-/** Controls the lifetime of one read operation, including subsequent pages. */
+/**
+ * Controls the lifetime of one read operation, including subsequent pages.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export type RequestOptions = {
-  /** Cancels this operation's requests and retry waits. */
+  /**
+   * Cancels this operation's requests and retry waits.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
   signal?: AbortSignal;
 };
 
