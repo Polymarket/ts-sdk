@@ -92,6 +92,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parent_oid: PerpsOrderIdSchema.optional(),
     armed_qty: DecimalStringSchema.optional(),
     slip_bps: z.number().int().nonnegative().optional(),
+    trail_bps: z.number().int().nonnegative().optional(),
+    act: DecimalStringSchema.optional(),
+    trail_anchor: DecimalStringSchema.optional(),
+    trail_active: z.boolean().optional(),
   })
   .transform((fields) => ({
     kind: fields.kind,
@@ -100,6 +104,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parentOrderId: fields.parent_oid,
     armedQuantity: fields.armed_qty,
     slippageBps: fields.slip_bps,
+    trailingBps: fields.trail_bps,
+    activationPrice: fields.act,
+    trailingAnchor: fields.trail_anchor,
+    trailingActive: fields.trail_active,
   }));
 
 /**
