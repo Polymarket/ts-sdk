@@ -22,6 +22,8 @@ import {
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
+  type PerpsTwap,
+  type PerpsTwapAccepted,
   type PerpsUpdateLeverageResult,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
@@ -131,6 +133,17 @@ import {
   updatePerpsLeverage,
   updatePerpsMargin,
 } from './actions/trading';
+import {
+  type CancelPerpsTwapRequest,
+  type CreatePerpsTwapRequest,
+  cancelPerpsTwap,
+  createPerpsTwap,
+  fetchPerpsTwaps,
+  type PausePerpsTwapRequest,
+  pausePerpsTwap,
+  type ResumePerpsTwapRequest,
+  resumePerpsTwap,
+} from './actions/twaps';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
@@ -1334,6 +1347,63 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     );
   }
 
+  /** Create a TWAP using this session's credentials.
+   * @throws {@link CreatePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async createTwap(
+    request: CreatePerpsTwapRequest,
+  ): Promise<PerpsTwapAccepted> {
+    return await createPerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Pause a TWAP using this session's credentials.
+   * @throws {@link PausePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async pauseTwap(request: PausePerpsTwapRequest): Promise<void> {
+    return await pausePerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Resume a TWAP using this session's credentials.
+   * @throws {@link ResumePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async resumeTwap(request: ResumePerpsTwapRequest): Promise<void> {
+    return await resumePerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Cancel a TWAP using this session's credentials.
+   * @throws {@link CancelPerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async cancelTwap(request: CancelPerpsTwapRequest): Promise<void> {
+    return await cancelPerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Fetch all active TWAPs. Ended runs are absent; no pagination.
+   * @throws {@link FetchPerpsTwapsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchTwaps(): Promise<PerpsTwap[]> {
+    return await fetchPerpsTwaps(this.#api);
+  }
   #createSignedCommand(op: PerpsSignableValue, expiresAt?: number) {
     const salt = randomUint32();
     const timestamp = Date.now();
@@ -1588,3 +1658,16 @@ function randomUint32(): number {
   );
   return value;
 }
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from './actions/twaps';

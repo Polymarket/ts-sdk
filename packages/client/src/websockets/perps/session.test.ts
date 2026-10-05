@@ -44,6 +44,7 @@ import {
   PerpsSession,
   type PerpsSessionOptions,
 } from './session';
+import { createPerpsOpTypedDataPayload, signPerpsOp } from './signing';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
@@ -75,6 +76,254 @@ describe('PerpsSession', () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  describe('TWAP lifecycle', () => {
+    it('signs every optional field in source order and normalizes decimal exponent input', async () => {
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              exp: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createTwap',
+              args: {
+                iid: 5,
+                buy: false,
+                qty: '0.00000001',
+                dur: 3600000,
+                ivl: 60000,
+                rnd: true,
+                slip_bps: 10000,
+                min_px: '1.000000000000000001',
+                max_px: '1.000000000000000002',
+                ro: true,
+                c: 'a'.repeat(32),
+              },
+            });
+            expect(body.exp).toBe(1767225660000);
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: [
+                  'createTwap',
+                  [
+                    5,
+                    false,
+                    '0.00000001',
+                    3600000,
+                    60000,
+                    true,
+                    10000,
+                    '1.000000000000000001',
+                    '1.000000000000000002',
+                    true,
+                    'a'.repeat(32),
+                  ],
+                ],
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            return HttpResponse.json({
+              status: 'ok',
+              twid: 1,
+              ts: 1767225600000,
+            });
+          },
+        ),
+      );
+      await createSession().createTwap({
+        instrumentId: 5,
+        side: OrderSide.SELL,
+        quantity: 1e-8,
+        durationMs: 3600000,
+        intervalMs: 60000,
+        randomize: true,
+        slippageBps: 10000,
+        minPrice: '1.000000000000000001',
+        maxPrice: '1.000000000000000002',
+        reduceOnly: true,
+        clientOrderId: 'a'.repeat(32),
+        expiresAt: 1767225660000,
+      });
+    });
+
+    it('signs the exact default tuple, reads and controls the accepted identity', async () => {
+      const signedOp = [
+        'createTwap',
+        [1, true, '1.000000000000000001', 300000, false, 0, false],
+      ] as const;
+      expect(
+        createPerpsOpTypedDataPayload({
+          chainId: 1,
+          op: signedOp,
+          salt: 1,
+          timestamp: 1,
+        }).message.data,
+      ).toBe(
+        '0x68225979ea9c0dda2641be3e25f940f6d515138c2aeb54320ea2be8e5a0b5e25',
+      );
+      const commands: unknown[] = [];
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createTwap',
+              args: {
+                iid: 1,
+                buy: true,
+                qty: '1.000000000000000001',
+                dur: 300000,
+                rnd: false,
+                slip_bps: 0,
+                ro: false,
+              },
+            });
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: signedOp,
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            commands.push(body.op);
+            return HttpResponse.json({
+              status: 'ok',
+              twid: 9007199254740991,
+              ts: 1767225600000,
+            });
+          },
+        ),
+        http.get(`${production.perps.rest}/v1/account/twaps`, () =>
+          HttpResponse.json([]),
+        ),
+        http.patch(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            commands.push(await request.json());
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+        http.delete(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            commands.push(await request.json());
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+      const accepted = await session.createTwap({
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1.000000000000000001',
+        durationMs: 300000,
+      });
+      expect(accepted).toEqual({
+        twapId: 9007199254740991,
+        timestamp: 1767225600000,
+      });
+      expect(await session.fetchTwaps()).toEqual([]);
+      await session.pauseTwap({ twapId: accepted.twapId });
+      await session.resumeTwap({ twapId: accepted.twapId });
+      await session.cancelTwap({ twapId: accepted.twapId });
+      expect(commands).toHaveLength(4);
+      expect(commands[1]).toMatchObject({
+        op: {
+          type: 'controlTwap',
+          args: { twid: accepted.twapId, act: 'pause' },
+        },
+      });
+      expect(commands[2]).toMatchObject({
+        op: {
+          type: 'controlTwap',
+          args: { twid: accepted.twapId, act: 'resume' },
+        },
+      });
+      expect(commands[3]).toMatchObject({
+        op: { type: 'cancelTwap', args: { twid: accepted.twapId } },
+      });
+    });
+    it.each([
+      { intervalMs: 31000 },
+      { quantity: '0' },
+      { quantity: 'garbage' },
+      { durationMs: 86400001 },
+      { slippageBps: 10001 },
+      { minPrice: '1.000000000000000002', maxPrice: '1.000000000000000001' },
+    ])('validates all input before signing and dispatch: %j', async (invalid) => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.json({ status: 'ok' });
+        }),
+      );
+      const session = createSession();
+      await expect(
+        session.createTwap({
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1',
+          durationMs: 300000,
+          ...invalid,
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(writes).toBe(0);
+    });
+    it('surfaces uncertain and malformed creates without resubmission', async () => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.json({ error: 'timeout' }, { status: 500 });
+        }),
+      );
+      const session = createSession();
+      const request = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        durationMs: 300000,
+      };
+      await expect(session.createTwap(request)).rejects.toBeInstanceOf(
+        RequestRejectedError,
+      );
+      expect(writes).toBe(1);
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () =>
+          HttpResponse.json({ status: 'ok', twid: 1 }),
+        ),
+      );
+      await expect(session.createTwap(request)).rejects.toBeInstanceOf(
+        UnexpectedResponseError,
+      );
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () =>
+          HttpResponse.json({ status: 'err', error: 'twap_limit_exceeded' }),
+        ),
+      );
+      await expect(session.createTwap(request)).rejects.toMatchObject({
+        message: 'twap_limit_exceeded',
+      });
+    });
   });
 
   describe('builder consent', () => {
