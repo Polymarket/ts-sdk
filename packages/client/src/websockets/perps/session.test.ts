@@ -775,8 +775,11 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('waits for the matching private order update', async () => {
-      const frames = mockOrderPlacementSession({ status: 'open' });
+    it.each([
+      'open',
+      'insufficient_margin_at_fill',
+    ])('waits for the matching %s private order update', async (status) => {
+      const frames = mockOrderPlacementSession({ status });
       const session = createSession();
       await session.connect();
 
@@ -796,7 +799,7 @@ describe('PerpsSession', () => {
           clientOrderId: '0123456789abcdef0123456789abcdef',
           id: 123,
           restingQuantity: '1.5',
-          status: 'open',
+          status,
         },
       });
       expect(frames[2]).toMatchObject({
@@ -808,7 +811,7 @@ describe('PerpsSession', () => {
         value: {
           payload: {
             id: 123,
-            status: 'open',
+            status,
           },
           type: 'order',
         },
@@ -817,9 +820,12 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('uses a matching private order update received before the acknowledgement', async () => {
+    it.each([
+      'open',
+      'instrument_settled',
+    ])('uses a matching %s private order update received before the acknowledgement', async (status) => {
       const frames = mockOrderPlacementSession({
-        status: 'open',
+        status,
         updateBeforeAck: true,
       });
       const session = createSession();
@@ -840,7 +846,7 @@ describe('PerpsSession', () => {
             clientOrderId: expect.stringMatching(/^[0-9a-f]{32}$/),
             id: 123,
             restingQuantity: '1.5',
-            status: 'open',
+            status,
           },
         });
         expect(frames[2]).toMatchObject({
