@@ -13,6 +13,7 @@ import type {
   FetchPerpsBookRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  FetchPerpsRegistrationRequest,
   FetchPerpsTickerRequest,
   FetchPerpsTickersRequest,
   ListPerpsCandlesRequest,
@@ -61,6 +62,25 @@ import type {
   FetchPerpsInstrumentsRequest,
   ResumePerpsSessionRequest,
 } from './perps';
+
+describe('registration lookup types', () => {
+  it('accepts a plain address and returns a boolean', () => {
+    function read(
+      client: PublicPerpsActions,
+      request: FetchPerpsRegistrationRequest,
+    ) {
+      expectTypeOf(client.fetchPerpsRegistration(request)).toEqualTypeOf<
+        Promise<boolean>
+      >();
+      client.fetchPerpsRegistration({
+        address: '0x1111111111111111111111111111111111111111',
+      });
+      // @ts-expect-error An address is required.
+      client.fetchPerpsRegistration({});
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
 
 describe('session builder consent', () => {
   it('requires an explicit maximum and keeps versions internal', () => {

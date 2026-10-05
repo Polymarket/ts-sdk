@@ -42,6 +42,10 @@ import {
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
 } from '../actions/perps/builders';
+import {
+  type FetchPerpsRegistrationRequest,
+  fetchPerpsRegistration,
+} from '../actions/perps/registration';
 import type {
   BaseClient,
   BasePublicClient,
@@ -139,6 +143,11 @@ export {
 } from '../actions/perps/builders';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
+  FetchPerpsRegistrationError,
+  type FetchPerpsRegistrationRequest,
+} from '../actions/perps/registration';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
   FetchPerpsBuilderApprovalsError,
   type FetchPerpsBuilderApprovalsRequest,
   FetchPerpsBuilderEarningsSummaryError,
@@ -154,6 +163,15 @@ export {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /**
+   * Fetches whether an address has a Perps account without authentication.
+   * Registration is permanent; a false result may be cached for up to ten seconds.
+   * @throws {@link FetchPerpsRegistrationError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsRegistration(
+    request: FetchPerpsRegistrationRequest,
+  ): Promise<boolean>;
   /**
    * Fetches public builder availability and the platform fee cap.
    * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
@@ -433,6 +451,7 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
+    fetchPerpsRegistration: fetchPerpsRegistration.bind(null, client),
     fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
