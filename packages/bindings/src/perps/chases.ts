@@ -61,7 +61,7 @@ export const PerpsChaseSchema = z
     ...(chase.coid === undefined ? {} : { clientOrderId: chase.coid }),
     ...(chase.oid === undefined ? {} : { orderId: chase.oid }),
   }));
-/** A running chase. Zero bounds are unset; reference price is zero before the first resting child.
+/** A running chase. Zero bounds are unset; reference price is zero until a child first rests or fills.
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsChase = z.infer<typeof PerpsChaseSchema>;

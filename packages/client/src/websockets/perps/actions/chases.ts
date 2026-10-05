@@ -114,7 +114,7 @@ export type CreatePerpsChaseRequest = {
   side: OrderSide;
   quantity: PerpsDecimalInput;
   /** Highest buy price or lowest sell price. Zero or omission disables this bound. */ limitPrice?: PerpsDecimalInput;
-  /** Maximum distance from the first resting price. Zero or omission disables this bound. */ maxDistance?: PerpsDecimalInput;
+  /** Maximum distance from the first price at which a child rests or fills. Zero or omission disables this bound. */ maxDistance?: PerpsDecimalInput;
   /** 1 to 1000 bps. Omit to disable; cannot combine with positive maxDistance. */ maxDistanceBps?: number;
   /** Refuse children that cross. Defaults to true. */ postOnly?: boolean;
   reduceOnly?: boolean;
