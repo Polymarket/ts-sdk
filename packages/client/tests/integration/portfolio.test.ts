@@ -57,6 +57,76 @@ describe('Portfolio', () => {
   }
 
   describe('listPositions', () => {
+    it('validates title length in Unicode characters before any request', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const title of [
+        'x'.repeat(200),
+        '😀'.repeat(200),
+        ' '.repeat(201),
+      ]) {
+        expect(() =>
+          publicClient.listPositions({ user: TEST_USER, title }),
+        ).not.toThrow();
+      }
+      for (const title of ['x'.repeat(201), '😀'.repeat(201), 123]) {
+        expect(() =>
+          publicClient.listPositions({
+            user: TEST_USER,
+            title: title as string,
+          }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps title filters on every page and cursor replay', async ({
+      publicClient,
+    }) => {
+      const title = 'WiLl%';
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const pages = publicClient.listPositions({
+        user: TEST_USER,
+        title,
+        pageSize: 1,
+      });
+      const first = await pages.firstPage().then(expectNonEmptyPage);
+      expect(first.nextCursor).toBeDefined();
+      const replay = pages.from(expectPresent(first.nextCursor));
+      for await (const page of replay) {
+        expect(page.items.length).toBeGreaterThan(0);
+        expect(
+          page.items.every((position) =>
+            position.title?.toLowerCase().includes('will'),
+          ),
+        ).toBe(true);
+        break;
+      }
+      const requests = dataRequests(fetchSpy, '/v2/positions');
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.get('title')).toBe(title);
+      expect(requests[1]?.get('title')).toBe(title);
+      expect(requests[1]?.has('cursor')).toBe(true);
+    });
+
+    it('preserves raw title patterns for market anchors and omits blank titles', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const title = ' BiTcOiN%_ ';
+      await publicClient
+        .listPositions({ conditionId: TEST_CONDITION_ID, title, pageSize: 1 })
+        .firstPage();
+      await publicClient
+        .listPositions({ user: TEST_USER, title: ' '.repeat(201), pageSize: 1 })
+        .firstPage();
+      const requests = dataRequests(fetchSpy, '/v2/positions');
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.get('title')).toBe(title);
+      expect(requests[1]?.has('title')).toBe(false);
+    });
+
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({
         user: TEST_USER,
