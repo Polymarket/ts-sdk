@@ -6,6 +6,7 @@ import type {
   PerpsFundingRate,
   PerpsInstrument,
   PerpsInternalTransferId,
+  PerpsPositionSnapshots,
   PerpsPublicTrade,
   PerpsTicker,
   PerpsWithdrawalId,
@@ -42,11 +43,24 @@ import {
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
 } from '../actions/perps/builders';
+import {
+  type FetchPerpsPositionSnapshotsRequest,
+  fetchPerpsPositionSnapshots,
+} from '../actions/perps/position-snapshots';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsPositionSnapshotsError,
+  type FetchPerpsPositionSnapshotsRequest,
+  type PerpsPositionSnapshotFill,
+  type PerpsPositionSnapshotSelection,
+} from '../actions/perps/position-snapshots';
+
 import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
@@ -154,6 +168,15 @@ export {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /** Fetches ordered snapshots anonymously, including on secure clients. Use
+   * session.fetchPositionSnapshots for owner-only leverage and PnL percentage.
+   * No pagination or automatic retries of item statuses.
+   * @throws {@link FetchPerpsPositionSnapshotsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsPositionSnapshots(
+    request: FetchPerpsPositionSnapshotsRequest,
+  ): Promise<PerpsPositionSnapshots>;
   /**
    * Fetches public builder availability and the platform fee cap.
    * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
@@ -433,6 +456,8 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
+    fetchPerpsPositionSnapshots: (request) =>
+      fetchPerpsPositionSnapshots(client, request),
     fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
