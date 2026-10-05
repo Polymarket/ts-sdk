@@ -90,6 +90,40 @@ describe('PerpsPostOrderAckSchema', () => {
 });
 
 describe('PerpsOrderSchema', () => {
+  it('accepts GTD in REST and compact private updates', () => {
+    const fields = {
+      buy: true,
+      tif: 'gtd',
+      ro: false,
+      status: 'order_expired',
+    };
+    const rest = PerpsOrderSchema.parse({
+      ...fields,
+      order_id: 1,
+      instrument_id: 1,
+      price: '100.50',
+      quantity: '10',
+      post_only: true,
+      resting_quantity: '9',
+      filled_quantity: '1',
+      created_timestamp: 1700000000000,
+      updated_timestamp: 1700000060000,
+    });
+    const update = PerpsOrderUpdateSchema.parse({
+      ...fields,
+      oid: 1,
+      iid: 1,
+      p: '100.50',
+      qty: '10',
+      po: true,
+      rest: '9',
+      fill: '1',
+      cts: 1700000000000,
+      uts: 1700000060000,
+    });
+    expect(update).toEqual(rest);
+    expect(rest.timeInForce).toBe('gtd');
+  });
   it('normalizes order status and side', () => {
     const order = PerpsOrderSchema.parse({
       buy: true,
