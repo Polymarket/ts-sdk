@@ -63,6 +63,7 @@ const PerpsOrderBaseInputSchema = z.object({
   quantity: PerpsDecimalInputSchema,
   reduceOnly: z.boolean().default(false),
   clientOrderId: PerpsClientOrderIdSchema.optional(),
+  gtdExpiry: z.never().optional(),
 });
 
 /**
@@ -81,6 +82,7 @@ export type PerpsPlaceGtcOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Good-til-cancelled execution. */
   timeInForce: PerpsTimeInForce.GTC;
+  gtdExpiry?: never;
   /** Whether the order must rest instead of taking liquidity. */
   postOnly?: boolean;
   /** Whether the order may only reduce or close an existing position. */
@@ -94,6 +96,47 @@ const PerpsPlaceGtcOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
   timeInForce: z.literal(PerpsTimeInForce.GTC),
   postOnly: z.boolean().default(false),
 }) satisfies z.ZodType<PerpsPlaceGtcOrderRequest>;
+
+/**
+ * Good-till-date Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPlaceGtdOrderRequest = {
+  /** Perps instrument identifier to trade. */
+  instrumentId: number;
+  /** Trade direction. */
+  side: OrderSide;
+  /** Limit price. */
+  price: PerpsDecimalInput;
+  /** Order quantity. */
+  quantity: PerpsDecimalInput;
+  /** Good-till-date execution. */
+  timeInForce: PerpsTimeInForce.GTD;
+  /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from the command deadline. */
+  gtdExpiry: number;
+  /** Whether the order must rest instead of taking liquidity. */
+  postOnly?: boolean;
+  /** Whether the order may only reduce or close an existing position. */
+  reduceOnly?: boolean;
+  /** Optional caller-supplied idempotency identifier. */
+  clientOrderId?: string;
+};
+
+const PerpsPlaceGtdOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
+  price: PerpsDecimalInputSchema,
+  timeInForce: z.literal(PerpsTimeInForce.GTD),
+  postOnly: z.boolean().default(false),
+  gtdExpiry: z
+    .number()
+    .int()
+    .positive()
+    .max(18_446_744_073_709)
+    .refine(
+      (expiry) => expiry > Date.now(),
+      'Order expiration must be strictly in the future.',
+    ),
+}) satisfies z.ZodType<PerpsPlaceGtdOrderRequest>;
 
 /**
  * Immediate-or-cancel Perps order.
@@ -111,6 +154,7 @@ export type PerpsPlaceIocOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Immediate-or-cancel execution. */
   timeInForce: PerpsTimeInForce.IOC;
+  gtdExpiry?: never;
   postOnly?: never;
   /** Whether the order may only reduce or close an existing position. */
   reduceOnly?: boolean;
@@ -140,6 +184,7 @@ export type PerpsPlaceFokOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Fill-or-kill execution. */
   timeInForce: PerpsTimeInForce.FOK;
+  gtdExpiry?: never;
   postOnly?: never;
   /** Whether the order may only reduce or close an existing position. */
   reduceOnly?: boolean;
@@ -160,11 +205,13 @@ const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
  */
 export type PerpsOrderRequest =
   | PerpsPlaceGtcOrderRequest
+  | PerpsPlaceGtdOrderRequest
   | PerpsPlaceIocOrderRequest
   | PerpsPlaceFokOrderRequest;
 
 const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceGtcOrderRequestSchema,
+  PerpsPlaceGtdOrderRequestSchema,
   PerpsPlaceIocOrderRequestSchema,
   PerpsPlaceFokOrderRequestSchema,
 ]) satisfies z.ZodType<PerpsOrderRequest>;
@@ -175,15 +222,18 @@ const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
 export type PerpsTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
   limitPrice?: PerpsDecimalInput;
+  gtdExpiry?: never;
 };
 
 const PerpsTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
+  gtdExpiry: z.never().optional(),
   limitPrice: PerpsDecimalInputSchema.optional(),
 }) satisfies z.ZodType<PerpsTpSlTrigger>;
 
 const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
+  gtdExpiry: z.never().optional(),
 }) satisfies z.ZodType<PerpsPositionTpSlTrigger>;
 
 /**
@@ -191,6 +241,7 @@ const PerpsPositionTpSlTriggerSchema = z.object({
  */
 export type PerpsPositionTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
+  gtdExpiry?: never;
 };
 
 type PerpsTpSlPairRequest =
@@ -316,8 +367,33 @@ export type PlacePerpsOrderRequest =
       price: PerpsDecimalInput;
       /** Order quantity. */
       quantity: PerpsDecimalInput;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      takeProfit?: never;
+      stopLoss?: never;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
       /** Good-til-cancelled execution. */
       timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -340,6 +416,7 @@ export type PlacePerpsOrderRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -361,6 +438,7 @@ export type PlacePerpsOrderRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -385,8 +463,36 @@ export type PlacePerpsOrderWithTpSlRequest =
       price: PerpsDecimalInput;
       /** Order quantity. */
       quantity: PerpsDecimalInput;
-      /** Good-til-cancelled execution. */
-      timeInForce: PerpsTimeInForce.GTC;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Optional take-profit trigger to place with the entry order. */
+      takeProfit?: PerpsTpSlTrigger;
+      /** Stop-loss trigger to place with the entry order. */
+      stopLoss: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -411,6 +517,32 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Good-til-cancelled execution. */
       timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Take-profit trigger to place with the entry order. */
+      takeProfit: PerpsTpSlTrigger;
+      /** Optional stop-loss trigger to place with the entry order. */
+      stopLoss?: PerpsTpSlTrigger;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-til-cancelled execution. */
+      timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -435,6 +567,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -458,6 +591,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -481,6 +615,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -504,6 +639,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -1525,7 +1661,7 @@ type RawPerpsOrderInput = readonly [
   true | undefined,
   string | undefined,
   RawPerpsTpSlTriggerInput | undefined,
-  undefined,
+  number | undefined,
   readonly [string, string] | undefined,
 ];
 
@@ -1549,7 +1685,7 @@ function toRawPerpsOrder(
     order.reduceOnly === true ? true : undefined,
     order.clientOrderId,
     undefined,
-    undefined,
+    order.gtdExpiry,
     builderAttribution === undefined
       ? undefined
       : [builderAttribution.builderAddress, builderAttribution.feeRate],
@@ -1663,6 +1799,7 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
   if (order[2] !== undefined) body.p = order[2];
   if (order[7] !== undefined) body.c = order[7];
   if (order[8] !== undefined) body.tr = toPerpsTpSlTriggerBody(order[8]);
+  if (order[9] !== undefined) body.gtd_expiry = order[9];
   if (order[10] !== undefined) {
     body.builder = { address: order[10][0], fee_rate: order[10][1] };
   }

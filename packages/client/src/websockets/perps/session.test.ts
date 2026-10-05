@@ -817,6 +817,86 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('rejects an expiry on a trigger before sending any order', async () => {
+      const session = createSession();
+      await session.connect();
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            price: '100',
+            quantity: '1',
+            timeInForce: PerpsTimeInForce.GTD,
+            gtdExpiry: Date.now() + 60_000,
+            stopLoss: {
+              triggerPrice: '90',
+              gtdExpiry: Date.now() + 60_000,
+            } as never,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      false,
+      true,
+    ])('places GTD with separate command deadline and optional exits (%s)', async (withExits) => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        timeInForce: PerpsTimeInForce.GTD,
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+      try {
+        const gtdExpiry = Date.now() + 60_000;
+        const expiresAt = Date.now() + 5_000;
+        const request = {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          price: '100.00',
+          quantity: '1.5',
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry,
+        } as const;
+        const placement = withExits
+          ? await session.placeOrder({
+              ...request,
+              expiresAt,
+              stopLoss: { triggerPrice: '90' },
+            })
+          : await session.placeOrder({ ...request, expiresAt });
+        expect(placement.order.timeInForce).toBe(PerpsTimeInForce.GTD);
+        expect(frames[2]).toMatchObject({
+          exp: expiresAt,
+          op: {
+            args: withExits
+              ? [
+                  { tif: 'gtd', gtd_expiry: gtdExpiry },
+                  { tr: { trp: '90' }, ro: true },
+                ]
+              : [{ tif: 'gtd', gtd_expiry: gtdExpiry }],
+          },
+        });
+        if (withExits) {
+          expect(frames[2]).not.toMatchObject({
+            op: {
+              args: [expect.anything(), { gtd_expiry: expect.anything() }],
+            },
+          });
+          expect(frames[2]).not.toMatchObject({
+            op: { args: [expect.anything(), { tif: expect.anything() }] },
+          });
+        }
+      } finally {
+        await session.close();
+      }
+    });
+
     it('uses a matching private order update received before the acknowledgement', async () => {
       const frames = mockOrderPlacementSession({
         status: 'open',
@@ -2382,6 +2462,7 @@ function mockCommandSession(
 function mockOrderPlacementSession(request: {
   status: string;
   updateBeforeAck?: boolean;
+  timeInForce?: PerpsTimeInForce;
 }): unknown[] {
   const frames: unknown[] = [];
 
@@ -2396,6 +2477,7 @@ function mockOrderPlacementSession(request: {
             request.status,
             clientOrderIdFromFrame(frame),
           );
+          update.data.tif = request.timeInForce ?? PerpsTimeInForce.GTC;
           if (request.updateBeforeAck) {
             client.send(JSON.stringify(update));
           }

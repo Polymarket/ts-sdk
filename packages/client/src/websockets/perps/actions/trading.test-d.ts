@@ -5,6 +5,7 @@ import type { PerpsSession } from '../session';
 import type {
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
@@ -25,6 +26,49 @@ const gtcOrder = {
 } as const;
 
 describe('PlacePerpsOrderRequest', () => {
+  it('requires expiry and price for GTD across single and batch placement', () => {
+    const request: PerpsPlaceGtdOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      price: '100',
+      gtdExpiry: Date.now() + 60_000,
+      postOnly: true,
+    };
+    const single: PlacePerpsOrderRequest = {
+      ...request,
+      expiresAt: Date.now() + 5_000,
+    };
+    const batch: PostPerpsOrdersRequest = { orders: [request] };
+    const bracket: PlacePerpsOrderWithTpSlRequest = {
+      ...request,
+      stopLoss: { triggerPrice: '90' },
+    };
+    // @ts-expect-error GTD requires expiry.
+    const missingExpiry: PlacePerpsOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      price: '100',
+    };
+    // @ts-expect-error GTD requires price.
+    const missingPrice: PlacePerpsOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      gtdExpiry: Date.now() + 60_000,
+    };
+    // @ts-expect-error GTC cannot carry order expiry.
+    const unexpectedExpiry: PlacePerpsOrderRequest = {
+      ...gtcOrder,
+      gtdExpiry: Date.now() + 60_000,
+    };
+    void [
+      single,
+      batch,
+      bracket,
+      missingExpiry,
+      missingPrice,
+      unexpectedExpiry,
+    ];
+  });
   it('does not accept per-order builder overrides', () => {
     const request: PlacePerpsOrderRequest = {
       ...gtcOrder,

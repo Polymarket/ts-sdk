@@ -18,6 +18,7 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import type { PerpsBuilderTermsInput } from './builder-terms';
@@ -43,6 +44,122 @@ afterEach(() => {
 });
 
 describe('Perps trading actions', () => {
+  describe('GTD orders', () => {
+    const expiry = 1_893_456_000_123;
+    const order = {
+      instrumentId: 1,
+      side: OrderSide.BUY,
+      price: '100.50',
+      quantity: '10',
+      timeInForce: PerpsTimeInForce.GTD,
+      gtdExpiry: expiry,
+      postOnly: true,
+    } as const;
+    it('preserves expiry before builder attribution in signed and keyed forms', async () => {
+      const builder = {
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        feeRate: '0.0005',
+      };
+      const executor: PerpsCommandExecutor = {
+        builderAttribution: builder,
+        async executeCommand(request, schema) {
+          expect(request.expiresAt).toBe(1_893_455_000_000);
+          expect(request.op).toEqual([
+            'createOrders',
+            [
+              [
+                1,
+                true,
+                '100.50',
+                '10',
+                'gtd',
+                true,
+                undefined,
+                undefined,
+                undefined,
+                expiry,
+                [builder.builderAddress, builder.feeRate],
+              ],
+            ],
+          ]);
+          expect(toPerpsCommandBodyOp(request.op)).toEqual({
+            type: 'createOrders',
+            args: [
+              {
+                iid: 1,
+                buy: true,
+                p: '100.50',
+                qty: '10',
+                tif: 'gtd',
+                po: true,
+                gtd_expiry: expiry,
+                builder: {
+                  address: builder.builderAddress,
+                  fee_rate: builder.feeRate,
+                },
+              },
+            ],
+          });
+          const payload = { chainId: 31337, salt: 1, timestamp: 1739491200000 };
+          expect(
+            createPerpsOpTypedDataPayload({ ...payload, op: request.op }),
+          ).toEqual(
+            createPerpsOpTypedDataPayload({
+              ...payload,
+              op: [
+                'createOrders',
+                [
+                  [
+                    1,
+                    true,
+                    '100.50',
+                    '10',
+                    'gtd',
+                    true,
+                    expiry,
+                    [builder.builderAddress, builder.feeRate],
+                  ],
+                ],
+              ],
+            }),
+          );
+          return schema.parse([{ oid: 1, status: 'ok' }]);
+        },
+      };
+      await postPerpsOrders(executor, {
+        orders: [order],
+        expiresAt: 1_893_455_000_000,
+      });
+    });
+    it.each([
+      { gtdExpiry: undefined },
+      { gtdExpiry: 1 },
+      { gtdExpiry: true },
+      { gtdExpiry: 1.5 },
+      { gtdExpiry: 18_446_744_073_710 },
+      { price: undefined },
+      { timeInForce: PerpsTimeInForce.GTC },
+      { timeInForce: PerpsTimeInForce.IOC, postOnly: undefined },
+      { timeInForce: PerpsTimeInForce.FOK, postOnly: undefined },
+    ])('rejects a malformed later batch order before execution: %j', async (overrides) => {
+      const executeCommand = vi.fn();
+      const executor: PerpsCommandExecutor = { executeCommand };
+      await expect(
+        postPerpsOrders(executor, {
+          orders: [order, { ...order, ...overrides } as never],
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+    it('rejects expiry equal to the current time', async () => {
+      vi.useFakeTimers({ now: expiry });
+      const executeCommand = vi.fn();
+      await expect(
+        postPerpsOrders({ executeCommand }, { orders: [order] }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+  });
   describe('builder attribution', () => {
     const builder = {
       builderAddress: '0x1111111111111111111111111111111111111111',
