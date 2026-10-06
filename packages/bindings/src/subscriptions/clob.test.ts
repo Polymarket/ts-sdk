@@ -115,6 +115,64 @@ describe('UserEventSchema', () => {
 });
 
 describe('MarketEventSchema', () => {
+  const NEW_MARKET = {
+    event_type: 'new_market',
+    id: '5290391',
+    market: CONDITION_ID,
+    assets_ids: ['1', '2'],
+    outcomes: ['Over', 'Under'],
+    timestamp: '1791133357388',
+  };
+
+  it('normalizes a space-separated game_start_time to ISO 8601', () => {
+    const result = MarketEventSchema.safeParse({
+      ...NEW_MARKET,
+      game_start_time: '2026-10-17 23:30:00+00',
+    });
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw result.error;
+    }
+
+    expect(result.data).toMatchObject({
+      payload: { gameStartTime: '2026-10-17T23:30:00.000Z' },
+    });
+  });
+
+  it('keeps an ISO 8601 game_start_time unchanged', () => {
+    const result = MarketEventSchema.safeParse({
+      ...NEW_MARKET,
+      game_start_time: '2024-01-15T19:00:00Z',
+    });
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw result.error;
+    }
+
+    expect(result.data).toMatchObject({
+      payload: { gameStartTime: '2024-01-15T19:00:00Z' },
+    });
+  });
+
+  it('normalizes an empty game_start_time to null', () => {
+    const result = MarketEventSchema.safeParse({
+      ...NEW_MARKET,
+      game_start_time: '',
+    });
+
+    expect(result.success).toBe(true);
+
+    if (!result.success) {
+      throw result.error;
+    }
+
+    expect(result.data).toMatchObject({ payload: { gameStartTime: null } });
+  });
+
   it('normalizes empty-string best_bid and best_ask to null on price changes', () => {
     const result = MarketEventSchema.safeParse({
       event_type: 'price_change',
