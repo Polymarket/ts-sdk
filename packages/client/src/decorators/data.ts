@@ -431,6 +431,7 @@ export {
   PriceHistoryInterval,
   ResolutionMarketType,
   ResolutionReporter,
+  ResolutionSettlementTimeBasis,
   ResolutionSource,
   ResolutionStatus,
 } from '../actions';

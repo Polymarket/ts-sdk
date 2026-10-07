@@ -1603,6 +1603,54 @@ describe('PerpsSession', () => {
   });
 
   describe('notifications', () => {
+    it('delivers ADL settlements through the existing session iterator', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'notifications',
+        sq: 1042,
+        ts: 1_767_225_600_000,
+        data: {
+          id: NOTIFICATION_ID,
+          type: 'position_deleveraged',
+          instrument_id: 1,
+          side: 'short',
+          size_closed: '0.01',
+          price: '52000',
+          pnl: '130',
+          margin_type: 'isolated',
+        },
+      });
+      // A subsequent known event prevents a dropped ADL frame from only timing out.
+      await connection.send(
+        notificationUpdate({ sequence: 1043, type: 'position_opened' }),
+      );
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          type: 'notification',
+          channel: 'notifications',
+          sequence: 1042,
+          timestamp: 1_767_225_600_000,
+          payload: {
+            id: NOTIFICATION_ID,
+            type: 'position_deleveraged',
+            instrumentId: 1,
+            side: 'short',
+            sizeClosed: '0.01',
+            price: '52000',
+            pnl: '130',
+            marginType: 'isolated',
+          },
+        },
+      });
+      await session.close();
+    });
+
     it('emits notification events from the notifications channel', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);

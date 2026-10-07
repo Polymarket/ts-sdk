@@ -1,7 +1,9 @@
 import {
   ComboPositionSortBy,
   ComboPositionStatus,
+  PositionSortBy,
   PositionStatus,
+  SortDirection,
   UserInputError,
   UserPnlFidelity,
   UserPnlInterval,
@@ -57,6 +59,76 @@ describe('Portfolio', () => {
   }
 
   describe('listPositions', () => {
+    it('validates title length in Unicode characters before any request', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const title of [
+        'x'.repeat(200),
+        '😀'.repeat(200),
+        ' '.repeat(201),
+      ]) {
+        expect(() =>
+          publicClient.listPositions({ user: TEST_USER, title }),
+        ).not.toThrow();
+      }
+      for (const title of ['x'.repeat(201), '😀'.repeat(201), 123]) {
+        expect(() =>
+          publicClient.listPositions({
+            user: TEST_USER,
+            title: title as string,
+          }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('keeps title filters on every page and cursor replay', async ({
+      publicClient,
+    }) => {
+      const title = 'WiLl%';
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const pages = publicClient.listPositions({
+        user: TEST_USER,
+        title,
+        pageSize: 1,
+      });
+      const first = await pages.firstPage().then(expectNonEmptyPage);
+      expect(first.nextCursor).toBeDefined();
+      const replay = pages.from(expectPresent(first.nextCursor));
+      for await (const page of replay) {
+        expect(page.items.length).toBeGreaterThan(0);
+        expect(
+          page.items.every((position) =>
+            position.title?.toLowerCase().includes('will'),
+          ),
+        ).toBe(true);
+        break;
+      }
+      const requests = dataRequests(fetchSpy, '/v2/positions');
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.get('title')).toBe(title);
+      expect(requests[1]?.get('title')).toBe(title);
+      expect(requests[1]?.has('cursor')).toBe(true);
+    });
+
+    it('preserves raw title patterns for market anchors and omits blank titles', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const title = ' BiTcOiN%_ ';
+      await publicClient
+        .listPositions({ conditionId: TEST_CONDITION_ID, title, pageSize: 1 })
+        .firstPage();
+      await publicClient
+        .listPositions({ user: TEST_USER, title: ' '.repeat(201), pageSize: 1 })
+        .firstPage();
+      const requests = dataRequests(fetchSpy, '/v2/positions');
+      expect(requests).toHaveLength(2);
+      expect(requests[0]?.get('title')).toBe(title);
+      expect(requests[1]?.has('title')).toBe(false);
+    });
+
     it('lists positions for a wallet', async ({ publicClient }) => {
       const paginator = publicClient.listPositions({
         user: TEST_USER,
@@ -97,6 +169,43 @@ describe('Portfolio', () => {
         ).toThrow(UserInputError);
       }
     });
+
+    for (const sortDirection of [SortDirection.Asc, SortDirection.Desc]) {
+      it(`sorts positions by price (${sortDirection}) across pages`, async ({
+        publicClient,
+      }) => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const pages = publicClient.listPositions({
+          user: TEST_USER,
+          sortBy: PositionSortBy.Price,
+          sortDirection,
+          pageSize: 5,
+        });
+        let pageCount = 0;
+
+        for await (const page of pages) {
+          expect(page.items.length).toBeGreaterThan(1);
+          const prices = page.items.map((position) =>
+            Number(position.currentPrice),
+          );
+          const ordered = [...prices].sort((left, right) =>
+            sortDirection === SortDirection.Asc ? left - right : right - left,
+          );
+          expect(prices).toEqual(ordered);
+          pageCount += 1;
+          if (pageCount === 2) break;
+        }
+
+        expect(pageCount).toBe(2);
+        const requests = dataRequests(fetchSpy, '/v2/positions');
+        expect(requests).toHaveLength(2);
+        for (const request of requests) {
+          expect(request.get('sort_by')).toBe('PRICE');
+          expect(request.get('sort_direction')).toBe(sortDirection);
+        }
+        expect(requests[1]?.get('cursor')).toBeTruthy();
+      });
+    }
   });
 
   describe('listPositions status arms', () => {
