@@ -126,3 +126,22 @@ describe('public CLOB price read types', () => {
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
   });
 });
+
+describe('reward market discovery public types', () => {
+  it('exposes normalized pagination and the discovery request at the root', () => {
+    const request: import('../index').ListRewardMarketsRequest = {
+      query: 'sports',
+      eventIds: [1, 2],
+      marketId: 12,
+      pageSize: 25,
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').ListRewardMarketsRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').listRewardMarkets>
+    >().toEqualTypeOf<
+      import('../index').Paginated<import('../index').RewardMarket[]>
+    >();
+  });
+});

@@ -1,5 +1,9 @@
 import { OrderSide, type TokenId } from '@polymarket/bindings';
-import type { PublicClient } from '@polymarket/client';
+import {
+  type PublicClient,
+  RewardMarketSort,
+  UserInputError,
+} from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { describe, expect, it } from './fixtures';
 import { expectPageWindow } from './helpers';
@@ -9,6 +13,39 @@ const REWARD_PAGE_WINDOW = 10;
 let liquidClobTokenIdPromise: Promise<TokenId> | undefined;
 
 describe('CLOB', () => {
+  describe('listRewardMarkets', () => {
+    it('validates excluded tag limits and finite bounds before sending', ({
+      publicClient,
+    }) => {
+      expect(() =>
+        publicClient.listRewardMarkets({
+          excludeTagSlugs: Array.from({ length: 21 }, (_, i) => `tag-${i}`),
+        }),
+      ).toThrow(UserInputError);
+      expect(() =>
+        publicClient.listRewardMarkets({ minPrice: Number.NaN }),
+      ).toThrow(UserInputError);
+    });
+    it('continues reward market discovery through SDK pages', async ({
+      publicClient,
+    }) => {
+      const paginator = publicClient.listRewardMarkets({
+        pageSize: 2,
+        orderBy: RewardMarketSort.Volume24Hr,
+      });
+      let pages = 0;
+      for await (const page of paginator) {
+        expect(page.items).toHaveLength(2);
+        for (const market of page.items) {
+          expect(market.marketId).toEqual(expect.any(String));
+          expect(Array.isArray(market.rewardsConfig)).toBe(true);
+        }
+        if (++pages === 2) break;
+      }
+      expect(pages).toBe(2);
+    });
+  });
+
   describe('fetchOrderBook', () => {
     it('fetches the order book for a token', async ({ publicClient }) => {
       const tokenId = await selectLiquidClobTokenId(publicClient);
