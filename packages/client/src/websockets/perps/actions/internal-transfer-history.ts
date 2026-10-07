@@ -18,13 +18,17 @@ export type PerpsInternalTransfersCursorState = {
  *
  * @internal
  */
-export function toPerpsInternalTransfersPage(
+export async function toPerpsInternalTransfersPage(
   transfers: PerpsInternalTransfer[],
   hasMore: boolean,
   state: PerpsInternalTransfersCursorState,
-): Page<PerpsInternalTransfer[]> {
+  readBoundary: (bounds: {
+    startTimestamp: number;
+    endTimestamp: number;
+  }) => Promise<{ transfers: PerpsInternalTransfer[]; hasMore: boolean }>,
+): Promise<Page<PerpsInternalTransfer[]>> {
   const seenKeys = new Set(state.seenKeys);
-  const items = transfers.filter(
+  let items = transfers.filter(
     (transfer) => !seenKeys.has(String(transfer.transferId)),
   );
   if (!hasMore) return { items, hasMore: false };
@@ -35,11 +39,26 @@ export function toPerpsInternalTransfersPage(
       'Perps internal-transfer history reported more records without a continuation timestamp.',
     );
   }
-  const endTimestamp = Math.min(state.endTimestamp, last.createdTimestamp + 1);
+  let endTimestamp = Math.min(state.endTimestamp, last.createdTimestamp + 1);
+  let continuationTransfers = transfers;
   if (endTimestamp === state.endTimestamp && items.length === 0) {
-    throw new UnexpectedResponseError(
-      'Perps internal-transfer history cannot continue within a full millisecond without skipping records.',
+    // The extra row may be older than this interval. Prove that the entire
+    // inclusive millisecond is complete before moving past its hidden fractions.
+    const boundary = await readBoundary({
+      startTimestamp: Math.max(state.startTimestamp, state.endTimestamp - 1),
+      endTimestamp: state.endTimestamp,
+    });
+    if (boundary.hasMore) {
+      throw new UnexpectedResponseError(
+        'Perps internal-transfer history cannot continue within a full millisecond without skipping records.',
+      );
+    }
+    items = boundary.transfers.filter(
+      (transfer) => !seenKeys.has(String(transfer.transferId)),
     );
+    endTimestamp = state.endTimestamp - 1;
+    if (endTimestamp < state.startTimestamp) return { items, hasMore: false };
+    continuationTransfers = boundary.transfers;
   }
 
   // The inclusive upper bound may also repeat a record at the exact start
@@ -47,7 +66,7 @@ export function toPerpsInternalTransfersPage(
   const nextSeenKeys = new Set(
     endTimestamp === state.endTimestamp ? state.seenKeys : [],
   );
-  for (const transfer of transfers) {
+  for (const transfer of continuationTransfers) {
     if (transfer.createdTimestamp >= endTimestamp - 1) {
       nextSeenKeys.add(String(transfer.transferId));
     }

@@ -739,7 +739,23 @@ export function listPerpsInternalTransfers(
       })
       .andThen(validateWith(ListPerpsInternalTransfersResponseSchema))
       .map((response) =>
-        toPerpsInternalTransfersPage(response.data, response.more, state),
+        toPerpsInternalTransfersPage(
+          response.data,
+          response.more,
+          state,
+          async (bounds) => {
+            const boundary = await unwrap(
+              api
+                .get('/v1/account/internal-transfers', {
+                  params: toPerpsSearchParams(bounds),
+                })
+                .andThen(
+                  validateWith(ListPerpsInternalTransfersResponseSchema),
+                ),
+            );
+            return { transfers: boundary.data, hasMore: boundary.more };
+          },
+        ),
       );
   }, cursor);
 }
