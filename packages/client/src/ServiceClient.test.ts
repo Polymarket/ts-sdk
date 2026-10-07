@@ -45,6 +45,21 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('supports a single DELETE attempt when acknowledgement is lost', async () => {
+    let requests = 0;
+    server.use(
+      http.delete(`${root}/single-attempt`, () => {
+        requests++;
+        return HttpResponse.error();
+      }),
+    );
+    const client = new ServiceClient({ root });
+    await expect(
+      unwrap(client.del('/single-attempt', { retry: false })),
+    ).rejects.toMatchObject({ name: 'TransportError' });
+    expect(requests).toBe(1);
+  });
+
   it('exposes JSON error codes on rejected requests', async () => {
     server.use(
       http.get(`${root}/json-error-code`, () =>
