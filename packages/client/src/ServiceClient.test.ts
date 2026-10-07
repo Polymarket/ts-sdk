@@ -11,6 +11,8 @@ import {
   it,
   vi,
 } from 'vitest';
+import { OrderHeartbeatMismatchError } from './errors';
+import { buildHmacSignature } from './hmac';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -28,6 +30,106 @@ describe('ServiceClient', () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  it('signs the exact heartbeat JSON and keeps the legacy request body empty', async () => {
+    const observed: Array<{
+      path: string;
+      body: string;
+      signature: string | null;
+    }> = [];
+    server.use(
+      http.post(`${root}/*`, async ({ request }) => {
+        observed.push({
+          path: new URL(request.url).pathname,
+          body: await request.text(),
+          signature: request.headers.get('POLY_SIGNATURE'),
+        });
+        return HttpResponse.json(
+          new URL(request.url).pathname === '/v1/heartbeats'
+            ? { heartbeat_id: 'next-id' }
+            : { status: 'ok' },
+        );
+      }),
+    );
+    const client = new ServiceClient({
+      root,
+      resolveHeaders: async ({ method, path, body }) => ({
+        POLY_SIGNATURE: await buildHmacSignature(
+          'dGVzdA==',
+          1,
+          method,
+          path,
+          body,
+        ),
+      }),
+    });
+    await unwrap(
+      client.post('/v1/heartbeats', {
+        json: { heartbeat_id: 'current-id' },
+        retry: false,
+      }),
+    );
+    await unwrap(client.post('/heartbeats', { retry: false }));
+    expect(observed[0]).toEqual({
+      path: '/v1/heartbeats',
+      body: '{"heartbeat_id":"current-id"}',
+      signature: await buildHmacSignature(
+        'dGVzdA==',
+        1,
+        'POST',
+        '/v1/heartbeats',
+        '{"heartbeat_id":"current-id"}',
+      ),
+    });
+    expect(observed[1]).toEqual({
+      path: '/heartbeats',
+      body: '',
+      signature: await buildHmacSignature('dGVzdA==', 1, 'POST', '/heartbeats'),
+    });
+  });
+
+  it('preserves the expected order heartbeat ID and performs one attempt', async () => {
+    let requests = 0;
+    server.use(
+      http.post(`${root}/v1/heartbeats`, () => {
+        requests++;
+        return HttpResponse.json(
+          { error_msg: 'Invalid Heartbeat ID', heartbeat_id: 'expected-id' },
+          { status: 400 },
+        );
+      }),
+    );
+    const client = new ServiceClient({ root });
+    const result = await client.post('/v1/heartbeats', {
+      json: { heartbeat_id: 'stale-id' },
+      retry: false,
+    });
+    expect(result.isErr()).toBe(true);
+    if (result.isErr()) {
+      expect(result.error).toBeInstanceOf(OrderHeartbeatMismatchError);
+      expect(result.error).toMatchObject({
+        status: 400,
+        heartbeatId: 'expected-id',
+      });
+    }
+    expect(requests).toBe(1);
+  });
+
+  it('does not reinterpret unrelated errors containing a heartbeat ID', async () => {
+    server.use(
+      http.post(`${root}/other-route`, () =>
+        HttpResponse.json(
+          { error_msg: 'Invalid Heartbeat ID', heartbeat_id: 'expected-id' },
+          { status: 400 },
+        ),
+      ),
+    );
+    const client = new ServiceClient({ root });
+    const result = await client.post('/other-route');
+    if (result.isErr())
+      expect(result.error).not.toBeInstanceOf(OrderHeartbeatMismatchError);
+    else throw new Error('Expected rejection');
   });
 
   it('uses JSON error fields as rejected request messages', async () => {

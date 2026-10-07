@@ -214,6 +214,20 @@ export class RequestRejectedError extends PolymarketError {
   }
 }
 
+/**
+ * An order heartbeat used a stale ID. Retry explicitly with heartbeatId and retain
+ * the new ID from the successful response. A rejected send does not refresh the deadline.
+ */
+export class OrderHeartbeatMismatchError extends RequestRejectedError {
+  /** Currently expected ID. It can be empty after a legacy heartbeat. */
+  readonly heartbeatId: string;
+
+  constructor(heartbeatId: string) {
+    super('Invalid Heartbeat ID', { status: 400 });
+    this.heartbeatId = heartbeatId;
+  }
+}
+
 export type RateLimitErrorOptions = {
   /**
    * Server-requested delay in seconds before retrying, when the response
