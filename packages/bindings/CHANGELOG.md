@@ -1,5 +1,51 @@
 # @polymarket/bindings
 
+## 0.13.0
+
+### Minor Changes
+
+- ea1237e: Read trading approval state from the indexed approvals endpoint while keeping
+  trading setup checks on chain. Recent grants and revocations may take time to
+  appear in reads. Return shapes and required approvals are unchanged.
+
+  Reads now follow the configured data endpoint, independently of RPC overrides,
+  and surface its failures without an RPC fallback. This includes rejected zero
+  and protocol-contract wallets, rate limits, and unavailable environments.
+  Incomplete or mismatched approval snapshots raise `UnexpectedResponseError`.
+
+- 61f140f: Add 60-second equity TWAP subscriptions with typed live updates and history snapshots.
+- ab1e3b2: Support `position_deleveraged` notifications in Perps notification history and the existing session event iterator. The new notification includes the closed size, settlement price, realized PnL, and margin type. Perps remains experimental; exhaustive notification switches should handle this variant.
+- b824569: Add authenticated Perps chase creation, active reads and cancellation, with child order chase identities and exact decimal validation.
+- 2eea382: Support Perps good-till-date orders with a separate order expiry, batch validation, signing, and GTD order updates.
+- 04af7cc: Add experimental public and authenticated position snapshots with exact trade IDs and per-selection outcomes.
+- d918f6a: Add a public Perps registration lookup that validates an address and returns whether it has a Perps account.
+- 1e0b3dd: Expose instrument close-only state, optional settlement records and display labels, and settlement flags on public trades and account fills. Older responses default the new flags to false; canonical instrument identifiers remain unchanged.
+- 95766f8: Add experimental authenticated TWAP creation, active-run reads, pause, resume and cancellation.
+- 1a2e9ca: Expose a position's first acquisition time as `firstEntryAt`, in Unix epoch
+  milliseconds. Unrecorded acquisition times are `undefined`.
+- 8d7fccc: Add `PositionSortBy.Price` for sorting positions by current price. Redeemable
+  positions retain winners-first ordering, and closed wallet positions retain
+  realized-PnL ordering.
+- d0be2fd: Add optional Chainlink and Pyth provider selection to cryptocurrency, equity, and their 60-second TWAP subscriptions. Keep different requested providers on separate connections so fallback and disabled selection do not mix subscriptions. Price sources continue to identify the actual producer. An optional `onSubscribed` callback reports the provider the server confirms, on acceptance and after every reconnect.
+- bbbcb20: Expose the source of realtime price updates and history snapshots. Known sources
+  are available through `KnownPriceSource`, while `PriceSource` accepts future source
+  names. Cached history starts fresh when the source changes.
+- 5976187: Expose optional resolution settlement estimates and their basis through
+  `expectedSettlementTime` and `settlementTimeBasis`, with the public
+  `ResolutionSettlementTimeBasis` enum. Estimates are earliest settlement times,
+  not guaranteed deadlines.
+- d004008: Support trailing market stop losses for order and position protection, including partial position exits, activation events, and live trailing metadata.
+
+### Patch Changes
+
+- 98adafb: Add ordered batch Perps leverage updates with per-instrument rejection results.
+- ae8b4e8: Emit server notification resync signals through the Perps session iterator with
+  `reason: 'server'`, the catch-up sequence, and the server timestamp. Backfill from
+  the last processed notification sequence and deduplicate by notification id.
+- fcbe83c: Accept current terminal Perps order statuses in order history and private order
+  updates, including instrument retirement, fill-time margin failures, and order
+  limits. Valid terminal updates now resolve order placement instead of timing out.
+
 ## 0.12.0
 
 ### Minor Changes
