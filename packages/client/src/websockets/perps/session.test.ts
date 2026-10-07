@@ -664,6 +664,7 @@ describe('PerpsSession', () => {
 
     it('reauthenticates, resubscribes, and emits resync', async () => {
       const session = createSession();
+      const connection = captureConnection(server, perps);
 
       vi.useFakeTimers();
 
@@ -671,6 +672,17 @@ describe('PerpsSession', () => {
         await session.connect();
         await vi.waitFor(() => {
           expect(connectionFrames[0]?.frames).toHaveLength(2);
+        });
+
+        const serverResync = waitForNextEvent(session);
+        await connection.send({
+          ch: 'notifications',
+          sq: 1050,
+          ts: 1_700_000_000_000,
+          type: 'resync',
+        });
+        await expect(serverResync).resolves.toMatchObject({
+          value: { reason: 'server', sequence: 1050, type: 'resync' },
         });
 
         const nextEvent = waitForNextEvent(session);
@@ -713,6 +725,13 @@ describe('PerpsSession', () => {
             reason: 'reconnect',
             type: 'resync',
           },
+        });
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence: 1080, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          value: { sequence: 1080, type: 'notification' },
         });
       } finally {
         await session.close();
@@ -775,8 +794,11 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('waits for the matching private order update', async () => {
-      const frames = mockOrderPlacementSession({ status: 'open' });
+    it.each([
+      'open',
+      'insufficient_margin_at_fill',
+    ])('waits for the matching %s private order update', async (status) => {
+      const frames = mockOrderPlacementSession({ status });
       const session = createSession();
       await session.connect();
 
@@ -796,7 +818,7 @@ describe('PerpsSession', () => {
           clientOrderId: '0123456789abcdef0123456789abcdef',
           id: 123,
           restingQuantity: '1.5',
-          status: 'open',
+          status,
         },
       });
       expect(frames[2]).toMatchObject({
@@ -808,7 +830,7 @@ describe('PerpsSession', () => {
         value: {
           payload: {
             id: 123,
-            status: 'open',
+            status,
           },
           type: 'order',
         },
@@ -897,9 +919,12 @@ describe('PerpsSession', () => {
       }
     });
 
-    it('uses a matching private order update received before the acknowledgement', async () => {
+    it.each([
+      'open',
+      'instrument_settled',
+    ])('uses a matching %s private order update received before the acknowledgement', async (status) => {
       const frames = mockOrderPlacementSession({
-        status: 'open',
+        status,
         updateBeforeAck: true,
       });
       const session = createSession();
@@ -920,7 +945,7 @@ describe('PerpsSession', () => {
             clientOrderId: expect.stringMatching(/^[0-9a-f]{32}$/),
             id: 123,
             restingQuantity: '1.5',
-            status: 'open',
+            status,
           },
         });
         expect(frames[2]).toMatchObject({
@@ -1758,6 +1783,54 @@ describe('PerpsSession', () => {
   });
 
   describe('notifications', () => {
+    it('delivers ADL settlements through the existing session iterator', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'notifications',
+        sq: 1042,
+        ts: 1_767_225_600_000,
+        data: {
+          id: NOTIFICATION_ID,
+          type: 'position_deleveraged',
+          instrument_id: 1,
+          side: 'short',
+          size_closed: '0.01',
+          price: '52000',
+          pnl: '130',
+          margin_type: 'isolated',
+        },
+      });
+      // A subsequent known event prevents a dropped ADL frame from only timing out.
+      await connection.send(
+        notificationUpdate({ sequence: 1043, type: 'position_opened' }),
+      );
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          type: 'notification',
+          channel: 'notifications',
+          sequence: 1042,
+          timestamp: 1_767_225_600_000,
+          payload: {
+            id: NOTIFICATION_ID,
+            type: 'position_deleveraged',
+            instrumentId: 1,
+            side: 'short',
+            sizeClosed: '0.01',
+            price: '52000',
+            pnl: '130',
+            marginType: 'isolated',
+          },
+        },
+      });
+      await session.close();
+    });
+
     it('emits notification events from the notifications channel', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
@@ -1789,37 +1862,48 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('drops server resync frames without emitting an event', async () => {
+    it('emits server resyncs and continues notifications without synthetic gaps', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
 
       await session.connect();
 
-      // The server resync control frame is parsed but intentionally not
-      // surfaced until DEV-428; the notification sent afterwards arriving as
-      // the next event proves it was dropped without closing the session.
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
+        ets: 1_699_999_999_000,
         sq: 1050,
         ts: 1_700_000_000_000,
         type: 'resync',
       });
-      await connection.send(
-        notificationUpdate({ sequence: 1051, type: 'position_opened' }),
-      );
-
-      await expect(nextEvent).resolves.toMatchObject({
+      await expect(nextEvent).resolves.toEqual({
         done: false,
         value: {
           channel: 'notifications',
-          sequence: 1051,
-          type: 'notification',
+          reason: 'server',
+          sequence: 1050,
+          timestamp: 1_700_000_000_000,
+          type: 'resync',
         },
       });
 
+      // Engine sequences can repeat or skip values after a resync too.
+      for (const sequence of [1050, 1050, 1080]) {
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          done: false,
+          value: { channel: 'notifications', sequence, type: 'notification' },
+        });
+      }
+
       await session.close();
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: true,
+      });
     });
 
     it('does not synthesize sequence-gap resyncs for notification sequences', async () => {

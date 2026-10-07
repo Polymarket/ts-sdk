@@ -8,7 +8,9 @@ import type {
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  DecimalString,
   DepositToPerpsRequest,
+  EpochMilliseconds,
   FetchPerpsAccountConfigRequest,
   FetchPerpsBookRequest,
   FetchPerpsOpenOrdersRequest,
@@ -30,10 +32,13 @@ import type {
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
+  PerpsInstrumentSettlement,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsPositionDeleveragedNotification,
   PerpsSession,
   PerpsSessionAccountError,
+  PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PlacePerpsOrderRequest,
@@ -61,6 +66,35 @@ import type {
   FetchPerpsInstrumentsRequest,
   ResumePerpsSessionRequest,
 } from './perps';
+
+describe('session notification recovery', () => {
+  it('narrows server recovery metadata from the public session iterator', () => {
+    async function consume(session: PerpsSession) {
+      for await (const event of session) {
+        expectTypeOf(event).toEqualTypeOf<PerpsSessionEvent>();
+        if (event.type !== 'resync') continue;
+        expectTypeOf(event.previousSequence).toEqualTypeOf<
+          number | undefined
+        >();
+        if (event.reason === 'server') {
+          expectTypeOf(event.channel).toEqualTypeOf<'notifications'>();
+          expectTypeOf(event.sequence).toEqualTypeOf<number>();
+          expectTypeOf(event.timestamp).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<undefined>();
+          expectTypeOf(event).not.toHaveProperty('payload');
+        } else {
+          expectTypeOf(event.reason).toEqualTypeOf<
+            'reconnect' | 'sequence_gap'
+          >();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<
+            number | undefined
+          >();
+        }
+      }
+    }
+    void consume;
+  });
+});
 
 describe('session builder consent', () => {
   it('requires an explicit maximum and keeps versions internal', () => {
@@ -194,6 +228,28 @@ describe('public Perps exports', () => {
     >();
   });
 
+  it('narrows ADL notifications from session history and events', async () => {
+    const session = {} as PerpsSession;
+    const page = await session.listNotifications().firstPage();
+    for (const entry of page.items) {
+      if (entry.notification.type === 'position_deleveraged') {
+        expectTypeOf(
+          entry.notification,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
+    for await (const event of session) {
+      if (
+        event.type === 'notification' &&
+        event.payload.type === 'position_deleveraged'
+      ) {
+        expectTypeOf(
+          event.payload,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
+  });
+
   it('exports known cancel rejections and narrows rejected results', () => {
     const result = undefined as unknown as PerpsCancelOrderResult;
 
@@ -220,5 +276,35 @@ describe('public Perps exports', () => {
     expectTypeOf<
       Extract<PerpsSessionTradingError, PerpsCancelRetryError>
     >().toEqualTypeOf<PerpsCancelRetryError>();
+  });
+});
+
+describe('instrument retirement metadata', () => {
+  it('exposes canonical metadata through the public client read', () => {
+    async function read(client: PublicPerpsActions) {
+      const instruments = await client.fetchPerpsInstruments();
+      for (const instrument of instruments) {
+        expectTypeOf(instrument.closeOnly).toEqualTypeOf<boolean>();
+        expectTypeOf(instrument.displaySymbol).toEqualTypeOf<
+          string | undefined
+        >();
+        expectTypeOf(instrument.settlement).toEqualTypeOf<
+          PerpsInstrumentSettlement | undefined
+        >();
+        if (instrument.settlement) {
+          expectTypeOf(instrument.settlement.sequence).toEqualTypeOf<number>();
+          expectTypeOf(
+            instrument.settlement.timestamp,
+          ).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(
+            instrument.settlement.price,
+          ).toEqualTypeOf<DecimalString>();
+          expectTypeOf(
+            instrument.settlement.insuranceDebit,
+          ).toEqualTypeOf<DecimalString>();
+        }
+      }
+    }
+    void read;
   });
 });

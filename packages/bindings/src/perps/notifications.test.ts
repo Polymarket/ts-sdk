@@ -8,8 +8,39 @@ import {
 } from './notifications';
 
 const NOTIFICATION_ID = '0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b';
+const DELEVERAGED_NOTIFICATION = {
+  id: NOTIFICATION_ID,
+  type: 'position_deleveraged',
+  instrument_id: 1,
+  side: 'short',
+  size_closed: '0.01234567890123456789',
+  price: '52000.125',
+  pnl: '130.125',
+  margin_type: 'cross',
+};
 
 describe('PerpsNotificationSchema', () => {
+  it.each([
+    'cross',
+    'isolated',
+  ])('normalizes %s ADL settlements', (marginType) => {
+    expect(
+      PerpsNotificationSchema.parse({
+        ...DELEVERAGED_NOTIFICATION,
+        margin_type: marginType,
+      }),
+    ).toEqual({
+      id: NOTIFICATION_ID,
+      type: 'position_deleveraged',
+      instrumentId: 1,
+      side: 'short',
+      sizeClosed: '0.01234567890123456789',
+      price: '52000.125',
+      pnl: '130.125',
+      marginType,
+    });
+  });
+
   it.each([
     PerpsNotificationType.PositionOpened,
     PerpsNotificationType.PositionIncreased,
@@ -115,6 +146,11 @@ describe('ListPerpsNotificationsResponseSchema', () => {
           ts: 1_767_225_600_000,
         },
         {
+          notification: DELEVERAGED_NOTIFICATION,
+          read_at: null,
+          ts: 1_767_225_600_000,
+        },
+        {
           notification: { id: NOTIFICATION_ID, type: 'future_notification' },
           read_at: null,
           ts: 1_767_225_600_000,
@@ -128,7 +164,16 @@ describe('ListPerpsNotificationsResponseSchema', () => {
 
     // The unknown-type entry is omitted so new notification kinds cannot
     // fail the page read.
-    expect(response.items).toHaveLength(2);
+    expect(response.items).toHaveLength(3);
+    expect(response.items[2]).toMatchObject({
+      notification: {
+        type: 'position_deleveraged',
+        price: '52000.125',
+        pnl: '130.125',
+      },
+      readAt: null,
+      timestamp: 1_767_225_600_000,
+    });
     expect(response.items[0]).toMatchObject({
       notification: {
         type: 'position_opened',
@@ -155,14 +200,17 @@ describe('ListPerpsNotificationsResponseSchema', () => {
     });
   });
 
-  it('fails the page when a recognized notification type is malformed', () => {
+  it.each([
+    { id: NOTIFICATION_ID, type: 'position_opened' },
+    { ...DELEVERAGED_NOTIFICATION, instrument_id: null },
+    { ...DELEVERAGED_NOTIFICATION, price: undefined },
+    { ...DELEVERAGED_NOTIFICATION, pnl: null },
+  ])('fails the page when a recognized notification is malformed', (notification) => {
     expect(
       ListPerpsNotificationsResponseSchema.safeParse({
         items: [
           {
-            // position_opened is recognized, so its missing fields must
-            // surface as a validation error rather than a dropped entry.
-            notification: { id: NOTIFICATION_ID, type: 'position_opened' },
+            notification,
             read_at: null,
             ts: 1_767_225_600_000,
           },
