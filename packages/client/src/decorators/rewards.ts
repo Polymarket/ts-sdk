@@ -2,6 +2,7 @@ import type {
   CurrentReward,
   MarketReward,
   OrdersScoringResponse,
+  RebatedFee,
   RewardsPercentages,
   TotalUserEarning,
   UserEarning,
@@ -9,9 +10,11 @@ import type {
 } from '@polymarket/bindings/clob';
 import type { Prettify } from '@polymarket/types';
 import {
+  type FetchCurrentRebatesRequest,
   type FetchOrderScoringRequest,
   type FetchOrdersScoringRequest,
   type FetchTotalEarningsForUserForDayRequest,
+  fetchCurrentRebates,
   fetchOrderScoring,
   fetchOrdersScoring,
   fetchRewardPercentages,
@@ -33,6 +36,19 @@ import type {
 import type { Paginated } from '../pagination';
 
 export type PublicRewardsActions = {
+  /**
+   * Fetches maker fee rebates for a calendar day as a direct collection.
+   * Amounts are decimal strings in USDC units. No authentication is required.
+   * @throws {@link FetchCurrentRebatesError} Thrown on failure.
+   * @example
+   * ```ts
+   * const rebates = await client.fetchCurrentRebates({ date: '2026-10-06', makerAddress });
+   * ```
+   */
+  fetchCurrentRebates(
+    request: FetchCurrentRebatesRequest,
+  ): Promise<RebatedFee[]>;
+
   /**
    * Lists current active market rewards.
    *
@@ -242,6 +258,7 @@ export type SecureRewardsActions = Prettify<
 
 function publicRewardsActions(client: BaseClient): PublicRewardsActions {
   return {
+    fetchCurrentRebates: fetchCurrentRebates.bind(null, client),
     listCurrentRewards: listCurrentRewards.bind(null, client),
     listMarketRewards: listMarketRewards.bind(null, client),
   };
@@ -279,6 +296,8 @@ export function rewardsActions(
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on PublicRewardsActions / SecureRewardsActions.
 export {
+  FetchCurrentRebatesError,
+  type FetchCurrentRebatesRequest,
   FetchOrderScoringError,
   FetchOrdersScoringError,
   FetchRewardPercentagesError,

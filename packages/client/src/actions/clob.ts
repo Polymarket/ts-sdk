@@ -3,6 +3,7 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
+  EvmAddressSchema,
   type OrderSide,
   OrderSideSchema,
   PaginationCursorSchema,
@@ -36,6 +37,8 @@ import {
   PriceSchema,
   type Prices,
   PricesSchema,
+  type RebatedFee,
+  RebatedFeesResponseSchema,
   ResolveConditionByTokenResponseSchema,
   SpreadSchema,
   type Spreads,
@@ -1199,5 +1202,55 @@ function toAssetSearchParams(
   return toSearchParams(
     { ...rest, tokenId: params.assetId ?? params.tokenId },
     snakeCase(),
+  );
+}
+
+const FetchCurrentRebatesRequestSchema = z.object({
+  date: z.iso
+    .date()
+    .refine(
+      (value) => !value.startsWith('0000-'),
+      'Expected a calendar date in year 1 or later',
+    ),
+  makerAddress: EvmAddressSchema.refine(
+    (value) => !/^0x0{40}$/i.test(value),
+    'Expected a nonzero maker address',
+  ),
+});
+export type FetchCurrentRebatesRequest = z.input<
+  typeof FetchCurrentRebatesRequestSchema
+>;
+export type FetchCurrentRebatesError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchCurrentRebatesError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches maker fee rebates for a calendar day as a direct collection.
+ * Amounts are decimal strings in USDC units. No authentication is required.
+ * @throws {@link FetchCurrentRebatesError} Thrown on failure.
+ * @example
+ * ```ts
+ * const rebates = await fetchCurrentRebates(client, { date: '2026-10-06', makerAddress });
+ * ```
+ */
+export async function fetchCurrentRebates(
+  client: BaseClient,
+  request: FetchCurrentRebatesRequest,
+): Promise<RebatedFee[]> {
+  const params = parseUserInput(request, FetchCurrentRebatesRequestSchema);
+  return unwrap(
+    client.clob
+      .get('/rebates/current', { params: toSearchParams(params, snakeCase()) })
+      .andThen(validateWith(RebatedFeesResponseSchema)),
   );
 }
