@@ -63,7 +63,6 @@ import {
 } from '../../../pagination';
 import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
-import type { PerpsSessionAccountError } from '../session';
 import {
   type PerpsInternalTransfersCursorState,
   toPerpsInternalTransfersPage,
