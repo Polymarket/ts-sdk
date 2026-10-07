@@ -35,6 +35,7 @@ import type {
   PerpsCancelRetryOptions,
   PerpsInstrumentSettlement,
   PerpsInternalTransfer,
+  PerpsInternalTransferId,
   PerpsPositionDeleveragedNotification,
   PerpsSession,
   PerpsSessionAccountError,
@@ -51,6 +52,7 @@ import type {
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
   SecureClientOptions,
   SecurePerpsActions,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
@@ -233,6 +235,7 @@ describe('public Perps exports', () => {
       PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
+      TransferPerpsCollateralRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -248,6 +251,17 @@ describe('public Perps exports', () => {
     expectTypeOf<RootPerpsSessionErrors>().toEqualTypeOf<RootPerpsSessionErrors>();
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
+  });
+
+  it('exposes owner transfers only on secure Perps actions', () => {
+    const secureActions = {} as SecurePerpsActions;
+    const publicActions = {} as PublicPerpsActions;
+
+    expectTypeOf(secureActions.transferPerpsCollateral).returns.toEqualTypeOf<
+      Promise<PerpsInternalTransferId>
+    >();
+    // @ts-expect-error Collateral movement requires an owner-capable secure client.
+    void publicActions.transferPerpsCollateral;
   });
 
   it('exposes normalized internal-transfer history on Perps sessions', () => {
