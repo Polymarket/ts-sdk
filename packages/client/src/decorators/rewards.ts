@@ -175,6 +175,9 @@ export type SecureRewardsActions = Prettify<
     ): Paginated<UserEarning[]>;
     /**
      * Fetches total earnings for the authenticated account on a given day.
+     * Set `sponsored: true` to include sponsored rewards and the native/sponsored
+     * breakdown. Omitted or false returns native rewards only; absent breakdown
+     * fields remain undefined.
      *
      * @throws {@link FetchTotalEarningsForUserForDayError}
      * Thrown on failure.

@@ -317,13 +317,26 @@ export const TotalUserEarningSchema = z
     date: EpochMillisecondsToIsoDateTimeStringSchema,
     earnings: DecimalishSchema,
     maker_address: z.string(),
+    native_earnings: DecimalishSchema.optional(),
+    sponsored_earnings: DecimalishSchema.optional(),
   })
-  .transform(({ asset_address, asset_rate, maker_address, ...rest }) => ({
-    ...rest,
-    assetAddress: asset_address,
-    assetRate: asset_rate,
-    makerAddress: maker_address,
-  }));
+  .transform(
+    ({
+      asset_address,
+      asset_rate,
+      maker_address,
+      native_earnings,
+      sponsored_earnings,
+      ...rest
+    }) => ({
+      ...rest,
+      assetAddress: asset_address,
+      assetRate: asset_rate,
+      makerAddress: maker_address,
+      nativeEarnings: native_earnings,
+      sponsoredEarnings: sponsored_earnings,
+    }),
+  );
 
 export type TotalUserEarning = z.infer<typeof TotalUserEarningSchema>;
 
