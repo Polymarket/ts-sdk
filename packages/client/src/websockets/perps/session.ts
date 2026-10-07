@@ -1,4 +1,5 @@
 import { EvmAddressSchema } from '@polymarket/bindings';
+import type { PerpsPositionSnapshots } from '@polymarket/bindings/perps';
 import {
   type PerpsAccountConfig,
   type PerpsAccountFill,
@@ -44,6 +45,10 @@ import {
   ApprovePerpsBuilderFeeRequestSchema,
   type PerpsBuilderFeeApprover,
 } from '../../actions/perps/builders';
+import {
+  fetchOwnPerpsPositionSnapshots,
+  type PerpsPositionSnapshotSelection,
+} from '../../actions/perps/position-snapshots';
 import {
   makeErrorGuard,
   type OperationAbortedError,
@@ -689,6 +694,18 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    */
   async fetchPortfolio(): Promise<PerpsPortfolio> {
     return await fetchPerpsPortfolio(this.#api);
+  }
+
+  /** Fetches snapshots for this session's authenticated account. Owner-only
+   * leverage and PnL percentage remain null when historical values are unavailable.
+   * This direct batch read does not paginate or retry item statuses.
+   * @throws {@link FetchPerpsPositionSnapshotsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchPositionSnapshots(
+    request: PerpsPositionSnapshotSelection,
+  ): Promise<PerpsPositionSnapshots> {
+    return fetchOwnPerpsPositionSnapshots(this.#api, request);
   }
 
   /**

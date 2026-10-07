@@ -38,6 +38,8 @@ export {
   PerpsNotificationOrderType,
   PerpsNotificationType,
   PerpsOrderStatus,
+  PerpsPositionSnapshotMarkerKind,
+  PerpsPositionSnapshotStatus,
   PerpsSide,
   PerpsSortDirection,
   PerpsTimeInForce,

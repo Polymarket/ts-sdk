@@ -78,6 +78,45 @@ describe('PerpsSession', () => {
     server.close();
   });
 
+  it('fetches snapshots for the authenticated credential owner', async () => {
+    const address = '0x1111111111111111111111111111111111111111';
+    server.use(
+      http.get(
+        `${production.perps.rest}/v1/account/credentials`,
+        ({ request }) => {
+          expect(request.headers.get('POLYMARKET-PROXY')).toBe(
+            credentials.proxy,
+          );
+          return HttpResponse.json({ address, keys: [] });
+        },
+      ),
+      http.post(
+        `${production.perps.rest}/v1/info/position-snapshots`,
+        async ({ request }) => {
+          expect(request.headers.get('POLYMARKET-SECRET')).toBe(
+            credentials.secret,
+          );
+          expect(await request.json()).toEqual({
+            address,
+            active_instrument_ids: [7],
+          });
+          return HttpResponse.json({
+            history_as_of_at: 0,
+            active: [{ instrument_id: 7, status: 'not_found' }],
+            history: [],
+          });
+        },
+      ),
+    );
+    const session = createSession();
+    await expect(
+      session.fetchPositionSnapshots({ activeInstrumentIds: [7] }),
+    ).resolves.toMatchObject({
+      active: [{ instrumentId: 7, status: 'not_found' }],
+    });
+    await session.close();
+  });
+
   describe('chase lifecycle', () => {
     it('does not retry cancellation after a lost acknowledgement', async () => {
       let writes = 0;
