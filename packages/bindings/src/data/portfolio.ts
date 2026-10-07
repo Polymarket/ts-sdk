@@ -67,6 +67,8 @@ export const PositionRowStatusSchema = z.enum([
 /** Sort key for position listings. */
 export enum PositionSortBy {
   CurrentValue = 'CURRENT_VALUE',
+  /** Current effective price; wallet closed positions use realized PnL instead. */
+  Price = 'PRICE',
   Tokens = 'TOKENS',
   UnrealizedPnl = 'UNREALIZED_PNL',
   RealizedPnl = 'REALIZED_PNL',
