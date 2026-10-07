@@ -24,6 +24,8 @@ import {
   type PerpsPnlPoint,
   type PerpsPortfolio,
   type PerpsPostOrderAck,
+  type PerpsTwap,
+  type PerpsTwapAccepted,
   type PerpsUpdateLeverageResult,
   type PerpsWithdrawal,
 } from '@polymarket/bindings/perps';
@@ -140,6 +142,17 @@ import {
   updatePerpsLeverage,
   updatePerpsMargin,
 } from './actions/trading';
+import {
+  type CancelPerpsTwapRequest,
+  type CreatePerpsTwapRequest,
+  cancelPerpsTwap,
+  createPerpsTwap,
+  fetchPerpsTwaps,
+  type PausePerpsTwapRequest,
+  pausePerpsTwap,
+  type ResumePerpsTwapRequest,
+  resumePerpsTwap,
+} from './actions/twaps';
 import { type PerpsSignableValue, signPerpsOp } from './signing';
 
 const AUTH_TIMEOUT_MS = 30_000;
@@ -161,9 +174,8 @@ const PERPS_SESSION_CHANNELS = [
 // Notification and builder-fill frames carry the source event's engine sequence, which is not
 // dense per channel: unrelated engine events skip values and one event can
 // emit several notifications sharing one sequence. Local sequence-gap
-// detection would misfire, so the server signals dropped frames with resync
-// control frames instead. Those frames are parsed and dropped without a
-// public event until DEV-428 unifies them with SDK-synthesized resyncs.
+// detection would misfire. Notification loss is reported by server resync
+// control frames instead.
 const SERVER_RESYNC_CHANNELS: ReadonlySet<string> = new Set([
   'notifications',
   'builderFills',
@@ -240,6 +252,7 @@ export {
   FetchPerpsBuilderEarningsSummaryError,
   ListPerpsBuilderEarningsError,
 } from './actions/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -253,9 +266,12 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
   PlacePerpsOrderWithTpSlRequest,
@@ -917,6 +933,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Places one Perps order and resolves with the first matching orders update.
+   * GTD orders require a limit price and gtdExpiry in Unix milliseconds.
+   * The order expiry is separate from the expiresAt command deadline.
    *
    * @example
    * ```ts
@@ -986,7 +1004,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * The exit side is inferred from the current position for the requested
-   * instrument.
+   * instrument. Each trigger may specify a positive `quantity` for a partial
+   * close; omission closes the full position at trigger time. A partial fill
+   * leaves the other trigger armed while a same-side position remains.
    *
    * @example
    * ```ts
@@ -1375,6 +1395,63 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     return await fetchPerpsChases(this.#api);
   }
 
+  /** Create a TWAP using this session's credentials.
+   * @throws {@link CreatePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async createTwap(
+    request: CreatePerpsTwapRequest,
+  ): Promise<PerpsTwapAccepted> {
+    return await createPerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Pause a TWAP using this session's credentials.
+   * @throws {@link PausePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async pauseTwap(request: PausePerpsTwapRequest): Promise<void> {
+    return await pausePerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Resume a TWAP using this session's credentials.
+   * @throws {@link ResumePerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async resumeTwap(request: ResumePerpsTwapRequest): Promise<void> {
+    return await resumePerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Cancel a TWAP using this session's credentials.
+   * @throws {@link CancelPerpsTwapError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async cancelTwap(request: CancelPerpsTwapRequest): Promise<void> {
+    return await cancelPerpsTwap(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+
+  /** Fetch all active TWAPs. Ended runs are absent; no pagination.
+   * @throws {@link FetchPerpsTwapsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchTwaps(): Promise<PerpsTwap[]> {
+    return await fetchPerpsTwaps(this.#api);
+  }
   #createSignedCommand(op: PerpsSignableValue, expiresAt?: number) {
     const salt = randomUint32();
     const timestamp = Date.now();
@@ -1438,9 +1515,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   #handleMessage(rawMessage: unknown): void {
     if (this.#handleResponse(rawMessage)) return;
 
-    // Recognized but intentionally not surfaced as a session event until
-    // DEV-428 unifies server resync frames with SDK-synthesized resyncs.
-    if (PerpsNotificationsResyncFrameSchema.safeParse(rawMessage).success) {
+    const resync = PerpsNotificationsResyncFrameSchema.safeParse(rawMessage);
+    if (resync.success) {
+      this.#emitEvent(resync.data);
       return;
     }
 
@@ -1638,3 +1715,16 @@ export {
   type CreatePerpsChaseRequest,
   FetchPerpsChasesError,
 } from './actions/chases';
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from './actions/twaps';

@@ -383,6 +383,7 @@ export const PerpsNotificationsResyncFrameSchema = z
   })
   .transform(({ ch, ts, sq }) => ({
     type: 'resync' as const,
+    reason: 'server' as const,
     channel: ch,
     timestamp: ts,
     sequence: sq,
@@ -390,7 +391,7 @@ export const PerpsNotificationsResyncFrameSchema = z
 
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
-  st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
+  st: z.enum(['untriggered', 'armed', 'activated', 'cancelled', 'expired']),
   reason: z.string().optional(),
 });
 
@@ -440,15 +441,24 @@ export type PerpsSessionUpdateEvent = z.infer<
 >;
 
 /**
+ * A recovery signal after reconnect, a sequence gap, or dropped notifications.
+ * For `reason: 'server'`, `sequence` is the highest dropped notification
+ * sequence, not a backfill lower bound. Backfill from the last notification
+ * successfully processed and deduplicate by notification id.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsResyncEvent = {
-  type: 'resync';
-  reason: 'reconnect' | 'sequence_gap';
-  channel?: string;
-  previousSequence?: number;
-  sequence?: number;
-};
+export type PerpsResyncEvent =
+  | {
+      type: 'resync';
+      reason: 'reconnect' | 'sequence_gap';
+      channel?: string;
+      previousSequence?: number;
+      sequence?: number;
+    }
+  | (z.infer<typeof PerpsNotificationsResyncFrameSchema> & {
+      previousSequence?: never;
+    });
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

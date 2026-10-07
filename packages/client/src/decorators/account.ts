@@ -98,6 +98,9 @@ export type PublicAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * `title` filters by case-insensitive substring (max 200 Unicode characters).
+   * `%` and `_` are wildcards. Blank input is ignored; other patterns are
+   * preserved unchanged on every page, including cursor replay.
    *
    * @throws {@link ListPositionsError}
    * Thrown on failure.
@@ -362,6 +365,9 @@ export type SecureAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * `title` filters by case-insensitive substring (max 200 Unicode characters).
+   * `%` and `_` are wildcards. Blank input is ignored; other patterns are
+   * preserved unchanged on every page, including cursor replay.
    *
    * @throws {@link ListPositionsError}
    * Thrown on failure.

@@ -18,6 +18,7 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 } from '../../../errors';
 import { createPerpsOpTypedDataPayload } from '../signing';
 import type { PerpsBuilderTermsInput } from './builder-terms';
@@ -43,6 +44,122 @@ afterEach(() => {
 });
 
 describe('Perps trading actions', () => {
+  describe('GTD orders', () => {
+    const expiry = 1_893_456_000_123;
+    const order = {
+      instrumentId: 1,
+      side: OrderSide.BUY,
+      price: '100.50',
+      quantity: '10',
+      timeInForce: PerpsTimeInForce.GTD,
+      gtdExpiry: expiry,
+      postOnly: true,
+    } as const;
+    it('preserves expiry before builder attribution in signed and keyed forms', async () => {
+      const builder = {
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        feeRate: '0.0005',
+      };
+      const executor: PerpsCommandExecutor = {
+        builderAttribution: builder,
+        async executeCommand(request, schema) {
+          expect(request.expiresAt).toBe(1_893_455_000_000);
+          expect(request.op).toEqual([
+            'createOrders',
+            [
+              [
+                1,
+                true,
+                '100.50',
+                '10',
+                'gtd',
+                true,
+                undefined,
+                undefined,
+                undefined,
+                expiry,
+                [builder.builderAddress, builder.feeRate],
+              ],
+            ],
+          ]);
+          expect(toPerpsCommandBodyOp(request.op)).toEqual({
+            type: 'createOrders',
+            args: [
+              {
+                iid: 1,
+                buy: true,
+                p: '100.50',
+                qty: '10',
+                tif: 'gtd',
+                po: true,
+                gtd_expiry: expiry,
+                builder: {
+                  address: builder.builderAddress,
+                  fee_rate: builder.feeRate,
+                },
+              },
+            ],
+          });
+          const payload = { chainId: 31337, salt: 1, timestamp: 1739491200000 };
+          expect(
+            createPerpsOpTypedDataPayload({ ...payload, op: request.op }),
+          ).toEqual(
+            createPerpsOpTypedDataPayload({
+              ...payload,
+              op: [
+                'createOrders',
+                [
+                  [
+                    1,
+                    true,
+                    '100.50',
+                    '10',
+                    'gtd',
+                    true,
+                    expiry,
+                    [builder.builderAddress, builder.feeRate],
+                  ],
+                ],
+              ],
+            }),
+          );
+          return schema.parse([{ oid: 1, status: 'ok' }]);
+        },
+      };
+      await postPerpsOrders(executor, {
+        orders: [order],
+        expiresAt: 1_893_455_000_000,
+      });
+    });
+    it.each([
+      { gtdExpiry: undefined },
+      { gtdExpiry: 1 },
+      { gtdExpiry: true },
+      { gtdExpiry: 1.5 },
+      { gtdExpiry: 18_446_744_073_710 },
+      { price: undefined },
+      { timeInForce: PerpsTimeInForce.GTC },
+      { timeInForce: PerpsTimeInForce.IOC, postOnly: undefined },
+      { timeInForce: PerpsTimeInForce.FOK, postOnly: undefined },
+    ])('rejects a malformed later batch order before execution: %j', async (overrides) => {
+      const executeCommand = vi.fn();
+      const executor: PerpsCommandExecutor = { executeCommand };
+      await expect(
+        postPerpsOrders(executor, {
+          orders: [order, { ...order, ...overrides } as never],
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+    it('rejects expiry equal to the current time', async () => {
+      vi.useFakeTimers({ now: expiry });
+      const executeCommand = vi.fn();
+      await expect(
+        postPerpsOrders({ executeCommand }, { orders: [order] }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(executeCommand).not.toHaveBeenCalled();
+    });
+  });
   describe('builder attribution', () => {
     const builder = {
       builderAddress: '0x1111111111111111111111111111111111111111',
@@ -96,7 +213,46 @@ describe('Perps trading actions', () => {
       });
     });
   });
-  it('keeps the placement snapshot when attribution changes during the position read', async () => {
+  it.each([
+    {
+      size: '1',
+      takeProfitQuantity: undefined,
+      stopLossQuantity: undefined,
+      quantities: ['0', '0'],
+    },
+    {
+      size: '-1',
+      takeProfitQuantity: '0.1234567890123456789012345678',
+      stopLossQuantity: undefined,
+      quantities: ['0.1234567890123456789012345678', '0'],
+    },
+    {
+      size: '1',
+      takeProfitQuantity: '0.25',
+      stopLossQuantity: '0.75',
+      quantities: ['0.25', '0.75'],
+    },
+    {
+      size: '1',
+      takeProfitQuantity: '0.0000000000000000000000000001',
+      stopLossQuantity: '79228162514264337593543950335',
+      quantities: [
+        '0.0000000000000000000000000001',
+        '79228162514264337593543950335',
+      ],
+    },
+    {
+      size: '-1',
+      takeProfitQuantity: 0.25,
+      stopLossQuantity: '0.7500',
+      quantities: ['0.25', '0.7500'],
+    },
+  ])('preserves position exit quantities, side, and captured builder terms for $size', async ({
+    size,
+    takeProfitQuantity,
+    stopLossQuantity,
+    quantities,
+  }) => {
     const initialTerms = {
       builderAddress: '0x1111111111111111111111111111111111111111',
       feeRate: '0.0003',
@@ -116,7 +272,7 @@ describe('Perps trading actions', () => {
             {
               instrumentId: PerpsInstrumentIdSchema.parse(1),
               symbol: 'BTC',
-              size: toDecimalString('1'),
+              size: toDecimalString(size),
               entryPrice: zero,
               leverage: 1,
               cross: true,
@@ -142,14 +298,23 @@ describe('Perps trading actions', () => {
       },
       async executeCommand(request, schema) {
         expect(toPerpsCommandBodyOp(request.op)).toMatchObject({
+          grp: 'position',
           args: [
             {
+              buy: size.startsWith('-'),
+              qty: quantities[0],
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '110' },
               builder: {
                 address: initialTerms.builderAddress,
                 fee_rate: initialTerms.feeRate,
               },
             },
             {
+              buy: size.startsWith('-'),
+              qty: quantities[1],
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trp: '90' },
               builder: {
                 address: initialTerms.builderAddress,
                 fee_rate: initialTerms.feeRate,
@@ -165,10 +330,284 @@ describe('Perps trading actions', () => {
     };
     await placePerpsPositionTpSl(executor, {
       instrumentId: 1,
-      takeProfit: { triggerPrice: '110' },
-      stopLoss: { triggerPrice: '90' },
+      takeProfit: { triggerPrice: '110', quantity: takeProfitQuantity },
+      stopLoss: { triggerPrice: '90', quantity: stopLossQuantity },
     });
   });
+  it.each([
+    {
+      size: '1',
+      takeProfitQuantity: undefined,
+      stopLossQuantity: undefined,
+      quantities: ['0', '0'],
+    },
+    {
+      size: '-1',
+      takeProfitQuantity: '0.1234567890123456789012345678',
+      stopLossQuantity: undefined,
+      quantities: ['0.1234567890123456789012345678', '0'],
+    },
+    {
+      size: '1',
+      takeProfitQuantity: '0.25',
+      stopLossQuantity: '0.75',
+      quantities: ['0.25', '0.75'],
+    },
+    {
+      size: '1',
+      takeProfitQuantity: '0.0000000000000000000000000001',
+      stopLossQuantity: '79228162514264337593543950335',
+      quantities: [
+        '0.0000000000000000000000000001',
+        '79228162514264337593543950335',
+      ],
+    },
+    {
+      size: '-1',
+      takeProfitQuantity: 0.25,
+      stopLossQuantity: '0.7500',
+      quantities: ['0.25', '0.7500'],
+    },
+  ])('preserves trailing position exit quantities, side, and captured builder terms for $size', async ({
+    size,
+    takeProfitQuantity,
+    stopLossQuantity,
+    quantities,
+  }) => {
+    const trailingBps = stopLossQuantity === undefined ? 10 : 2000;
+    const activationPrice = stopLossQuantity === undefined ? undefined : '105';
+    const initialTerms = {
+      builderAddress: '0x1111111111111111111111111111111111111111',
+      feeRate: '0.0003',
+    };
+    let activeTerms: PerpsBuilderTermsInput | undefined = initialTerms;
+    const zero = toDecimalString('0');
+    const executor: PerpsCommandExecutor & {
+      fetchPortfolio(): Promise<PerpsPortfolio>;
+    } = {
+      get builderAttribution() {
+        return activeTerms;
+      },
+      async fetchPortfolio() {
+        activeTerms = undefined;
+        return {
+          positions: [
+            {
+              instrumentId: PerpsInstrumentIdSchema.parse(1),
+              symbol: 'BTC',
+              size: toDecimalString(size),
+              entryPrice: zero,
+              leverage: 1,
+              cross: true,
+              initialMargin: zero,
+              maintenanceMargin: zero,
+              positionValue: zero,
+              liquidationPrice: zero,
+              unrealizedPnl: zero,
+              returnOnEquity: zero,
+              cumulativeFunding: zero,
+            },
+          ],
+          margin: {
+            totalAccountValue: zero,
+            totalInitialMargin: zero,
+            totalMaintenanceMargin: zero,
+            totalPositionValue: zero,
+          },
+          withdrawable: zero,
+          inLiquidation: false,
+          timestamp: toEpochMilliseconds(1),
+        };
+      },
+      async executeCommand(request, schema) {
+        expect(toPerpsCommandBodyOp(request.op)).toMatchObject({
+          grp: 'position',
+          args: [
+            {
+              buy: size.startsWith('-'),
+              qty: quantities[0],
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '110' },
+              builder: {
+                address: initialTerms.builderAddress,
+                fee_rate: initialTerms.feeRate,
+              },
+            },
+            {
+              buy: size.startsWith('-'),
+              qty: quantities[1],
+              ro: true,
+              tr: {
+                market: true,
+                tpsl: 'sl',
+                trail_bps: trailingBps,
+                ...(activationPrice === undefined
+                  ? {}
+                  : { act: activationPrice }),
+              },
+              builder: {
+                address: initialTerms.builderAddress,
+                fee_rate: initialTerms.feeRate,
+              },
+            },
+          ],
+        });
+        return schema.parse([
+          { oid: 123, status: 'ok' },
+          { oid: 124, status: 'ok' },
+        ]);
+      },
+    };
+    await placePerpsPositionTpSl(executor, {
+      instrumentId: 1,
+      takeProfit: { triggerPrice: '110', quantity: takeProfitQuantity },
+      stopLoss: {
+        trailingBps,
+        activationPrice,
+        quantity: stopLossQuantity,
+      },
+    });
+  });
+  it.each([
+    '0',
+    '-0',
+    '0.000',
+    '-1',
+    'NaN',
+    'Infinity',
+    'bad',
+    '',
+    '0x1',
+    '1e-8',
+    '0.00000000000000000000000000001',
+    '79228162514264337593543950336',
+    '7.9228162514264337593543950336',
+    0,
+    -1,
+    1e-8,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ])('rejects the whole position pair before reading or executing when the second quantity is %s', async (quantity) => {
+    const fetchPortfolio = vi.fn<() => Promise<PerpsPortfolio>>();
+    const executeCommand = vi.fn(async () => {
+      throw new Error('Unexpected command');
+    });
+    await expect(
+      placePerpsPositionTpSl(
+        { fetchPortfolio, executeCommand },
+        {
+          instrumentId: 1,
+          takeProfit: { triggerPrice: '110', quantity: '0.25' },
+          stopLoss: { triggerPrice: '90', quantity },
+        },
+      ),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(fetchPortfolio).not.toHaveBeenCalled();
+    expect(executeCommand).not.toHaveBeenCalled();
+  });
+  it.each([
+    { trailingBps: 9 },
+    { trailingBps: 2001 },
+    { trailingBps: 10.5 },
+    { trailingBps: true },
+    { trailingBps: 200, triggerPrice: '90' },
+    { trailingBps: 200, limitPrice: '90' },
+    { activationPrice: '100' },
+    { trailingBps: 200, gtdExpiry: 1893456000000 },
+    { trailingBps: 200, activationPrice: '0' },
+    { trailingBps: 200, activationPrice: '-1' },
+    { trailingBps: 200, activationPrice: '1e-29' },
+    { trailingBps: 200, quantity: '0' },
+    { trailingBps: 200, quantity: '0.00000000000000000000000000001' },
+    { trailingBps: 200, quantity: '79228162514264337593543950336' },
+  ])('rejects invalid trailing intent before portfolio reads: %j', async (stopLoss) => {
+    const fetchPortfolio = vi.fn<() => Promise<PerpsPortfolio>>();
+    const executeCommand = vi.fn(async () => {
+      throw new Error('Unexpected command');
+    });
+    await expect(
+      placePerpsPositionTpSl(
+        { fetchPortfolio, executeCommand },
+        {
+          instrumentId: 1,
+          takeProfit: { triggerPrice: '110' },
+          stopLoss: stopLoss as never,
+        },
+      ),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(fetchPortfolio).not.toHaveBeenCalled();
+    expect(executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('rejects trailing fields on static take-profit intent before reads', async () => {
+    const fetchPortfolio = vi.fn<() => Promise<PerpsPortfolio>>();
+    const executeCommand = vi.fn(async () => {
+      throw new Error('Unexpected command');
+    });
+    await expect(
+      placePerpsPositionTpSl(
+        { fetchPortfolio, executeCommand },
+        {
+          instrumentId: 1,
+          takeProfit: { triggerPrice: '110', trailingBps: 200 } as never,
+        },
+      ),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(fetchPortfolio).not.toHaveBeenCalled();
+    expect(executeCommand).not.toHaveBeenCalled();
+  });
+
+  it('pins trailing trigger field order with omitted GTD and builder attribution', () => {
+    const op = [
+      'createOrders',
+      [
+        [
+          1,
+          false,
+          undefined,
+          '0.25',
+          undefined,
+          false,
+          true,
+          undefined,
+          [true, undefined, 'sl', 200, '105'],
+          undefined,
+          ['0x1111111111111111111111111111111111111111', '0.0003'],
+        ],
+      ],
+      'position',
+    ] as const;
+    expect(toPerpsCommandBodyOp(op)).toEqual({
+      type: 'createOrders',
+      grp: 'position',
+      args: [
+        {
+          iid: 1,
+          buy: false,
+          po: false,
+          qty: '0.25',
+          ro: true,
+          tr: { market: true, tpsl: 'sl', trail_bps: 200, act: '105' },
+          builder: {
+            address: '0x1111111111111111111111111111111111111111',
+            fee_rate: '0.0003',
+          },
+        },
+      ],
+    });
+    // Generated directly from the pinned CreateOrderTr declaration's compact grammar.
+    expect(
+      createPerpsOpTypedDataPayload({
+        chainId: 137,
+        op,
+        salt: 1,
+        timestamp: 1751500000000,
+      }).message.data,
+    ).toBe(
+      '0x26fa3c30a20b82e2ea6ac87c42f2bc733af22cefa74038f08f74c0f7e151c885',
+    );
+  });
+
   describe('createPerpsOpTypedDataPayload', () => {
     it('matches backend approval bytes and binds the version and maximum rate', () => {
       function approvalHash(maxFeeRate: string, approvalVersion: number) {

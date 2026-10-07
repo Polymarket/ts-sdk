@@ -94,6 +94,7 @@ import {
   prepareGaslessTransaction,
 } from './gasless';
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -126,8 +127,10 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
@@ -135,6 +138,7 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -1848,9 +1852,28 @@ export type {
 } from '@polymarket/bindings/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
+  type PerpsTwap,
+  type PerpsTwapAccepted,
+  type PerpsTwapId,
+  PerpsTwapStatus,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
   CancelPerpsChaseError,
   type CancelPerpsChaseRequest,
   CreatePerpsChaseError,
   type CreatePerpsChaseRequest,
   FetchPerpsChasesError,
 } from '../websockets/perps/actions/chases';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from '../websockets/perps/actions/twaps';
