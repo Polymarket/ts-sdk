@@ -231,6 +231,19 @@ describe('PerpsSession.placeOrder', () => {
 });
 
 describe('PlacePerpsPositionTpSlRequest', () => {
+  it('accepts independent partial quantities and an omitted full close', () => {
+    const mixed: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      takeProfit: { triggerPrice: '110', quantity: '0.25' },
+      stopLoss: { triggerPrice: '90' },
+    };
+    const partial: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      stopLoss: { triggerPrice: '90', quantity: 0.75 },
+    };
+    void mixed;
+    void partial;
+  });
   it('does not accept builder overrides for generated exits', () => {
     const request: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,

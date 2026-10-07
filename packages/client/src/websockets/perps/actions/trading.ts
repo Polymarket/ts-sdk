@@ -234,6 +234,13 @@ const PerpsTpSlTriggerSchema = z.object({
 const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
   gtdExpiry: z.never().optional(),
+  quantity: PerpsDecimalInputSchema.refine(
+    (value) =>
+      /^\d+(?:\.\d{1,28})?$/.test(value) &&
+      BigInt(value.replace('.', '')) > 0n &&
+      BigInt(value.replace('.', '')) <= 79_228_162_514_264_337_593_543_950_335n,
+    'Expected a positive, exactly representable decimal quantity (96-bit coefficient, at most 28 decimal places). Use a fixed-point string without exponent notation.',
+  ).optional(),
 }) satisfies z.ZodType<PerpsPositionTpSlTrigger>;
 
 /**
@@ -242,6 +249,13 @@ const PerpsPositionTpSlTriggerSchema = z.object({
 export type PerpsPositionTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
   gtdExpiry?: never;
+  /**
+   * Positive fixed close quantity, clamped to the live position at trigger time.
+   * Omit to close the full position. Use a fixed-point string for exact precision;
+   * exponent notation, more than 28 decimal places, and coefficients exceeding
+   * 96 bits are rejected before submission.
+   */
+  quantity?: PerpsDecimalInput;
 };
 
 type PerpsTpSlPairRequest =
@@ -906,7 +920,7 @@ export async function placePerpsPositionTpSl(
         buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
-        quantity: '0',
+        quantity: params.takeProfit.quantity ?? '0',
         builderAttribution,
         trigger: params.takeProfit,
       }),
@@ -918,7 +932,7 @@ export async function placePerpsPositionTpSl(
         buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
-        quantity: '0',
+        quantity: params.stopLoss.quantity ?? '0',
         builderAttribution,
         trigger: params.stopLoss,
       }),
