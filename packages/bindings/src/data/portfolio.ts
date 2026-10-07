@@ -168,6 +168,8 @@ export type Position = {
    * positions with no native economics.
    */
   lastEventAt?: EpochMilliseconds;
+  /** First acquisition as Unix epoch milliseconds; absent when unrecorded. */
+  firstEntryAt?: EpochMilliseconds;
   name?: string;
   profileImage?: string;
   verified: boolean;
@@ -179,7 +181,7 @@ export type Position = {
  * The wire is strict snake_case: absence arrives as an empty string (or the
  * unknown-outcome sentinel `999`), normalized to `undefined` here. Timestamps
  * arrive as epoch seconds and normalize to epoch milliseconds, with `0`
- * (no native economics) normalized to `undefined`.
+ * (no recorded timestamp) normalized to `undefined`.
  */
 export const PositionSchema = z
   .object({
@@ -224,6 +226,10 @@ export const PositionSchema = z
       (value) => (value === 0 ? undefined : value),
       EpochSecondsToMillisecondsSchema.optional(),
     ),
+    first_entry_at: z.preprocess(
+      (value) => (value === 0 ? undefined : value),
+      EpochSecondsToMillisecondsSchema.optional(),
+    ),
     name: OptionalTextSchema,
     profile_image: OptionalTextSchema,
     verified: z.boolean(),
@@ -263,6 +269,7 @@ export const PositionSchema = z
     oppositeTokenId: position.opposite_token_id,
     endDate: position.end_date,
     lastEventAt: position.last_event_at,
+    firstEntryAt: position.first_entry_at,
     name: position.name,
     profileImage: position.profile_image,
     verified: position.verified,
