@@ -1,9 +1,15 @@
 /* eslint-disable import/no-default-export */
 
 import { defineConfig } from 'tsup';
+import { version } from './package.json';
+
+const define = {
+  __POLYMARKET_CLIENT_VERSION__: JSON.stringify(version),
+};
 
 export default defineConfig(() => [
   {
+    define,
     entry: [
       'src/index.ts',
       'src/actions/index.ts',
@@ -22,6 +28,7 @@ export default defineConfig(() => [
     format: ['esm'],
   },
   {
+    define,
     entry: ['src/node.ts', 'src/privy.ts'],
     outDir: 'dist',
     sourcemap: true,
