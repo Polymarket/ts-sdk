@@ -33,6 +33,7 @@ export {
   PerpsKnownCancelOrderErrorCode,
   PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
+  PerpsLiquidationMethod,
   PerpsLiquidityRole,
   PerpsMarginType,
   PerpsNotificationOrderType,

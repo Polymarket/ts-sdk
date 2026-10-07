@@ -29,6 +29,7 @@ import type {
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsAccountFill,
   PerpsCancelOptions,
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
@@ -36,6 +37,8 @@ import type {
   PerpsInstrumentSettlement,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsLiquidationDetails,
+  PerpsLiquidationMethod,
   PerpsPositionDeleveragedNotification,
   PerpsSession,
   PerpsSessionAccountError,
@@ -137,6 +140,45 @@ describe('session notification recovery', () => {
       }
     }
     void consume;
+  });
+});
+
+describe('session fill risk data', () => {
+  it('filters public session reads and exposes fill details through reads and updates', () => {
+    async function read(session: PerpsSession) {
+      const page = await session.listFills({ instrumentId: 0 }).firstPage();
+      expectTypeOf(page.items).toEqualTypeOf<PerpsAccountFill[]>();
+      for (const fill of page.items) {
+        expectTypeOf(fill.adl).toEqualTypeOf<boolean>();
+        expectTypeOf(fill.liquidationDetails).toEqualTypeOf<
+          PerpsLiquidationDetails | undefined
+        >();
+        if (fill.liquidationDetails) {
+          expectTypeOf(
+            fill.liquidationDetails.mark,
+          ).toEqualTypeOf<DecimalString>();
+          expectTypeOf(
+            fill.liquidationDetails.method,
+          ).toEqualTypeOf<PerpsLiquidationMethod>();
+          expectTypeOf(fill.liquidationDetails.liquidatedUser).toEqualTypeOf<
+            string | undefined
+          >();
+        }
+      }
+      for await (const event of session) {
+        if (event.type === 'fill') {
+          for (const fill of event.payload) {
+            expectTypeOf(fill.adl).toEqualTypeOf<boolean>();
+            expectTypeOf(fill.liquidationDetails).toEqualTypeOf<
+              PerpsLiquidationDetails | undefined
+            >();
+          }
+        }
+      }
+      // @ts-expect-error Instrument filters accept integer identifiers, not strings.
+      session.listFills({ instrumentId: '1' });
+    }
+    void read;
   });
 });
 

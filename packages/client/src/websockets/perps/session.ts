@@ -775,11 +775,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
-   * Lists Perps fills
+   * Lists Perps fills for the authenticated account, optionally by instrument.
    *
    * @remarks
    * Fills are returned newest first by default; set `sort` to change the
    * time direction. Page cursors are opaque values forwarded to the API.
+   * An `instrumentId` filter is retained on every page, including when resuming
+   * from a cursor. Fill `adl` marks auto-deleveraging; optional
+   * `liquidationDetails.mark` is separate from the accounting fill price.
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
