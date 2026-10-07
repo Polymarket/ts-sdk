@@ -25,6 +25,8 @@ import {
   PerpsTimeInForce,
   PerpsTpSlKind,
   PerpsTpSlScope,
+  type PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageBatchResultSchema,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
@@ -63,6 +65,7 @@ const PerpsOrderBaseInputSchema = z.object({
   quantity: PerpsDecimalInputSchema,
   reduceOnly: z.boolean().default(false),
   clientOrderId: PerpsClientOrderIdSchema.optional(),
+  gtdExpiry: z.never().optional(),
 });
 
 /**
@@ -81,6 +84,7 @@ export type PerpsPlaceGtcOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Good-til-cancelled execution. */
   timeInForce: PerpsTimeInForce.GTC;
+  gtdExpiry?: never;
   /** Whether the order must rest instead of taking liquidity. */
   postOnly?: boolean;
   /** Whether the order may only reduce or close an existing position. */
@@ -94,6 +98,47 @@ const PerpsPlaceGtcOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
   timeInForce: z.literal(PerpsTimeInForce.GTC),
   postOnly: z.boolean().default(false),
 }) satisfies z.ZodType<PerpsPlaceGtcOrderRequest>;
+
+/**
+ * Good-till-date Perps order.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPlaceGtdOrderRequest = {
+  /** Perps instrument identifier to trade. */
+  instrumentId: number;
+  /** Trade direction. */
+  side: OrderSide;
+  /** Limit price. */
+  price: PerpsDecimalInput;
+  /** Order quantity. */
+  quantity: PerpsDecimalInput;
+  /** Good-till-date execution. */
+  timeInForce: PerpsTimeInForce.GTD;
+  /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from the command deadline. */
+  gtdExpiry: number;
+  /** Whether the order must rest instead of taking liquidity. */
+  postOnly?: boolean;
+  /** Whether the order may only reduce or close an existing position. */
+  reduceOnly?: boolean;
+  /** Optional caller-supplied idempotency identifier. */
+  clientOrderId?: string;
+};
+
+const PerpsPlaceGtdOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
+  price: PerpsDecimalInputSchema,
+  timeInForce: z.literal(PerpsTimeInForce.GTD),
+  postOnly: z.boolean().default(false),
+  gtdExpiry: z
+    .number()
+    .int()
+    .positive()
+    .max(18_446_744_073_709)
+    .refine(
+      (expiry) => expiry > Date.now(),
+      'Order expiration must be strictly in the future.',
+    ),
+}) satisfies z.ZodType<PerpsPlaceGtdOrderRequest>;
 
 /**
  * Immediate-or-cancel Perps order.
@@ -111,6 +156,7 @@ export type PerpsPlaceIocOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Immediate-or-cancel execution. */
   timeInForce: PerpsTimeInForce.IOC;
+  gtdExpiry?: never;
   postOnly?: never;
   /** Whether the order may only reduce or close an existing position. */
   reduceOnly?: boolean;
@@ -140,6 +186,7 @@ export type PerpsPlaceFokOrderRequest = {
   quantity: PerpsDecimalInput;
   /** Fill-or-kill execution. */
   timeInForce: PerpsTimeInForce.FOK;
+  gtdExpiry?: never;
   postOnly?: never;
   /** Whether the order may only reduce or close an existing position. */
   reduceOnly?: boolean;
@@ -160,11 +207,13 @@ const PerpsPlaceFokOrderRequestSchema = PerpsOrderBaseInputSchema.extend({
  */
 export type PerpsOrderRequest =
   | PerpsPlaceGtcOrderRequest
+  | PerpsPlaceGtdOrderRequest
   | PerpsPlaceIocOrderRequest
   | PerpsPlaceFokOrderRequest;
 
 const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
   PerpsPlaceGtcOrderRequestSchema,
+  PerpsPlaceGtdOrderRequestSchema,
   PerpsPlaceIocOrderRequestSchema,
   PerpsPlaceFokOrderRequestSchema,
 ]) satisfies z.ZodType<PerpsOrderRequest>;
@@ -175,15 +224,33 @@ const PerpsOrderRequestSchema = z.discriminatedUnion('timeInForce', [
 export type PerpsTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
   limitPrice?: PerpsDecimalInput;
+  gtdExpiry?: never;
+  trailingBps?: never;
+  activationPrice?: never;
 };
 
 const PerpsTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
+  trailingBps: z.never().optional(),
+  activationPrice: z.never().optional(),
+  gtdExpiry: z.never().optional(),
   limitPrice: PerpsDecimalInputSchema.optional(),
 }) satisfies z.ZodType<PerpsTpSlTrigger>;
 
+const PerpsPositionCloseQuantitySchema = PerpsDecimalInputSchema.refine(
+  (value) =>
+    /^\d+(?:\.\d{1,28})?$/.test(value) &&
+    BigInt(value.replace('.', '')) > 0n &&
+    BigInt(value.replace('.', '')) <= 79_228_162_514_264_337_593_543_950_335n,
+  'Expected a positive, exactly representable decimal quantity (96-bit coefficient, at most 28 decimal places). Use a fixed-point string without exponent notation.',
+).optional();
+
 const PerpsPositionTpSlTriggerSchema = z.object({
   triggerPrice: PerpsDecimalInputSchema,
+  trailingBps: z.never().optional(),
+  activationPrice: z.never().optional(),
+  gtdExpiry: z.never().optional(),
+  quantity: PerpsPositionCloseQuantitySchema,
 }) satisfies z.ZodType<PerpsPositionTpSlTrigger>;
 
 /**
@@ -191,20 +258,84 @@ const PerpsPositionTpSlTriggerSchema = z.object({
  */
 export type PerpsPositionTpSlTrigger = {
   triggerPrice: PerpsDecimalInput;
+  trailingBps?: never;
+  activationPrice?: never;
+  gtdExpiry?: never;
+  /**
+   * Positive fixed close quantity, clamped to the live position at trigger time.
+   * Omit to close the full position. Use a fixed-point string for exact precision;
+   * exponent notation, more than 28 decimal places, and coefficients exceeding
+   * 96 bits are rejected before submission.
+   */
+  quantity?: PerpsDecimalInput;
 };
 
+/**
+ * A market stop loss that follows favorable marks after activation.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsTrailingStop = {
+  /** Pullback in basis points, an integer from 10 through 2000. */
+  trailingBps: number;
+  /** Positive activation mark. Omit to start trailing when the leg arms. */
+  activationPrice?: PerpsDecimalInput;
+  triggerPrice?: never;
+  limitPrice?: never;
+  gtdExpiry?: never;
+};
+
+/**
+ * A trailing market stop loss protecting an open position.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPositionTrailingStop = PerpsTrailingStop & {
+  /** Positive, exactly representable close quantity. Omit to close the full position. */
+  quantity?: PerpsDecimalInput;
+};
+
+const PerpsTrailingStopSchema = z.object({
+  trailingBps: z.number().int().min(10).max(2000),
+  activationPrice: PerpsDecimalInputSchema.refine(
+    (value) =>
+      /^\d+(?:\.\d{1,28})?$/.test(value) &&
+      BigInt(value.replace('.', '')) > 0n &&
+      BigInt(value.replace('.', '')) <= 79_228_162_514_264_337_593_543_950_335n,
+    'Expected a positive, exactly representable fixed-point activation price.',
+  ).optional(),
+  triggerPrice: z.never().optional(),
+  limitPrice: z.never().optional(),
+  gtdExpiry: z.never().optional(),
+}) satisfies z.ZodType<PerpsTrailingStop>;
+
+const PerpsStopLossSchema = z.union([
+  PerpsTpSlTriggerSchema,
+  PerpsTrailingStopSchema,
+]);
+const PerpsPositionStopLossSchema = z.union([
+  PerpsPositionTpSlTriggerSchema,
+  PerpsTrailingStopSchema.extend({
+    quantity: PerpsPositionCloseQuantitySchema,
+  }),
+]);
+
 type PerpsTpSlPairRequest =
-  | { takeProfit: PerpsTpSlTrigger; stopLoss?: PerpsTpSlTrigger }
-  | { takeProfit?: PerpsTpSlTrigger; stopLoss: PerpsTpSlTrigger };
+  | {
+      takeProfit: PerpsTpSlTrigger;
+      stopLoss?: PerpsTpSlTrigger | PerpsTrailingStop;
+    }
+  | {
+      takeProfit?: PerpsTpSlTrigger;
+      stopLoss: PerpsTpSlTrigger | PerpsTrailingStop;
+    };
 
 const PerpsTpSlPairSchema = z.union([
   z.object({
     takeProfit: PerpsTpSlTriggerSchema,
-    stopLoss: PerpsTpSlTriggerSchema.optional(),
+    stopLoss: PerpsStopLossSchema.optional(),
   }),
   z.object({
     takeProfit: PerpsTpSlTriggerSchema.optional(),
-    stopLoss: PerpsTpSlTriggerSchema,
+    stopLoss: PerpsStopLossSchema,
   }),
 ]) satisfies z.ZodType<PerpsTpSlPairRequest>;
 
@@ -316,8 +447,33 @@ export type PlacePerpsOrderRequest =
       price: PerpsDecimalInput;
       /** Order quantity. */
       quantity: PerpsDecimalInput;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      takeProfit?: never;
+      stopLoss?: never;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
       /** Good-til-cancelled execution. */
       timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -340,6 +496,7 @@ export type PlacePerpsOrderRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -361,6 +518,7 @@ export type PlacePerpsOrderRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -385,8 +543,36 @@ export type PlacePerpsOrderWithTpSlRequest =
       price: PerpsDecimalInput;
       /** Order quantity. */
       quantity: PerpsDecimalInput;
-      /** Good-til-cancelled execution. */
-      timeInForce: PerpsTimeInForce.GTC;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Optional take-profit trigger to place with the entry order. */
+      takeProfit?: PerpsTpSlTrigger;
+      /** Stop-loss trigger to place with the entry order. */
+      stopLoss: PerpsTpSlTrigger | PerpsTrailingStop;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-till-date execution. */
+      timeInForce: PerpsTimeInForce.GTD;
+      /** Order expiration in Unix milliseconds, strictly future and at most 18446744073709. Separate from expiresAt. */
+      gtdExpiry: number;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -398,7 +584,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Take-profit trigger to place with the entry order. */
       takeProfit: PerpsTpSlTrigger;
       /** Optional stop-loss trigger to place with the entry order. */
-      stopLoss?: PerpsTpSlTrigger;
+      stopLoss?: PerpsTpSlTrigger | PerpsTrailingStop;
     }
   | {
       /** Perps instrument identifier to trade. */
@@ -411,6 +597,32 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Good-til-cancelled execution. */
       timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
+      /** Whether the order must rest instead of taking liquidity. */
+      postOnly?: boolean;
+      /** Whether the order may only reduce or close an existing position. */
+      reduceOnly?: boolean;
+      /** Optional caller-supplied idempotency identifier. Generated when omitted. */
+      clientOrderId?: string;
+      /** Optional command expiration timestamp in milliseconds. */
+      expiresAt?: number;
+      /** Take-profit trigger to place with the entry order. */
+      takeProfit: PerpsTpSlTrigger;
+      /** Optional stop-loss trigger to place with the entry order. */
+      stopLoss?: PerpsTpSlTrigger | PerpsTrailingStop;
+    }
+  | {
+      /** Perps instrument identifier to trade. */
+      instrumentId: number;
+      /** Trade direction. */
+      side: OrderSide;
+      /** Limit price. */
+      price: PerpsDecimalInput;
+      /** Order quantity. */
+      quantity: PerpsDecimalInput;
+      /** Good-til-cancelled execution. */
+      timeInForce: PerpsTimeInForce.GTC;
+      gtdExpiry?: never;
       /** Whether the order must rest instead of taking liquidity. */
       postOnly?: boolean;
       /** Whether the order may only reduce or close an existing position. */
@@ -422,7 +634,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Optional take-profit trigger to place with the entry order. */
       takeProfit?: PerpsTpSlTrigger;
       /** Stop-loss trigger to place with the entry order. */
-      stopLoss: PerpsTpSlTrigger;
+      stopLoss: PerpsTpSlTrigger | PerpsTrailingStop;
     }
   | {
       /** Perps instrument identifier to trade. */
@@ -435,6 +647,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -445,7 +658,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Take-profit trigger to place with the entry order. */
       takeProfit: PerpsTpSlTrigger;
       /** Optional stop-loss trigger to place with the entry order. */
-      stopLoss?: PerpsTpSlTrigger;
+      stopLoss?: PerpsTpSlTrigger | PerpsTrailingStop;
     }
   | {
       /** Perps instrument identifier to trade. */
@@ -458,6 +671,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Immediate-or-cancel execution. */
       timeInForce: PerpsTimeInForce.IOC;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -468,7 +682,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Optional take-profit trigger to place with the entry order. */
       takeProfit?: PerpsTpSlTrigger;
       /** Stop-loss trigger to place with the entry order. */
-      stopLoss: PerpsTpSlTrigger;
+      stopLoss: PerpsTpSlTrigger | PerpsTrailingStop;
     }
   | {
       /** Perps instrument identifier to trade. */
@@ -481,6 +695,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -491,7 +706,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Take-profit trigger to place with the entry order. */
       takeProfit: PerpsTpSlTrigger;
       /** Optional stop-loss trigger to place with the entry order. */
-      stopLoss?: PerpsTpSlTrigger;
+      stopLoss?: PerpsTpSlTrigger | PerpsTrailingStop;
     }
   | {
       /** Perps instrument identifier to trade. */
@@ -504,6 +719,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       quantity: PerpsDecimalInput;
       /** Fill-or-kill execution. */
       timeInForce: PerpsTimeInForce.FOK;
+      gtdExpiry?: never;
       postOnly?: never;
       /** Whether the order may only reduce or close an existing position. */
       reduceOnly?: boolean;
@@ -514,7 +730,7 @@ export type PlacePerpsOrderWithTpSlRequest =
       /** Optional take-profit trigger to place with the entry order. */
       takeProfit?: PerpsTpSlTrigger;
       /** Stop-loss trigger to place with the entry order. */
-      stopLoss: PerpsTpSlTrigger;
+      stopLoss: PerpsTpSlTrigger | PerpsTrailingStop;
     };
 
 /**
@@ -704,7 +920,7 @@ export type PlacePerpsPositionTpSlRequest =
       /** Take-profit trigger to place for the current position. */
       takeProfit: PerpsPositionTpSlTrigger;
       /** Optional stop-loss trigger to place alongside the take-profit. */
-      stopLoss?: PerpsPositionTpSlTrigger;
+      stopLoss?: PerpsPositionTpSlTrigger | PerpsPositionTrailingStop;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
     }
@@ -714,7 +930,7 @@ export type PlacePerpsPositionTpSlRequest =
       /** Optional take-profit trigger to place alongside the stop-loss. */
       takeProfit?: PerpsPositionTpSlTrigger;
       /** Stop-loss trigger to place for the current position. */
-      stopLoss: PerpsPositionTpSlTrigger;
+      stopLoss: PerpsPositionTpSlTrigger | PerpsPositionTrailingStop;
       /** Optional command expiration timestamp in milliseconds. */
       expiresAt?: number;
     };
@@ -722,11 +938,11 @@ export type PlacePerpsPositionTpSlRequest =
 const PerpsPositionTpSlRequiredPairSchema = z.union([
   z.object({
     takeProfit: PerpsPositionTpSlTriggerSchema,
-    stopLoss: PerpsPositionTpSlTriggerSchema.optional(),
+    stopLoss: PerpsPositionStopLossSchema.optional(),
   }),
   z.object({
     takeProfit: PerpsPositionTpSlTriggerSchema.optional(),
-    stopLoss: PerpsPositionTpSlTriggerSchema,
+    stopLoss: PerpsPositionStopLossSchema,
   }),
 ]);
 
@@ -770,7 +986,7 @@ export async function placePerpsPositionTpSl(
         buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.TakeProfit,
-        quantity: '0',
+        quantity: params.takeProfit.quantity ?? '0',
         builderAttribution,
         trigger: params.takeProfit,
       }),
@@ -782,7 +998,7 @@ export async function placePerpsPositionTpSl(
         buy,
         instrumentId: params.instrumentId,
         kind: PerpsTpSlKind.StopLoss,
-        quantity: '0',
+        quantity: params.stopLoss.quantity ?? '0',
         builderAttribution,
         trigger: params.stopLoss,
       }),
@@ -1410,6 +1626,110 @@ export async function updatePerpsLeverage(
   );
 }
 
+const UpdatePerpsLeveragesRequestSchema = z.object({
+  updates: z
+    .array(
+      UpdatePerpsLeverageRequestSchema.extend({
+        instrumentId: z.number().int().nonnegative().max(0xffff_ffff),
+        leverage: z.number().int().positive().max(0xffff_ffff),
+      }),
+    )
+    .min(1)
+    .max(100)
+    .superRefine((updates, context) => {
+      const instrumentIds = new Set<number>();
+      for (const [index, update] of updates.entries()) {
+        if (instrumentIds.has(update.instrumentId)) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Expected each instrumentId to be unique',
+            path: [index, 'instrumentId'],
+          });
+        }
+        instrumentIds.add(update.instrumentId);
+      }
+    }),
+}) satisfies z.ZodType<UpdatePerpsLeveragesRequest>;
+
+/**
+ * Request parameters for updating leverage and margin mode for one or more
+ * Perps instruments.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesRequest = {
+  /** One to 100 updates with unique instrument identifiers. */
+  updates: UpdatePerpsLeverageRequest[];
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsLeveragesError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Updates Perps leverage and margin mode for one or more instruments.
+ *
+ * @remarks
+ * Updates are processed sequentially and are not atomic. Results preserve
+ * request order. Per-instrument rejections, including `internal_error`, are
+ * returned as data; `internal_error` may represent an unknown application
+ * outcome for that instrument. A whole-request `internal_error` also has an
+ * unknown application outcome; reconcile account state before retrying the
+ * batch.
+ *
+ * @throws {@link UpdatePerpsLeveragesError}
+ * Thrown when the complete request is rejected, cannot be sent, or returns inconsistent results.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function updatePerpsLeverages(
+  client: PerpsCommandExecutor,
+  request: UpdatePerpsLeveragesRequest,
+): Promise<PerpsUpdateLeverageBatchResult[]> {
+  const params = parseUserInput(request, UpdatePerpsLeveragesRequestSchema);
+  const results = await client.executeCommand(
+    {
+      op: [
+        'updateLeverages',
+        params.updates.map((update) => [
+          update.instrumentId,
+          update.leverage,
+          update.crossMargin,
+        ]),
+      ],
+    },
+    z.array(PerpsUpdateLeverageBatchResultSchema),
+  );
+  if (
+    results.length !== params.updates.length ||
+    results.some(
+      (result, index) =>
+        result.instrumentId !== params.updates[index]?.instrumentId,
+    )
+  ) {
+    throw new UnexpectedResponseError(
+      'Perps batch leverage results did not match the requested instruments.',
+    );
+  }
+  return results;
+}
+
 const UpdatePerpsMarginRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   amount: PerpsDecimalInputSchema,
@@ -1525,14 +1845,16 @@ type RawPerpsOrderInput = readonly [
   true | undefined,
   string | undefined,
   RawPerpsTpSlTriggerInput | undefined,
-  undefined,
+  number | undefined,
   readonly [string, string] | undefined,
 ];
 
 type RawPerpsTpSlTriggerInput = readonly [
   boolean | undefined,
-  string,
+  string | undefined,
   PerpsTpSlKind,
+  number?,
+  string?,
 ];
 
 function toRawPerpsOrder(
@@ -1549,7 +1871,7 @@ function toRawPerpsOrder(
     order.reduceOnly === true ? true : undefined,
     order.clientOrderId,
     undefined,
-    undefined,
+    order.gtdExpiry,
     builderAttribution === undefined
       ? undefined
       : [builderAttribution.builderAddress, builderAttribution.feeRate],
@@ -1562,7 +1884,7 @@ function toRawPerpsTpSlOrder(request: {
   kind: PerpsTpSlKind;
   quantity: string;
   builderAttribution?: PerpsBuilderTermsInput;
-  trigger: z.output<typeof PerpsTpSlTriggerSchema>;
+  trigger: z.output<typeof PerpsStopLossSchema>;
 }): RawPerpsOrderInput {
   return [
     request.instrumentId,
@@ -1575,11 +1897,21 @@ function toRawPerpsTpSlOrder(request: {
     false,
     true,
     undefined,
-    [
-      request.trigger.limitPrice === undefined ? true : undefined,
-      toDecimalString(request.trigger.triggerPrice),
-      request.kind,
-    ],
+    request.trigger.trailingBps === undefined
+      ? [
+          request.trigger.limitPrice === undefined ? true : undefined,
+          toDecimalString(request.trigger.triggerPrice),
+          request.kind,
+        ]
+      : [
+          true,
+          undefined,
+          request.kind,
+          request.trigger.trailingBps,
+          request.trigger.activationPrice === undefined
+            ? undefined
+            : toDecimalString(request.trigger.activationPrice),
+        ],
     undefined,
     request.builderAttribution == null
       ? undefined
@@ -1633,6 +1965,19 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
         },
       };
     }
+    case 'updateLeverages': {
+      const updates = args as ReadonlyArray<
+        readonly [PerpsInstrumentId, number, boolean]
+      >;
+      return {
+        type,
+        args: updates.map(([instrumentId, leverage, crossMargin]) => ({
+          cross: crossMargin,
+          iid: instrumentId,
+          lev: leverage,
+        })),
+      };
+    }
     case 'updateMargin': {
       const [instrumentId, amount] = args as readonly [
         PerpsInstrumentId,
@@ -1663,6 +2008,7 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
   if (order[2] !== undefined) body.p = order[2];
   if (order[7] !== undefined) body.c = order[7];
   if (order[8] !== undefined) body.tr = toPerpsTpSlTriggerBody(order[8]);
+  if (order[9] !== undefined) body.gtd_expiry = order[9];
   if (order[10] !== undefined) {
     body.builder = { address: order[10][0], fee_rate: order[10][1] };
   }
@@ -1672,8 +2018,10 @@ function toPerpsOrderBody(order: RawPerpsOrderInput) {
 function toPerpsTpSlTriggerBody(trigger: RawPerpsTpSlTriggerInput) {
   const body: Record<string, unknown> = {
     tpsl: trigger[2],
-    trp: trigger[1],
   };
+  if (trigger[1] !== undefined) body.trp = trigger[1];
+  if (trigger[3] !== undefined) body.trail_bps = trigger[3];
+  if (trigger[4] !== undefined) body.act = trigger[4];
   if (trigger[0] !== undefined) body.market = trigger[0];
   return body;
 }

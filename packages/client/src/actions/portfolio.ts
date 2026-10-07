@@ -91,6 +91,20 @@ const ListPositionsRequestSchema = z
      */
     status: PositionStatusSchema.optional(),
     eventId: z.array(EventIdSchema).min(1).optional(),
+    /**
+     * Case-insensitive title substring (max 200 Unicode characters).
+     * `%` and `_` retain wildcard meaning. Blank input is ignored; other
+     * patterns are preserved unchanged on every page.
+     */
+    title: z
+      .string()
+      .transform((value) =>
+        /^\p{White_Space}*$/u.test(value) ? undefined : value,
+      )
+      .refine((value) => value === undefined || [...value].length <= 200, {
+        message: 'title must contain at most 200 characters',
+      })
+      .optional(),
     filterType: PositionFilterTypeSchema.optional(),
     filterAmount: z.number().min(0).optional(),
     includeArchived: z.boolean().optional(),
@@ -182,6 +196,8 @@ export const ListPositionsError = makeErrorGuard(
  * filter to mergeable positions; a `conditionId`-only request falls back
  * to the broader `OPEN` listing. `sortBy` defaults to `TOKENS` for
  * `MERGEABLE`, `REALIZED_PNL` for `CLOSED`, and `CURRENT_VALUE` otherwise.
+ * `title` filters by case-insensitive substring across every status and
+ * anchor; the paginator retains it when advancing or resuming.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

@@ -29,6 +29,8 @@ export {
   type PerpsPositionSnapshotFill,
   type PerpsPositionSnapshotSelection,
 } from './perps/position-snapshots';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export * from './perps/registration';
 export * from './portfolio';
 export * from './positions';
 export * from './profiles';

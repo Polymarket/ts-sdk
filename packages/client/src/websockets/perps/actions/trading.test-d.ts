@@ -5,6 +5,7 @@ import type { PerpsSession } from '../session';
 import type {
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
@@ -25,6 +26,49 @@ const gtcOrder = {
 } as const;
 
 describe('PlacePerpsOrderRequest', () => {
+  it('requires expiry and price for GTD across single and batch placement', () => {
+    const request: PerpsPlaceGtdOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      price: '100',
+      gtdExpiry: Date.now() + 60_000,
+      postOnly: true,
+    };
+    const single: PlacePerpsOrderRequest = {
+      ...request,
+      expiresAt: Date.now() + 5_000,
+    };
+    const batch: PostPerpsOrdersRequest = { orders: [request] };
+    const bracket: PlacePerpsOrderWithTpSlRequest = {
+      ...request,
+      stopLoss: { triggerPrice: '90' },
+    };
+    // @ts-expect-error GTD requires expiry.
+    const missingExpiry: PlacePerpsOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      price: '100',
+    };
+    // @ts-expect-error GTD requires price.
+    const missingPrice: PlacePerpsOrderRequest = {
+      ...baseOrder,
+      timeInForce: PerpsTimeInForce.GTD,
+      gtdExpiry: Date.now() + 60_000,
+    };
+    // @ts-expect-error GTC cannot carry order expiry.
+    const unexpectedExpiry: PlacePerpsOrderRequest = {
+      ...gtcOrder,
+      gtdExpiry: Date.now() + 60_000,
+    };
+    void [
+      single,
+      batch,
+      bracket,
+      missingExpiry,
+      missingPrice,
+      unexpectedExpiry,
+    ];
+  });
   it('does not accept per-order builder overrides', () => {
     const request: PlacePerpsOrderRequest = {
       ...gtcOrder,
@@ -187,6 +231,19 @@ describe('PerpsSession.placeOrder', () => {
 });
 
 describe('PlacePerpsPositionTpSlRequest', () => {
+  it('accepts independent partial quantities and an omitted full close', () => {
+    const mixed: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      takeProfit: { triggerPrice: '110', quantity: '0.25' },
+      stopLoss: { triggerPrice: '90' },
+    };
+    const partial: PlacePerpsPositionTpSlRequest = {
+      instrumentId: 1,
+      stopLoss: { triggerPrice: '90', quantity: 0.75 },
+    };
+    void mixed;
+    void partial;
+  });
   it('does not accept builder overrides for generated exits', () => {
     const request: PlacePerpsPositionTpSlRequest = {
       instrumentId: 1,
@@ -205,4 +262,35 @@ describe('PlacePerpsPositionTpSlRequest', () => {
     };
     void request;
   });
+});
+
+it('exposes trailing intent only on stop-loss legs through session methods', () => {
+  function consumer(session: PerpsSession) {
+    session.placePositionTpSl({
+      instrumentId: 1,
+      stopLoss: { trailingBps: 200, quantity: '0.25', activationPrice: '105' },
+    });
+    session.placeOrder({ ...gtcOrder, stopLoss: { trailingBps: 200 } });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Trailing take profit is unsupported.
+      takeProfit: { trailingBps: 200 },
+    });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Fixed and trailing stop intent are mutually exclusive.
+      stopLoss: { triggerPrice: '90', trailingBps: 200 },
+    });
+    // @ts-expect-error Trailing stops execute as market orders.
+    session.placeOrder({
+      ...gtcOrder,
+      stopLoss: { trailingBps: 200, limitPrice: '90' },
+    });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Trigger legs cannot carry a GTD expiry.
+      stopLoss: { trailingBps: 200, gtdExpiry: 1893456000000 },
+    });
+  }
+  void consumer;
 });

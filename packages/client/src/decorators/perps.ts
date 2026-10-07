@@ -47,6 +47,10 @@ import {
   type FetchPerpsPositionSnapshotsRequest,
   fetchPerpsPositionSnapshots,
 } from '../actions/perps/position-snapshots';
+import {
+  type FetchPerpsRegistrationRequest,
+  fetchPerpsRegistration,
+} from '../actions/perps/registration';
 import type {
   BaseClient,
   BasePublicClient,
@@ -64,6 +68,7 @@ export {
 import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -102,8 +107,10 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
@@ -111,6 +118,9 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -123,9 +133,11 @@ export type {
   RevokePerpsCredentialsRequest,
   TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
   DepositToPerpsError,
@@ -141,6 +153,7 @@ export {
   RevokePerpsCredentialsError,
   TransferPerpsCollateralError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
@@ -151,6 +164,11 @@ export {
   FetchPerpsBuilderStatusError,
   type FetchPerpsBuilderStatusRequest,
 } from '../actions/perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsRegistrationError,
+  type FetchPerpsRegistrationRequest,
+} from '../actions/perps/registration';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   FetchPerpsBuilderApprovalsError,
@@ -177,6 +195,15 @@ export type PublicPerpsActions = {
   fetchPerpsPositionSnapshots(
     request: FetchPerpsPositionSnapshotsRequest,
   ): Promise<PerpsPositionSnapshots>;
+  /**
+   * Fetches whether an address has a Perps account without authentication.
+   * Registration is permanent; a false result may be cached for up to ten seconds.
+   * @throws {@link FetchPerpsRegistrationError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsRegistration(
+    request: FetchPerpsRegistrationRequest,
+  ): Promise<boolean>;
   /**
    * Fetches public builder availability and the platform fee cap.
    * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
@@ -458,6 +485,7 @@ export function perpsActions(
   const actions: PublicPerpsActions = {
     fetchPerpsPositionSnapshots: (request) =>
       fetchPerpsPositionSnapshots(client, request),
+    fetchPerpsRegistration: fetchPerpsRegistration.bind(null, client),
     fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: (request) => fetchPerpsBook(client, request),
     fetchPerpsFees: () => fetchPerpsFees(client),
@@ -482,3 +510,22 @@ export function perpsActions(
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  type PerpsTwap,
+  type PerpsTwapAccepted,
+  type PerpsTwapId,
+  PerpsTwapStatus,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from '../websockets/perps/actions/twaps';

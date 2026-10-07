@@ -3,6 +3,7 @@ import {
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
+  PerpsInstrumentSettlementSchema,
   PerpsPublicTradeSchema,
   PerpsPublicTradeUpdateSchema,
 } from './market';
@@ -22,34 +23,52 @@ describe('PerpsFundingIntervalSchema', () => {
   });
 });
 
+const baseInstrument = {
+  base_asset: 'BTC',
+  category: 'crypto',
+  funding_interval: '1h',
+  instrument_id: 1,
+  instrument_type: 'perpetual',
+  isolated_only: true,
+  close_only: true,
+  display_symbol: 'BTC-USD',
+  settlement: {
+    sequence: Number.MAX_SAFE_INTEGER,
+    timestamp: 1751500000001,
+    price: '9007199254740993.00000001',
+    insurance_debit: '0.000000000000000001',
+  },
+  liquidation_fee: '0.01',
+  max_leverage: 10,
+  max_limit_notional: '1000000',
+  max_market_notional: '100000',
+  max_order_count: 200,
+  min_notional: '1',
+  price_bounds: '0.1',
+  price_decimals: 2,
+  quantity_decimals: 4,
+  quote_asset: 'USD',
+  risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
+  symbol: 'BTC-PERP',
+};
+
 describe('PerpsInstrumentSchema', () => {
   it('normalizes instrument identifiers without exposing instrument type', () => {
-    const instrument = PerpsInstrumentSchema.parse({
-      base_asset: 'BTC',
-      category: 'crypto',
-      funding_interval: '1h',
-      instrument_id: 1,
-      instrument_type: 'perpetual',
-      isolated_only: true,
-      liquidation_fee: '0.01',
-      max_leverage: 10,
-      max_limit_notional: '1000000',
-      max_market_notional: '100000',
-      max_order_count: 200,
-      min_notional: '1',
-      price_bounds: '0.1',
-      price_decimals: 2,
-      quantity_decimals: 4,
-      quote_asset: 'USD',
-      risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
-      symbol: 'BTC-PERP',
-    });
+    const instrument = PerpsInstrumentSchema.parse(baseInstrument);
 
     expect(instrument).toMatchObject({
       id: 1,
       category: 'crypto',
       symbol: 'BTC-PERP',
       isolatedOnly: true,
+      closeOnly: true,
+      displaySymbol: 'BTC-USD',
+      settlement: {
+        sequence: Number.MAX_SAFE_INTEGER,
+        timestamp: 1751500000001,
+        price: '9007199254740993.00000001',
+        insuranceDebit: '0.000000000000000001',
+      },
     });
     expect(instrument).not.toHaveProperty('instrumentId');
     expect(instrument).not.toHaveProperty('instrumentType');
@@ -140,5 +159,62 @@ describe('PerpsPublicTradeUpdateSchema', () => {
     });
 
     expect(trade.hash).toBeUndefined();
+  });
+});
+
+describe('public settlement trades', () => {
+  it.each([
+    {},
+    { settlement: false },
+    { settlement: true },
+  ])('preserves REST and WS flags: %j', (metadata) => {
+    const expanded = PerpsPublicTradeSchema.parse({
+      trade_id: 3,
+      instrument_id: 1,
+      side: 'long',
+      price: '123.000000000000000001',
+      quantity: '2',
+      timestamp: 1751500000001,
+      hash: '0x',
+      ...metadata,
+    });
+    const compact = PerpsPublicTradeUpdateSchema.parse({
+      tid: 3,
+      iid: 1,
+      side: 'long',
+      p: '123.000000000000000001',
+      qty: '2',
+      ts: 1751500000001,
+      hash: '0x',
+      ...metadata,
+    });
+    expect(expanded).toEqual(compact);
+    expect(expanded.settlement).toBe(metadata.settlement ?? false);
+    expect(expanded.price).toBe('123.000000000000000001');
+  });
+});
+
+describe('legacy instrument metadata and sequence precision', () => {
+  it.each([
+    undefined,
+    false,
+  ])('accepts omitted metadata and close_only=%j', (closeOnly) => {
+    const instrument = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      close_only: closeOnly,
+      display_symbol: undefined,
+      settlement: undefined,
+    });
+    expect(instrument.closeOnly).toBe(false);
+    expect(instrument.displaySymbol).toBeUndefined();
+    expect(instrument.settlement).toBeUndefined();
+  });
+  it('rejects unsafe settlement sequences instead of silently rounding them', () => {
+    expect(() =>
+      PerpsInstrumentSettlementSchema.parse({
+        ...baseInstrument.settlement,
+        sequence: Number.MAX_SAFE_INTEGER + 1,
+      }),
+    ).toThrow();
   });
 });
