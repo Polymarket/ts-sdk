@@ -33,6 +33,7 @@ import type {
   PerpsCancelRetryOptions,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
+  PerpsPositionDeleveragedNotification,
   PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionEvent,
@@ -223,6 +224,28 @@ describe('public Perps exports', () => {
     expectTypeOf(session.listInternalTransfers).returns.toMatchTypeOf<
       import('../index').Paginated<PerpsInternalTransfer[]>
     >();
+  });
+
+  it('narrows ADL notifications from session history and events', async () => {
+    const session = {} as PerpsSession;
+    const page = await session.listNotifications().firstPage();
+    for (const entry of page.items) {
+      if (entry.notification.type === 'position_deleveraged') {
+        expectTypeOf(
+          entry.notification,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
+    for await (const event of session) {
+      if (
+        event.type === 'notification' &&
+        event.payload.type === 'position_deleveraged'
+      ) {
+        expectTypeOf(
+          event.payload,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
   });
 
   it('exports known cancel rejections and narrows rejected results', () => {
