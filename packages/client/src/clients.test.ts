@@ -18,7 +18,6 @@ import {
   it,
   vi,
 } from 'vitest';
-import { version } from '../package.json';
 import { fetchApiKeys } from './actions/auth';
 import { type createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
@@ -230,7 +229,6 @@ describe('secure client gasless wallet setup', () => {
     let loginRequests = 0;
     let directRequests = 0;
     const platformApiKey = 'pk_test_gateway_boundary';
-    const expectedMetadata = `@polymarket/client@${version}:nodejs@${process.versions.node}`;
     const signingSigner: Signer = {
       ...signer,
       signTypedData(payload) {
@@ -253,13 +251,7 @@ describe('secure client gasless wallet setup', () => {
         expect(request.headers.get('POLY_NONCE')).toBeNull();
         expect(request.headers.get('POLY_SIGNATURE')).toBeNull();
         expect(request.headers.get('X-API-Key')).toBe(platformApiKey);
-        expect(request.headers.get('POLYMARKET_CLIENT')).toBe(expectedMetadata);
         expect(request.headers.has('authorization')).toBe(false);
-        expect(
-          Array.from(request.headers.keys()).filter(
-            (header) => header === 'polymarket_client',
-          ),
-        ).toHaveLength(1);
         return HttpResponse.json({
           type: 'L2_CREDENTIALS',
           key: credentials.key,
@@ -269,7 +261,6 @@ describe('secure client gasless wallet setup', () => {
       }),
       http.get(`${gatewayRoot}/next/me`, ({ request }) => {
         expect(request.headers.get('X-API-Key')).toBe(platformApiKey);
-        expect(request.headers.get('POLYMARKET_CLIENT')).toBe(expectedMetadata);
         expect(request.headers.has('POLY_API_KEY')).toBe(false);
         expect(request.headers.has('authorization')).toBe(false);
         return HttpResponse.json({
@@ -281,25 +272,13 @@ describe('secure client gasless wallet setup', () => {
         directRequests += 1;
         expect(request.headers.get('POLY_API_KEY')).toBe(credentials.key);
         expect(request.headers.has('X-API-Key')).toBe(false);
-        expect(request.headers.has('POLYMARKET_CLIENT')).toBe(false);
         expect(request.headers.has('authorization')).toBe(false);
         return HttpResponse.json({ apiKeys: [credentials.key] });
       }),
     );
 
     const client = await createSecureClient({
-      environment: forkEnvironmentConfig(
-        {
-          name: 'conflicting-metadata',
-          gateway: {
-            headers: {
-              POLYMARKET_CLIENT: 'wrong',
-              polymarket_client: 'also-wrong',
-            },
-          },
-        },
-        environment,
-      ),
+      environment,
       platformApiKey,
       nonce: 0,
       signer: signingSigner,
@@ -389,7 +368,6 @@ describe('secure client gasless wallet setup', () => {
       http.get(`${clobRoot}/auth/api-keys`, ({ request }) => {
         validationRequests += 1;
         expect(request.headers.has('X-API-Key')).toBe(false);
-        expect(request.headers.has('POLYMARKET_CLIENT')).toBe(false);
         return HttpResponse.json({ apiKeys: [credentials.key] });
       }),
     );

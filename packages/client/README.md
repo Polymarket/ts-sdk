@@ -62,10 +62,7 @@ platform key identity; `session.fetchIdentity()` reads the signed wallet identit
 
 Discovery reads use a single attempt with a five-second response deadline, then
 fall back only after connectivity failures or HTTP 502/503/504. Other HTTP errors
-and invalid responses propagate. Each request to the API gateway includes
-`POLYMARKET_CLIENT` with package and runtime versions, for example
-`@polymarket/client@0.12.0:nodejs@24.0.0`. Detection is local, best effort, and uses
-`unknown` when a version is unavailable.
+and invalid responses propagate.
 
 For a custom environment, set `gateway.rest` and `gateway.identityIssuer` through
 `forkEnvironmentConfig`. The issuer must exactly match the identity service's trusted
