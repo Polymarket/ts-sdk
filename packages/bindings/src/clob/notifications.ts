@@ -31,6 +31,7 @@ import {
   QuestionIdSchema,
   type TokenId,
   TxHashSchema,
+  toIsoCalendarDateString,
 } from '../shared';
 
 /**
@@ -48,6 +49,7 @@ export enum NotificationType {
   ORDER_FILL_FAILED = 8,
   AUTO_REDEEMED = 9,
   COMBO_AUTO_REDEEMED = 10,
+  TAKER_TIER_UPGRADED = 11,
 }
 
 export const NotificationTypeSchema = z.enum(NotificationType);
@@ -422,6 +424,25 @@ export type ComboAutoRedeemedNotificationPayload = z.infer<
   typeof ComboAutoRedeemedNotificationPayloadSchema
 >;
 
+/** A taker tier upgrade in a daily snapshot; rebateBps is in basis points. */
+export const TakerTierUpgradedNotificationPayloadSchema = z
+  .object({
+    previous_tier: z.number().int(),
+    tier: z.number().int(),
+    rebate_bps: z.number().int(),
+    snapshot_date: z.iso.date().transform(toIsoCalendarDateString),
+  })
+  .transform(({ previous_tier, tier, rebate_bps, snapshot_date }) => ({
+    previousTier: previous_tier,
+    tier,
+    rebateBps: rebate_bps,
+    snapshotDate: snapshot_date,
+  }));
+
+export type TakerTierUpgradedNotificationPayload = z.infer<
+  typeof TakerTierUpgradedNotificationPayloadSchema
+>;
+
 const NotificationTimestampSchema = z.preprocess((value) => {
   if (typeof value !== 'string') {
     return value;
@@ -531,6 +552,15 @@ export type ComboAutoRedeemedNotification = z.infer<
   typeof ComboAutoRedeemedNotificationSchema
 >;
 
+export const TakerTierUpgradedNotificationSchema = createNotificationSchema(
+  NotificationType.TAKER_TIER_UPGRADED,
+  TakerTierUpgradedNotificationPayloadSchema,
+);
+
+export type TakerTierUpgradedNotification = z.infer<
+  typeof TakerTierUpgradedNotificationSchema
+>;
+
 /**
  * Account notification. Discriminated on `type`: narrowing on it also
  * narrows `payload` to the shape carried by that notification kind.
@@ -546,6 +576,7 @@ export const NotificationSchema = z.discriminatedUnion('type', [
   OrderFillFailedNotificationSchema,
   AutoRedeemedNotificationSchema,
   ComboAutoRedeemedNotificationSchema,
+  TakerTierUpgradedNotificationSchema,
 ]);
 
 export type Notification = z.infer<typeof NotificationSchema>;
