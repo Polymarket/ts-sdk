@@ -373,3 +373,29 @@ describe('instrument retirement metadata', () => {
     void read;
   });
 });
+
+import type {
+  CancelPerpsChaseRequest,
+  CreatePerpsChaseRequest,
+  PerpsChase,
+  PerpsChaseAccepted,
+  PerpsChaseId,
+  PerpsOrder,
+} from '../index';
+
+it('exposes chase lifecycle on the authenticated session with canonical models', () => {
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('createChase')
+    .toEqualTypeOf<
+      (request: CreatePerpsChaseRequest) => Promise<PerpsChaseAccepted>
+    >();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('fetchChases')
+    .toEqualTypeOf<() => Promise<PerpsChase[]>>();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('cancelChase')
+    .toEqualTypeOf<(request: CancelPerpsChaseRequest) => Promise<void>>();
+  expectTypeOf<PerpsOrder>()
+    .toHaveProperty('chaseId')
+    .toEqualTypeOf<PerpsChaseId | undefined>();
+});

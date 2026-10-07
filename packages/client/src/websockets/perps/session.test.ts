@@ -117,6 +117,285 @@ describe('PerpsSession', () => {
     await session.close();
   });
 
+  describe('chase lifecycle', () => {
+    it('does not retry cancellation after a lost acknowledgement', async () => {
+      let writes = 0;
+      server.use(
+        http.delete(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          return HttpResponse.error();
+        }),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session.cancelChase({ chaseId: 1 }),
+        ).rejects.toBeInstanceOf(TransportError);
+        expect(writes).toBe(1);
+      } finally {
+        await session.close();
+      }
+    });
+    it('delivers chase child identity through the private order iterator', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+      await session.connect();
+      try {
+        const nextEvent = waitForNextEvent(session);
+        const frame = orderUpdate('open', 'a'.repeat(32));
+        await connection.send({ ...frame, data: { ...frame.data, chid: 123 } });
+        await expect(nextEvent).resolves.toMatchObject({
+          value: { type: 'order', payload: { chaseId: 123 } },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+    it.each([
+      {
+        request: {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1.000000000000000001',
+        },
+        args: {
+          iid: 1,
+          buy: true,
+          qty: '1.000000000000000001',
+          po: true,
+          ro: false,
+        },
+        op: ['createChase', [1, true, '1.000000000000000001', true, false]],
+        hash: '0x49bb16d14842595245b19ddc957a9d56fe389bebbb419a8ba384ddcefbbdc100',
+      },
+      {
+        request: {
+          instrumentId: 1,
+          side: OrderSide.SELL,
+          quantity: 1e-8,
+          limitPrice: '1.000000000000000001',
+          maxDistance: '0',
+          maxDistanceBps: 1000,
+          postOnly: false,
+          reduceOnly: true,
+          clientOrderId: 'a'.repeat(32),
+        },
+        args: {
+          iid: 1,
+          buy: false,
+          qty: '0.00000001',
+          lim: '1.000000000000000001',
+          max_dist: '0',
+          max_dist_bps: 1000,
+          po: false,
+          ro: true,
+          c: 'a'.repeat(32),
+        },
+        op: [
+          'createChase',
+          [
+            1,
+            false,
+            '0.00000001',
+            '1.000000000000000001',
+            '0',
+            1000,
+            false,
+            true,
+            'a'.repeat(32),
+          ],
+        ],
+        hash: '0xcaed1e7545bd77ee7256f65e289acb851dafca4c3d52cee69cc999f31042f7b6',
+      },
+    ])('signs exact create tuples, reads privately and cancels the same identity ($hash)', async (fixture) => {
+      const signedOp = fixture.op as import('./signing').PerpsSignedOp;
+      expect(
+        createPerpsOpTypedDataPayload({
+          chainId: 137,
+          op: signedOp,
+          salt: 1,
+          timestamp: 1,
+        }).message.data,
+      ).toBe(fixture.hash);
+      let writes = 0;
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/chases`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              exp: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createChase',
+              args: fixture.args,
+            });
+            expect(body.exp).toBe(1767225660000);
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: signedOp,
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            writes++;
+            return HttpResponse.json({
+              status: 'ok',
+              chid: 9007199254740991,
+              ts: 1767225600000,
+            });
+          },
+        ),
+        http.get(
+          `${production.perps.rest}/v1/account/chases`,
+          ({ request }) => {
+            expect(request.headers.get('polymarket-proxy')).toBe(
+              credentials.proxy,
+            );
+            expect(request.headers.get('polymarket-secret')).toBe(
+              credentials.secret,
+            );
+            return HttpResponse.json([]);
+          },
+        ),
+        http.delete(
+          `${production.perps.rest}/v1/trade/chases`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'cancelChase',
+              args: { chid: 9007199254740991 },
+            });
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: ['cancelChase', [9007199254740991]],
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            writes++;
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+      try {
+        const accepted = await session.createChase({
+          ...fixture.request,
+          expiresAt: 1767225660000,
+        });
+        expect(accepted).toEqual({
+          chaseId: 9007199254740991,
+          timestamp: 1767225600000,
+        });
+        expect(await session.fetchChases()).toEqual([]);
+        await session.cancelChase({ chaseId: accepted.chaseId });
+        expect(writes).toBe(2);
+      } finally {
+        await session.close();
+      }
+    });
+    it.each([
+      { quantity: '0' },
+      { quantity: 'NaN' },
+      { quantity: '0.00000000000000000000000000001' },
+      { quantity: '79228162514264337593543950336' },
+      { limitPrice: '-1' },
+      { maxDistance: '1', maxDistanceBps: 50 },
+      { maxDistanceBps: 0 },
+      { maxDistanceBps: 1001 },
+      { maxDistanceBps: 1.5 },
+      { expiresAt: -1 },
+      { clientOrderId: 'bad' },
+      { instrumentId: 4294967296 },
+    ])('validates full input before signing/dispatch %j', async (invalid) => {
+      const salt = vi.spyOn(crypto, 'getRandomValues');
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          return HttpResponse.json({ status: 'ok' });
+        }),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session.createChase({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            quantity: '1',
+            ...invalid,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(writes).toBe(0);
+        expect(salt).not.toHaveBeenCalled();
+        await expect(
+          session.cancelChase({ chaseId: 9007199254740992 }),
+        ).rejects.toBeInstanceOf(UserInputError);
+      } finally {
+        salt.mockRestore();
+        await session.close();
+      }
+    });
+    it.each([
+      'timeout',
+      'transport',
+      'malformed',
+      'domain',
+      'disabled',
+    ])('never resubmits uncertain/rejected writes: %s', async (mode) => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          if (mode === 'transport') return HttpResponse.error();
+          if (mode === 'timeout')
+            return HttpResponse.json({ error: 'timeout' }, { status: 500 });
+          if (mode === 'disabled')
+            return HttpResponse.json({ error: 'not_found' }, { status: 404 });
+          if (mode === 'domain')
+            return HttpResponse.json({
+              status: 'err',
+              error: 'chase_limit_exceeded',
+            });
+          return HttpResponse.json({ status: 'ok', chid: 1 });
+        }),
+      );
+      const session = createSession();
+      try {
+        const expected =
+          mode === 'transport'
+            ? TransportError
+            : mode === 'malformed'
+              ? UnexpectedResponseError
+              : RequestRejectedError;
+        await expect(
+          session.createChase({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            quantity: '1',
+          }),
+        ).rejects.toBeInstanceOf(expected);
+        expect(writes).toBe(1);
+      } finally {
+        await session.close();
+      }
+    });
+  });
+
   describe('TWAP lifecycle', () => {
     it('signs every optional field in source order and normalizes decimal exponent input', async () => {
       server.use(
