@@ -57,7 +57,9 @@ describe('Perps portfolio risk data', () => {
     const { fee_tier: _feeTier, ...missingTier } = portfolio;
     const { available_order_margin: _available, ...missingAvailable } =
       portfolio.margin;
-    const { adl_index: _adlIndex, ...missingAdlIndex } = portfolio.positions[0];
+    const missingAdlIndexes = portfolio.positions.map(
+      ({ adl_index: _adlIndex, ...position }) => position,
+    );
 
     expect(PerpsPortfolioSchema.safeParse(missingTier).success).toBe(false);
     expect(
@@ -67,7 +69,7 @@ describe('Perps portfolio risk data', () => {
     expect(
       PerpsPortfolioSchema.safeParse({
         ...portfolio,
-        positions: [missingAdlIndex],
+        positions: missingAdlIndexes,
       }).success,
     ).toBe(false);
   });
