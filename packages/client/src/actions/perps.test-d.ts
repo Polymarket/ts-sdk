@@ -42,6 +42,7 @@ import type {
   PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
+  PerpsUpdateLeverageBatchResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
@@ -84,6 +85,29 @@ describe('registration lookup types', () => {
       client.fetchPerpsRegistration({});
     }
     expectTypeOf(read).toBeFunction();
+  });
+});
+
+declare const batchLeverageClient: SecurePerpsActions;
+
+describe('batch leverage session contract', () => {
+  it('returns ordered success and rejection models through the public session', async () => {
+    const session = await batchLeverageClient.openPerpsSession();
+    const results = await session.updateLeverages({
+      updates: [
+        { instrumentId: 1, leverage: 5, crossMargin: false },
+        { instrumentId: 2, leverage: 10, crossMargin: true },
+      ],
+    });
+    expectTypeOf(results).toEqualTypeOf<PerpsUpdateLeverageBatchResult[]>();
+    for (const result of results) {
+      if (result.status === 'ok') {
+        expectTypeOf(result.leverage).toEqualTypeOf<number>();
+        expectTypeOf(result.crossMargin).toEqualTypeOf<boolean>();
+      } else {
+        expectTypeOf(result.error).toEqualTypeOf<string>();
+      }
+    }
   });
 });
 

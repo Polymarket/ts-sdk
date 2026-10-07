@@ -25,6 +25,8 @@ import {
   PerpsTimeInForce,
   PerpsTpSlKind,
   PerpsTpSlScope,
+  type PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageBatchResultSchema,
   type PerpsUpdateLeverageResult,
   PerpsUpdateLeverageResultSchema,
 } from '@polymarket/bindings/perps';
@@ -1624,6 +1626,110 @@ export async function updatePerpsLeverage(
   );
 }
 
+const UpdatePerpsLeveragesRequestSchema = z.object({
+  updates: z
+    .array(
+      UpdatePerpsLeverageRequestSchema.extend({
+        instrumentId: z.number().int().nonnegative().max(0xffff_ffff),
+        leverage: z.number().int().positive().max(0xffff_ffff),
+      }),
+    )
+    .min(1)
+    .max(100)
+    .superRefine((updates, context) => {
+      const instrumentIds = new Set<number>();
+      for (const [index, update] of updates.entries()) {
+        if (instrumentIds.has(update.instrumentId)) {
+          context.addIssue({
+            code: 'custom',
+            message: 'Expected each instrumentId to be unique',
+            path: [index, 'instrumentId'],
+          });
+        }
+        instrumentIds.add(update.instrumentId);
+      }
+    }),
+}) satisfies z.ZodType<UpdatePerpsLeveragesRequest>;
+
+/**
+ * Request parameters for updating leverage and margin mode for one or more
+ * Perps instruments.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesRequest = {
+  /** One to 100 updates with unique instrument identifiers. */
+  updates: UpdatePerpsLeverageRequest[];
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type UpdatePerpsLeveragesError =
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const UpdatePerpsLeveragesError = makeErrorGuard(
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Updates Perps leverage and margin mode for one or more instruments.
+ *
+ * @remarks
+ * Updates are processed sequentially and are not atomic. Results preserve
+ * request order. Per-instrument rejections, including `internal_error`, are
+ * returned as data; `internal_error` may represent an unknown application
+ * outcome for that instrument. A whole-request `internal_error` also has an
+ * unknown application outcome; reconcile account state before retrying the
+ * batch.
+ *
+ * @throws {@link UpdatePerpsLeveragesError}
+ * Thrown when the complete request is rejected, cannot be sent, or returns inconsistent results.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function updatePerpsLeverages(
+  client: PerpsCommandExecutor,
+  request: UpdatePerpsLeveragesRequest,
+): Promise<PerpsUpdateLeverageBatchResult[]> {
+  const params = parseUserInput(request, UpdatePerpsLeveragesRequestSchema);
+  const results = await client.executeCommand(
+    {
+      op: [
+        'updateLeverages',
+        params.updates.map((update) => [
+          update.instrumentId,
+          update.leverage,
+          update.crossMargin,
+        ]),
+      ],
+    },
+    z.array(PerpsUpdateLeverageBatchResultSchema),
+  );
+  if (
+    results.length !== params.updates.length ||
+    results.some(
+      (result, index) =>
+        result.instrumentId !== params.updates[index]?.instrumentId,
+    )
+  ) {
+    throw new UnexpectedResponseError(
+      'Perps batch leverage results did not match the requested instruments.',
+    );
+  }
+  return results;
+}
+
 const UpdatePerpsMarginRequestSchema = z.object({
   instrumentId: PerpsInstrumentIdSchema,
   amount: PerpsDecimalInputSchema,
@@ -1857,6 +1963,19 @@ export function toPerpsCommandBodyOp(op: PerpsSignedOp) {
           iid: instrumentId,
           lev: leverage,
         },
+      };
+    }
+    case 'updateLeverages': {
+      const updates = args as ReadonlyArray<
+        readonly [PerpsInstrumentId, number, boolean]
+      >;
+      return {
+        type,
+        args: updates.map(([instrumentId, leverage, crossMargin]) => ({
+          cross: crossMargin,
+          iid: instrumentId,
+          lev: leverage,
+        })),
       };
     }
     case 'updateMargin': {
