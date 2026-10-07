@@ -54,6 +54,7 @@ import type {
 import type { Paginated } from '../pagination';
 import type { TransactionHandle } from '../types';
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -92,8 +93,10 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
@@ -101,6 +104,7 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -476,3 +480,22 @@ export function perpsActions(
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  type PerpsTwap,
+  type PerpsTwapAccepted,
+  type PerpsTwapId,
+  PerpsTwapStatus,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from '../websockets/perps/actions/twaps';
