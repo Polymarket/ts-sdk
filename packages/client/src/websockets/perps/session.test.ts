@@ -664,6 +664,7 @@ describe('PerpsSession', () => {
 
     it('reauthenticates, resubscribes, and emits resync', async () => {
       const session = createSession();
+      const connection = captureConnection(server, perps);
 
       vi.useFakeTimers();
 
@@ -671,6 +672,17 @@ describe('PerpsSession', () => {
         await session.connect();
         await vi.waitFor(() => {
           expect(connectionFrames[0]?.frames).toHaveLength(2);
+        });
+
+        const serverResync = waitForNextEvent(session);
+        await connection.send({
+          ch: 'notifications',
+          sq: 1050,
+          ts: 1_700_000_000_000,
+          type: 'resync',
+        });
+        await expect(serverResync).resolves.toMatchObject({
+          value: { reason: 'server', sequence: 1050, type: 'resync' },
         });
 
         const nextEvent = waitForNextEvent(session);
@@ -713,6 +725,13 @@ describe('PerpsSession', () => {
             reason: 'reconnect',
             type: 'resync',
           },
+        });
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence: 1080, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          value: { sequence: 1080, type: 'notification' },
         });
       } finally {
         await session.close();
@@ -1682,37 +1701,48 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('drops server resync frames without emitting an event', async () => {
+    it('emits server resyncs and continues notifications without synthetic gaps', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
 
       await session.connect();
 
-      // The server resync control frame is parsed but intentionally not
-      // surfaced until DEV-428; the notification sent afterwards arriving as
-      // the next event proves it was dropped without closing the session.
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
+        ets: 1_699_999_999_000,
         sq: 1050,
         ts: 1_700_000_000_000,
         type: 'resync',
       });
-      await connection.send(
-        notificationUpdate({ sequence: 1051, type: 'position_opened' }),
-      );
-
-      await expect(nextEvent).resolves.toMatchObject({
+      await expect(nextEvent).resolves.toEqual({
         done: false,
         value: {
           channel: 'notifications',
-          sequence: 1051,
-          type: 'notification',
+          reason: 'server',
+          sequence: 1050,
+          timestamp: 1_700_000_000_000,
+          type: 'resync',
         },
       });
 
+      // Engine sequences can repeat or skip values after a resync too.
+      for (const sequence of [1050, 1050, 1080]) {
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          done: false,
+          value: { channel: 'notifications', sequence, type: 'notification' },
+        });
+      }
+
       await session.close();
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: true,
+      });
     });
 
     it('does not synthesize sequence-gap resyncs for notification sequences', async () => {

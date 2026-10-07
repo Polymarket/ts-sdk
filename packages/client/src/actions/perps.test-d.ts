@@ -9,6 +9,7 @@ import type {
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
   DepositToPerpsRequest,
+  EpochMilliseconds,
   FetchPerpsAccountConfigRequest,
   FetchPerpsBookRequest,
   FetchPerpsOpenOrdersRequest,
@@ -35,6 +36,7 @@ import type {
   PerpsPositionDeleveragedNotification,
   PerpsSession,
   PerpsSessionAccountError,
+  PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PlacePerpsOrderRequest,
@@ -62,6 +64,35 @@ import type {
   FetchPerpsInstrumentsRequest,
   ResumePerpsSessionRequest,
 } from './perps';
+
+describe('session notification recovery', () => {
+  it('narrows server recovery metadata from the public session iterator', () => {
+    async function consume(session: PerpsSession) {
+      for await (const event of session) {
+        expectTypeOf(event).toEqualTypeOf<PerpsSessionEvent>();
+        if (event.type !== 'resync') continue;
+        expectTypeOf(event.previousSequence).toEqualTypeOf<
+          number | undefined
+        >();
+        if (event.reason === 'server') {
+          expectTypeOf(event.channel).toEqualTypeOf<'notifications'>();
+          expectTypeOf(event.sequence).toEqualTypeOf<number>();
+          expectTypeOf(event.timestamp).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<undefined>();
+          expectTypeOf(event).not.toHaveProperty('payload');
+        } else {
+          expectTypeOf(event.reason).toEqualTypeOf<
+            'reconnect' | 'sequence_gap'
+          >();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<
+            number | undefined
+          >();
+        }
+      }
+    }
+    void consume;
+  });
+});
 
 describe('session builder consent', () => {
   it('requires an explicit maximum and keeps versions internal', () => {
