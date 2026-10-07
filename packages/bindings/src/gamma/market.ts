@@ -100,6 +100,30 @@ export enum UmaResolutionStatus {
 
 const UmaResolutionStatusSchema = z.enum(UmaResolutionStatus);
 
+/** Resolution state for a market using the v2 protocol. */
+export enum MarketResolutionStatus {
+  Inactive = 'inactive',
+  Active = 'active',
+  Resolved = 'resolved',
+}
+
+const OnchainEventIdSchema = z
+  .string()
+  .length(66)
+  .regex(
+    /^0x[0-9a-fA-F]{58}000000$/,
+    'Expected a 32-byte on-chain event ID with the bottom three bytes zero',
+  );
+
+const V2RequestIdSchema = z
+  .string()
+  .length(66)
+  .regex(
+    /^0x[0-9a-fA-F]{62}00$/,
+    'Expected a 32-byte oracle request ID with the outcome byte zero',
+  )
+  .pipe(ResolutionRequestIdSchema);
+
 export type MarketState = {
   active?: boolean | null;
   closed?: boolean | null;
@@ -169,6 +193,12 @@ export type MarketTrading = {
 };
 
 export type MarketResolution = {
+  /** Parent v2 on-chain event ID, shared by markets in a neg-risk event. */
+  onchainEventId?: string | null;
+  /** Oracle request ID: a condition ID or the parent event ID. */
+  requestId?: ResolutionRequestId | null;
+  /** V2 resolution state, distinct from the legacy UMA lifecycle. */
+  resolutionStatus?: MarketResolutionStatus | null;
   questionId: QuestionId | null;
   negRiskRequestId: ResolutionRequestId | null;
   umaResolutionStatus: UmaResolutionStatus | null;
@@ -231,6 +261,9 @@ export type Market = {
 export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
   version: ProtocolVersionSchema.nullish(),
+  onchainEventId: OnchainEventIdSchema.nullish(),
+  requestId: V2RequestIdSchema.nullish(),
+  resolutionStatus: z.enum(MarketResolutionStatus).nullish(),
   question: z.string().nullish(),
   conditionId: z
     .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())
@@ -504,6 +537,9 @@ export function normalizeMarket(market: GammaMarket): Market {
       feeSchedule: market.feeSchedule,
     },
     resolution: {
+      onchainEventId: market.onchainEventId ?? null,
+      requestId: market.requestId ?? null,
+      resolutionStatus: market.resolutionStatus ?? null,
       questionId: market.questionID,
       negRiskRequestId: market.negRiskRequestID,
       umaResolutionStatus: market.umaResolutionStatus,

@@ -25,7 +25,9 @@ import {
   FetchMarketTagsResponseSchema,
   ListMarketsKeysetResponseSchema,
   type Market,
+  MarketResolutionStatus,
   MarketSchema,
+  ProtocolVersion,
   type TagReference,
 } from '@polymarket/bindings/gamma';
 import { unwrap } from '@polymarket/types';
@@ -73,9 +75,14 @@ const ListMarketsRequestSchema = z.object({
   liquidityNumMin: z.number().optional(),
   locale: z.string().optional(),
   order: z.string().optional(),
+  /** Parent on-chain event IDs; at most 100 values. */
+  onchainEventIds: z.array(z.string()).max(100).optional(),
   positionIds: z.array(PositionIdSchema).optional(),
   questionIds: z.array(z.string()).optional(),
   relatedTags: z.boolean().optional(),
+  /** Oracle request IDs; at most 100 values. */
+  requestIds: z.array(z.string()).max(100).optional(),
+  resolutionStatus: z.enum(MarketResolutionStatus).optional(),
   rfqEnabled: z.boolean().optional(),
   rewardsMinSize: z.number().optional(),
   slug: z.array(z.string()).optional(),
@@ -85,6 +92,7 @@ const ListMarketsRequestSchema = z.object({
   tagId: z.number().int().optional(),
   tagMatch: z.enum(['any', 'all']).optional(),
   umaResolutionStatus: z.string().optional(),
+  version: z.enum(ProtocolVersion).optional(),
   volumeNumMax: z.number().optional(),
   volumeNumMin: z.number().optional(),
 });
@@ -149,6 +157,10 @@ export const ListMarketsError = makeErrorGuard(
  *
  * Legacy multi-outcome markets cannot be represented by the binary
  * {@link Market} model and are omitted from results.
+ *
+ * Filter v2 markets by `version`, `resolutionStatus`, `requestIds`, or
+ * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+ * use the separate `umaResolutionStatus` filter.
  *
  * @throws {@link ListMarketsError}
  * Thrown on failure.

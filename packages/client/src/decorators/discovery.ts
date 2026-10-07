@@ -153,6 +153,10 @@ export type DiscoveryActions = {
    * Legacy multi-outcome markets cannot be represented by the binary
    * {@link Market} model and are omitted from results.
    *
+   * Filter v2 markets by `version`, `resolutionStatus`, `requestIds`, or
+   * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+   * use the separate `umaResolutionStatus` filter.
+   *
    * @throws {@link ListMarketsError}
    * Thrown on failure.
    *

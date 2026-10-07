@@ -3,6 +3,7 @@ import {
   ComboKnownStatus,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
+  MarketResolutionStatus,
   MarketSchema,
   ProtocolVersion,
 } from './market';
@@ -28,6 +29,56 @@ const rawMultiOutcomeMarket = {
 };
 
 describe('MarketSchema', () => {
+  it('preserves v2 oracle resolution metadata independently of legacy UMA fields', () => {
+    const onchainEventId = `0x${'ab'.repeat(29)}000000`;
+    const requestId = `0x${'cd'.repeat(31)}00`;
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      version: 'v2',
+      onchainEventId,
+      requestId,
+      resolutionStatus: 'active',
+    });
+
+    expect(market.resolution).toEqual(
+      expect.objectContaining({
+        onchainEventId,
+        requestId,
+        resolutionStatus: MarketResolutionStatus.Active,
+        umaResolutionStatus: null,
+      }),
+    );
+  });
+
+  it('accepts absent and explicitly null v2 resolution metadata', () => {
+    for (const fields of [
+      {},
+      {
+        onchainEventId: null,
+        requestId: null,
+        resolutionStatus: null,
+      },
+    ]) {
+      const market = MarketSchema.parse({ ...rawBinaryMarket, ...fields });
+      expect(market.resolution.onchainEventId).toBeNull();
+      expect(market.resolution.requestId).toBeNull();
+      expect(market.resolution.resolutionStatus).toBeNull();
+    }
+  });
+
+  it.each([
+    { onchainEventId: `0x${'ab'.repeat(29)}000001` },
+    { onchainEventId: 'not-hex' },
+    { requestId: `0x${'ab'.repeat(32)}` },
+    { requestId: '0x1234' },
+    { requestId: `0x${'ab'.repeat(31)}00\n` },
+    { resolutionStatus: 'pending' },
+  ])('reports malformed v2 metadata as a validation failure: %j', (fields) => {
+    expect(
+      MarketSchema.safeParse({ ...rawBinaryMarket, ...fields }).success,
+    ).toBe(false);
+  });
+
   it('normalizes binary outcomes', () => {
     const market = MarketSchema.parse({
       ...rawBinaryMarket,
