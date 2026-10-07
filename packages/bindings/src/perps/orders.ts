@@ -7,6 +7,7 @@ import {
   toDecimalString,
 } from '../shared';
 import { PerpsBuilderTermsSchema } from './builders';
+import { PerpsChaseIdSchema } from './chases';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -381,6 +382,7 @@ export const PerpsOrderSchema = z
     created_timestamp: EpochMillisecondsSchema,
     updated_timestamp: EpochMillisecondsSchema,
     client_order_id: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
     builder: PerpsBuilderTermsSchema.optional(),
   })
@@ -399,6 +401,7 @@ export const PerpsOrderSchema = z
     createdTimestamp: order.created_timestamp,
     updatedTimestamp: order.updated_timestamp,
     clientOrderId: order.client_order_id,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
     ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
@@ -437,6 +440,7 @@ export const PerpsOrderUpdateSchema = z
     cts: EpochMillisecondsSchema,
     uts: EpochMillisecondsSchema,
     coid: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
     builder: PerpsBuilderTermsSchema.optional(),
   })
@@ -455,6 +459,7 @@ export const PerpsOrderUpdateSchema = z
     createdTimestamp: order.cts,
     updatedTimestamp: order.uts,
     clientOrderId: order.coid,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
     ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));

@@ -11,6 +11,8 @@ import {
   type PerpsBuilderEarningsSummary,
   PerpsBuilderStatusSchema,
   type PerpsCancelOrderResult,
+  type PerpsChase,
+  type PerpsChaseAccepted,
   type PerpsCommandAck,
   PerpsCommandAckSchema,
   type PerpsCredentials,
@@ -104,6 +106,13 @@ import {
   type ListPerpsBuilderEarningsRequest,
   listPerpsBuilderEarnings,
 } from './actions/builders';
+import {
+  type CancelPerpsChaseRequest,
+  type CreatePerpsChaseRequest,
+  cancelPerpsChase,
+  createPerpsChase,
+  fetchPerpsChases,
+} from './actions/chases';
 import {
   type ArmPerpsAutoCancelRequest,
   armPerpsAutoCancel,
@@ -1395,6 +1404,38 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     );
   }
 
+  /** Create a chase using this session. Reconcile uncertain submissions before trying again.
+   * @throws {@link CreatePerpsChaseError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async createChase(
+    request: CreatePerpsChaseRequest,
+  ): Promise<PerpsChaseAccepted> {
+    return await createPerpsChase(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+  /** End a chase and cancel its resting child; completed fills remain.
+   * @throws {@link CancelPerpsChaseError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async cancelChase(request: CancelPerpsChaseRequest): Promise<void> {
+    return await cancelPerpsChase(
+      this.#api,
+      this.#createSignedCommand.bind(this),
+      request,
+    );
+  }
+  /** Fetch all running chases without pagination. Ended chases are absent.
+   * @throws {@link FetchPerpsChasesError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  async fetchChases(): Promise<PerpsChase[]> {
+    return await fetchPerpsChases(this.#api);
+  }
+
   /** Create a TWAP using this session's credentials.
    * @throws {@link CreatePerpsTwapError} Thrown on failure.
    * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -1706,6 +1747,15 @@ function randomUint32(): number {
   );
   return value;
 }
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsChaseError,
+  type CancelPerpsChaseRequest,
+  CreatePerpsChaseError,
+  type CreatePerpsChaseRequest,
+  FetchPerpsChasesError,
+} from './actions/chases';
 
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
