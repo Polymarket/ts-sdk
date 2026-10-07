@@ -8,6 +8,7 @@ import {
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
+  PerpsTpSlOrderFieldsSchema,
 } from './orders';
 
 const baseFill = {
@@ -357,14 +358,41 @@ describe('PerpsCancelOrderResultSchema', () => {
 
     expect(order.tpSl).toMatchInlineSnapshot(`
       {
+        "activationPrice": undefined,
         "armedQuantity": "0",
         "kind": "sl",
         "parentOrderId": undefined,
         "scope": "position",
         "slippageBps": 0,
+        "trailingActive": undefined,
+        "trailingAnchor": undefined,
+        "trailingBps": undefined,
         "triggerPrice": "90.00",
       }
     `);
+  });
+});
+
+it.each([
+  false,
+  true,
+])('preserves exact trailing metadata and active=%s', (active) => {
+  expect(
+    PerpsTpSlOrderFieldsSchema.parse({
+      kind: 'sl',
+      scope: 'position',
+      trp: '0',
+      trail_bps: 200,
+      act: '105.0000000000000000000000001',
+      trail_anchor: '0',
+      trail_active: active,
+    }),
+  ).toMatchObject({
+    trailingBps: 200,
+    activationPrice: '105.0000000000000000000000001',
+    trailingAnchor: '0',
+    trailingActive: active,
+    triggerPrice: '0',
   });
 });
 

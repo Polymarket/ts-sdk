@@ -1548,6 +1548,82 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('places a GTD entry with a trailing stop loss without expiry on trigger legs', async () => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placeOrder({
+          instrumentId: 1,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry: 1893456000000,
+          stopLoss: {
+            trailingBps: 200,
+            activationPrice: '105.00',
+          },
+          takeProfit: {
+            triggerPrice: '120.00',
+          },
+        }),
+      ).resolves.toEqual({
+        order: expect.objectContaining({
+          id: 123,
+          restingQuantity: '1.5',
+          status: 'open',
+        }),
+        tpSl: {
+          takeProfit: { orderId: 124 },
+          stopLoss: { orderId: 125 },
+        },
+      });
+
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            {
+              buy: true,
+              c: expect.stringMatching(/^[0-9a-f]{32}$/),
+              iid: 1,
+              p: '100.00',
+              po: false,
+              qty: '1.5',
+              tif: 'gtd',
+              gtd_expiry: 1893456000000,
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '120.00' },
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trail_bps: 200, act: '105.00' },
+            },
+          ],
+          grp: 'order',
+          type: 'createOrders',
+        },
+        req: 'post',
+      });
+
+      await session.close();
+    });
+
     it('places full-position take-profit and stop-loss triggers', async () => {
       server.use(mockPortfolioPosition({ size: '1.5' }));
       const session = createSession();
@@ -1906,24 +1982,29 @@ describe('PerpsSession', () => {
 
       await session.connect();
 
-      const nextEvent = waitForNextEvent(session);
-      await connection.send({
-        ch: 'tpsl::1',
-        data: { oid: 123, st: 'armed' },
-        sq: 1,
-        ts: 1_700_000_000_000,
-      });
+      for (const [index, status] of [
+        'armed',
+        'activated',
+        'expired',
+      ].entries()) {
+        const nextEvent = waitForNextEvent(session);
+        await connection.send({
+          ch: 'tpsl::1',
+          data: { oid: 123, st: status },
+          sq: index + 1,
+          ts: 1_700_000_000_000,
+        });
 
-      await expect(nextEvent).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'tpsl::1',
-          payload: { orderId: 123, status: 'armed' },
-          sequence: 1,
-          type: 'tpsl',
-        },
-      });
-
+        await expect(nextEvent).resolves.toMatchObject({
+          done: false,
+          value: {
+            channel: 'tpsl::1',
+            payload: { orderId: 123, status },
+            sequence: index + 1,
+            type: 'tpsl',
+          },
+        });
+      }
       await session.close();
     });
 

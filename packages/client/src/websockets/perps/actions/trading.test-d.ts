@@ -263,3 +263,34 @@ describe('PlacePerpsPositionTpSlRequest', () => {
     void request;
   });
 });
+
+it('exposes trailing intent only on stop-loss legs through session methods', () => {
+  function consumer(session: PerpsSession) {
+    session.placePositionTpSl({
+      instrumentId: 1,
+      stopLoss: { trailingBps: 200, quantity: '0.25', activationPrice: '105' },
+    });
+    session.placeOrder({ ...gtcOrder, stopLoss: { trailingBps: 200 } });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Trailing take profit is unsupported.
+      takeProfit: { trailingBps: 200 },
+    });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Fixed and trailing stop intent are mutually exclusive.
+      stopLoss: { triggerPrice: '90', trailingBps: 200 },
+    });
+    // @ts-expect-error Trailing stops execute as market orders.
+    session.placeOrder({
+      ...gtcOrder,
+      stopLoss: { trailingBps: 200, limitPrice: '90' },
+    });
+    session.placePositionTpSl({
+      instrumentId: 1,
+      // @ts-expect-error Trigger legs cannot carry a GTD expiry.
+      stopLoss: { trailingBps: 200, gtdExpiry: 1893456000000 },
+    });
+  }
+  void consumer;
+});
