@@ -69,6 +69,7 @@ describe('Positions', { timeout: 600_000 }, () => {
     await split.wait();
 
     // Only clean up a confirmed split, and never consume pre-existing holdings.
+    const lifecycleErrors: unknown[] = [];
     try {
       await vi.waitFor(
         async () => {
@@ -80,7 +81,11 @@ describe('Positions', { timeout: 600_000 }, () => {
         },
         { timeout: 20_000 },
       );
-    } finally {
+    } catch (error) {
+      lifecycleErrors.push(error);
+    }
+
+    try {
       const merge = await secureClient.mergePositions({
         amount: TEST_SPLIT_AMOUNT,
         conditionId,
@@ -95,6 +100,18 @@ describe('Positions', { timeout: 600_000 }, () => {
           ).resolves.toEqual(initialBalances);
         },
         { timeout: 20_000 },
+      );
+    } catch (error) {
+      lifecycleErrors.push(error);
+    }
+
+    if (lifecycleErrors.length === 1) {
+      throw lifecycleErrors[0];
+    }
+    if (lifecycleErrors.length > 1) {
+      throw new AggregateError(
+        lifecycleErrors,
+        'Position split verification and cleanup failed.',
       );
     }
   });
@@ -120,6 +137,7 @@ describe('Positions', { timeout: 600_000 }, () => {
     annotate(`Split transaction: ${split.transactionId}`);
     await split.wait();
 
+    const lifecycleErrors: unknown[] = [];
     try {
       await vi.waitFor(
         async () => {
@@ -135,7 +153,11 @@ describe('Positions', { timeout: 600_000 }, () => {
         },
         { timeout: 20_000 },
       );
-    } finally {
+    } catch (error) {
+      lifecycleErrors.push(error);
+    }
+
+    try {
       const merge = await secureClient.mergePositions({
         amount: TEST_SPLIT_AMOUNT,
         legs: TEST_COMBO_LEGS,
@@ -154,6 +176,18 @@ describe('Positions', { timeout: 600_000 }, () => {
           ).resolves.toEqual(initialBalances);
         },
         { timeout: 20_000 },
+      );
+    } catch (error) {
+      lifecycleErrors.push(error);
+    }
+
+    if (lifecycleErrors.length === 1) {
+      throw lifecycleErrors[0];
+    }
+    if (lifecycleErrors.length > 1) {
+      throw new AggregateError(
+        lifecycleErrors,
+        'Combo position split verification and cleanup failed.',
       );
     }
   });
