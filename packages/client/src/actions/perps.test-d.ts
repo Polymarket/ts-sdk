@@ -279,6 +279,27 @@ describe('public Perps exports', () => {
   });
 });
 
+import type {
+  CreatePerpsTwapRequest,
+  PausePerpsTwapRequest,
+  PerpsTwap,
+  PerpsTwapAccepted,
+} from '../index';
+
+it('exposes authenticated TWAP session calls and public models', () => {
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('createTwap')
+    .toEqualTypeOf<
+      (request: CreatePerpsTwapRequest) => Promise<PerpsTwapAccepted>
+    >();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('fetchTwaps')
+    .toEqualTypeOf<() => Promise<PerpsTwap[]>>();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('pauseTwap')
+    .toEqualTypeOf<(request: PausePerpsTwapRequest) => Promise<void>>();
+});
+
 describe('instrument retirement metadata', () => {
   it('exposes canonical metadata through the public client read', () => {
     async function read(client: PublicPerpsActions) {
