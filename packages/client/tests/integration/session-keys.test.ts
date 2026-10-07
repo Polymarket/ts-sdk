@@ -79,16 +79,34 @@ describe('Session keys', { timeout: 600_000 }, () => {
       transport: http(environment.rpc),
     });
     const sessionAddress = await sessionSigner.getAddress();
+    let cancelSessionOrder: (() => Promise<void>) | undefined;
 
     // Register before authorization: it can create the grant before failing.
     onTestFinished(async () => {
+      const cleanupErrors: unknown[] = [];
+      let cancellationTimeout: ReturnType<typeof setTimeout> | undefined;
+      try {
+        // Cancellation must finish or time out before revocation is attempted.
+        await Promise.race([
+          cancelSessionOrder?.(),
+          new Promise<never>((_, reject) => {
+            cancellationTimeout = setTimeout(() => {
+              reject(new Error('Session-key order cancellation timed out.'));
+            }, 60_000);
+          }),
+        ]);
+      } catch (error) {
+        cleanupErrors.push(error);
+      } finally {
+        clearTimeout(cancellationTimeout);
+      }
+
       const originalFetch = globalThis.fetch;
       const revocationUrl = new URL(
         '/v1/session-signers/revocations',
         environment.relayer.rest,
       );
       let revocationTransaction: GaslessTransactionHandle | undefined;
-      const cleanupErrors: unknown[] = [];
       const sending = vi
         .spyOn(globalThis, 'fetch')
         .mockImplementation(async (input, init) => {
@@ -132,9 +150,13 @@ describe('Session keys', { timeout: 600_000 }, () => {
       // Wait for the captured submission even if subsequent registry polling failed.
       if (revocationTransaction !== undefined) {
         try {
-          await annotate(
+          console.info(
             `Revocation transaction: ${revocationTransaction.transactionId}`,
           );
+        } catch (error) {
+          cleanupErrors.push(error);
+        }
+        try {
           await revocationTransaction.wait();
         } catch (error) {
           cleanupErrors.push(error);
@@ -205,13 +227,12 @@ describe('Session keys', { timeout: 600_000 }, () => {
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
     let orderId: string | undefined;
 
-    // Finished hooks run in reverse order, canceling before revoking the key.
-    onTestFinished(async () => {
+    cancelSessionOrder = async () => {
       if (orderId !== undefined) {
         const cancellation = await sessionClient.cancelOrder({ orderId });
         expect(cancellation.canceled).toContain(orderId);
       }
-    }, 60_000);
+    };
 
     annotate(`Market ID: ${market.id}`);
     annotate(`Token ID: ${tokenId}`);
