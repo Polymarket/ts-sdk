@@ -7,6 +7,7 @@ import {
   toDecimalString,
 } from '../shared';
 import { PerpsBuilderTermsSchema } from './builders';
+import { PerpsChaseIdSchema } from './chases';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -68,9 +69,18 @@ export enum PerpsOrderStatus {
   ZeroQuantity = 'zero_quantity',
   DuplicateOrder = 'duplicate_order',
   OrderNotFound = 'order_not_found',
+  OrderAlreadyTerminal = 'order_already_terminal',
   ReduceOnlyInvalid = 'reduce_only_invalid',
   ReduceOnlyExpired = 'reduce_only_expired',
   OrderExpired = 'order_expired',
+  SweepCapExceeded = 'sweep_cap_exceeded',
+  RestingOrderLimitExceeded = 'resting_order_limit_exceeded',
+  BelowMinNotional = 'below_min_notional',
+  InstrumentDisabled = 'instrument_disabled',
+  InstrumentCloseOnly = 'instrument_close_only',
+  InstrumentSettled = 'instrument_settled',
+  InsufficientMarginAtFill = 'insufficient_margin_at_fill',
+  MarkPriceUnavailable = 'mark_price_unavailable',
   Untriggered = 'untriggered',
   Armed = 'armed',
   Triggered = 'triggered',
@@ -92,6 +102,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parent_oid: PerpsOrderIdSchema.optional(),
     armed_qty: DecimalStringSchema.optional(),
     slip_bps: z.number().int().nonnegative().optional(),
+    trail_bps: z.number().int().nonnegative().optional(),
+    act: DecimalStringSchema.optional(),
+    trail_anchor: DecimalStringSchema.optional(),
+    trail_active: z.boolean().optional(),
   })
   .transform((fields) => ({
     kind: fields.kind,
@@ -100,6 +114,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parentOrderId: fields.parent_oid,
     armedQuantity: fields.armed_qty,
     slippageBps: fields.slip_bps,
+    trailingBps: fields.trail_bps,
+    activationPrice: fields.act,
+    trailingAnchor: fields.trail_anchor,
+    trailingActive: fields.trail_active,
   }));
 
 /**
@@ -296,6 +314,51 @@ export type PerpsUpdateLeverageResult = z.infer<
   typeof PerpsUpdateLeverageResultSchema
 >;
 
+/**
+ * A rejected item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeverageRejectionSchema = z
+  .object({
+    status: z.literal('err'),
+    instrument_id: PerpsInstrumentIdSchema,
+    error: z.string().optional(),
+  })
+  .transform((result) => ({
+    status: result.status,
+    instrumentId: result.instrument_id,
+    error: perpsAckError(result.error),
+  }));
+
+/**
+ * A rejected item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeverageRejection = z.infer<
+  typeof PerpsUpdateLeverageRejectionSchema
+>;
+
+/**
+ * The result for one item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeverageBatchResultSchema = z.union([
+  PerpsUpdateLeverageResultSchema,
+  PerpsUpdateLeverageRejectionSchema,
+]);
+
+/**
+ * The result for one item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeverageBatchResult = z.infer<
+  typeof PerpsUpdateLeverageBatchResultSchema
+>;
+
 function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }
@@ -319,6 +382,7 @@ export const PerpsOrderSchema = z
     created_timestamp: EpochMillisecondsSchema,
     updated_timestamp: EpochMillisecondsSchema,
     client_order_id: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
     builder: PerpsBuilderTermsSchema.optional(),
   })
@@ -337,6 +401,7 @@ export const PerpsOrderSchema = z
     createdTimestamp: order.created_timestamp,
     updatedTimestamp: order.updated_timestamp,
     clientOrderId: order.client_order_id,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
     ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
@@ -375,6 +440,7 @@ export const PerpsOrderUpdateSchema = z
     cts: EpochMillisecondsSchema,
     uts: EpochMillisecondsSchema,
     coid: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
     builder: PerpsBuilderTermsSchema.optional(),
   })
@@ -393,6 +459,7 @@ export const PerpsOrderUpdateSchema = z
     createdTimestamp: order.cts,
     updatedTimestamp: order.uts,
     clientOrderId: order.coid,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
     ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
@@ -406,6 +473,7 @@ export const PerpsAccountFillSchema = z
     order_id: PerpsOrderIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     taker: z.boolean(),
@@ -426,6 +494,8 @@ export const PerpsAccountFillSchema = z
     orderId: fill.order_id,
     instrumentId: fill.instrument_id,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.price,
     quantity: fill.quantity,
     taker: fill.taker,
@@ -468,6 +538,7 @@ export const PerpsAccountFillUpdateSchema = z
     oid: PerpsOrderIdSchema,
     iid: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     taker: z.boolean(),
@@ -488,6 +559,8 @@ export const PerpsAccountFillUpdateSchema = z
     orderId: fill.oid,
     instrumentId: fill.iid,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.p,
     quantity: fill.qty,
     taker: fill.taker,

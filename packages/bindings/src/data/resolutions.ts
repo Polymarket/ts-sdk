@@ -13,6 +13,7 @@ import {
   QuestionIdSchema,
   type TxHash,
   TxHashSchema,
+  toIsoDateTimeString,
 } from '../shared';
 import { dataEnvelopeSchema } from './envelope';
 
@@ -57,6 +58,18 @@ export enum ResolutionReporter {
 
 export const ResolutionReporterSchema = z.enum(ResolutionReporter);
 
+/** Basis for a resolution's earliest estimated settlement time. */
+export enum ResolutionSettlementTimeBasis {
+  ManagedProposalExpiration = 'managed_proposal_expiration',
+  ProposalExpiration = 'proposal_expiration',
+  Liveness = 'liveness',
+  DvmRoundEstimate = 'dvm_round_estimate',
+}
+
+export const ResolutionSettlementTimeBasisSchema = z.enum(
+  ResolutionSettlementTimeBasis,
+);
+
 export type Resolution = {
   /** Oracle question identifier, when the resolution has one. */
   questionId?: QuestionId;
@@ -65,6 +78,10 @@ export type Resolution = {
   status: ResolutionStatus;
   /** Whether a managed proposal is in extended review. */
   extendedReview: boolean;
+  /** Earliest estimated settlement time, not a deadline; may have elapsed. */
+  expectedSettlementTime?: IsoDateTimeString;
+  /** Estimate basis, omitted when unavailable. Voting estimates can roll to a later round. */
+  settlementTimeBasis?: ResolutionSettlementTimeBasis;
   /** Whether the resolution was disputed at any point. */
   wasDisputed: boolean;
   /** Whether the question rules were updated after the question was posed. */
@@ -104,6 +121,11 @@ export const ResolutionSchema = z
     condition_id: ConditionIdSchema.optional(),
     status: ResolutionStatusSchema,
     extended_review: z.boolean(),
+    expected_settlement_time: z.iso
+      .datetime()
+      .transform(toIsoDateTimeString)
+      .optional(),
+    settlement_time_basis: ResolutionSettlementTimeBasisSchema.optional(),
     was_disputed: z.boolean(),
     new_version_q: z.boolean(),
     proposed_price: DecimalStringSchema.optional(),
@@ -138,6 +160,12 @@ export const ResolutionSchema = z
       resolution.questionId = wire.question_id;
     if (wire.condition_id !== undefined)
       resolution.conditionId = wire.condition_id;
+    if (wire.expected_settlement_time !== undefined) {
+      resolution.expectedSettlementTime = wire.expected_settlement_time;
+    }
+    if (wire.settlement_time_basis !== undefined) {
+      resolution.settlementTimeBasis = wire.settlement_time_basis;
+    }
     if (wire.proposed_price !== undefined && wire.proposed_price !== '69') {
       resolution.proposedPrice = wire.proposed_price;
     }

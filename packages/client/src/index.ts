@@ -21,7 +21,9 @@ export {
   TeamOrdering,
   WalletType,
 } from '@polymarket/bindings/gamma';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type * from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   PerpsDepositStatus,
   PerpsInstrumentCategory,
@@ -36,6 +38,8 @@ export {
   PerpsNotificationOrderType,
   PerpsNotificationType,
   PerpsOrderStatus,
+  PerpsPositionSnapshotMarkerKind,
+  PerpsPositionSnapshotStatus,
   PerpsSide,
   PerpsSortDirection,
   PerpsTimeInForce,

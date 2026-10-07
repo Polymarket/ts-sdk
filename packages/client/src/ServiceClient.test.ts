@@ -1,7 +1,16 @@
 import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { ServiceClient } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -14,6 +23,7 @@ describe('ServiceClient', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.useRealTimers();
   });
 
   afterAll(() => {
@@ -33,6 +43,21 @@ describe('ServiceClient', () => {
       name: 'RequestRejectedError',
       status: 400,
     });
+  });
+
+  it('supports a single DELETE attempt when acknowledgement is lost', async () => {
+    let requests = 0;
+    server.use(
+      http.delete(`${root}/single-attempt`, () => {
+        requests++;
+        return HttpResponse.error();
+      }),
+    );
+    const client = new ServiceClient({ root });
+    await expect(
+      unwrap(client.del('/single-attempt', { retry: false })),
+    ).rejects.toMatchObject({ name: 'TransportError' });
+    expect(requests).toBe(1);
   });
 
   it('exposes JSON error codes on rejected requests', async () => {
@@ -320,6 +345,88 @@ describe('ServiceClient', () => {
       restriction: undefined,
       retryAfter: undefined,
       status: 503,
+    });
+  });
+
+  describe('HTTP-date Retry-After values', () => {
+    // 2026-09-10T06:02:00Z is 119.6 s after this clock, so a correct
+    // conversion reports 120 whole seconds, never 119.
+    const now = new Date('2026-09-10T06:00:00.400Z');
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.setSystemTime(now);
+    });
+
+    function rejectedWith(header: string, status = 503, body?: object) {
+      server.use(
+        http.get(`${root}/retry-after-date`, () =>
+          body === undefined
+            ? new HttpResponse(null, {
+                headers: { 'retry-after': header },
+                status,
+              })
+            : HttpResponse.json(body, {
+                headers: { 'retry-after': header },
+                status,
+              }),
+        ),
+      );
+      return expect(
+        unwrap(new ServiceClient({ root }).get('/retry-after-date')),
+      ).rejects;
+    }
+
+    it.each([
+      ['IMF-fixdate', 'Thu, 10 Sep 2026 06:02:00 GMT'],
+      ['RFC 850', 'Thursday, 10-Sep-26 06:02:00 GMT'],
+      ['asctime', 'Thu Sep 10 06:02:00 2026'],
+    ])('converts a %s header to whole seconds from now', async (_, header) => {
+      await rejectedWith(header).toMatchObject({
+        name: 'RequestRejectedError',
+        retryAfter: 120,
+        status: 503,
+      });
+    });
+
+    it('applies the same conversion on rate limited requests', async () => {
+      await rejectedWith('Thu, 10 Sep 2026 06:02:00 GMT', 429).toMatchObject({
+        name: 'RateLimitError',
+        retryAfter: 120,
+      });
+    });
+
+    it('clamps a past date to zero', async () => {
+      await rejectedWith('Thu, 10 Sep 2026 05:00:00 GMT').toMatchObject({
+        retryAfter: 0,
+      });
+    });
+
+    it('reads a two-digit year more than fifty years ahead as the past century', async () => {
+      await rejectedWith('Thursday, 10-Sep-77 06:02:00 GMT').toMatchObject({
+        retryAfter: 0,
+      });
+    });
+
+    it('prefers a valid date header over the body retry delay', async () => {
+      await rejectedWith('Thu, 10 Sep 2026 06:02:00 GMT', 503, {
+        code: 'post_only_mode',
+        error: 'Post-only mode is enabled',
+        retry_after_seconds: 79,
+      }).toMatchObject({ code: 'post_only_mode', retryAfter: 120 });
+    });
+
+    it.each([
+      ['garbage', 'not-a-date'],
+      ['an impossible calendar day', 'Thu, 31 Feb 2026 06:02:00 GMT'],
+      ['a leap second', 'Thu, 10 Sep 2026 23:59:60 GMT'],
+      ['a bare date', '10 Sep 2026'],
+      ['two headers', '120, Thu, 10 Sep 2026 06:02:00 GMT'],
+    ])('falls back to the body delay for %s', async (_, header) => {
+      await rejectedWith(header, 503, {
+        code: 'post_only_mode',
+        error: 'Post-only mode is enabled',
+        retry_after_seconds: 79,
+      }).toMatchObject({ retryAfter: 79 });
     });
   });
 
