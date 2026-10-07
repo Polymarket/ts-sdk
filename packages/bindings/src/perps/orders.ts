@@ -415,6 +415,7 @@ export const PerpsAccountFillSchema = z
     order_id: PerpsOrderIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     taker: z.boolean(),
@@ -435,6 +436,8 @@ export const PerpsAccountFillSchema = z
     orderId: fill.order_id,
     instrumentId: fill.instrument_id,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.price,
     quantity: fill.quantity,
     taker: fill.taker,
@@ -477,6 +480,7 @@ export const PerpsAccountFillUpdateSchema = z
     oid: PerpsOrderIdSchema,
     iid: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     taker: z.boolean(),
@@ -497,6 +501,8 @@ export const PerpsAccountFillUpdateSchema = z
     orderId: fill.oid,
     instrumentId: fill.iid,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.p,
     quantity: fill.qty,
     taker: fill.taker,

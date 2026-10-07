@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   type DecimalString,
   DecimalStringSchema,
+  type EpochMilliseconds,
   EpochMillisecondsSchema,
 } from '../shared';
 import {
@@ -45,6 +46,37 @@ const RawPerpsRiskTierSchema = z
 export type PerpsRiskTier = z.infer<typeof PerpsRiskTierSchema>;
 
 /**
+ * Permanent retirement record. Sequence is an exact nonnegative safe integer;
+ * larger values are rejected. Timestamp is the cutoff for unapplied funding.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsInstrumentSettlement = {
+  sequence: number;
+  timestamp: EpochMilliseconds;
+  price: DecimalString;
+  insuranceDebit: DecimalString;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsInstrumentSettlementSchema = z
+  .object({
+    sequence: z.number().int().nonnegative(),
+    timestamp: EpochMillisecondsSchema,
+    price: DecimalStringSchema,
+    insurance_debit: DecimalStringSchema,
+  })
+  .transform(
+    (settlement): PerpsInstrumentSettlement => ({
+      sequence: settlement.sequence,
+      timestamp: settlement.timestamp,
+      price: settlement.price,
+      insuranceDebit: settlement.insurance_debit,
+    }),
+  );
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsInstrumentSchema = z
@@ -53,6 +85,9 @@ export const PerpsInstrumentSchema = z
     instrument_type: PerpsInstrumentTypeSchema,
     category: PerpsInstrumentCategorySchema,
     symbol: z.string().min(1),
+    display_symbol: z.string().optional(),
+    close_only: z.boolean().default(false),
+    settlement: PerpsInstrumentSettlementSchema.optional(),
     base_asset: PerpsAssetSchema,
     quote_asset: PerpsAssetSchema,
     funding_interval: PerpsFundingIntervalSchema,
@@ -72,6 +107,12 @@ export const PerpsInstrumentSchema = z
     id: instrument.instrument_id,
     category: instrument.category,
     symbol: instrument.symbol,
+    /** Presentation label; canonical symbol and instrument ID remain unchanged. */
+    displaySymbol: instrument.display_symbol,
+    /** Whether new orders must reduce exposure; false for older responses. */
+    closeOnly: instrument.close_only,
+    /** Present after permanent retirement; trading cannot resume. */
+    settlement: instrument.settlement,
     baseAsset: instrument.base_asset,
     quoteAsset: instrument.quote_asset,
     fundingInterval: instrument.funding_interval,
@@ -334,6 +375,7 @@ export const PerpsPublicTradeSchema = z
     trade_id: PerpsTradeIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     timestamp: EpochMillisecondsSchema,
@@ -343,6 +385,8 @@ export const PerpsPublicTradeSchema = z
     tradeId: trade.trade_id,
     instrumentId: trade.instrument_id,
     side: trade.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: trade.settlement,
     price: trade.price,
     quantity: trade.quantity,
     timestamp: trade.timestamp,
@@ -362,6 +406,7 @@ export const PerpsPublicTradeUpdateSchema = z
     tid: PerpsTradeIdSchema,
     iid: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     ts: EpochMillisecondsSchema,
@@ -371,6 +416,8 @@ export const PerpsPublicTradeUpdateSchema = z
     tradeId: trade.tid,
     instrumentId: trade.iid,
     side: trade.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: trade.settlement,
     price: trade.p,
     quantity: trade.qty,
     timestamp: trade.ts,

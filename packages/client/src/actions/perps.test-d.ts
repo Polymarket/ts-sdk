@@ -8,6 +8,7 @@ import type {
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  DecimalString,
   DepositToPerpsRequest,
   EpochMilliseconds,
   FetchPerpsAccountConfigRequest,
@@ -31,6 +32,7 @@ import type {
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
+  PerpsInstrumentSettlement,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
   PerpsPositionDeleveragedNotification,
@@ -274,5 +276,35 @@ describe('public Perps exports', () => {
     expectTypeOf<
       Extract<PerpsSessionTradingError, PerpsCancelRetryError>
     >().toEqualTypeOf<PerpsCancelRetryError>();
+  });
+});
+
+describe('instrument retirement metadata', () => {
+  it('exposes canonical metadata through the public client read', () => {
+    async function read(client: PublicPerpsActions) {
+      const instruments = await client.fetchPerpsInstruments();
+      for (const instrument of instruments) {
+        expectTypeOf(instrument.closeOnly).toEqualTypeOf<boolean>();
+        expectTypeOf(instrument.displaySymbol).toEqualTypeOf<
+          string | undefined
+        >();
+        expectTypeOf(instrument.settlement).toEqualTypeOf<
+          PerpsInstrumentSettlement | undefined
+        >();
+        if (instrument.settlement) {
+          expectTypeOf(instrument.settlement.sequence).toEqualTypeOf<number>();
+          expectTypeOf(
+            instrument.settlement.timestamp,
+          ).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(
+            instrument.settlement.price,
+          ).toEqualTypeOf<DecimalString>();
+          expectTypeOf(
+            instrument.settlement.insuranceDebit,
+          ).toEqualTypeOf<DecimalString>();
+        }
+      }
+    }
+    void read;
   });
 });

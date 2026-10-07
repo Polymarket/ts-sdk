@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FetchPerpsOrdersResponseSchema,
   PerpsAccountFillSchema,
+  PerpsAccountFillUpdateSchema,
   PerpsCancelOrderResultSchema,
   PerpsKnownCancelOrderErrorCode,
   PerpsOrderSchema,
@@ -364,5 +365,39 @@ describe('PerpsCancelOrderResultSchema', () => {
         "triggerPrice": "90.00",
       }
     `);
+  });
+});
+
+describe('settlement account fills', () => {
+  it.each([
+    {},
+    { settlement: false },
+    { settlement: true },
+  ])('preserves REST and WS flags: %j', (metadata) => {
+    const expanded = PerpsAccountFillSchema.parse({
+      ...baseFill,
+      hash: '0x',
+      ...metadata,
+    });
+    const compact = PerpsAccountFillUpdateSchema.parse({
+      tid: 1,
+      oid: 2,
+      iid: 6,
+      side: 'long',
+      p: '1',
+      qty: '2',
+      taker: true,
+      fee: '0.01',
+      fea: 'USDC',
+      psz: '0',
+      pep: '0',
+      pnl: '0',
+      liq: false,
+      ts: 1700000000000,
+      ...metadata,
+    });
+    expect(expanded.settlement).toBe(metadata.settlement ?? false);
+    expect(compact.settlement).toBe(expanded.settlement);
+    expect(compact.totalFee).toBe(expanded.totalFee);
   });
 });
