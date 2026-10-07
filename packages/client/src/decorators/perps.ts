@@ -101,6 +101,8 @@ export type {
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
   PerpsTrailingStop,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -113,9 +115,11 @@ export type {
   RevokePerpsCredentialsRequest,
   TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
   DepositToPerpsError,
@@ -131,6 +135,7 @@ export {
   RevokePerpsCredentialsError,
   TransferPerpsCollateralError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
