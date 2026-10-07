@@ -152,9 +152,8 @@ const PERPS_SESSION_CHANNELS = [
 // Notification and builder-fill frames carry the source event's engine sequence, which is not
 // dense per channel: unrelated engine events skip values and one event can
 // emit several notifications sharing one sequence. Local sequence-gap
-// detection would misfire, so the server signals dropped frames with resync
-// control frames instead. Those frames are parsed and dropped without a
-// public event until DEV-428 unifies them with SDK-synthesized resyncs.
+// detection would misfire. Notification loss is reported by server resync
+// control frames instead.
 const SERVER_RESYNC_CHANNELS: ReadonlySet<string> = new Set([
   'notifications',
   'builderFills',
@@ -1401,9 +1400,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   #handleMessage(rawMessage: unknown): void {
     if (this.#handleResponse(rawMessage)) return;
 
-    // Recognized but intentionally not surfaced as a session event until
-    // DEV-428 unifies server resync frames with SDK-synthesized resyncs.
-    if (PerpsNotificationsResyncFrameSchema.safeParse(rawMessage).success) {
+    const resync = PerpsNotificationsResyncFrameSchema.safeParse(rawMessage);
+    if (resync.success) {
+      this.#emitEvent(resync.data);
       return;
     }
 
