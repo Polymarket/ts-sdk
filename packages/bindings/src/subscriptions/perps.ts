@@ -391,7 +391,7 @@ export const PerpsNotificationsResyncFrameSchema = z
 
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
-  st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
+  st: z.enum(['untriggered', 'armed', 'activated', 'cancelled', 'expired']),
   reason: z.string().optional(),
 });
 

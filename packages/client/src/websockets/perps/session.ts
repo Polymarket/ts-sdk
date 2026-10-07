@@ -250,9 +250,12 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
   PlacePerpsOrderWithTpSlRequest,
@@ -917,6 +920,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Places one Perps order and resolves with the first matching orders update.
+   * GTD orders require a limit price and gtdExpiry in Unix milliseconds.
+   * The order expiry is separate from the expiresAt command deadline.
    *
    * @example
    * ```ts
@@ -986,7 +991,9 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
    *
    * @remarks
    * The exit side is inferred from the current position for the requested
-   * instrument.
+   * instrument. Each trigger may specify a positive `quantity` for a partial
+   * close; omission closes the full position at trigger time. A partial fill
+   * leaves the other trigger armed while a same-side position remains.
    *
    * @example
    * ```ts

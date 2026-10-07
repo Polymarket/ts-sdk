@@ -839,6 +839,86 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('rejects an expiry on a trigger before sending any order', async () => {
+      const session = createSession();
+      await session.connect();
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            price: '100',
+            quantity: '1',
+            timeInForce: PerpsTimeInForce.GTD,
+            gtdExpiry: Date.now() + 60_000,
+            stopLoss: {
+              triggerPrice: '90',
+              gtdExpiry: Date.now() + 60_000,
+            } as never,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      false,
+      true,
+    ])('places GTD with separate command deadline and optional exits (%s)', async (withExits) => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        timeInForce: PerpsTimeInForce.GTD,
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+      try {
+        const gtdExpiry = Date.now() + 60_000;
+        const expiresAt = Date.now() + 5_000;
+        const request = {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          price: '100.00',
+          quantity: '1.5',
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry,
+        } as const;
+        const placement = withExits
+          ? await session.placeOrder({
+              ...request,
+              expiresAt,
+              stopLoss: { triggerPrice: '90' },
+            })
+          : await session.placeOrder({ ...request, expiresAt });
+        expect(placement.order.timeInForce).toBe(PerpsTimeInForce.GTD);
+        expect(frames[2]).toMatchObject({
+          exp: expiresAt,
+          op: {
+            args: withExits
+              ? [
+                  { tif: 'gtd', gtd_expiry: gtdExpiry },
+                  { tr: { trp: '90' }, ro: true },
+                ]
+              : [{ tif: 'gtd', gtd_expiry: gtdExpiry }],
+          },
+        });
+        if (withExits) {
+          expect(frames[2]).not.toMatchObject({
+            op: {
+              args: [expect.anything(), { gtd_expiry: expect.anything() }],
+            },
+          });
+          expect(frames[2]).not.toMatchObject({
+            op: { args: [expect.anything(), { tif: expect.anything() }] },
+          });
+        }
+      } finally {
+        await session.close();
+      }
+    });
+
     it.each([
       'open',
       'instrument_settled',
@@ -1194,6 +1274,82 @@ describe('PerpsSession', () => {
               qty: '1.5',
               ro: true,
               tr: { tpsl: 'sl', trp: '90.00' },
+            },
+          ],
+          grp: 'order',
+          type: 'createOrders',
+        },
+        req: 'post',
+      });
+
+      await session.close();
+    });
+
+    it('places a GTD entry with a trailing stop loss without expiry on trigger legs', async () => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placeOrder({
+          instrumentId: 1,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry: 1893456000000,
+          stopLoss: {
+            trailingBps: 200,
+            activationPrice: '105.00',
+          },
+          takeProfit: {
+            triggerPrice: '120.00',
+          },
+        }),
+      ).resolves.toEqual({
+        order: expect.objectContaining({
+          id: 123,
+          restingQuantity: '1.5',
+          status: 'open',
+        }),
+        tpSl: {
+          takeProfit: { orderId: 124 },
+          stopLoss: { orderId: 125 },
+        },
+      });
+
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            {
+              buy: true,
+              c: expect.stringMatching(/^[0-9a-f]{32}$/),
+              iid: 1,
+              p: '100.00',
+              po: false,
+              qty: '1.5',
+              tif: 'gtd',
+              gtd_expiry: 1893456000000,
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '120.00' },
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trail_bps: 200, act: '105.00' },
             },
           ],
           grp: 'order',
@@ -1763,24 +1919,29 @@ describe('PerpsSession', () => {
 
       await session.connect();
 
-      const nextEvent = waitForNextEvent(session);
-      await connection.send({
-        ch: 'tpsl::1',
-        data: { oid: 123, st: 'armed' },
-        sq: 1,
-        ts: 1_700_000_000_000,
-      });
+      for (const [index, status] of [
+        'armed',
+        'activated',
+        'expired',
+      ].entries()) {
+        const nextEvent = waitForNextEvent(session);
+        await connection.send({
+          ch: 'tpsl::1',
+          data: { oid: 123, st: status },
+          sq: index + 1,
+          ts: 1_700_000_000_000,
+        });
 
-      await expect(nextEvent).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'tpsl::1',
-          payload: { orderId: 123, status: 'armed' },
-          sequence: 1,
-          type: 'tpsl',
-        },
-      });
-
+        await expect(nextEvent).resolves.toMatchObject({
+          done: false,
+          value: {
+            channel: 'tpsl::1',
+            payload: { orderId: 123, status },
+            sequence: index + 1,
+            type: 'tpsl',
+          },
+        });
+      }
       await session.close();
     });
 
@@ -2666,6 +2827,7 @@ function mockCommandSession(
 function mockOrderPlacementSession(request: {
   status: string;
   updateBeforeAck?: boolean;
+  timeInForce?: PerpsTimeInForce;
 }): unknown[] {
   const frames: unknown[] = [];
 
@@ -2680,6 +2842,7 @@ function mockOrderPlacementSession(request: {
             request.status,
             clientOrderIdFromFrame(frame),
           );
+          update.data.tif = request.timeInForce ?? PerpsTimeInForce.GTC;
           if (request.updateBeforeAck) {
             client.send(JSON.stringify(update));
           }

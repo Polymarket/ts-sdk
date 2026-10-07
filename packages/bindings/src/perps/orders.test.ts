@@ -8,6 +8,7 @@ import {
   PerpsOrderSchema,
   PerpsOrderUpdateSchema,
   PerpsPostOrderAckSchema,
+  PerpsTpSlOrderFieldsSchema,
 } from './orders';
 
 const baseFill = {
@@ -92,6 +93,40 @@ describe('PerpsPostOrderAckSchema', () => {
 });
 
 describe('PerpsOrderSchema', () => {
+  it('accepts GTD in REST and compact private updates', () => {
+    const fields = {
+      buy: true,
+      tif: 'gtd',
+      ro: false,
+      status: 'order_expired',
+    };
+    const rest = PerpsOrderSchema.parse({
+      ...fields,
+      order_id: 1,
+      instrument_id: 1,
+      price: '100.50',
+      quantity: '10',
+      post_only: true,
+      resting_quantity: '9',
+      filled_quantity: '1',
+      created_timestamp: 1700000000000,
+      updated_timestamp: 1700000060000,
+    });
+    const update = PerpsOrderUpdateSchema.parse({
+      ...fields,
+      oid: 1,
+      iid: 1,
+      p: '100.50',
+      qty: '10',
+      po: true,
+      rest: '9',
+      fill: '1',
+      cts: 1700000000000,
+      uts: 1700000060000,
+    });
+    expect(update).toEqual(rest);
+    expect(rest.timeInForce).toBe('gtd');
+  });
   // REST cancel_reason_status and WS order_status_from_reason at perpetuals 5a6d080.
   it.each([
     'order_already_terminal',
@@ -323,14 +358,41 @@ describe('PerpsCancelOrderResultSchema', () => {
 
     expect(order.tpSl).toMatchInlineSnapshot(`
       {
+        "activationPrice": undefined,
         "armedQuantity": "0",
         "kind": "sl",
         "parentOrderId": undefined,
         "scope": "position",
         "slippageBps": 0,
+        "trailingActive": undefined,
+        "trailingAnchor": undefined,
+        "trailingBps": undefined,
         "triggerPrice": "90.00",
       }
     `);
+  });
+});
+
+it.each([
+  false,
+  true,
+])('preserves exact trailing metadata and active=%s', (active) => {
+  expect(
+    PerpsTpSlOrderFieldsSchema.parse({
+      kind: 'sl',
+      scope: 'position',
+      trp: '0',
+      trail_bps: 200,
+      act: '105.0000000000000000000000001',
+      trail_anchor: '0',
+      trail_active: active,
+    }),
+  ).toMatchObject({
+    trailingBps: 200,
+    activationPrice: '105.0000000000000000000000001',
+    trailingAnchor: '0',
+    trailingActive: active,
+    triggerPrice: '0',
   });
 });
 
