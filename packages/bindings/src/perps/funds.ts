@@ -192,16 +192,3 @@ export type PerpsInternalTransfer = z.infer<typeof PerpsInternalTransferSchema>;
 export const ListPerpsInternalTransfersResponseSchema = PerpsDataResponseSchema(
   PerpsInternalTransferSchema,
 );
-
-/**
- * @experimental This API may change in a breaking way in any release, including patch releases.
- */
-export const PerpsInternalTransferResponseSchema = z
-  .strictObject({
-    status: z.literal('ok'),
-    transfer_id: PerpsInternalTransferIdSchema,
-  })
-  .transform((response) => ({
-    status: response.status,
-    transferId: response.transfer_id,
-  }));

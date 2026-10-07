@@ -5,7 +5,6 @@ import {
 } from './common';
 import {
   PerpsDepositUpdateSchema,
-  PerpsInternalTransferResponseSchema,
   PerpsInternalTransferSchema,
   PerpsWithdrawalSchema,
   PerpsWithdrawalUpdateSchema,
@@ -132,25 +131,6 @@ describe('PerpsInternalTransferSchema', () => {
     expect(
       PerpsInternalTransferSchema.safeParse({ ...rawTransfer, type: '' })
         .success,
-    ).toBe(false);
-  });
-});
-
-describe('PerpsInternalTransferResponseSchema', () => {
-  it('normalizes strict accepted responses', () => {
-    expect(
-      PerpsInternalTransferResponseSchema.parse({
-        status: 'ok',
-        transfer_id: 42,
-      }),
-    ).toEqual({ status: 'ok', transferId: 42 });
-
-    expect(
-      PerpsInternalTransferResponseSchema.safeParse({
-        status: 'ok',
-        transfer_id: 42,
-        unexpected: true,
-      }).success,
     ).toBe(false);
   });
 });
