@@ -21,6 +21,8 @@ export {
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
 } from './perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export * from './perps/registration';
 export * from './portfolio';
 export * from './positions';
 export * from './profiles';

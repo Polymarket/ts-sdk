@@ -15,6 +15,7 @@ import type {
   FetchPerpsBookRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  FetchPerpsRegistrationRequest,
   FetchPerpsTickerRequest,
   FetchPerpsTickersRequest,
   ListPerpsCandlesRequest,
@@ -41,6 +42,7 @@ import type {
   PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
+  PerpsUpdateLeverageBatchResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
@@ -66,6 +68,48 @@ import type {
   FetchPerpsInstrumentsRequest,
   ResumePerpsSessionRequest,
 } from './perps';
+
+describe('registration lookup types', () => {
+  it('accepts a plain address and returns a boolean', () => {
+    function read(
+      client: PublicPerpsActions,
+      request: FetchPerpsRegistrationRequest,
+    ) {
+      expectTypeOf(client.fetchPerpsRegistration(request)).toEqualTypeOf<
+        Promise<boolean>
+      >();
+      client.fetchPerpsRegistration({
+        address: '0x1111111111111111111111111111111111111111',
+      });
+      // @ts-expect-error An address is required.
+      client.fetchPerpsRegistration({});
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
+declare const batchLeverageClient: SecurePerpsActions;
+
+describe('batch leverage session contract', () => {
+  it('returns ordered success and rejection models through the public session', async () => {
+    const session = await batchLeverageClient.openPerpsSession();
+    const results = await session.updateLeverages({
+      updates: [
+        { instrumentId: 1, leverage: 5, crossMargin: false },
+        { instrumentId: 2, leverage: 10, crossMargin: true },
+      ],
+    });
+    expectTypeOf(results).toEqualTypeOf<PerpsUpdateLeverageBatchResult[]>();
+    for (const result of results) {
+      if (result.status === 'ok') {
+        expectTypeOf(result.leverage).toEqualTypeOf<number>();
+        expectTypeOf(result.crossMargin).toEqualTypeOf<boolean>();
+      } else {
+        expectTypeOf(result.error).toEqualTypeOf<string>();
+      }
+    }
+  });
+});
 
 describe('session notification recovery', () => {
   it('narrows server recovery metadata from the public session iterator', () => {

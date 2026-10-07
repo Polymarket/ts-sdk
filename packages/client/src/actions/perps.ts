@@ -139,6 +139,8 @@ export type {
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
   PerpsTrailingStop,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -148,8 +150,10 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
   FetchPerpsBuilderApprovalsError,
@@ -157,6 +161,7 @@ export {
   ListPerpsBuilderEarningsError,
   RevokePerpsBuilderFeeError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
