@@ -5,9 +5,55 @@ import {
   FetchUserPnlResponseSchema,
   FetchUserStatsResponseSchema,
   FetchUserVolumeResponseSchema,
+  PositionSchema,
 } from './portfolio';
 
 const WALLET = `0x${'1'.repeat(40)}`;
+
+describe('PositionSchema', () => {
+  it.each([
+    {
+      firstEntry: { first_entry_at: 1_690_000_000 },
+      expected: 1_690_000_000_000,
+    },
+    { firstEntry: { first_entry_at: 0 }, expected: undefined },
+    { firstEntry: {}, expected: undefined },
+  ])('normalizes first acquisition independently of the last event: $firstEntry', ({
+    firstEntry,
+    expected,
+  }) => {
+    const position = PositionSchema.parse({
+      proxy_wallet: WALLET,
+      token_id: '123',
+      condition_id: `0x${'2'.repeat(64)}`,
+      current_size: 10,
+      avg_price: 0.4,
+      entry_cost_usdc: 4,
+      entry_fees_usdc: 0,
+      total_cost_usdc: 4,
+      current_price: 0.5,
+      current_value: 5,
+      total_size: 10,
+      realized_pnl: 0,
+      unrealized_pnl: 1,
+      total_pnl: 1,
+      percent_pnl: 25,
+      percent_realized_pnl: 0,
+      status: 'OPEN',
+      redeemable: false,
+      mergeable: false,
+      negative_risk: false,
+      archived: false,
+      verified: false,
+      last_event_at: 1_700_000_000,
+      ...firstEntry,
+    });
+
+    expect(position.firstEntryAt).toBe(expected);
+    expect(position.lastEventAt).toBe(1_700_000_000_000);
+    expect(position).not.toHaveProperty('first_entry_at');
+  });
+});
 
 describe('FetchPortfolioValueResponseSchema', () => {
   it('normalizes a numeric portfolio value to a decimal string', () => {
