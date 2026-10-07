@@ -230,6 +230,7 @@ export {
   FetchPerpsBuilderEarningsSummaryError,
   ListPerpsBuilderEarningsError,
 } from './actions/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -243,6 +244,7 @@ export type {
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
   PerpsTpSlTrigger,
@@ -907,6 +909,8 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
 
   /**
    * Places one Perps order and resolves with the first matching orders update.
+   * GTD orders require a limit price and gtdExpiry in Unix milliseconds.
+   * The order expiry is separate from the expiresAt command deadline.
    *
    * @example
    * ```ts

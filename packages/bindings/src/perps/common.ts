@@ -196,6 +196,7 @@ export enum PerpsSide {
  */
 export enum PerpsTimeInForce {
   GTC = 'gtc',
+  GTD = 'gtd',
   IOC = 'ioc',
   FOK = 'fok',
 }
