@@ -322,3 +322,33 @@ it.each([
     ).type,
   ).toBe(type);
 });
+
+it.each([
+  '',
+  undefined,
+])('retains combo redemptions without presentation metadata: %s', (title) => {
+  const redemption = {
+    ...comboRow(ActivityType.REDEEM, 'No', 1),
+    title,
+    icon: undefined,
+    slug: undefined,
+    event_slug: undefined,
+  };
+  const page = ListActivityResponseSchema.parse({
+    data: [
+      activityRow({ type: ActivityType.REWARD, usdc_size: 2 }),
+      redemption,
+    ],
+    pagination: { limit: 2, offset: 0, has_more: false, next_cursor: null },
+  });
+  expect(page.items.map(({ type }) => type)).toEqual(['REWARD', 'REDEEM']);
+  expect(page.items[1]).toMatchObject({
+    isCombo: true,
+    conditionId: comboConditionId,
+    outcome: 'No',
+    outcomeIndex: 1,
+    amount: '0.5',
+    title: undefined,
+    icon: null,
+  });
+});

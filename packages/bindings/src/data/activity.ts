@@ -179,8 +179,8 @@ export type ComboRedemptionActivity = ActivityBase & {
   conditionId: ComboConditionId;
   /** Proceeds redeemed in USD. */
   amount: DecimalString;
-  /** Human-readable title of the redeemed basket. */
-  title: string;
+  /** Human-readable title of the redeemed basket, when available. */
+  title?: string;
   icon: string | null;
   /** Basket token label, when available; never a selected leg's label. */
   outcome?: string;
@@ -509,13 +509,6 @@ const RawActivitySchema = z
         ctx.addIssue({ ...issue, path: ['condition_id', ...issue.path] });
       }
     }
-    if (activity.title === undefined) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['title'],
-        message: 'Expected a redemption title',
-      });
-    }
   });
 
 export const ActivitySchema: z.ZodType<Activity> =
@@ -677,7 +670,7 @@ function normalizeRedeemActivity(
     ...base,
     type: ActivityType.REDEEM as ActivityType.REDEEM,
     amount: activity.usdc_size,
-    title: expectPresent(activity.title, 'title'),
+    title: activity.title,
     icon: activity.icon ?? null,
     outcome: activity.outcome,
     outcomeIndex: activity.outcome_index,
@@ -696,6 +689,7 @@ function normalizeRedeemActivity(
   return {
     ...redemption,
     isCombo: false,
+    title: expectPresent(activity.title, 'title'),
     conditionId: expectPresent(activity.condition_id, 'condition_id'),
     slug: expectPresent(activity.slug, 'slug'),
     eventSlug: expectPresent(activity.event_slug, 'event_slug'),

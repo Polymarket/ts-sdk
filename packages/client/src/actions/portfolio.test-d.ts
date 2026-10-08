@@ -63,6 +63,7 @@ describe('public activity result types', () => {
         if (activity.isCombo) {
           expectTypeOf(activity).toEqualTypeOf<ComboRedemptionActivity>();
           expectTypeOf(activity.conditionId).toEqualTypeOf<ComboConditionId>();
+          expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
           // @ts-expect-error A basket has no single market URL slug.
           void activity.slug;
         } else {

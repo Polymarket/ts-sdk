@@ -11,5 +11,6 @@ RedeemActivity now includes ClobRedeemActivity and ComboRedemptionActivity, with
 isCombo false/true distinguishing ordinary market conditions from Combo conditions.
 Narrow on isCombo before reading ordinary slug/eventSlug metadata. Code constructing
 ordinary redemption models must include isCombo: false. Both variants expose optional
-outcome and outcomeIndex. Existing ComboTradeActivity positionId remains required;
+outcome and outcomeIndex. Combo redemption titles may be unavailable and are optional.
+Existing ComboTradeActivity positionId remains required;
 ComboRedeemActivity from listComboActivity is unchanged.
