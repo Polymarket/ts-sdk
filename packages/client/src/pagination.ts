@@ -4,7 +4,11 @@ import {
 } from '@polymarket/bindings';
 import { type ResultAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
-import { PaginationLimitError, UserInputError } from './errors';
+import {
+  PaginationLimitError,
+  UnexpectedResponseError,
+  UserInputError,
+} from './errors';
 
 export const PageSizeSchema = z.number().int().positive();
 
@@ -20,6 +24,10 @@ export type Page<T> = {
    * A depth-limited page can report `true` alongside `limitReached`.
    * Automatic iteration stops there; explicitly following its cursor throws
    * {@link PaginationLimitError} before sending a request.
+   *
+   * Automatic iteration throws {@link UnexpectedResponseError} if a continuing
+   * page carries no cursor or repeats one already requested in that walk,
+   * after yielding the pages fetched so far.
    */
   hasMore: boolean;
   /**
@@ -74,6 +82,11 @@ export function paginate<T, TError>(
       },
       async *[Symbol.asyncIterator]() {
         let currentCursor = cursor;
+        // Cursors requested in this walk. A continuing page without a cursor
+        // would restart at the first page, and a repeated one would loop.
+        const requested = new Set<PaginationCursor>(
+          cursor === undefined ? [] : [cursor],
+        );
 
         while (true) {
           const page = await unwrap(fetchPage(currentCursor));
@@ -84,6 +97,19 @@ export function paginate<T, TError>(
             return;
           }
 
+          if (page.nextCursor === undefined) {
+            throw new UnexpectedResponseError(
+              'Paginated response reported more items without a next cursor.',
+            );
+          }
+
+          if (requested.has(page.nextCursor)) {
+            throw new UnexpectedResponseError(
+              'Paginated response repeated a cursor that was already requested.',
+            );
+          }
+
+          requested.add(page.nextCursor);
           currentCursor = page.nextCursor;
         }
       },
