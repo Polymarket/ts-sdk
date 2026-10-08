@@ -196,6 +196,12 @@ export const ListPositionsError = makeErrorGuard(
  * filter to mergeable positions; a `conditionId`-only request falls back
  * to the broader `OPEN` listing. `sortBy` defaults to `TOKENS` for
  * `MERGEABLE`, `REALIZED_PNL` for `CLOSED`, and `CURRENT_VALUE` otherwise.
+ * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+ * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+ * Keep the original filters and requested sort when resuming a cursor. If
+ * an older cursor is rejected with HTTP 400 because the ordering changed,
+ * discard it and explicitly fetch a new first page; the paginator does not
+ * restart the listing.
  * `title` filters by case-insensitive substring across every status and
  * anchor; the paginator retains it when advancing or resuming.
  *
