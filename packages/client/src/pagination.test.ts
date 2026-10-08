@@ -1,7 +1,11 @@
 import { toPaginationCursor } from '@polymarket/bindings';
 import { okAsync } from '@polymarket/types';
 import { describe, expect, it } from 'vitest';
-import { PaginationLimitError, UserInputError } from './errors';
+import {
+  PaginationLimitError,
+  UnexpectedResponseError,
+  UserInputError,
+} from './errors';
 import {
   decodeOffsetCursor,
   encodeKeysetCursor,
@@ -63,6 +67,102 @@ describe('paginate', () => {
       }
     }).rejects.toThrow(PaginationLimitError);
     expect(pages).toHaveLength(1);
+  });
+
+  it('refuses a continuing page without a cursor instead of restarting', async () => {
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate((cursor) => {
+      requested.push(cursor);
+      return okAsync({ items: [1], hasMore: true });
+    });
+    const pages: Page<number[]>[] = [];
+
+    await expect(async () => {
+      for await (const page of paginator) {
+        pages.push(page);
+      }
+    }).rejects.toThrow(UnexpectedResponseError);
+    expect(pages).toHaveLength(1);
+    expect(requested).toEqual([undefined]);
+  });
+
+  it.each([
+    ['an immediate repeat', undefined, ['a', 'a']],
+    ['a two-cursor cycle', undefined, ['a', 'b', 'a']],
+    ['a resume at a repeated cursor', 'a', ['a']],
+  ])('refuses %s before requesting the cursor again', async (_name, initialCursor, nextCursors) => {
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate(
+      (cursor) => {
+        requested.push(cursor);
+        return okAsync({
+          items: [requested.length],
+          hasMore: true,
+          nextCursor: toPaginationCursor(
+            nextCursors[requested.length - 1] ?? '',
+          ),
+        });
+      },
+      initialCursor === undefined
+        ? undefined
+        : toPaginationCursor(initialCursor),
+    );
+    const pages: Page<number[]>[] = [];
+
+    await expect(async () => {
+      for await (const page of paginator) {
+        pages.push(page);
+      }
+    }).rejects.toThrow(
+      'Paginated response repeated a cursor that was already requested.',
+    );
+    expect(pages).toHaveLength(nextCursors.length);
+    expect(requested).toEqual([initialCursor, ...nextCursors.slice(0, -1)]);
+  });
+
+  it.each([
+    ['hasMore is false', { hasMore: false }],
+    ['the page is depth-limited', { hasMore: true, limitReached: true }],
+  ])('stops normally on a terminal page with a repeated cursor when %s', async (_name, terminal) => {
+    const cursorA = toPaginationCursor('a');
+    const paginator = paginate((cursor) =>
+      okAsync(
+        cursor === undefined
+          ? { items: [1], hasMore: true, nextCursor: cursorA }
+          : { items: [2], nextCursor: cursorA, ...terminal },
+      ),
+    );
+    const pages: Page<number[]>[] = [];
+
+    for await (const page of paginator) {
+      pages.push(page);
+    }
+
+    expect(pages.map((page) => page.items)).toEqual([[1], [2]]);
+  });
+
+  it('does not share requested cursors between walks of one paginator', async () => {
+    const cursorA = toPaginationCursor('a');
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate((cursor) => {
+      requested.push(cursor);
+      return okAsync(
+        cursor === undefined
+          ? { items: [1], hasMore: true, nextCursor: cursorA }
+          : { items: [2], hasMore: false },
+      );
+    });
+
+    const walk = async () => {
+      const items: number[][] = [];
+      for await (const page of paginator) {
+        items.push(page.items);
+      }
+      return items;
+    };
+
+    expect(await walk()).toEqual(await walk());
+    expect(requested).toEqual([undefined, cursorA, undefined, cursorA]);
   });
 
   it('rejects firstPage through its promise when cursor validation throws', async () => {
