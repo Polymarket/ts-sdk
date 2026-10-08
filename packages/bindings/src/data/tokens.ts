@@ -6,8 +6,8 @@ import {
   ConditionIdSchema,
   type DecimalString,
   type EventId,
-  EventIdSchema,
   toDecimalString,
+  toEventId,
 } from '../shared';
 import { dataEnvelopeSchema } from './envelope';
 
@@ -88,7 +88,9 @@ export const TokenReferenceSchema = z
     neg_risk: z.boolean().nullable(),
     neg_risk_market_id: Bytes32ConditionIdSchema.nullable(),
     question_index: Int32Schema.nullable(),
-    event_id: Int32Schema.pipe(EventIdSchema).nullable(),
+    event_id: Int32Schema.transform((value) =>
+      toEventId(String(value)),
+    ).nullable(),
     event_slug: z.string().nullable(),
   })
   .transform((row) => ({
