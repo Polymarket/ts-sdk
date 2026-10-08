@@ -28,7 +28,6 @@ import {
   type UserRewardsEarning,
   UserRewardsEarningsPageSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -44,7 +43,6 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { toSignatureType } from '../wallet';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
@@ -82,11 +80,10 @@ export async function fetchClosedOnlyMode(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<boolean> {
-  const response = await unwrap(
-    client.secureClob
-      .get('/auth/ban-status/closed-only', options)
-      .andThen(validateWith(ClosedOnlyModeSchema, options)),
-  );
+  const response = await client.secureClob.get('/auth/ban-status/closed-only', {
+    ...options,
+    schema: ClosedOnlyModeSchema,
+  });
 
   return response.closedOnly;
 }
@@ -183,6 +180,7 @@ export function listOpenOrders(
     (nextCursor) =>
       client.secureClob
         .get('/data/orders', {
+          schema: OpenOrdersPageSchema,
           signal: options.signal,
           params: toSearchParams(
             {
@@ -194,8 +192,7 @@ export function listOpenOrders(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(OpenOrdersPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -252,11 +249,10 @@ export async function fetchOrder(
 ): Promise<OpenOrder> {
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
-  return unwrap(
-    client.secureClob
-      .get(`/data/order/${params.orderId}`, options)
-      .andThen(validateWith(OpenOrderSchema, options)),
-  );
+  return client.secureClob.get(`/data/order/${params.orderId}`, {
+    ...options,
+    schema: OpenOrderSchema,
+  });
 }
 
 const ListAccountTradesRequestFields = {
@@ -360,6 +356,7 @@ export function listAccountTrades(
     (nextCursor) =>
       client.secureClob
         .get('/data/trades', {
+          schema: ClobTradesPageSchema,
           signal: options.signal,
           params: toSearchParams(
             {
@@ -374,8 +371,7 @@ export function listAccountTrades(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(ClobTradesPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -431,14 +427,11 @@ export async function fetchNotifications(
 ): Promise<NotificationsResponse> {
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/notifications', {
-        signal: options.signal,
-        params: toSearchParams({ signatureType }, snakeCase()),
-      })
-      .andThen(validateWith(NotificationsResponseSchema, options)),
-  );
+  return client.secureClob.get('/notifications', {
+    schema: NotificationsResponseSchema,
+    signal: options.signal,
+    params: toSearchParams({ signatureType }, snakeCase()),
+  });
 }
 
 export type DropNotificationsError =
@@ -487,11 +480,10 @@ export async function dropNotifications(
     snakeCase(),
   );
 
-  await unwrap(
-    client.secureClob.del('/notifications', {
-      params: searchParams,
-    }),
-  );
+  await client.secureClob.del('/notifications', {
+    responseType: 'empty',
+    params: searchParams,
+  });
 }
 
 const BalanceAllowanceRequestFieldsSchema = z.object({
@@ -558,21 +550,18 @@ export async function fetchBalanceAllowance(
   const params = parseUserInput(request, FetchBalanceAllowanceRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/balance-allowance', {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            assetType: params.assetType,
-            tokenId: params.assetId ?? params.tokenId,
-            signatureType,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(BalanceAllowanceResponseSchema, options)),
-  );
+  return client.secureClob.get('/balance-allowance', {
+    schema: BalanceAllowanceResponseSchema,
+    signal: options.signal,
+    params: toSearchParams(
+      {
+        assetType: params.assetType,
+        tokenId: params.assetId ?? params.tokenId,
+        signatureType,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 const UpdateBalanceAllowanceRequestSchema = optionalExchangeAssetRequestSchema(
@@ -640,11 +629,10 @@ export async function updateBalanceAllowance(
     snakeCase(),
   );
 
-  await unwrap(
-    client.secureClob.get('/balance-allowance/update', {
-      params: searchParams,
-    }),
-  );
+  await client.secureClob.get('/balance-allowance/update', {
+    responseType: 'empty',
+    params: searchParams,
+  });
 
   return fetchBalanceAllowance(client, params);
 }
@@ -695,14 +683,11 @@ export async function fetchOrderScoring(
   options: RequestOptions = {},
 ): Promise<boolean> {
   const params = parseUserInput(request, FetchOrderScoringRequestSchema);
-  const response = await unwrap(
-    client.secureClob
-      .get('/order-scoring', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(OrderScoringResponseSchema, options)),
-  );
+  const response = await client.secureClob.get('/order-scoring', {
+    schema: OrderScoringResponseSchema,
+    signal: options.signal,
+    params: toSearchParams(params, snakeCase()),
+  });
 
   return response.scoring;
 }
@@ -755,11 +740,11 @@ export async function fetchOrdersScoring(
   const params = parseUserInput(request, FetchOrdersScoringRequestSchema);
   const body = params.orderIds;
 
-  return unwrap(
-    client.secureClob
-      .post('/orders-scoring', { signal: options.signal, json: body })
-      .andThen(validateWith(OrdersScoringResponseSchema, options)),
-  );
+  return client.secureClob.post('/orders-scoring', {
+    schema: OrdersScoringResponseSchema,
+    signal: options.signal,
+    json: body,
+  });
 }
 
 const ListUserEarningsForDayRequestSchema = z.object({
@@ -838,6 +823,7 @@ export function listUserEarningsForDay(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user', {
+          schema: UserEarningsPageSchema,
           signal: options.signal,
           params: toSearchParams(
             {
@@ -848,8 +834,7 @@ export function listUserEarningsForDay(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserEarningsPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -905,20 +890,17 @@ export async function fetchTotalEarningsForUserForDay(
   const params = parseUserInput(request, ListUserEarningsForDayRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/rewards/user/total', {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            ...params,
-            signatureType,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(TotalUserEarningsResponseSchema, options)),
-  );
+  return client.secureClob.get('/rewards/user/total', {
+    schema: TotalUserEarningsResponseSchema,
+    signal: options.signal,
+    params: toSearchParams(
+      {
+        ...params,
+        signatureType,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 const ListUserEarningsAndMarketsConfigRequestSchema = z.object({
@@ -1001,6 +983,7 @@ export function listUserEarningsAndMarketsConfig(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user/markets', {
+          schema: UserRewardsEarningsPageSchema,
           signal: options.signal,
           params: toSearchParams(
             {
@@ -1011,8 +994,7 @@ export function listUserEarningsAndMarketsConfig(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserRewardsEarningsPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -1059,12 +1041,9 @@ export async function fetchRewardPercentages(
 ): Promise<RewardsPercentages> {
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/rewards/user/percentages', {
-        signal: options.signal,
-        params: toSearchParams({ signatureType }, snakeCase()),
-      })
-      .andThen(validateWith(RewardsPercentagesSchema, options)),
-  );
+  return client.secureClob.get('/rewards/user/percentages', {
+    schema: RewardsPercentagesSchema,
+    signal: options.signal,
+    params: toSearchParams({ signatureType }, snakeCase()),
+  });
 }

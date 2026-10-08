@@ -6,12 +6,7 @@ import {
   RfqStatus,
 } from '@polymarket/bindings/combos';
 import { WalletType } from '@polymarket/bindings/gamma';
-import {
-  errAsync,
-  expectEvmAddress,
-  okAsync,
-  type ResultAsync,
-} from '@polymarket/types';
+import { expectEvmAddress } from '@polymarket/types';
 import { describe, expect, it, vi } from 'vitest';
 import type { BaseSecureClient } from '../clients';
 import { production } from '../environments';
@@ -22,6 +17,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
+import { ServiceClient } from '../ServiceClient';
 import type { Signer } from '../types';
 import { SignerType } from '../wallet';
 import {
@@ -116,7 +112,7 @@ const sellComboQuote = {
 describe('requestComboQuote', () => {
   it('builds the BUY request and returns a self-contained quote', async () => {
     const { client, gatewayPost } = createClient({
-      postResults: [okAsync(jsonResponse(quoteReadyWire))],
+      postResults: [jsonResponse(quoteReadyWire)],
     });
 
     const result = await requestComboQuote(client, buyRequest);
@@ -132,13 +128,14 @@ describe('requestComboQuote', () => {
         signer_address: SIGNER,
       },
       timeout: 30_000,
+      schema: expect.anything(),
     });
     expect(result).toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
   });
 
   it('canonicalizes leg order before comparing the response echo', async () => {
     const { client, gatewayPost } = createClient({
-      postResults: [okAsync(jsonResponse(quoteReadyWire))],
+      postResults: [jsonResponse(quoteReadyWire)],
     });
 
     await expect(
@@ -157,7 +154,7 @@ describe('requestComboQuote', () => {
 
   it('builds a SELL request and returns exact net proceeds', async () => {
     const { client, gatewayPost } = createClient({
-      postResults: [okAsync(jsonResponse(sellQuoteReadyWire))],
+      postResults: [jsonResponse(sellQuoteReadyWire)],
     });
 
     const result = await requestComboQuote(client, {
@@ -187,15 +184,13 @@ describe('requestComboQuote', () => {
   it('rejects a SELL quote that omits net proceeds', async () => {
     const { client } = createClient({
       postResults: [
-        okAsync(
-          jsonResponse({
-            ...sellQuoteReadyWire,
-            quote: {
-              ...sellQuoteReadyWire.quote,
-              net_receive_e6: undefined,
-            },
-          }),
-        ),
+        jsonResponse({
+          ...sellQuoteReadyWire,
+          quote: {
+            ...sellQuoteReadyWire.quote,
+            net_receive_e6: undefined,
+          },
+        }),
       ],
     });
 
@@ -255,7 +250,7 @@ describe('requestComboQuote', () => {
     },
   ])('rejects a response with mismatched $field', async ({ response }) => {
     const { client } = createClient({
-      postResults: [okAsync(jsonResponse(response))],
+      postResults: [jsonResponse(response)],
     });
 
     await expect(requestComboQuote(client, buyRequest)).rejects.toBeInstanceOf(
@@ -266,14 +261,12 @@ describe('requestComboQuote', () => {
   it('returns no quote as a business outcome', async () => {
     const { client } = createClient({
       postResults: [
-        okAsync(
-          jsonResponse({
-            rfq_id: 'rfq-2',
-            status: 'FAILED',
-            builder_code: BUILDER_CODE,
-            error: { code: 'NO_QUOTES', message: 'no quotes' },
-          }),
-        ),
+        jsonResponse({
+          rfq_id: 'rfq-2',
+          status: 'FAILED',
+          builder_code: BUILDER_CODE,
+          error: { code: 'NO_QUOTES', message: 'no quotes' },
+        }),
       ],
     });
 
@@ -312,7 +305,7 @@ describe('requestComboQuote', () => {
       code: 'CONTRADICTORY_LEGS',
       status: 400,
     });
-    const { client } = createClient({ postResults: [errAsync(rejection)] });
+    const { client } = createClient({ postResults: [rejection] });
 
     const error = await requestComboQuote(client, buyRequest).catch(
       (caught: unknown) => caught,
@@ -333,14 +326,12 @@ describe('requestComboQuote', () => {
     };
     const finalStateClient = createClient({
       postResults: [
-        okAsync(
-          jsonResponse({
-            rfq_id: 'rfq-3',
-            status: 'FAILED',
-            builder_code: BUILDER_CODE,
-            error: finalStateError,
-          }),
-        ),
+        jsonResponse({
+          rfq_id: 'rfq-3',
+          status: 'FAILED',
+          builder_code: BUILDER_CODE,
+          error: finalStateError,
+        }),
       ],
     }).client;
 
@@ -358,7 +349,7 @@ describe('requestComboQuote', () => {
       status: 400,
     });
     const rejectedClient = createClient({
-      postResults: [errAsync(rejection)],
+      postResults: [rejection],
     }).client;
 
     await expect(
@@ -372,7 +363,7 @@ describe('requestComboQuote', () => {
 
   it('classifies an uncoded rejection as a generic request failure', async () => {
     const rejection = new RequestRejectedError('bad gateway', { status: 502 });
-    const { client } = createClient({ postResults: [errAsync(rejection)] });
+    const { client } = createClient({ postResults: [rejection] });
 
     await expect(requestComboQuote(client, buyRequest)).rejects.toMatchObject({
       cause: rejection,
@@ -386,9 +377,7 @@ describe('requestComboQuote', () => {
 describe('acceptComboQuote', () => {
   it('accepts a serialized SELL quote', async () => {
     const { client, gatewayPost, signTypedData } = createClient({
-      postResults: [
-        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
-      ],
+      postResults: [jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })],
     });
 
     await expect(acceptComboQuote(client, sellComboQuote)).resolves.toEqual({
@@ -413,17 +402,15 @@ describe('acceptComboQuote', () => {
 
   it('accepts a serialized quote with a recreated client', async () => {
     const requester = createClient({
-      postResults: [okAsync(jsonResponse(quoteReadyWire))],
+      postResults: [jsonResponse(quoteReadyWire)],
     });
     const acceptor = createClient({
       postResults: [
-        okAsync(
-          jsonResponse({
-            rfq_id: 'rfq-1',
-            status: 'EXECUTING',
-            taker_order_hash: TAKER_ORDER_HASH,
-          }),
-        ),
+        jsonResponse({
+          rfq_id: 'rfq-1',
+          status: 'EXECUTING',
+          taker_order_hash: TAKER_ORDER_HASH,
+        }),
       ],
     });
     const requested = await requestComboQuote(requester.client, buyRequest);
@@ -455,6 +442,7 @@ describe('acceptComboQuote', () => {
           }),
         },
         timeout: 30_000,
+        schema: expect.anything(),
       },
     );
     expect(result).toEqual({
@@ -467,8 +455,8 @@ describe('acceptComboQuote', () => {
   it('retries a dropped acceptance and permits a status-only response', async () => {
     const { client, gatewayPost, signTypedData } = createClient({
       postResults: [
-        errAsync(new TransportError('socket hang up')),
-        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
+        new TransportError('socket hang up'),
+        jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' }),
       ],
     });
 
@@ -483,8 +471,8 @@ describe('acceptComboQuote', () => {
   it('retries when the acceptance response cannot be validated', async () => {
     const { client, gatewayPost, signTypedData } = createClient({
       postResults: [
-        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' })),
-        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
+        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
+        jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' }),
       ],
     });
 
@@ -493,6 +481,39 @@ describe('acceptComboQuote', () => {
       status: 'executing',
     });
     expect(signTypedData).toHaveBeenCalledTimes(1);
+    expect(gatewayPost).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns expiry after a dropped acceptance is retried', async () => {
+    const { client, gatewayPost } = createClient({
+      postResults: [
+        new TransportError('socket hang up'),
+        new RequestRejectedError('expired rfq', {
+          code: 'EXPIRED_RFQ',
+          status: 409,
+        }),
+      ],
+    });
+
+    await expect(acceptComboQuote(client, comboQuote)).resolves.toMatchObject({
+      reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
+      rfqId: 'rfq-1',
+      status: 'failed',
+    });
+    expect(gatewayPost).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops after two invalid acceptance responses', async () => {
+    const { client, gatewayPost } = createClient({
+      postResults: [
+        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
+        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
+      ],
+    });
+
+    await expect(acceptComboQuote(client, comboQuote)).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
     expect(gatewayPost).toHaveBeenCalledTimes(2);
   });
 
@@ -505,13 +526,11 @@ describe('acceptComboQuote', () => {
         status: 'failed',
       },
       name: 'maker decline',
-      response: okAsync(
-        jsonResponse({
-          rfq_id: 'rfq-1',
-          status: 'FAILED',
-          error: { code: 'MAKER_DECLINED', message: 'maker declined' },
-        }),
-      ),
+      response: jsonResponse({
+        rfq_id: 'rfq-1',
+        status: 'FAILED',
+        error: { code: 'MAKER_DECLINED', message: 'maker declined' },
+      }),
     },
     {
       expected: {
@@ -521,12 +540,10 @@ describe('acceptComboQuote', () => {
         status: 'failed',
       },
       name: 'expired acceptance window',
-      response: errAsync(
-        new RequestRejectedError('expired rfq', {
-          code: 'EXPIRED_RFQ',
-          status: 409,
-        }),
-      ),
+      response: new RequestRejectedError('expired rfq', {
+        code: 'EXPIRED_RFQ',
+        status: 409,
+      }),
     },
   ])('maps a $name to a failed result', async ({ expected, response }) => {
     const { client } = createClient({ postResults: [response] });
@@ -538,17 +555,13 @@ describe('acceptComboQuote', () => {
 
   it('polls when the maker outcome is still pending', async () => {
     const { client, gatewayGet } = createClient({
-      getResults: [
-        okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })),
-      ],
+      getResults: [jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })],
       postResults: [
-        okAsync(
-          jsonResponse({
-            rfq_id: 'rfq-1',
-            status: 'AWAITING_MAKER_CONFIRMATION',
-            taker_order_hash: TAKER_ORDER_HASH,
-          }),
-        ),
+        jsonResponse({
+          rfq_id: 'rfq-1',
+          status: 'AWAITING_MAKER_CONFIRMATION',
+          taker_order_hash: TAKER_ORDER_HASH,
+        }),
       ],
     });
 
@@ -557,10 +570,9 @@ describe('acceptComboQuote', () => {
       status: 'executing',
       takerOrderHash: TAKER_ORDER_HASH,
     });
-    expect(gatewayGet).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests/rfq-1',
-      {},
-    );
+    expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1', {
+      schema: expect.anything(),
+    });
   }, 10_000);
 });
 
@@ -568,16 +580,14 @@ describe('waitForComboFill', () => {
   it('returns terminal failures with their structured error', async () => {
     const { client } = createClient({
       getResults: [
-        okAsync(
-          jsonResponse({
-            rfq_id: 'rfq-1',
-            status: 'FAILED',
-            error: {
-              code: 'TRADE_SUBMISSION_FAILED',
-              message: 'trade submission failed',
-            },
-          }),
-        ),
+        jsonResponse({
+          rfq_id: 'rfq-1',
+          status: 'FAILED',
+          error: {
+            code: 'TRADE_SUBMISSION_FAILED',
+            message: 'trade submission failed',
+          },
+        }),
       ],
     });
 
@@ -595,7 +605,7 @@ describe('waitForComboFill', () => {
 
   it('throws when the RFQ stays non-terminal past the deadline', async () => {
     const executing = () =>
-      okAsync(jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' }));
+      jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' });
     const { client } = createClient({
       getResults: Array.from({ length: 50 }, executing),
     });
@@ -610,10 +620,7 @@ describe('waitForComboFill', () => {
   });
 });
 
-type GatewayResult = ResultAsync<
-  Response,
-  RequestRejectedError | TransportError
->;
+type GatewayResult = Response | RequestRejectedError | TransportError;
 
 type CreateClientOptions = {
   getResults?: GatewayResult[];
@@ -625,16 +632,19 @@ function createClient(options: CreateClientOptions = {}) {
   const postQueue = [...(options.postResults ?? [])];
   const getQueue = [...(options.getResults ?? [])];
 
-  const gatewayPost = vi.fn(() => {
-    const next = postQueue.shift();
-    if (next === undefined) throw new Error('Unexpected gateway POST');
-    return next;
+  const gatewayService = new ServiceClient({
+    root: 'https://builder-gateway.test',
+    retry: false,
+    fetch: async (input) => {
+      const method = new Request(input).method;
+      const next = (method === 'POST' ? postQueue : getQueue).shift();
+      if (next === undefined) throw new Error(`Unexpected gateway ${method}`);
+      if (next instanceof Error) throw next;
+      return next;
+    },
   });
-  const gatewayGet = vi.fn(() => {
-    const next = getQueue.shift();
-    if (next === undefined) throw new Error('Unexpected gateway GET');
-    return next;
-  });
+  const gatewayPost = vi.spyOn(gatewayService, 'post');
+  const gatewayGet = vi.spyOn(gatewayService, 'get');
   const signTypedData = vi.fn(async () => SIGNATURE);
 
   const signer = {
@@ -651,7 +661,7 @@ function createClient(options: CreateClientOptions = {}) {
       wallet: SIGNER,
       walletType: WalletType.EOA,
     },
-    builderGateway: { get: gatewayGet, post: gatewayPost },
+    builderGateway: gatewayService,
     environment: production,
     hasBuilderApiKey: options.hasBuilderApiKey ?? true,
     signer,

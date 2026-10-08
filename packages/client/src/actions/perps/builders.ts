@@ -5,7 +5,7 @@ import {
   type PerpsBuilderStatus,
   PerpsBuilderStatusSchema,
 } from '@polymarket/bindings/perps';
-import { type EvmSignature, unwrap } from '@polymarket/types';
+import type { EvmSignature } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient, BaseSecureClient } from '../../clients';
 import {
@@ -20,7 +20,6 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import type { RequestOptions } from '../../request-options';
-import { validateWith } from '../../response';
 import type { TypedDataPayload } from '../../types';
 import { PerpsBuilderFeeRateInputSchema } from '../../websockets/perps/actions/builder-terms';
 import type { PerpsSession } from '../../websockets/perps/session';
@@ -79,14 +78,11 @@ export async function fetchPerpsBuilderStatus(
   options: RequestOptions = {},
 ): Promise<PerpsBuilderStatus> {
   const params = parseUserInput(request, FetchPerpsBuilderStatusRequestSchema);
-  return unwrap(
-    client.perps
-      .get('/v1/info/builder', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(PerpsBuilderStatusSchema, options)),
-  );
+  return client.perps.get('/v1/info/builder', {
+    schema: PerpsBuilderStatusSchema,
+    signal: options.signal,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const ResolvedPerpsBuilderFeeSchema = z.strictObject({
@@ -188,13 +184,10 @@ export async function approvePerpsBuilderFee(
     throw SigningError.fromError(error, 'Could not sign builder consent');
   }
 
-  return unwrap(
-    client.perps
-      .post('/v1/account/builder-approvals', {
-        json: createPerpsBuilderFeeApprovalBody(op, signature),
-      })
-      .andThen(validateWith(PerpsBuilderApprovalSchema)),
-  );
+  return client.perps.post('/v1/account/builder-approvals', {
+    schema: PerpsBuilderApprovalSchema,
+    json: createPerpsBuilderFeeApprovalBody(op, signature),
+  });
 }
 
 /** @internal Returns the saved version for the builder plus one, or 1. */

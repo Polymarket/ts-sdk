@@ -17,8 +17,10 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createSecureClient } from './clients';
+import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
+import { UserInputError } from './errors';
+import { ServiceClient } from './ServiceClient';
 import type { ApiKeyAuthorization, Signer } from './types';
 import {
   deriveBeaconDepositWalletAddress,
@@ -75,6 +77,27 @@ const signer: Signer = {
     throw new Error('Unexpected sendTransaction call');
   },
 };
+
+describe('empty predictions service', () => {
+  it('exposes the reserved service without dispatching or changing existing services', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = createPublicClient({ fetch, retry: false });
+    const predictions = client.predictions;
+    const extended = client.extend(() => ({ predictionService: predictions }));
+
+    expect(predictions).toBeInstanceOf(ServiceClient);
+    expect(extended.predictions).toBe(predictions);
+    expect(extended.predictionService).toBe(predictions);
+    expect(client.clob).toBeInstanceOf(ServiceClient);
+    expect(client.gamma).toBeInstanceOf(ServiceClient);
+    expect(client.data).toBeInstanceOf(ServiceClient);
+    expect(client.relayer).toBeInstanceOf(ServiceClient);
+    await expect(predictions.get('/reserved')).rejects.toBeInstanceOf(
+      UserInputError,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {
@@ -388,7 +411,18 @@ describe('secure client gasless wallet setup', () => {
     client.webSockets.perpsSession.shutdown = perpsShutdown;
     client.webSockets.rfqQuoter.shutdown = rfqShutdown;
 
-    await client.endAuthentication();
+    expect(client.predictions).toBeInstanceOf(ServiceClient);
+    await expect(client.predictions.get('/reserved')).rejects.toBeInstanceOf(
+      UserInputError,
+    );
+    const publicClient = await client.endAuthentication();
+    expect(publicClient.predictions).toBeInstanceOf(ServiceClient);
+    await expect(
+      publicClient.predictions.get('/reserved'),
+    ).rejects.toBeInstanceOf(UserInputError);
+    expect(() => client.predictions).toThrow(
+      'This client has ended authentication',
+    );
 
     expect(perpsShutdown).toHaveBeenCalledTimes(1);
     expect(rfqShutdown).toHaveBeenCalledTimes(1);

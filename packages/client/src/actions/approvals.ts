@@ -1,7 +1,7 @@
 import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
 import { FetchApprovalsResponseSchema } from '@polymarket/bindings/data';
 import { WalletType } from '@polymarket/bindings/gamma';
-import { type EvmSignature, type HexString, unwrap } from '@polymarket/types';
+import type { EvmSignature, HexString } from '@polymarket/types';
 import { z } from 'zod';
 import {
   decodeErc20AllowanceResult,
@@ -28,7 +28,6 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
   expectTransactionHandle,
@@ -404,15 +403,14 @@ export async function fetchTradingApprovalsState(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const snapshot = await unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/approvals', {
-          signal: options.signal,
-          params: toDataSearchParams({ user }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchApprovalsResponseSchema, options)),
+  const snapshot = await withRateLimitRetry(
+    () =>
+      client.data.get('/v2/approvals', {
+        signal: options.signal,
+        params: toDataSearchParams({ user }),
+        schema: FetchApprovalsResponseSchema,
+      }),
+    { retry: client.retry, signal: options.signal },
   );
   const missing = resolveIndexedTradingApprovals(
     snapshot,

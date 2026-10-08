@@ -29,7 +29,6 @@ import {
   type UserStats,
   type UserVolume,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -44,7 +43,6 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { readBlob, validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
   distinctIdList,
@@ -253,6 +251,7 @@ export function listPositions(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/positions', {
+            schema: ListPositionsResponseSchema,
             signal: options.signal,
             // The full original filter set rides along with every cursor: the
             // cursor binds only its paging anchor, and a filter dropped on a
@@ -265,7 +264,7 @@ export function listPositions(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListPositionsResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -437,11 +436,12 @@ export function listComboPositions(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/positions/combos', {
+            schema: ListComboPositionsResponseSchema,
             signal: options.signal,
             params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListComboPositionsResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -504,18 +504,17 @@ export async function fetchPortfolioValue(
     FetchPortfolioValueRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/value', {
-          signal: options.signal,
-          params: toDataSearchParams({
-            ...params,
-            condition: conditionIds,
-          }),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/value', {
+        schema: FetchPortfolioValueResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({
+          ...params,
+          condition: conditionIds,
         }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchPortfolioValueResponseSchema, options)),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -571,15 +570,14 @@ export async function fetchUserStats(
 ): Promise<UserStats | null> {
   const params = parseUserInput(request, FetchUserStatsRequestSchema);
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/user-stats', {
-          signal: options.signal,
-          params: toDataSearchParams(params),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchUserStatsResponseSchema, options)),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/user-stats', {
+        schema: FetchUserStatsResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams(params),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -636,15 +634,14 @@ export async function fetchUserPnl(
 ): Promise<UserPnlSeries> {
   const params = parseUserInput(request, FetchUserPnlRequestSchema);
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/user-pnl', {
-          signal: options.signal,
-          params: toDataSearchParams(params),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchUserPnlResponseSchema, options)),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/user-pnl', {
+        schema: FetchUserPnlResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams(params),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -703,15 +700,14 @@ export async function fetchUserVolume(
     FetchUserVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/user-volume', {
-          signal: options.signal,
-          params: toDataSearchParams({ ...params, ...window }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchUserVolumeResponseSchema, options)),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/user-volume', {
+        schema: FetchUserVolumeResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({ ...params, ...window }),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -767,12 +763,9 @@ export async function downloadAccountingSnapshot(
     DownloadAccountingSnapshotRequestSchema,
   );
 
-  return unwrap(
-    client.data
-      .get('/v1/accounting/snapshot', {
-        signal: options.signal,
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen((response) => readBlob(response, options)),
-  );
+  return client.data.get('/v1/accounting/snapshot', {
+    responseType: 'blob',
+    signal: options.signal,
+    params: toLegacyDataSearchParams(params),
+  });
 }

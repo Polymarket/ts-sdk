@@ -2,7 +2,6 @@ import {
   type PublicProfile,
   PublicProfileSchema,
 } from '@polymarket/bindings/gamma';
-import { err, ok, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -16,7 +15,6 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 const FetchPublicProfileRequestSchema = z.object({
@@ -68,19 +66,17 @@ export async function fetchPublicProfile(
 ): Promise<PublicProfile | null> {
   const params = parseUserInput(request, FetchPublicProfileRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get('/public-profile', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(PublicProfileSchema, options))
-      .orElse((error) => {
-        if (error instanceof RequestRejectedError && error.status === 404) {
-          return ok(null);
-        }
+  return client.gamma
+    .get('/public-profile', {
+      schema: PublicProfileSchema,
+      signal: options.signal,
+      params: toSearchParams(params, snakeCase()),
+    })
+    .catch((error) => {
+      if (error instanceof RequestRejectedError && error.status === 404) {
+        return null;
+      }
 
-        return err(error);
-      }),
-  );
+      throw error;
+    });
 }

@@ -14,7 +14,6 @@ import {
   TraderLeaderboardSortSchema,
   type TraderLeaderboardStanding,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -29,7 +28,6 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import { toDataSearchParams } from './params';
 
@@ -125,6 +123,7 @@ export function listBuilderLeaderboard(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/builders/leaderboard', {
+            schema: ListBuilderLeaderboardResponseSchema,
             signal: options.signal,
             // Retain the original window across the cursor walk. The cursor pins
             // it, while the server rejects a contradictory window explicitly.
@@ -135,7 +134,7 @@ export function listBuilderLeaderboard(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListBuilderLeaderboardResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -201,15 +200,14 @@ export async function fetchBuilderVolume(
     FetchBuilderVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/builders/volume', {
-          signal: options.signal,
-          params: toDataSearchParams({ interval, limit: bucketLimit }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchBuilderVolumeResponseSchema, options)),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/builders/volume', {
+        schema: FetchBuilderVolumeResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({ interval, limit: bucketLimit }),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -304,6 +302,7 @@ export function listTraderLeaderboard(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/leaderboard', {
+            schema: ListTraderLeaderboardResponseSchema,
             signal: options.signal,
             // Retain the selected board across the cursor walk. The cursor pins
             // these values and the server rejects contradictory restatements.
@@ -316,7 +315,7 @@ export function listTraderLeaderboard(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListTraderLeaderboardResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -379,21 +378,18 @@ export async function fetchTraderLeaderboardStanding(
     FetchTraderLeaderboardStandingRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/leaderboard', {
-          signal: options.signal,
-          params: toDataSearchParams({
-            category,
-            timePeriod: window,
-            user,
-          }),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/leaderboard', {
+        schema: FetchTraderLeaderboardStandingResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({
+          category,
+          timePeriod: window,
+          user,
         }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(
-      validateWith(FetchTraderLeaderboardStandingResponseSchema, options),
-    ),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -468,6 +464,7 @@ export function listBiggestWinners(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/biggest-winners', {
+            schema: ListBiggestWinnersResponseSchema,
             signal: options.signal,
             params: toDataSearchParams({
               category,
@@ -477,7 +474,7 @@ export function listBiggestWinners(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListBiggestWinnersResponseSchema, options)),
+      ),
     cursor,
   );
 }

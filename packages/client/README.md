@@ -88,6 +88,70 @@ client extensions, and the public client returned by `endAuthentication()` retai
 these settings. Custom fetch covers SDK-owned HTTP, including authentication and
 remote signing; it does not configure a wallet provider's own network requests.
 
+## Experimental service requests
+
+`PublicClient.predictions` and `SecureClient.predictions` expose a reserved,
+unconfigured `ServiceClient` for future polymarket.com UI use. It has no service
+root or transport; its request methods reject with `UserInputError` before any
+fetch. The getter is experimental, and breaking changes may occur in any release,
+including patch releases. External consumers should use high-level SDK actions.
+Existing service getters, routes, authentication, and high-level actions retain
+their behavior.
+
+Configured service clients return promises from `get`,
+`post`, `patch`, and `del`. JSON is the default response mode. Supply the verified
+endpoint's schema and the operation's signal in the same options object; schema
+validation and transformations determine the resolved type. The following
+helper illustrates inference for an endpoint whose response is a numeric string;
+its caller supplies a configured service and endpoint path. These examples apply
+to configured services. The UI project
+needs its own `zod` dependency for this schema example (`pnpm add zod`):
+
+```ts
+import type { ServiceClient } from "@polymarket/client";
+import { z } from "zod";
+
+async function readCount(service: ServiceClient, path: string, signal: AbortSignal) {
+  return service.get(path, {
+    schema: z.string().regex(/^\d+$/).transform(Number),
+    signal,
+  });
+  // Promise<number>, inferred from the schema's output
+}
+```
+
+`service.get<ExpectedResponse>(path, { signal })` declares an unchecked JSON
+return type; it does not validate or transform the data. Without a schema or
+generic type, `service.get(path, { signal })` returns `Promise<unknown>`.
+
+All four verbs accept `schema` and `signal`. GET also accepts `params` and
+`headers`; POST and PATCH accept `json` and `headers`; DELETE accepts `json`,
+`params`, and `headers`. Explicit `responseType` values select `json`, `blob`,
+`arrayBuffer`, `text`, `empty`, or `raw`, resolving to JSON data, `Blob`,
+`ArrayBuffer`, `string`, `void`, or `Response`, respectively. Only JSON mode
+accepts a schema. Empty mode consumes and discards the successful body.
+
+Raw mode resolves when successful response headers are available. The caller
+owns subsequent body reads and their fetch errors; the signal remains attached
+to the underlying request even after the service promise resolves:
+
+```ts
+async function readRawText(service: ServiceClient, path: string, signal: AbortSignal) {
+  const response = await service.get(path, { responseType: "raw", signal });
+  return response.text();
+}
+```
+
+For parsed modes, request cancellation covers authentication resolution,
+transport, response consumption, and the check before synchronous schema
+validation. It rejects with `RequestAbortedError` and preserves the signal's
+reason as `cause`. Raw body-read failures after the service promise resolves
+come from the body read itself.
+
+The public `neverthrow` re-exports and legacy `unwrap` helper in
+`@polymarket/types` remain available for compatibility. Service requests and
+client implementation use promises directly.
+
 ## License
 
 MIT

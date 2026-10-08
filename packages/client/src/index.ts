@@ -71,5 +71,6 @@ export type {
 } from './rate-limit';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type { Fetch, RequestOptions } from './request-options';
+export * from './ServiceClient';
 export * from './types';
 export { type AccountIdentity, SignerType } from './wallet';

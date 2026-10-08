@@ -1,11 +1,15 @@
-import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
+import { z } from 'zod';
 import {
+  makeErrorGuard,
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
   TransportError,
+  UnexpectedResponseError,
+  UserInputError,
 } from './errors';
+import { parseUserInput } from './input';
 import {
   parseRateLimitHeaders,
   type RateLimitBucket,
@@ -18,10 +22,15 @@ import {
   type RequestOptions,
   withAbort,
 } from './request-options';
+import { parseResponse } from './response';
 
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type ServiceRequest = {
   signal?: AbortSignal;
-  method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
+  method: ServiceRequestMethod;
   path: string;
   body?: string;
   headers?: HeadersInit;
@@ -29,14 +38,17 @@ export type ServiceRequest = {
   params?: URLSearchParams;
 };
 
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type RequestHeadersResolver = (
   request: ServiceRequest,
 ) => Promise<HeadersInit>;
 
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type ServiceClientConfig = {
   fetch?: Fetch;
   retry?: boolean;
-  root: string;
+  /** Omit the endpoint root to create an empty client whose requests reject with UserInputError. */
+  root?: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
   onRateLimitUpdate?: RateLimitUpdateListener;
@@ -48,34 +60,131 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-type ServiceClientRequestOptions = RequestOptions & {
-  /** Rate-limit bucket supplied by the action that owns the request. */
-  rateLimitBucket?: RateLimitBucket;
-  timeout?: ServiceClientTimeout;
-  /** Disable transport retries for commands whose outcome may be uncertain. */
-  retry?: false;
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientResponseType =
+  | 'json'
+  | 'blob'
+  | 'arrayBuffer'
+  | 'text'
+  | 'empty'
+  | 'raw';
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientNonJsonResponseType = Exclude<
+  ServiceClientResponseType,
+  'json'
+>;
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+// biome-ignore-start lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
+export type ServiceClientResponse<TResponse extends ServiceClientResponseType> =
+  TResponse extends 'blob'
+    ? Blob
+    : TResponse extends 'arrayBuffer'
+      ? ArrayBuffer
+      : TResponse extends 'text'
+        ? string
+        : TResponse extends 'empty'
+          ? void
+          : TResponse extends 'raw'
+            ? Response
+            : unknown;
+// biome-ignore-end lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientJsonResponseOptions<T = unknown> = {
+  responseType?: 'json';
+  schema?: z.ZodType<T>;
 };
 
-export type ServiceClientGetOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  params?: URLSearchParams;
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientNonJsonResponseOptions<
+  TResponse extends
+    ServiceClientNonJsonResponseType = ServiceClientNonJsonResponseType,
+> = {
+  responseType: TResponse;
+  schema?: never;
 };
 
-export type ServiceClientPostOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-};
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientResponseOptions<T = unknown> =
+  | ServiceClientJsonResponseOptions<T>
+  | ServiceClientNonJsonResponseOptions;
 
-export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-};
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientRequestOptions<T = unknown> = RequestOptions &
+  ServiceClientResponseOptions<T> & {
+    /** Rate-limit bucket supplied by the action that owns the request. */
+    rateLimitBucket?: RateLimitBucket;
+    timeout?: ServiceClientTimeout;
+    /** Disable transport retries for commands whose outcome may be uncertain. */
+    retry?: false;
+  };
 
-export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-  params?: URLSearchParams;
-};
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientGetOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    params?: URLSearchParams;
+  };
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientPostOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+  };
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientPatchOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+  };
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientDeleteOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+    params?: URLSearchParams;
+  };
+
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export type ServiceClientRequestError =
+  | RateLimitError
+  | RequestAbortedError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+export const ServiceClientRequestError = makeErrorGuard(
+  RateLimitError,
+  RequestAbortedError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+const ServiceClientResponseControlsSchema = z
+  .object({
+    responseType: z
+      .enum(['json', 'blob', 'arrayBuffer', 'text', 'empty', 'raw'])
+      .optional(),
+    schema: z.unknown().optional(),
+  })
+  .refine(
+    ({ responseType, schema }) =>
+      schema === undefined ||
+      responseType === undefined ||
+      responseType === 'json',
+    {
+      path: ['schema'],
+      message: 'Schemas are supported only with JSON responses',
+    },
+  );
 
 const HTTP_DATE_MONTHS: readonly string[] = [
   'Jan',
@@ -148,10 +257,15 @@ function parseHttpDate(value: string, now: number): number | undefined {
 }
 
 /**
- * Internal wrapper around a service-scoped `ky` instance.
+ * Sends requests and consumes and validates their responses.
+ *
+ * Raw mode resolves at response headers; subsequent body consumption belongs
+ * to the caller. The operation signal remains attached to the underlying fetch.
+ *
+ * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
  */
 export class ServiceClient {
-  readonly #client: KyInstance;
+  readonly #client?: KyInstance;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
@@ -164,54 +278,100 @@ export class ServiceClient {
     fetch,
     retry,
   }: ServiceClientConfig) {
-    this.#client = ky.create({
-      prefixUrl: root,
-      throwHttpErrors: false,
-      ...(fetch === undefined ? {} : { fetch }),
-      ...(retry === false ? { retry: 0 } : {}),
-    });
+    if (root !== undefined) {
+      this.#client = ky.create({
+        prefixUrl: root,
+        throwHttpErrors: false,
+        ...(fetch === undefined ? {} : { fetch }),
+        ...(retry === false ? { retry: 0 } : {}),
+      });
+    }
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
   }
 
-  get(
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  get<T = unknown>(
     path: string,
-    options: ServiceClientGetOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+    options?: ServiceClientGetOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  get<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientGetOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  get(path: string, options: ServiceClientGetOptions): Promise<unknown>;
+  get(path: string, options: ServiceClientGetOptions = {}): Promise<unknown> {
     return this.#request('GET', path, options);
   }
 
-  post(
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  post<T = unknown>(
     path: string,
-    options: ServiceClientPostOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+    options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  post<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPostOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  post(path: string, options: ServiceClientPostOptions): Promise<unknown>;
+  post(path: string, options: ServiceClientPostOptions = {}): Promise<unknown> {
     return this.#request('POST', path, options);
   }
 
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  patch<T = unknown>(
+    path: string,
+    options?: ServiceClientPatchOptions<T> &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  patch<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPatchOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  patch(path: string, options: ServiceClientPatchOptions): Promise<unknown>;
   patch(
     path: string,
     options: ServiceClientPatchOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+  ): Promise<unknown> {
     return this.#request('PATCH', path, options);
   }
 
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  del<T = unknown>(
+    path: string,
+    options?: ServiceClientDeleteOptions<T> &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  del<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientDeleteOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  del(path: string, options: ServiceClientDeleteOptions): Promise<unknown>;
   del(
     path: string,
     options: ServiceClientDeleteOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+  ): Promise<unknown> {
     return this.#request('DELETE', path, options);
   }
 
@@ -219,27 +379,111 @@ export class ServiceClient {
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
-  #request(
-    method: ServiceRequest['method'],
+  async #request(
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
-    return this.#toResult(
-      this.#send(method, path, options),
-      options.rateLimitBucket,
-      options.signal,
-    );
+  ): Promise<unknown> {
+    const signal = options.signal;
+    try {
+      assertNotAborted(signal);
+      parseUserInput(
+        { responseType: options.responseType, schema: options.schema },
+        ServiceClientResponseControlsSchema,
+      );
+      const response = await this.#send(method, path, options);
+      assertNotAborted(signal);
+      const rateLimit = parseRateLimitHeaders(
+        response.headers,
+        options.rateLimitBucket,
+      );
+      if (rateLimit !== undefined) this.#notifyRateLimitUpdate(rateLimit);
+      if (!response.ok) {
+        const retryAfter = this.#parseRetryAfterHeader(response);
+        if (response.status === 429) {
+          throw new RateLimitError(
+            `Request to ${response.url} was rate limited`,
+            { rateLimit, retryAfter },
+          );
+        }
+        const {
+          code,
+          message,
+          retryAfter: retryAfterSeconds,
+        } = await withAbort(this.#extractResponseError(response), signal);
+        throw new RequestRejectedError(message, {
+          code,
+          retryAfter: retryAfter ?? retryAfterSeconds,
+          status: response.status,
+        });
+      }
+      return await this.#consumeResponse(response, options);
+    } catch (error) {
+      assertNotAborted(signal);
+      if (
+        error instanceof RequestAbortedError ||
+        error instanceof RateLimitError ||
+        error instanceof RequestRejectedError ||
+        error instanceof UnexpectedResponseError ||
+        error instanceof UserInputError ||
+        error instanceof TransportError
+      )
+        throw error;
+      throw TransportError.fromError(error);
+    }
+  }
+
+  async #consumeResponse(
+    response: Response,
+    options: ServiceClientRequestOptions,
+  ): Promise<unknown> {
+    const mode = options.responseType ?? 'json';
+    assertNotAborted(options.signal);
+    if (mode === 'raw') return response;
+    let value: unknown;
+    try {
+      switch (mode) {
+        case 'blob':
+          value = await withAbort(response.blob(), options.signal);
+          break;
+        case 'arrayBuffer':
+          value = await withAbort(response.arrayBuffer(), options.signal);
+          break;
+        case 'text':
+          value = await withAbort(response.text(), options.signal);
+          break;
+        case 'empty':
+          await withAbort(response.arrayBuffer(), options.signal);
+          value = undefined;
+          break;
+        case 'json':
+          value = await withAbort(response.json(), options.signal);
+          break;
+      }
+    } catch (error) {
+      assertNotAborted(options.signal);
+      if (error instanceof RequestAbortedError) throw error;
+      const message =
+        mode === 'json'
+          ? `Received non-JSON response from ${response.url}`
+          : `Received unreadable ${mode === 'blob' || mode === 'arrayBuffer' ? 'binary' : mode} response from ${response.url}`;
+      throw new UnexpectedResponseError(message);
+    }
+    assertNotAborted(options.signal);
+    if (mode === 'json' && options.schema !== undefined) {
+      const parsed = parseResponse(response.url, options.schema, value);
+      assertNotAborted(options.signal);
+      return parsed;
+    }
+    return value;
   }
 
   async #send(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -248,6 +492,12 @@ export class ServiceClient {
       | ServiceClientPostOptions,
   ): Promise<Response> {
     assertNotAborted(options.signal);
+    const client = this.#client;
+    if (client === undefined) {
+      throw new UserInputError(
+        'This service client has no configured endpoint',
+      );
+    }
     const request = this.#createRequest(method, path, options);
     const resolvedHeaders = await withAbort(
       Promise.resolve(this.#resolveHeaders?.(request)),
@@ -265,7 +515,7 @@ export class ServiceClient {
     }
 
     return withAbort(
-      this.#client(this.#normalizePath(path), {
+      client(this.#normalizePath(path), {
         body: request.body,
         headers,
         method,
@@ -279,7 +529,7 @@ export class ServiceClient {
   }
 
   #createRequest(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -320,70 +570,6 @@ export class ServiceClient {
     }
 
     return headers;
-  }
-
-  #toResult(
-    promise: Promise<Response>,
-    rateLimitBucket?: RateLimitBucket,
-    signal?: AbortSignal,
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
-    return ResultAsync.fromPromise(
-      withAbort(
-        promise.then(async (response) => {
-          assertNotAborted(signal);
-          const rateLimit = parseRateLimitHeaders(
-            response.headers,
-            rateLimitBucket,
-          );
-          if (rateLimit !== undefined) {
-            this.#notifyRateLimitUpdate(rateLimit);
-          }
-
-          if (response.ok) {
-            return response;
-          }
-
-          const retryAfter = this.#parseRetryAfterHeader(response);
-
-          if (response.status === 429) {
-            throw new RateLimitError(
-              `Request to ${response.url} was rate limited`,
-              { rateLimit, retryAfter },
-            );
-          }
-
-          const {
-            code,
-            message,
-            retryAfter: retryAfterSeconds,
-          } = await withAbort(this.#extractResponseError(response), signal);
-          throw new RequestRejectedError(message, {
-            code,
-            retryAfter: retryAfter ?? retryAfterSeconds,
-            status: response.status,
-          });
-        }),
-        signal,
-      ),
-      (error) => {
-        if (signal?.aborted)
-          return new RequestAbortedError('Request aborted', {
-            cause: signal.reason,
-          });
-        if (
-          error instanceof RequestAbortedError ||
-          error instanceof RateLimitError ||
-          error instanceof RequestRejectedError
-        ) {
-          return error;
-        }
-
-        return TransportError.fromError(error);
-      },
-    );
   }
 
   #notifyRateLimitUpdate(update: RateLimitUpdate): void {

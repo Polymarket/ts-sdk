@@ -7,7 +7,6 @@ import {
   type Tag,
   TagSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -28,7 +27,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 const ListTagsRequestSchema = z.object({
@@ -156,6 +154,7 @@ export function listTags(
 
     return client.gamma
       .get('/tags', {
+        schema: ListTagsResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -166,8 +165,7 @@ export function listTags(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListTagsResponseSchema, options))
-      .map((tags) => {
+      .then((tags) => {
         const hasMore = tags.length >= decoded.pageSize;
 
         return {
@@ -227,35 +225,29 @@ export async function fetchTag(
   const params = parseUserInput(request, FetchTagRequestSchema);
 
   if ('id' in params) {
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}`, {
-          signal: options.signal,
-          params: toSearchParams(
-            {
-              includeTemplate: params.includeTemplate,
-              locale: params.locale,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(TagSchema, options)),
-    );
+    return client.gamma.get(`tags/${params.id}`, {
+      schema: TagSchema,
+      signal: options.signal,
+      params: toSearchParams(
+        {
+          includeTemplate: params.includeTemplate,
+          locale: params.locale,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(TagSchema, options)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}`, {
+    schema: TagSchema,
+    signal: options.signal,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 export type FetchRelatedTagsError =
@@ -302,29 +294,25 @@ export async function fetchRelatedTags(
   if ('id' in request) {
     const params = parseUserInput(request, RelatedTagsByIdRequestSchema);
 
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}/related-tags`, {
-          signal: options.signal,
-          params: toSearchParams(
-            {
-              omitEmpty: params.omitEmpty,
-              status: params.status,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(ListRelatedTagsResponseSchema, options)),
-    );
+    return client.gamma.get(`tags/${params.id}/related-tags`, {
+      schema: ListRelatedTagsResponseSchema,
+      signal: options.signal,
+      params: toSearchParams(
+        {
+          omitEmpty: params.omitEmpty,
+          status: params.status,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
   const params = parseUserInput(request, RelatedTagsBySlugRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}/related-tags`, options)
-      .andThen(validateWith(ListRelatedTagsResponseSchema, options)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}/related-tags`, {
+    ...options,
+    schema: ListRelatedTagsResponseSchema,
+  });
 }
 
 export type FetchRelatedTagResourcesError =
@@ -374,21 +362,18 @@ export async function fetchRelatedTagResources(
       RelatedTagResourcesByIdRequestSchema,
     );
 
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}/related-tags/tags`, {
-          signal: options.signal,
-          params: toSearchParams(
-            {
-              locale: params.locale,
-              omitEmpty: params.omitEmpty,
-              status: params.status,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(ListRelatedTagResourcesResponseSchema, options)),
-    );
+    return client.gamma.get(`tags/${params.id}/related-tags/tags`, {
+      schema: ListRelatedTagResourcesResponseSchema,
+      signal: options.signal,
+      params: toSearchParams(
+        {
+          locale: params.locale,
+          omitEmpty: params.omitEmpty,
+          status: params.status,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
   const params = parseUserInput(
@@ -396,19 +381,16 @@ export async function fetchRelatedTagResources(
     RelatedTagResourcesBySlugRequestSchema,
   );
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}/related-tags/tags`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            locale: params.locale,
-            omitEmpty: params.omitEmpty,
-            status: params.status,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(ListRelatedTagResourcesResponseSchema, options)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}/related-tags/tags`, {
+    schema: ListRelatedTagResourcesResponseSchema,
+    signal: options.signal,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+        omitEmpty: params.omitEmpty,
+        status: params.status,
+      },
+      snakeCase(),
+    ),
+  });
 }

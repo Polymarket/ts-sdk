@@ -1,4 +1,3 @@
-import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -12,8 +11,7 @@ import {
   vi,
 } from 'vitest';
 import { z } from 'zod';
-import { readBlob, validateWith } from './response';
-import { ServiceClient } from './ServiceClient';
+import { ServiceClient, type ServiceRequest } from './ServiceClient';
 
 const root = 'http://localhost:4011';
 const server = setupServer();
@@ -40,7 +38,10 @@ describe('ServiceClient', () => {
     controller.abort(reason);
 
     await expect(
-      unwrap(client.get('/cancelled', { signal: controller.signal })),
+      client.get('/cancelled', {
+        signal: controller.signal,
+        responseType: 'raw',
+      }),
     ).rejects.toMatchObject({ name: 'RequestAbortedError', cause: reason });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -64,10 +65,11 @@ describe('ServiceClient', () => {
       return Promise.resolve(Response.json({ ok: true }));
     });
     const client = new ServiceClient({ root, fetch });
-    const cancelled = unwrap(
-      client.get('/cancelled', { signal: controller.signal }),
-    );
-    const unaffected = unwrap(client.get('/unaffected'));
+    const cancelled = client.get('/cancelled', {
+      signal: controller.signal,
+      responseType: 'raw',
+    });
+    const unaffected = client.get('/unaffected', { responseType: 'raw' });
     const requestSignal = await dispatched.promise;
     controller.abort(reason);
 
@@ -78,6 +80,444 @@ describe('ServiceClient', () => {
     await expect(unaffected).resolves.toBeInstanceOf(Response);
     expect(requestSignal.aborted).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  describe('promise response lifecycle', () => {
+    it.each([
+      'get',
+      'post',
+      'patch',
+      'del',
+    ] as const)('rejects %s on an empty client before resolving headers or fetching', async (method) => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ fetch, resolveHeaders });
+      await expect(client[method]('/unused', {})).rejects.toMatchObject({
+        name: 'UserInputError',
+        message: 'This service client has no configured endpoint',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('preserves already-aborted signal priority on an empty client', async () => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ fetch, resolveHeaders });
+      const controller = new AbortController();
+      const reason = { query: 'superseded before endpoint configuration' };
+      controller.abort(reason);
+      await expect(
+        client.get('/unused', { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'resolves',
+      'rejects',
+    ] as const)('cancels pending transport and observes a late fetch that %s', async (outcome) => {
+      const controller = new AbortController();
+      const reason = { query: 'superseded during transport' };
+      const dispatched = Promise.withResolvers<void>();
+      const transport = Promise.withResolvers<Response>();
+      let requestSignal: AbortSignal | null | undefined;
+      const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = input instanceof Request ? input.signal : init?.signal;
+        dispatched.resolve();
+        return transport.promise;
+      });
+      const transform = vi.fn((value: string) => value.length);
+      const client = new ServiceClient({ root, fetch });
+      const pending = client.get('/pending', {
+        signal: controller.signal,
+        schema: z.string().transform(transform),
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await dispatched.promise;
+      controller.abort(reason);
+      await rejection;
+      expect(requestSignal?.aborted).toBe(true);
+      expect(requestSignal?.reason).toBe(reason);
+      if (outcome === 'resolves')
+        transport.resolve(HttpResponse.json('late value'));
+      else transport.reject(new Error('late network failure'));
+      await transport.promise.catch(() => undefined);
+      await Promise.resolve();
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(transform).not.toHaveBeenCalled();
+    });
+
+    it('cancels a transport retry backoff without any subsequent dispatch', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const reason = new Error('retry no longer wanted');
+      let requestSignal: AbortSignal | null | undefined;
+      const fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requestSignal =
+            input instanceof Request ? input.signal : init?.signal;
+          throw new TypeError('connection reset');
+        },
+      );
+      const client = new ServiceClient({ root, fetch });
+      const pending = client.get('/backoff', {
+        signal: controller.signal,
+        timeout: false,
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledOnce();
+      // With request timeout disabled, the pending timer is the retry backoff.
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fetch).toHaveBeenCalledOnce();
+      controller.abort(reason);
+      await rejection;
+      expect(requestSignal?.aborted).toBe(true);
+      expect(requestSignal?.reason).toBe(reason);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('isolates cancellation between concurrent body consumers on one client', async () => {
+      const cancelledController = new AbortController();
+      const unaffectedController = new AbortController();
+      const reason = new Error('first body no longer needed');
+      const cancelledReading = Promise.withResolvers<void>();
+      const unaffectedReading = Promise.withResolvers<void>();
+      const bodies = new Map<
+        string,
+        ReadableStreamDefaultController<Uint8Array>
+      >();
+      const signals = new Map<string, AbortSignal | null | undefined>();
+      const encoder = new TextEncoder();
+      const fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const name = url.endsWith('/cancelled') ? 'cancelled' : 'unaffected';
+          const signal = input instanceof Request ? input.signal : init?.signal;
+          signals.set(name, signal);
+          let supplied = false;
+          return new Response(
+            new ReadableStream<Uint8Array>(
+              {
+                start(stream) {
+                  bodies.set(name, stream);
+                  signal?.addEventListener(
+                    'abort',
+                    () => stream.error(signal.reason),
+                    { once: true },
+                  );
+                },
+                pull(stream) {
+                  if (supplied) return;
+                  supplied = true;
+                  (name === 'cancelled'
+                    ? cancelledReading
+                    : unaffectedReading
+                  ).resolve();
+                  stream.enqueue(encoder.encode('{"value":'));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+          );
+        },
+      );
+      const client = new ServiceClient({ root, fetch });
+      const schema = z.object({ value: z.number() });
+      const cancelled = client.get('/cancelled', {
+        schema,
+        signal: cancelledController.signal,
+      });
+      const unaffected = client.get('/unaffected', {
+        schema,
+        signal: unaffectedController.signal,
+      });
+      const rejection = expect(cancelled).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await Promise.all([cancelledReading.promise, unaffectedReading.promise]);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(signals.get('cancelled')).not.toBe(signals.get('unaffected'));
+      cancelledController.abort(reason);
+      await rejection;
+      expect(signals.get('cancelled')?.aborted).toBe(true);
+      expect(signals.get('cancelled')?.reason).toBe(reason);
+      expect(unaffectedController.signal.aborted).toBe(false);
+      expect(signals.get('unaffected')?.aborted).toBe(false);
+      const remainingBody = bodies.get('unaffected');
+      if (remainingBody === undefined)
+        throw new Error('Expected the unaffected response body');
+      remainingBody.enqueue(encoder.encode('7}'));
+      remainingBody.close();
+      await expect(unaffected).resolves.toEqual({ value: 7 });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects invalid response modes and non-JSON schema combinations before dispatch', async () => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      for (const options of [
+        { responseType: 'unsupported' },
+        { responseType: 'blob', schema: z.string() },
+        { responseType: 'raw', schema: z.string() },
+      ]) {
+        await expect(
+          client.get('/unused', options as never),
+        ).rejects.toMatchObject({ name: 'UserInputError' });
+      }
+      const controller = new AbortController();
+      controller.abort('abort wins');
+      await expect(
+        client.get('/unused', {
+          signal: controller.signal,
+          responseType: 'unsupported',
+        } as never),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'abort wins',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('maps thrown schema transforms to response errors, never transport errors', async () => {
+      server.use(
+        http.get(`${root}/throwing-schema`, () => HttpResponse.json('value')),
+      );
+      const cause = new Error('transform failed');
+      const client = new ServiceClient({ root });
+      await expect(
+        client.get('/throwing-schema', {
+          schema: z.string().transform(() => {
+            throw cause;
+          }),
+        }),
+      ).rejects.toMatchObject({ name: 'UnexpectedResponseError', cause });
+    });
+
+    it('checks cancellation after parsing and before schema transformation', async () => {
+      const controller = new AbortController();
+      const reason = new Error('cancelled before validation');
+      const response = HttpResponse.json('value');
+      vi.spyOn(response, 'json').mockImplementation(async () => {
+        controller.abort(reason);
+        return 'value';
+      });
+      const transform = vi.fn((value: string) => value.length);
+      const client = new ServiceClient({ root, fetch: async () => response });
+      await expect(
+        client.get('/schema', {
+          signal: controller.signal,
+          schema: z.string().transform(transform),
+        }),
+      ).rejects.toMatchObject({ name: 'RequestAbortedError', cause: reason });
+      expect(transform).not.toHaveBeenCalled();
+    });
+
+    it('signs the exact serialized bytes sent through custom fetch', async () => {
+      const resolveHeaders = vi.fn(async (request: ServiceRequest) => ({
+        'x-signed-body': request.body ?? '',
+      }));
+      const fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request;
+        expect(await request.text()).toBe('{"count":42}');
+        expect(request.headers.get('x-signed-body')).toBe('{"count":42}');
+        expect(request.headers.get('content-type')).toBe('application/json');
+        return HttpResponse.json({ ok: true });
+      });
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      await expect(
+        client.post('/bytes', { json: { count: 42, absent: undefined } }),
+      ).resolves.toEqual({ ok: true });
+      expect(resolveHeaders).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          path: '/bytes',
+          body: '{"count":42}',
+        }),
+      );
+    });
+
+    it('leaves raw response body consumption connected to the operation signal', async () => {
+      const controller = new AbortController();
+      const reason = new Error('raw reader cancelled');
+      let requestSignal: AbortSignal | null | undefined;
+      const client = new ServiceClient({
+        root,
+        fetch: async (input, init) => {
+          requestSignal =
+            input instanceof Request ? input.signal : init?.signal;
+          return new Response(
+            new ReadableStream({
+              start(stream) {
+                requestSignal?.addEventListener(
+                  'abort',
+                  () => stream.error(reason),
+                  { once: true },
+                );
+              },
+            }),
+          );
+        },
+      });
+      const raw = await client.get('/raw', {
+        responseType: 'raw',
+        signal: controller.signal,
+      });
+      controller.abort(reason);
+      expect(requestSignal?.aborted).toBe(true);
+      await expect(raw.text()).rejects.toBe(reason);
+    });
+
+    it.each([
+      'get',
+      'post',
+      'patch',
+      'del',
+    ] as const)('parses and transforms JSON through %s', async (method) => {
+      server.use(
+        http.all(`${root}/transform`, () => HttpResponse.json({ count: '42' })),
+      );
+      const client = new ServiceClient({ root });
+      const schema = z.object({ count: z.string().transform(Number) });
+      await expect(client[method]('/transform', { schema })).resolves.toEqual({
+        count: 42,
+      });
+      await expect(client.get('/transform')).resolves.toEqual({ count: '42' });
+    });
+
+    it('owns binary, text, empty and raw response consumption', async () => {
+      server.use(
+        http.get(`${root}/bytes`, () => HttpResponse.text('download')),
+        http.delete(
+          `${root}/empty`,
+          () => new HttpResponse(null, { status: 204 }),
+        ),
+      );
+      const client = new ServiceClient({ root });
+      const blob = await client.get('/bytes', { responseType: 'blob' });
+      expect(await blob.text()).toBe('download');
+      const bytes = await client.get('/bytes', { responseType: 'arrayBuffer' });
+      expect(new TextDecoder().decode(bytes)).toBe('download');
+      await expect(
+        client.get('/bytes', { responseType: 'text' }),
+      ).resolves.toBe('download');
+      await expect(
+        client.del('/empty', { responseType: 'empty' }),
+      ).resolves.toBeUndefined();
+      await expect(
+        client.get('/bytes', { responseType: 'empty' }),
+      ).resolves.toBeUndefined();
+      const raw = await client.get('/bytes', { responseType: 'raw' });
+      expect(raw.bodyUsed).toBe(false);
+      expect(await raw.text()).toBe('download');
+    });
+
+    it('preserves JSON and schema failures as response errors with context', async () => {
+      server.use(
+        http.get(`${root}/invalid-json`, () => HttpResponse.text('not JSON')),
+        http.get(`${root}/invalid-shape`, () =>
+          HttpResponse.json({ count: 'forty two' }),
+        ),
+      );
+      const client = new ServiceClient({ root });
+      await expect(client.get('/invalid-json')).rejects.toMatchObject({
+        name: 'UnexpectedResponseError',
+        message: `Received non-JSON response from ${root}/invalid-json`,
+      });
+      await expect(
+        client.get('/invalid-shape', {
+          schema: z.object({ count: z.number() }),
+        }),
+      ).rejects.toMatchObject({
+        name: 'UnexpectedResponseError',
+        cause: expect.any(z.ZodError),
+      });
+    });
+
+    it('rejects an already aborted operation before authorization or dispatch', async () => {
+      const resolveHeaders = vi.fn(async () => ({}));
+      const fetch = vi.fn(globalThis.fetch);
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      const controller = new AbortController();
+      controller.abort('already replaced');
+      await expect(
+        client.get('/unused', { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'already replaced',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'json',
+      'text',
+    ] as const)('preserves cancellation while reading %s error bodies', async (format) => {
+      let started: () => void = () => {};
+      const reading = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const controller = new AbortController();
+      const reason = new Error('error body cancelled');
+      let supplied = false;
+      const client = new ServiceClient({
+        root,
+        retry: false,
+        fetch: async () =>
+          new Response(
+            new ReadableStream(
+              {
+                start(stream) {
+                  controller.signal.addEventListener(
+                    'abort',
+                    () => stream.error(reason),
+                    { once: true },
+                  );
+                },
+                pull(stream) {
+                  if (supplied) return;
+                  supplied = true;
+                  started();
+                  stream.enqueue(new TextEncoder().encode('partial'));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+            {
+              status: 400,
+              headers: {
+                'content-type':
+                  format === 'json' ? 'application/json' : 'text/plain',
+              },
+            },
+          ),
+      });
+      const pending = client.get('/error-body', { signal: controller.signal });
+      await reading;
+      controller.abort(reason);
+      await expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+    });
   });
 
   it.each([
@@ -93,11 +533,9 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ retry, root });
 
-    await expect(unwrap(client.get('/connection-reset'))).rejects.toMatchObject(
-      {
-        name: 'TransportError',
-      },
-    );
+    await expect(client.get('/connection-reset')).rejects.toMatchObject({
+      name: 'TransportError',
+    });
     expect(requests).toBe(attempts);
   });
 
@@ -120,9 +558,7 @@ describe('ServiceClient', () => {
       },
     });
     const controller = new AbortController();
-    const pending = unwrap(
-      client.get('/headers', { signal: controller.signal }),
-    );
+    const pending = client.get('/headers', { signal: controller.signal });
     await started;
     controller.abort('query cancelled while signing');
 
@@ -142,26 +578,39 @@ describe('ServiceClient', () => {
   it.each([
     'json',
     'blob',
+    'arrayBuffer',
+    'text',
+    'empty',
   ] as const)('preserves cancellation during %s body consumption', async (format) => {
     const controller = new AbortController();
     const reason = new Error('body read cancelled');
+    const reading = Promise.withResolvers<void>();
+    let supplied = false;
     const response = new Response(
-      new ReadableStream({
-        start(stream) {
-          stream.enqueue(new TextEncoder().encode('"partial'));
-          controller.signal.addEventListener(
-            'abort',
-            () => stream.error(reason),
-            { once: true },
-          );
+      new ReadableStream(
+        {
+          pull(stream) {
+            if (supplied) return;
+            supplied = true;
+            reading.resolve();
+            stream.enqueue(new TextEncoder().encode('"partial'));
+            controller.signal.addEventListener(
+              'abort',
+              () => stream.error(reason),
+              { once: true },
+            );
+          },
         },
-      }),
+        { highWaterMark: 0 },
+      ),
     );
     const options = { signal: controller.signal };
+    const client = new ServiceClient({ root, fetch: async () => response });
     const pending =
       format === 'json'
-        ? unwrap(validateWith(z.string(), options)(response))
-        : unwrap(readBlob(response, options));
+        ? client.get('/body', { ...options, schema: z.string() })
+        : client.get('/body', { ...options, responseType: format });
+    await reading.promise;
     controller.abort(reason);
 
     await expect(pending).rejects.toMatchObject({
@@ -178,7 +627,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/json-error'))).rejects.toMatchObject({
+    await expect(client.get('/json-error')).rejects.toMatchObject({
       message: `structured failure (${root}/json-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -195,7 +644,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
     await expect(
-      unwrap(client.del('/single-attempt', { retry: false })),
+      client.del('/single-attempt', { retry: false }),
     ).rejects.toMatchObject({ name: 'TransportError' });
     expect(requests).toBe(1);
   });
@@ -211,7 +660,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/json-error-code'))).rejects.toMatchObject({
+    await expect(client.get('/json-error-code')).rejects.toMatchObject({
       code: 'INVALID_ACCEPTANCE',
       message: `invalid acceptance (${root}/json-error-code)`,
       name: 'RequestRejectedError',
@@ -230,9 +679,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/json-error-identifier')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/json-error-identifier')).rejects.toMatchObject({
       code: 'signer_does_not_match_account',
       message: `signer_does_not_match_account (${root}/json-error-identifier)`,
       name: 'RequestRejectedError',
@@ -249,7 +696,7 @@ describe('ServiceClient', () => {
     const client = new ServiceClient({ root });
 
     await expect(
-      unwrap(client.get('/json-400-error-identifier')),
+      client.get('/json-400-error-identifier'),
     ).rejects.toMatchObject({
       code: undefined,
       name: 'RequestRejectedError',
@@ -267,7 +714,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/single-attempt'))).rejects.toMatchObject({
+    await expect(client.post('/single-attempt')).rejects.toMatchObject({
       code: 'internal_error',
       name: 'RequestRejectedError',
       status: 500,
@@ -289,13 +736,13 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/json-explicit-error-code')),
-    ).rejects.toMatchObject({
-      code: 'EXPLICIT_CODE',
-      name: 'RequestRejectedError',
-      status: 422,
-    });
+    await expect(client.get('/json-explicit-error-code')).rejects.toMatchObject(
+      {
+        code: 'EXPLICIT_CODE',
+        name: 'RequestRejectedError',
+        status: 422,
+      },
+    );
   });
 
   it('prefers JSON error fields over Cloudflare response detection', async () => {
@@ -309,9 +756,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/cloudflare-json-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/cloudflare-json-error')).rejects.toMatchObject({
       message: `structured cloudflare failure (${root}/cloudflare-json-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -331,7 +776,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/text-error'))).rejects.toMatchObject({
+    await expect(client.get('/text-error')).rejects.toMatchObject({
       message: `plain failure (${root}/text-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -351,9 +796,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/cloudflare-text-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/cloudflare-text-error')).rejects.toMatchObject({
       message: `plain cloudflare failure (${root}/cloudflare-text-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -376,7 +819,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/html-error'))).rejects.toMatchObject({
+    await expect(client.get('/html-error')).rejects.toMatchObject({
       message: `Request to ${root}/html-error was blocked by Cloudflare with status 502`,
       name: 'RequestRejectedError',
       status: 502,
@@ -402,9 +845,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.get('/headers'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.get('/headers')).resolves.toEqual({ ok: true });
   });
 
   it('identifies unreadable HTML errors when the server is unknown', async () => {
@@ -420,9 +861,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/generic-html-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/generic-html-error')).rejects.toMatchObject({
       message: `Request to ${root}/generic-html-error failed with status 502 and an unexpected HTML response body`,
       name: 'RequestRejectedError',
       status: 502,
@@ -442,9 +881,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/retry-after-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/retry-after-error')).rejects.toMatchObject({
       name: 'RequestRejectedError',
       retryAfter: 17,
       status: 503,
@@ -464,9 +901,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/retry-after-rate-limit')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/retry-after-rate-limit')).rejects.toMatchObject({
       name: 'RateLimitError',
       retryAfter: 3,
     });
@@ -480,7 +915,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/no-retry-after'))).rejects.toMatchObject({
+    await expect(client.get('/no-retry-after')).rejects.toMatchObject({
       name: 'RequestRejectedError',
       restriction: undefined,
       retryAfter: undefined,
@@ -511,9 +946,8 @@ describe('ServiceClient', () => {
               }),
         ),
       );
-      return expect(
-        unwrap(new ServiceClient({ root }).get('/retry-after-date')),
-      ).rejects;
+      return expect(new ServiceClient({ root }).get('/retry-after-date'))
+        .rejects;
     }
 
     it.each([
@@ -593,7 +1027,7 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/rate-limited-order', { rateLimitBucket: 'order' })),
+      client.post('/rate-limited-order', { rateLimitBucket: 'order' }),
     ).rejects.toMatchObject({
       name: 'RateLimitError',
       rateLimit: {
@@ -639,8 +1073,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.post('/order', { rateLimitBucket: 'order' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'order',
@@ -674,8 +1108,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.del('/order', { rateLimitBucket: 'cancel' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.del('/order', { rateLimitBucket: 'cancel' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'cancel',
@@ -702,9 +1136,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         remaining: 10,
@@ -737,8 +1169,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.post('/order', { rateLimitBucket: 'order' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'order',
@@ -758,9 +1190,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.get('/uncovered'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.get('/uncovered')).resolves.toEqual({});
     expect(updates).toEqual([]);
   });
 
@@ -780,9 +1210,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
   });
 
   it('ignores asynchronous rate-limit listener errors', async () => {
@@ -802,9 +1230,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 
@@ -817,7 +1243,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/restarting'))).rejects.toMatchObject({
+    await expect(client.post('/restarting')).rejects.toMatchObject({
       name: 'RequestRejectedError',
       restriction: undefined,
       status: 425,
@@ -840,7 +1266,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+    await expect(client.post('/post-only')).rejects.toMatchObject({
       code: 'post_only_mode',
       message: `post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
       name: 'RequestRejectedError',
@@ -865,9 +1291,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.post('/post-only-header')),
-    ).rejects.toMatchObject({
+    await expect(client.post('/post-only-header')).rejects.toMatchObject({
       code: 'post_only_mode',
       name: 'RequestRejectedError',
       retryAfter: 80,
@@ -888,7 +1312,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/binary-error'))).rejects.toMatchObject({
+    await expect(client.get('/binary-error')).rejects.toMatchObject({
       message: `Request to ${root}/binary-error failed with status 500 and unreadable response body`,
       name: 'RequestRejectedError',
       status: 500,

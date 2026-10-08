@@ -19,7 +19,6 @@ import {
   ListEventsKeysetResponseSchema,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -42,7 +41,6 @@ import {
 } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
   PositiveInt32EventIdSchema,
@@ -213,6 +211,7 @@ export function listEvents(
     (cursor) =>
       client.gamma
         .get('/events/keyset', {
+          schema: ListEventsKeysetResponseSchema,
           signal: options.signal,
           params: toEventsSearchParams({
             ...query,
@@ -221,8 +220,7 @@ export function listEvents(
               cursor === undefined ? undefined : toEventsCursor(cursor, query),
           }),
         })
-        .andThen(validateWith(ListEventsKeysetResponseSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
           nextCursor:
@@ -295,27 +293,21 @@ export async function fetchEvent(
   const params = parseUserInput(request, FetchEventRequestSchema);
 
   if ('id' in params) {
-    return unwrap(
-      client.gamma
-        .get(`events/${params.id}`, {
-          signal: options.signal,
-          params: toFetchEventByIdSearchParams(params),
-        })
-        .andThen(validateWith(EventSchema, options)),
-    );
+    return client.gamma.get(`events/${params.id}`, {
+      schema: EventSchema,
+      signal: options.signal,
+      params: toFetchEventByIdSearchParams(params),
+    });
   }
 
   const slug =
     'url' in params ? parsePolymarketSlugUrl(params.url, 'event') : params.slug;
 
-  return unwrap(
-    client.gamma
-      .get(`events/slug/${slug}`, {
-        signal: options.signal,
-        params: toFetchEventBySlugSearchParams(params),
-      })
-      .andThen(validateWith(EventSchema, options)),
-  );
+  return client.gamma.get(`events/slug/${slug}`, {
+    schema: EventSchema,
+    signal: options.signal,
+    params: toFetchEventBySlugSearchParams(params),
+  });
 }
 
 export type FetchEventTagsError =
@@ -359,11 +351,10 @@ export async function fetchEventTags(
 ): Promise<TagReference[]> {
   const params = parseUserInput(request, FetchEventTagsRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`events/${params.id}/tags`, options)
-      .andThen(validateWith(FetchEventTagsResponseSchema, options)),
-  );
+  return client.gamma.get(`events/${params.id}/tags`, {
+    ...options,
+    schema: FetchEventTagsResponseSchema,
+  });
 }
 
 const ResolutionConditionIdsSchema = z
@@ -472,19 +463,18 @@ export async function fetchResolutions(
     FetchResolutionsRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/resolutions', {
-          signal: options.signal,
-          params: toDataSearchParams({
-            questionId,
-            condition: conditionIds,
-            eventId: eventIds,
-          }),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/resolutions', {
+        schema: FetchResolutionsResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({
+          questionId,
+          condition: conditionIds,
+          eventId: eventIds,
         }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchResolutionsResponseSchema, options)),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 
@@ -548,15 +538,14 @@ export async function fetchEventLiveVolume(
     FetchEventLiveVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/live-volume', {
-          signal: options.signal,
-          params: toDataSearchParams({ eventId: eventIds }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchEventLiveVolumeResponseSchema, options)),
+  return withRateLimitRetry(
+    () =>
+      client.data.get('/v2/live-volume', {
+        schema: FetchEventLiveVolumeResponseSchema,
+        signal: options.signal,
+        params: toDataSearchParams({ eventId: eventIds }),
+      }),
+    { retry: client.retry, signal: options.signal },
   );
 }
 

@@ -22,7 +22,6 @@ import {
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
@@ -139,9 +138,9 @@ export function listBuilderTrades(
               builderCode: 'builder_code',
             }),
           ),
+          schema: PaginatedBuilderTradesSchema,
         })
-        .andThen(validateWith(PaginatedBuilderTradesSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:

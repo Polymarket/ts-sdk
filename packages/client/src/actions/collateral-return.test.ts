@@ -1,16 +1,11 @@
 import { WalletType } from '@polymarket/bindings/gamma';
-import {
-  errAsync,
-  expectEvmAddress,
-  type HexString,
-  okAsync,
-  type ResultAsync,
-} from '@polymarket/types';
-import { describe, expect, it, vi } from 'vitest';
+import { expectEvmAddress, type HexString } from '@polymarket/types';
+import { describe, expect, it, type MockInstance, vi } from 'vitest';
 import { encodeProxyCall } from '../abis';
 import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig, production } from '../environments';
 import { RequestRejectedError, UserInputError } from '../errors';
+import { ServiceClient } from '../ServiceClient';
 import type { Signer } from '../types';
 import { SignerType } from '../wallet';
 import {
@@ -235,11 +230,9 @@ describe('executeCollateralReturnPlan', () => {
   it('does not retry plan rejections', async () => {
     const { client, collateralReturnPost } = createClient({
       submitResults: [
-        errAsync(
-          new RequestRejectedError(
-            'fresh plan required: router inputs do not match the current program',
-            { status: 409 },
-          ),
+        new RequestRejectedError(
+          'fresh plan required: router inputs do not match the current program',
+          { status: 409 },
         ),
       ],
     });
@@ -254,13 +247,11 @@ describe('executeCollateralReturnPlan', () => {
   it('re-signs and resubmits after a transient relayer rejection', async () => {
     const { client, collateralReturnPost, signTypedData } = createClient({
       submitResults: [
-        errAsync(
-          new RequestRejectedError(
-            'wallet busy: another active action is in flight',
-            { status: 400 },
-          ),
+        new RequestRejectedError(
+          'wallet busy: another active action is in flight',
+          { status: 400 },
         ),
-        okAsync(jsonResponse(submitResponseWire)),
+        jsonResponse(submitResponseWire),
       ],
     });
     const plan = await planCollateralReturn(client);
@@ -275,13 +266,11 @@ describe('executeCollateralReturnPlan', () => {
   it('re-signs with the nonce from a submit nonce rejection and resubmits once', async () => {
     const { client, collateralReturnPost } = createClient({
       submitResults: [
-        errAsync(
-          new RequestRejectedError(
-            'batch nonce 7 does not match on-chain nonce 9 (https://combos-rfq-collateral-return.polymarket.com/v1/collateral-return/submit)',
-            { status: 400 },
-          ),
+        new RequestRejectedError(
+          'batch nonce 7 does not match on-chain nonce 9 (https://combos-rfq-collateral-return.polymarket.com/v1/collateral-return/submit)',
+          { status: 400 },
         ),
-        okAsync(jsonResponse(submitResponseWire)),
+        jsonResponse(submitResponseWire),
       ],
     });
     const plan = await planCollateralReturn(client);
@@ -298,23 +287,34 @@ describe('executeCollateralReturnPlan', () => {
 type CreateClientOptions = {
   walletType?: WalletType;
   planOverrides?: Partial<typeof planWire>;
-  submitResults?: Array<ResultAsync<Response, RequestRejectedError>>;
+  submitResults?: Array<Response | RequestRejectedError>;
 };
 
 function createClient(options: CreateClientOptions = {}) {
   const plan = { ...planWire, ...options.planOverrides };
   const submitQueue = [...(options.submitResults ?? [])];
 
-  const collateralReturnPost = vi.fn(
-    (path: string, _options?: { json?: unknown }) => {
-      if (path === '/v1/collateral-return/plan') {
-        return okAsync(jsonResponse(plan));
+  const collateralReturnService = new ServiceClient({
+    root: 'https://collateral-return.test',
+    retry: false,
+    fetch: async (input) => {
+      if (
+        new URL(new Request(input).url).pathname ===
+        '/v1/collateral-return/plan'
+      ) {
+        return jsonResponse(plan);
       }
-
-      return submitQueue.shift() ?? okAsync(jsonResponse(submitResponseWire));
+      const result = submitQueue.shift() ?? jsonResponse(submitResponseWire);
+      if (result instanceof Error) throw result;
+      return result;
     },
-  );
-  const relayerGet = vi.fn(() => okAsync(jsonResponse(executeParamsWire)));
+  });
+  const collateralReturnPost = vi.spyOn(collateralReturnService, 'post');
+  const relayerService = new ServiceClient({
+    root: 'https://relayer.test',
+    retry: false,
+    fetch: async () => jsonResponse(executeParamsWire),
+  });
   const ethEstimateGas = vi.fn(async () => 500_000n);
   const signTypedData = vi.fn(async () => SIGNATURE);
   const signMessage = vi.fn(async () => SIGNATURE);
@@ -333,9 +333,9 @@ function createClient(options: CreateClientOptions = {}) {
       wallet: WALLET,
       walletType: options.walletType ?? WalletType.DEPOSIT_WALLET,
     },
-    combos: { post: collateralReturnPost },
+    combos: collateralReturnService,
     environment,
-    relayer: { get: relayerGet },
+    relayer: relayerService,
     rpc: { ethEstimateGas },
     signer,
     supportsGasless: true,
@@ -349,9 +349,7 @@ function createClient(options: CreateClientOptions = {}) {
   };
 }
 
-function findSubmitPayload(
-  collateralReturnPost: ReturnType<typeof vi.fn>,
-): unknown {
+function findSubmitPayload(collateralReturnPost: MockInstance): unknown {
   const submitCall = collateralReturnPost.mock.calls.find(
     ([path]) => path === '/v1/collateral-return/submit',
   );
@@ -360,17 +358,13 @@ function findSubmitPayload(
   return (submitCall?.[1] as { json?: unknown } | undefined)?.json;
 }
 
-function countSubmitCalls(
-  collateralReturnPost: ReturnType<typeof vi.fn>,
-): number {
+function countSubmitCalls(collateralReturnPost: MockInstance): number {
   return collateralReturnPost.mock.calls.filter(
     ([path]) => path === '/v1/collateral-return/submit',
   ).length;
 }
 
-function submitPayloads(
-  collateralReturnPost: ReturnType<typeof vi.fn>,
-): unknown[] {
+function submitPayloads(collateralReturnPost: MockInstance): unknown[] {
   return collateralReturnPost.mock.calls
     .filter(([path]) => path === '/v1/collateral-return/submit')
     .map(([, options]) => (options as { json?: unknown } | undefined)?.json);

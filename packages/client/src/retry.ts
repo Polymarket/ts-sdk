@@ -1,6 +1,5 @@
-import { errAsync, ResultAsync } from '@polymarket/types';
-import { RateLimitError, RequestAbortedError } from './errors';
-import { waitForRetry, withAbort } from './request-options';
+import { RateLimitError } from './errors';
+import { assertNotAborted, waitForRetry, withAbort } from './request-options';
 
 type SleepFn = (milliseconds: number) => Promise<void>;
 
@@ -37,31 +36,26 @@ export type RateLimitRetryOptions = {
  * Apply this to idempotent requests only. Actions own that judgment: reads
  * compose it, mutations do not.
  */
-export function withRateLimitRetry<T, E>(
-  run: () => ResultAsync<T, E>,
+export async function withRateLimitRetry<T>(
+  run: () => Promise<T>,
   options: RateLimitRetryOptions,
-): ResultAsync<T, E | RequestAbortedError> {
+): Promise<T> {
   const { retries = 2, maxDelaySeconds = 5, sleep, signal } = options;
 
-  function attempt(remaining: number): ResultAsync<T, E | RequestAbortedError> {
-    if (signal?.aborted) {
-      return errAsync(
-        new RequestAbortedError('Request aborted', { cause: signal.reason }),
-      );
-    }
-    return run().orElse((error) => {
-      if (signal?.aborted) {
-        return errAsync(
-          new RequestAbortedError('Request aborted', { cause: signal.reason }),
-        );
-      }
+  let remaining = options.retry ? retries : 0;
+  while (true) {
+    assertNotAborted(signal);
+    try {
+      return await run();
+    } catch (error) {
+      assertNotAborted(signal);
       if (!(error instanceof RateLimitError) || remaining <= 0) {
-        return errAsync(error);
+        throw error;
       }
 
       const delaySeconds = error.retryAfter ?? 1;
       if (delaySeconds > maxDelaySeconds) {
-        return errAsync(error);
+        throw error;
       }
 
       // Preserve the test seam's immediate-retry behavior on ordinary sleep
@@ -73,13 +67,8 @@ export function withRateLimitRetry<T, E>(
               sleep(delaySeconds * 1000).catch(() => undefined),
               signal,
             );
-      return ResultAsync.fromPromise(
-        waiting,
-        () =>
-          new RequestAbortedError('Request aborted', { cause: signal?.reason }),
-      ).andThen(() => attempt(remaining - 1));
-    });
+      await waiting;
+      remaining -= 1;
+    }
   }
-
-  return attempt(options.retry ? retries : 0);
 }

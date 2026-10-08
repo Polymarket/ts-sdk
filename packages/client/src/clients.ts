@@ -84,6 +84,8 @@ type PublicContext = {
   /** @internal */
   onRateLimitUpdate?: RateLimitUpdateListener;
   /** @internal */
+  predictions: ServiceClient;
+  /** @internal */
   clob: ServiceClient;
   /** @internal */
   relayer: ServiceClient;
@@ -150,6 +152,16 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get environment(): EnvironmentConfig {
     return this.context.environment;
+  }
+
+  /**
+   * Reserved service client with no configured endpoint.
+   * Requests reject with {@link UserInputError} until an endpoint is provided in a future release.
+   *
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  get predictions(): ServiceClient {
+    return this.context.predictions;
   }
 
   /** @internal */
@@ -323,6 +335,10 @@ class BasePublicClient<
       fetch: config.fetch,
       retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
+      predictions: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
+      }),
       data: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,
@@ -590,6 +606,10 @@ class BaseSecureClient<
       retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
+      predictions: new ServiceClient({
+        fetch: config.fetch,
+        retry: config.retry,
+      }),
       clob: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,

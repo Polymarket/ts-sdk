@@ -1,5 +1,4 @@
 import { toPaginationCursor } from '@polymarket/bindings';
-import { okAsync } from '@polymarket/types';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PaginationLimitError,
@@ -24,7 +23,7 @@ describe('paginate', () => {
   it('retains cancellation across continuations without fetching another page', async () => {
     const controller = new AbortController();
     const fetchPage = vi.fn(() =>
-      okAsync({
+      Promise.resolve({
         items: [1],
         hasMore: true,
         nextCursor: toPaginationCursor('next'),
@@ -56,7 +55,7 @@ describe('paginate', () => {
   it('stops an aborted traversal before invoking the page dependency again', async () => {
     const controller = new AbortController();
     const fetchPage = vi.fn(() =>
-      okAsync({
+      Promise.resolve({
         items: [1],
         hasMore: true,
         nextCursor: toPaginationCursor('next'),
@@ -83,7 +82,7 @@ describe('paginate', () => {
     const paginator = paginate((cursor) => {
       requested.push(cursor);
       decodeOffsetCursor(cursor, 100, LIMITS);
-      return okAsync({
+      return Promise.resolve({
         items: cursor === undefined ? [1] : [2],
         hasMore: true,
         limitReached: cursor === boundaryCursor,
@@ -113,7 +112,7 @@ describe('paginate', () => {
     const nextCursor = encodeOffsetCursor({ offset: 300, pageSize: 100 });
     const paginator = paginate((cursor) => {
       decodeOffsetCursor(cursor, 100, LIMITS);
-      return okAsync({ items: [1], hasMore: true, nextCursor });
+      return Promise.resolve({ items: [1], hasMore: true, nextCursor });
     });
     const pages: Page<number[]>[] = [];
 
@@ -130,7 +129,7 @@ describe('paginate', () => {
     const paginator = paginate((cursor) => {
       decodeOffsetCursor(cursor, 20, LIMITS);
       fetchedPages += 1;
-      return okAsync({ items: [], hasMore: false });
+      return Promise.resolve({ items: [], hasMore: false });
     });
     const cursor = encodeOffsetCursor({ offset: 201, pageSize: 20 });
 

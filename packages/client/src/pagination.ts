@@ -2,7 +2,6 @@ import {
   type PaginationCursor,
   toPaginationCursor,
 } from '@polymarket/bindings';
-import { type ResultAsync, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import { PaginationLimitError, UserInputError } from './errors';
 
@@ -40,8 +39,8 @@ export type Paginated<T> = AsyncIterable<Page<T>> & {
 };
 
 /** @internal */
-export function paginate<T, TError>(
-  fetchPage: (cursor?: PaginationCursor) => ResultAsync<Page<T>, TError>,
+export function paginate<T>(
+  fetchPage: (cursor?: PaginationCursor) => Promise<Page<T>>,
   initialCursor?: PaginationCursor,
   emptyItems: T = [] as T,
 ): Paginated<T> {
@@ -63,7 +62,7 @@ export function paginate<T, TError>(
   function createPaginator(cursor = initialCursor): Paginated<T> {
     return {
       async firstPage() {
-        return unwrap(fetchPage(cursor));
+        return fetchPage(cursor);
       },
       from(nextCursor) {
         if (nextCursor === undefined) {
@@ -76,7 +75,7 @@ export function paginate<T, TError>(
         let currentCursor = cursor;
 
         while (true) {
-          const page = await unwrap(fetchPage(currentCursor));
+          const page = await fetchPage(currentCursor);
 
           yield page;
 
