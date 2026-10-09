@@ -34,6 +34,7 @@ import type { BaseSecureClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TransportError,
@@ -42,18 +43,21 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { toSignatureType } from '../wallet';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
 export type FetchClosedOnlyModeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const FetchClosedOnlyModeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -76,11 +80,12 @@ export const FetchClosedOnlyModeError = makeErrorGuard(
  */
 export async function fetchClosedOnlyMode(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<boolean> {
   const response = await unwrap(
     client.secureClob
-      .get('/auth/ban-status/closed-only')
-      .andThen(validateWith(ClosedOnlyModeSchema)),
+      .get('/auth/ban-status/closed-only', options)
+      .andThen(validateWith(ClosedOnlyModeSchema, options)),
   );
 
   return response.closedOnly;
@@ -114,6 +119,7 @@ export type ListOpenOrdersRequest =
       market?: string;
     };
 export type ListOpenOrdersError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -121,6 +127,7 @@ export type ListOpenOrdersError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListOpenOrdersError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -167,6 +174,7 @@ export const ListOpenOrdersError = makeErrorGuard(
 export function listOpenOrders(
   client: BaseSecureClient,
   request?: ListOpenOrdersRequest,
+  options: RequestOptions = {},
 ): Paginated<OpenOrder[]> {
   const params = parseUserInput(request, ListOpenOrdersRequestSchema);
   const { cursor } = params;
@@ -175,6 +183,7 @@ export function listOpenOrders(
     (nextCursor) =>
       client.secureClob
         .get('/data/orders', {
+          signal: options.signal,
           params: toSearchParams(
             {
               assetId: params.assetId ?? params.tokenId,
@@ -185,7 +194,7 @@ export function listOpenOrders(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(OpenOrdersPageSchema))
+        .andThen(validateWith(OpenOrdersPageSchema, options))
         .map((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
@@ -204,6 +213,7 @@ const FetchOrderRequestSchema = z.object({
 
 export type FetchOrderRequest = z.input<typeof FetchOrderRequestSchema>;
 export type FetchOrderError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -211,6 +221,7 @@ export type FetchOrderError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOrderError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -237,13 +248,14 @@ export const FetchOrderError = makeErrorGuard(
 export async function fetchOrder(
   client: BaseSecureClient,
   request: FetchOrderRequest,
+  options: RequestOptions = {},
 ): Promise<OpenOrder> {
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
   return unwrap(
     client.secureClob
-      .get(`/data/order/${params.orderId}`)
-      .andThen(validateWith(OpenOrderSchema)),
+      .get(`/data/order/${params.orderId}`, options)
+      .andThen(validateWith(OpenOrderSchema, options)),
   );
 }
 
@@ -284,6 +296,7 @@ export type ListAccountTradesRequest =
       market?: string;
     };
 export type ListAccountTradesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -291,6 +304,7 @@ export type ListAccountTradesError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListAccountTradesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -337,6 +351,7 @@ export const ListAccountTradesError = makeErrorGuard(
 export function listAccountTrades(
   client: BaseSecureClient,
   request?: ListAccountTradesRequest,
+  options: RequestOptions = {},
 ): Paginated<ClobTrade[]> {
   const params = parseUserInput(request, ListAccountTradesRequestSchema);
   const { cursor } = params;
@@ -345,6 +360,7 @@ export function listAccountTrades(
     (nextCursor) =>
       client.secureClob
         .get('/data/trades', {
+          signal: options.signal,
           params: toSearchParams(
             {
               after: params.after,
@@ -358,7 +374,7 @@ export function listAccountTrades(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(ClobTradesPageSchema))
+        .andThen(validateWith(ClobTradesPageSchema, options))
         .map((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
@@ -372,12 +388,14 @@ export function listAccountTrades(
 }
 
 export type FetchNotificationsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const FetchNotificationsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -409,15 +427,17 @@ export type DropNotificationsRequest = z.input<
  */
 export async function fetchNotifications(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<NotificationsResponse> {
   const signatureType = toSignatureType(client.account.walletType);
 
   return unwrap(
     client.secureClob
       .get('/notifications', {
+        signal: options.signal,
         params: toSearchParams({ signatureType }, snakeCase()),
       })
-      .andThen(validateWith(NotificationsResponseSchema)),
+      .andThen(validateWith(NotificationsResponseSchema, options)),
   );
 }
 
@@ -497,6 +517,7 @@ export type FetchBalanceAllowanceRequest =
     };
 
 export type FetchBalanceAllowanceError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -504,6 +525,7 @@ export type FetchBalanceAllowanceError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchBalanceAllowanceError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -531,6 +553,7 @@ export const FetchBalanceAllowanceError = makeErrorGuard(
 export async function fetchBalanceAllowance(
   client: BaseSecureClient,
   request: FetchBalanceAllowanceRequest,
+  options: RequestOptions = {},
 ): Promise<BalanceAllowanceResponse> {
   const params = parseUserInput(request, FetchBalanceAllowanceRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
@@ -538,6 +561,7 @@ export async function fetchBalanceAllowance(
   return unwrap(
     client.secureClob
       .get('/balance-allowance', {
+        signal: options.signal,
         params: toSearchParams(
           {
             assetType: params.assetType,
@@ -547,7 +571,7 @@ export async function fetchBalanceAllowance(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(BalanceAllowanceResponseSchema)),
+      .andThen(validateWith(BalanceAllowanceResponseSchema, options)),
   );
 }
 
@@ -633,6 +657,7 @@ export type FetchOrderScoringRequest = z.input<
   typeof FetchOrderScoringRequestSchema
 >;
 export type FetchOrderScoringError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -640,6 +665,7 @@ export type FetchOrderScoringError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOrderScoringError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -666,14 +692,16 @@ export const FetchOrderScoringError = makeErrorGuard(
 export async function fetchOrderScoring(
   client: BaseSecureClient,
   request: FetchOrderScoringRequest,
+  options: RequestOptions = {},
 ): Promise<boolean> {
   const params = parseUserInput(request, FetchOrderScoringRequestSchema);
   const response = await unwrap(
     client.secureClob
       .get('/order-scoring', {
+        signal: options.signal,
         params: toSearchParams(params, snakeCase()),
       })
-      .andThen(validateWith(OrderScoringResponseSchema)),
+      .andThen(validateWith(OrderScoringResponseSchema, options)),
   );
 
   return response.scoring;
@@ -687,6 +715,7 @@ export type FetchOrdersScoringRequest = z.input<
   typeof FetchOrdersScoringRequestSchema
 >;
 export type FetchOrdersScoringError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -694,6 +723,7 @@ export type FetchOrdersScoringError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOrdersScoringError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -720,16 +750,15 @@ export const FetchOrdersScoringError = makeErrorGuard(
 export async function fetchOrdersScoring(
   client: BaseSecureClient,
   request: FetchOrdersScoringRequest,
+  options: RequestOptions = {},
 ): Promise<OrdersScoringResponse> {
   const params = parseUserInput(request, FetchOrdersScoringRequestSchema);
   const body = params.orderIds;
 
   return unwrap(
     client.secureClob
-      .post('/orders-scoring', {
-        json: body,
-      })
-      .andThen(validateWith(OrdersScoringResponseSchema)),
+      .post('/orders-scoring', { signal: options.signal, json: body })
+      .andThen(validateWith(OrdersScoringResponseSchema, options)),
   );
 }
 
@@ -742,6 +771,7 @@ export type ListUserEarningsForDayRequest = z.input<
   typeof ListUserEarningsForDayRequestSchema
 >;
 export type ListUserEarningsForDayError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -749,6 +779,7 @@ export type ListUserEarningsForDayError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListUserEarningsForDayError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -795,6 +826,7 @@ export const ListUserEarningsForDayError = makeErrorGuard(
 export function listUserEarningsForDay(
   client: BaseSecureClient,
   request: ListUserEarningsForDayRequest,
+  options: RequestOptions = {},
 ): Paginated<UserEarning[]> {
   const { cursor, ...params } = parseUserInput(
     request,
@@ -806,6 +838,7 @@ export function listUserEarningsForDay(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user', {
+          signal: options.signal,
           params: toSearchParams(
             {
               ...params,
@@ -815,7 +848,7 @@ export function listUserEarningsForDay(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserEarningsPageSchema))
+        .andThen(validateWith(UserEarningsPageSchema, options))
         .map((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
@@ -832,6 +865,7 @@ export type FetchTotalEarningsForUserForDayRequest = z.input<
   typeof ListUserEarningsForDayRequestSchema
 >;
 export type FetchTotalEarningsForUserForDayError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -839,6 +873,7 @@ export type FetchTotalEarningsForUserForDayError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTotalEarningsForUserForDayError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -865,6 +900,7 @@ export const FetchTotalEarningsForUserForDayError = makeErrorGuard(
 export async function fetchTotalEarningsForUserForDay(
   client: BaseSecureClient,
   request: FetchTotalEarningsForUserForDayRequest,
+  options: RequestOptions = {},
 ): Promise<TotalUserEarning[]> {
   const params = parseUserInput(request, ListUserEarningsForDayRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
@@ -872,6 +908,7 @@ export async function fetchTotalEarningsForUserForDay(
   return unwrap(
     client.secureClob
       .get('/rewards/user/total', {
+        signal: options.signal,
         params: toSearchParams(
           {
             ...params,
@@ -880,7 +917,7 @@ export async function fetchTotalEarningsForUserForDay(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(TotalUserEarningsResponseSchema)),
+      .andThen(validateWith(TotalUserEarningsResponseSchema, options)),
   );
 }
 
@@ -897,6 +934,7 @@ export type ListUserEarningsAndMarketsConfigRequest = z.input<
   typeof ListUserEarningsAndMarketsConfigRequestSchema
 >;
 export type ListUserEarningsAndMarketsConfigError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -904,6 +942,7 @@ export type ListUserEarningsAndMarketsConfigError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListUserEarningsAndMarketsConfigError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -950,6 +989,7 @@ export const ListUserEarningsAndMarketsConfigError = makeErrorGuard(
 export function listUserEarningsAndMarketsConfig(
   client: BaseSecureClient,
   request: ListUserEarningsAndMarketsConfigRequest,
+  options: RequestOptions = {},
 ): Paginated<UserRewardsEarning[]> {
   const { cursor, ...params } = parseUserInput(
     request,
@@ -961,6 +1001,7 @@ export function listUserEarningsAndMarketsConfig(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user/markets', {
+          signal: options.signal,
           params: toSearchParams(
             {
               ...params,
@@ -970,7 +1011,7 @@ export function listUserEarningsAndMarketsConfig(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserRewardsEarningsPageSchema))
+        .andThen(validateWith(UserRewardsEarningsPageSchema, options))
         .map((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
@@ -984,12 +1025,14 @@ export function listUserEarningsAndMarketsConfig(
 }
 
 export type FetchRewardPercentagesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const FetchRewardPercentagesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -1012,14 +1055,16 @@ export const FetchRewardPercentagesError = makeErrorGuard(
  */
 export async function fetchRewardPercentages(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<RewardsPercentages> {
   const signatureType = toSignatureType(client.account.walletType);
 
   return unwrap(
     client.secureClob
       .get('/rewards/user/percentages', {
+        signal: options.signal,
         params: toSearchParams({ signatureType }, snakeCase()),
       })
-      .andThen(validateWith(RewardsPercentagesSchema)),
+      .andThen(validateWith(RewardsPercentagesSchema, options)),
   );
 }

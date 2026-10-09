@@ -10,6 +10,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -23,6 +24,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
@@ -48,12 +50,14 @@ export type ListSeriesRequest = z.input<typeof ListSeriesRequestSchema>;
 export type FetchSeriesRequest = z.input<typeof FetchSeriesRequestSchema>;
 
 export type ListSeriesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListSeriesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -102,6 +106,7 @@ export const ListSeriesError = makeErrorGuard(
 export function listSeries(
   client: BaseClient,
   request: ListSeriesRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Series[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -113,6 +118,7 @@ export function listSeries(
 
     return client.gamma
       .get('/series', {
+        signal: options.signal,
         params: toSearchParams(
           {
             ...params,
@@ -122,7 +128,7 @@ export function listSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListSeriesResponseSchema))
+      .andThen(validateWith(ListSeriesResponseSchema, options))
       .map((series) => {
         const hasMore = series.length >= decoded.pageSize;
 
@@ -141,12 +147,14 @@ export function listSeries(
 }
 
 export type FetchSeriesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSeriesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -176,12 +184,14 @@ export const FetchSeriesError = makeErrorGuard(
 export async function fetchSeries(
   client: BaseClient,
   request: FetchSeriesRequest,
+  options: RequestOptions = {},
 ): Promise<Series> {
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
   return unwrap(
     client.gamma
       .get(`series/${params.id}`, {
+        signal: options.signal,
         params: toSearchParams(
           {
             locale: params.locale,
@@ -189,6 +199,6 @@ export async function fetchSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(SeriesSchema)),
+      .andThen(validateWith(SeriesSchema, options)),
   );
 }

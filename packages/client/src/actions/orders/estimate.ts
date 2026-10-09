@@ -13,12 +13,14 @@ import {
   InsufficientLiquidityError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import type { RequestOptions } from '../../request-options';
 import { fetchOrderBook } from '../clob';
 import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 
@@ -138,6 +140,7 @@ const EstimateMarketPriceRequestSchema = z
 >;
 
 export type EstimateMarketPriceError =
+  | RequestAbortedError
   | InsufficientLiquidityError
   | RateLimitError
   | RequestRejectedError
@@ -145,6 +148,7 @@ export type EstimateMarketPriceError =
   | UnexpectedResponseError
   | UserInputError;
 export const EstimateMarketPriceError = makeErrorGuard(
+  RequestAbortedError,
   InsufficientLiquidityError,
   RateLimitError,
   RequestRejectedError,
@@ -186,16 +190,21 @@ export const EstimateMarketPriceError = makeErrorGuard(
 export async function estimateMarketPrice(
   client: BaseClient,
   request: EstimateMarketPriceRequest,
+  options: RequestOptions = {},
 ): Promise<number> {
   const params = parseUserInput(request, EstimateMarketPriceRequestSchema);
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
-  return resolveEstimatedMarketPrice(client, {
-    amount,
-    assetId: params.assetId,
-    orderType: params.orderType,
-    side: params.side,
-  });
+  return resolveEstimatedMarketPrice(
+    client,
+    {
+      amount,
+      assetId: params.assetId,
+      orderType: params.orderType,
+      side: params.side,
+    },
+    options,
+  );
 }
 
 /** @internal */
@@ -207,10 +216,15 @@ export async function resolveEstimatedMarketPrice(
     orderType: OrderType;
     side: OrderSide;
   },
+  options: RequestOptions = {},
 ): Promise<number> {
-  const orderBook = await fetchOrderBook(client, {
-    assetId: params.assetId,
-  });
+  const orderBook = await fetchOrderBook(
+    client,
+    {
+      assetId: params.assetId,
+    },
+    options,
+  );
 
   return resolveMarketPriceFromOrderBook({
     amount: params.amount,

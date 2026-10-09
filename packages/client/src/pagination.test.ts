@@ -1,7 +1,11 @@
 import { toPaginationCursor } from '@polymarket/bindings';
 import { okAsync } from '@polymarket/types';
-import { describe, expect, it } from 'vitest';
-import { PaginationLimitError, UserInputError } from './errors';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  PaginationLimitError,
+  RequestAbortedError,
+  UserInputError,
+} from './errors';
 import {
   decodeOffsetCursor,
   encodeKeysetCursor,
@@ -12,10 +16,66 @@ import {
   paginate,
   readCursorPayload,
 } from './pagination';
+import { assertNotAborted } from './request-options';
 
 const LIMITS = { maxOffset: 200, maxPageSize: 100 };
 
 describe('paginate', () => {
+  it('retains cancellation across continuations without fetching another page', async () => {
+    const controller = new AbortController();
+    const fetchPage = vi.fn(() =>
+      okAsync({
+        items: [1],
+        hasMore: true,
+        nextCursor: toPaginationCursor('next'),
+      }),
+    );
+    const paginator = paginate(() => {
+      assertNotAborted(controller.signal);
+      return fetchPage();
+    });
+    const first = await paginator.firstPage();
+    const continuation = paginator.from(first.nextCursor);
+    await continuation.firstPage();
+    controller.abort('query disposed');
+
+    await expect(
+      continuation.from(first.nextCursor).firstPage(),
+    ).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: 'query disposed',
+    });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    await expect(paginator.from(undefined).firstPage()).resolves.toMatchObject({
+      items: [],
+      hasMore: false,
+    });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops an aborted traversal before invoking the page dependency again', async () => {
+    const controller = new AbortController();
+    const fetchPage = vi.fn(() =>
+      okAsync({
+        items: [1],
+        hasMore: true,
+        nextCursor: toPaginationCursor('next'),
+      }),
+    );
+    const paginator = paginate(() => {
+      assertNotAborted(controller.signal);
+      return fetchPage();
+    });
+    async function consume() {
+      for await (const page of paginator) {
+        expect(page.items).toEqual([1]);
+        controller.abort();
+      }
+    }
+    await expect(consume()).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(fetchPage).toHaveBeenCalledTimes(1);
+  });
+
   it('yields a depth-limited page and stops without following its cursor', async () => {
     const boundaryCursor = encodeOffsetCursor({ offset: 200, pageSize: 100 });
     const nextCursor = encodeOffsetCursor({ offset: 300, pageSize: 100 });

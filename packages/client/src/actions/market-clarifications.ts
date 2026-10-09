@@ -9,6 +9,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -22,6 +23,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
@@ -49,12 +51,14 @@ export type ListMarketClarificationsRequest = z.input<
 >;
 
 export type ListMarketClarificationsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListMarketClarificationsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -103,6 +107,7 @@ export const ListMarketClarificationsError = makeErrorGuard(
 export function listMarketClarifications(
   client: BaseClient,
   request: ListMarketClarificationsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<MarketClarification[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -114,6 +119,7 @@ export function listMarketClarifications(
 
     return client.gamma
       .get('/market-clarifications', {
+        signal: options.signal,
         params: toSearchParams(
           {
             ...params,
@@ -123,7 +129,7 @@ export function listMarketClarifications(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListMarketClarificationsResponseSchema))
+      .andThen(validateWith(ListMarketClarificationsResponseSchema, options))
       .map((clarifications) => {
         const hasMore = clarifications.length >= decoded.pageSize;
 

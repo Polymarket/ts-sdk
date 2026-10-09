@@ -14,6 +14,7 @@ import {
 } from '@polymarket/types';
 import { AbiParameters, Bytes, ContractAddress, Hash } from 'ox';
 import type { EnvironmentConfig, WalletDerivationConfig } from './environments';
+import type { RequestOptions } from './request-options';
 import type { JsonRpcClient } from './rpc';
 import { isJsonRpcContractRevert } from './rpc';
 
@@ -265,12 +266,16 @@ function depositWalletBeaconInitCodeHash(
 export async function getDepositWalletFactoryBeacon(
   rpc: JsonRpcClient,
   factory: EvmAddress,
+  options?: RequestOptions,
 ): Promise<EvmAddress> {
   try {
-    const data = await rpc.ethCall({
-      to: factory,
-      data: FACTORY_BEACON_SELECTOR,
-    });
+    const data = await rpc.ethCall(
+      {
+        to: factory,
+        data: FACTORY_BEACON_SELECTOR,
+      },
+      options,
+    );
 
     return decodeAddressReturnData(data);
   } catch (error) {
@@ -286,8 +291,9 @@ export async function getDepositWalletFactoryBeacon(
 export async function isBeaconDepositWalletFactory(
   rpc: JsonRpcClient,
   factory: EvmAddress,
+  options?: RequestOptions,
 ): Promise<boolean> {
-  const beacon = await getDepositWalletFactoryBeacon(rpc, factory);
+  const beacon = await getDepositWalletFactoryBeacon(rpc, factory, options);
 
   return !isSameEvmAddress(beacon, ZERO_ADDRESS);
 }
@@ -297,8 +303,15 @@ export async function deriveCurrentDepositWalletAddress(
   rpc: JsonRpcClient,
   signer: EvmAddress,
   config: WalletDerivationConfig,
+  options?: RequestOptions,
 ): Promise<EvmAddress> {
-  if (await isBeaconDepositWalletFactory(rpc, config.depositWalletFactory)) {
+  if (
+    await isBeaconDepositWalletFactory(
+      rpc,
+      config.depositWalletFactory,
+      options,
+    )
+  ) {
     return deriveBeaconDepositWalletAddress(signer, config);
   }
 
