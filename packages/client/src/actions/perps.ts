@@ -831,7 +831,7 @@ export async function fetchPerpsFees(
 ): Promise<PerpsFeeScheduleEntry[]> {
   const response = await client.perps.get('/v1/info/fees', {
     schema: FetchPerpsFeesResponseSchema,
-    ...options,
+    signal: options.signal,
   });
 
   return response.feeSchedule;
