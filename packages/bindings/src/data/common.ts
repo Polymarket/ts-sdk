@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ProtocolConditionIdSchema } from '../protocol';
 import { type ConditionId, ConditionIdSchema, toConditionId } from '../shared';
 
 export enum ActivityType {
@@ -58,7 +59,9 @@ function isSupportedMarketConditionId(conditionId: ConditionId): boolean {
   const normalizedConditionId = conditionId.toLowerCase();
   return (
     normalizedConditionId.startsWith('0x01') ||
-    normalizedConditionId.startsWith('0x02')
+    normalizedConditionId.startsWith('0x02') ||
+    (normalizedConditionId.startsWith('0x04') &&
+      ProtocolConditionIdSchema.safeParse(normalizedConditionId).success)
   );
 }
 

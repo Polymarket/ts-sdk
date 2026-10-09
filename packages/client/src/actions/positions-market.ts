@@ -4,13 +4,66 @@ import type {
   PositionId,
   TokenId,
 } from '@polymarket/bindings';
+import { ConditionIdSchema } from '@polymarket/bindings';
 import { type Market, ProtocolVersion } from '@polymarket/bindings/gamma';
+import {
+  decodeProtocolConditionId,
+  deriveProtocolPositionId,
+  ProtocolConditionIdSchema,
+  ProtocolModule,
+} from '@polymarket/bindings/protocol';
 import { isPresent } from '@polymarket/types';
+import { z } from 'zod';
 import { UnexpectedResponseError } from '../errors';
+import { isV2ConditionId } from '../protocol';
 
 export enum PositionProtocol {
   CTF = 'ctf',
   V2 = 'v2',
+}
+
+// Legacy IDs are full-width hashes outside the reserved V2 namespace. Select
+// the namespace before validating module-specific fields so a coincidental
+// legacy hash prefix cannot route to a native module.
+export const PositionConditionIdSchema = z.union([
+  ConditionIdSchema.refine(isV2ConditionId)
+    .transform(String)
+    .pipe(ProtocolConditionIdSchema),
+  ConditionIdSchema.refine(
+    (conditionId) => !isV2ConditionId(conditionId),
+    'Expected a supported structured V2 condition ID',
+  ),
+]);
+
+export type V2ConditionPositionContext = {
+  protocol: PositionProtocol.V2;
+  conditionId: ConditionId;
+  outcomeIds: [yes: PositionId, no: PositionId];
+};
+
+/**
+ * Resolves a validated native condition without a market listing. Combo
+ * conditions are excluded and keep their existing resolution path.
+ */
+export function resolveV2ConditionPositionContext(
+  conditionId: ConditionId,
+): V2ConditionPositionContext | undefined {
+  if (
+    conditionId.length !== 64 ||
+    decodeProtocolConditionId(conditionId).moduleId ===
+      ProtocolModule.Combinatorial
+  ) {
+    return undefined;
+  }
+
+  return {
+    protocol: PositionProtocol.V2,
+    conditionId,
+    outcomeIds: [
+      deriveProtocolPositionId(conditionId, 0),
+      deriveProtocolPositionId(conditionId, 1),
+    ],
+  };
 }
 
 type MarketPositionContextBase = {
