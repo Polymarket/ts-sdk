@@ -41,7 +41,7 @@ import {
   type Spreads,
   SpreadsSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
+
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -56,7 +56,6 @@ import {
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { exchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
@@ -115,14 +114,11 @@ export async function fetchMidpoint(
   options: RequestOptions = {},
 ): Promise<DecimalString> {
   const params = parseUserInput(request, FetchMidpointRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/midpoint', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(MidpointSchema, options)),
-  );
+  const response = await client.clob.get('/midpoint', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: MidpointSchema,
+  });
 
   return response.mid;
 }
@@ -188,14 +184,11 @@ export async function fetchMidpoints(
 ): Promise<Midpoints> {
   const params = parseUserInput(request, FetchMidpointsRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('midpoints', {
-        signal: options.signal,
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(MidpointsSchema, options)),
-  );
+  return client.clob.post('midpoints', {
+    signal: options.signal,
+    json: toTokenRequestPayload(params),
+    schema: MidpointsSchema,
+  });
 }
 
 const FetchTickSizeRequestSchema = exchangeAssetRequestSchema({});
@@ -252,14 +245,11 @@ export async function fetchTickSize(
   options: RequestOptions = {},
 ): Promise<TickSizeValue> {
   const params = parseUserInput(request, FetchTickSizeRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/tick-size', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchTickSizeResponseSchema, options)),
-  );
+  const response = await client.clob.get('/tick-size', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: FetchTickSizeResponseSchema,
+  });
 
   return response.minimumTickSize;
 }
@@ -318,14 +308,11 @@ export async function fetchNegRisk(
   options: RequestOptions = {},
 ): Promise<boolean> {
   const params = parseUserInput(request, FetchNegRiskRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/neg-risk', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchNegRiskResponseSchema, options)),
-  );
+  const response = await client.clob.get('/neg-risk', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: FetchNegRiskResponseSchema,
+  });
 
   return response.negRisk;
 }
@@ -376,10 +363,9 @@ export async function resolveConditionByToken(
 ): Promise<ConditionId> {
   const params = parseUserInput(request, ResolveConditionByTokenRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/markets-by-token/${params.assetId ?? params.tokenId}`, options)
-      .andThen(validateWith(ResolveConditionByTokenResponseSchema, options)),
+  return client.clob.get(
+    `/markets-by-token/${params.assetId ?? params.tokenId}`,
+    { ...options, schema: ResolveConditionByTokenResponseSchema },
   );
 }
 
@@ -423,11 +409,10 @@ export async function fetchMarketInfo(
 ): Promise<MarketInfo> {
   const params = parseUserInput(request, FetchMarketInfoRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/clob-markets/${params.conditionId}`, options)
-      .andThen(validateWith(FetchMarketInfoResponseSchema, options)),
-  );
+  return client.clob.get(`/clob-markets/${params.conditionId}`, {
+    ...options,
+    schema: FetchMarketInfoResponseSchema,
+  });
 }
 
 const FetchBuilderFeeRatesRequestSchema = z.object({
@@ -470,21 +455,21 @@ export async function fetchBuilderFeeRates(
 ): Promise<BuilderFeeRates> {
   const params = parseUserInput(request, FetchBuilderFeeRatesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/fees/builder-fees/${params.builderCode}`, options)
-      .andThen(validateWith(FetchBuilderFeeRatesResponseSchema, options))
-      .mapErr((error) => {
-        if (error instanceof RequestRejectedError && error.status === 404) {
-          return new UserInputError(
-            `Unknown builder code: ${params.builderCode}`,
-            { cause: error },
-          );
-        }
+  return client.clob
+    .get(`/fees/builder-fees/${params.builderCode}`, {
+      ...options,
+      schema: FetchBuilderFeeRatesResponseSchema,
+    })
+    .catch((error) => {
+      if (error instanceof RequestRejectedError && error.status === 404) {
+        throw new UserInputError(
+          `Unknown builder code: ${params.builderCode}`,
+          { cause: error },
+        );
+      }
 
-        return error;
-      }),
-  );
+      throw error;
+    });
 }
 
 const FetchPriceRequestSchema = exchangeAssetRequestSchema({
@@ -547,14 +532,11 @@ export async function fetchPrice(
   options: RequestOptions = {},
 ): Promise<DecimalString> {
   const params = parseUserInput(request, FetchPriceRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/price', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(PriceSchema, options)),
-  );
+  const response = await client.clob.get('/price', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: PriceSchema,
+  });
 
   return response.price;
 }
@@ -623,14 +605,11 @@ export async function fetchPrices(
 ): Promise<Prices> {
   const params = parseUserInput(request, FetchPricesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('prices', {
-        signal: options.signal,
-        json: toTokenWithSideRequestPayload(params),
-      })
-      .andThen(validateWith(PricesSchema, options)),
-  );
+  return client.clob.post('prices', {
+    signal: options.signal,
+    json: toTokenWithSideRequestPayload(params),
+    schema: PricesSchema,
+  });
 }
 
 const FetchOrderBookRequestSchema = exchangeAssetRequestSchema({});
@@ -688,14 +667,11 @@ export async function fetchOrderBook(
 ): Promise<OrderBook> {
   const params = parseUserInput(request, FetchOrderBookRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get('/book', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchOrderBookResponseSchema, options)),
-  );
+  return client.clob.get('/book', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: FetchOrderBookResponseSchema,
+  });
 }
 
 const FetchOrderBooksRequestSchema = z
@@ -758,14 +734,11 @@ export async function fetchOrderBooks(
 ): Promise<OrderBook[]> {
   const params = parseUserInput(request, FetchOrderBooksRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('books', {
-        signal: options.signal,
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(OrderBooksSchema, options)),
-  );
+  return client.clob.post('books', {
+    signal: options.signal,
+    json: toTokenRequestPayload(params),
+    schema: OrderBooksSchema,
+  });
 }
 
 const FetchSpreadRequestSchema = exchangeAssetRequestSchema({});
@@ -823,14 +796,11 @@ export async function fetchSpread(
   options: RequestOptions = {},
 ): Promise<DecimalString> {
   const params = parseUserInput(request, FetchSpreadRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/spread', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(SpreadSchema, options)),
-  );
+  const response = await client.clob.get('/spread', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: SpreadSchema,
+  });
 
   return response.spread;
 }
@@ -896,14 +866,11 @@ export async function fetchSpreads(
 ): Promise<Spreads> {
   const params = parseUserInput(request, FetchSpreadsRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('spreads', {
-        signal: options.signal,
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(SpreadsSchema, options)),
-  );
+  return client.clob.post('spreads', {
+    signal: options.signal,
+    json: toTokenRequestPayload(params),
+    schema: SpreadsSchema,
+  });
 }
 
 const FetchLastTradePriceRequestSchema = exchangeAssetRequestSchema({});
@@ -964,14 +931,11 @@ export async function fetchLastTradePrice(
 ): Promise<LastTradePrice | null> {
   const params = parseUserInput(request, FetchLastTradePriceRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get('/last-trade-price', {
-        signal: options.signal,
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(LastTradePriceSchema, options)),
-  );
+  return client.clob.get('/last-trade-price', {
+    signal: options.signal,
+    params: toAssetSearchParams(params),
+    schema: LastTradePriceSchema,
+  });
 }
 
 const FetchLastTradePricesRequestSchema = z
@@ -1034,14 +998,11 @@ export async function fetchLastTradePrices(
 ): Promise<LastTradePriceForAsset[]> {
   const params = parseUserInput(request, FetchLastTradePricesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('last-trades-prices', {
-        signal: options.signal,
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(LastTradePricesSchema, options)),
-  );
+  return client.clob.post('last-trades-prices', {
+    signal: options.signal,
+    json: toTokenRequestPayload(params),
+    schema: LastTradePricesSchema,
+  });
 }
 
 const ListCurrentRewardsRequestSchema = z
@@ -1125,9 +1086,9 @@ export function listCurrentRewards(
             },
             snakeCase(),
           ),
+          schema: PaginatedCurrentRewardsSchema,
         })
-        .andThen(validateWith(PaginatedCurrentRewardsSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -1225,9 +1186,9 @@ export function listMarketRewards(
             },
             snakeCase(),
           ),
+          schema: PaginatedMarketRewardsSchema,
         })
-        .andThen(validateWith(PaginatedMarketRewardsSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:

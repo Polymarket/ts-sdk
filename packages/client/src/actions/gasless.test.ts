@@ -1,15 +1,10 @@
 import { WalletType } from '@polymarket/bindings/gamma';
-import {
-  errAsync,
-  expectEvmAddress,
-  expectHexString,
-  okAsync,
-  type ResultAsync,
-} from '@polymarket/types';
-import { describe, expect, it, vi } from 'vitest';
+import { expectEvmAddress, expectHexString } from '@polymarket/types';
+import { describe, expect, it, type MockInstance, vi } from 'vitest';
 import type { BaseSecureClient } from '../clients';
 import { forkEnvironmentConfig } from '../environments';
 import { RequestRejectedError } from '../errors';
+import { ServiceClient } from '../ServiceClient';
 import type { Signer } from '../types';
 import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
@@ -37,13 +32,11 @@ describe('prepareGaslessTransaction', () => {
   it('re-signs with the nonce from a submit nonce rejection and resubmits once', async () => {
     const { client, relayerPost } = createClient({
       submitResults: [
-        errAsync(
-          new RequestRejectedError(
-            'batch nonce 3 does not match on-chain nonce 7 (https://relayer.polymarket.com/submit)',
-            { status: 400 },
-          ),
+        new RequestRejectedError(
+          'batch nonce 3 does not match on-chain nonce 7 (https://relayer.polymarket.com/submit)',
+          { status: 400 },
         ),
-        okAsync(jsonResponse(submitResponseWire)),
+        jsonResponse(submitResponseWire),
       ],
     });
 
@@ -57,17 +50,24 @@ describe('prepareGaslessTransaction', () => {
 });
 
 type CreateClientOptions = {
-  submitResults?: Array<ResultAsync<Response, RequestRejectedError>>;
+  submitResults?: Array<Response | RequestRejectedError>;
 };
 
 function createClient(options: CreateClientOptions = {}) {
   const submitQueue = [...(options.submitResults ?? [])];
 
-  const relayerGet = vi.fn(() => okAsync(jsonResponse(executeParamsWire)));
-  const relayerPost = vi.fn(
-    (_path: string, _options?: { json?: unknown }) =>
-      submitQueue.shift() ?? okAsync(jsonResponse(submitResponseWire)),
-  );
+  const relayerService = new ServiceClient({
+    root: 'https://relayer.test',
+    retry: false,
+    fetch: async (input) => {
+      if (new Request(input).method === 'GET')
+        return jsonResponse(executeParamsWire);
+      const result = submitQueue.shift() ?? jsonResponse(submitResponseWire);
+      if (result instanceof Error) throw result;
+      return result;
+    },
+  });
+  const relayerPost = vi.spyOn(relayerService, 'post');
 
   const signer = {
     getAddress: async () => SIGNER,
@@ -84,7 +84,7 @@ function createClient(options: CreateClientOptions = {}) {
       walletType: WalletType.DEPOSIT_WALLET,
     },
     environment,
-    relayer: { get: relayerGet, post: relayerPost },
+    relayer: relayerService,
     signer,
     supportsGasless: true,
   } as unknown as BaseSecureClient;
@@ -103,7 +103,7 @@ async function executeRepresentativeGaslessTransaction(
   return completeWith(client.signer)(workflow);
 }
 
-function submitPayloads(relayerPost: ReturnType<typeof vi.fn>): unknown[] {
+function submitPayloads(relayerPost: MockInstance): unknown[] {
   return relayerPost.mock.calls
     .filter(([path]) => path === '/submit')
     .map(([, options]) => (options as { json?: unknown } | undefined)?.json);

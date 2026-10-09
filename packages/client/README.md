@@ -88,6 +88,47 @@ client extensions, and the public client returned by `endAuthentication()` retai
 these settings. Custom fetch covers SDK-owned HTTP, including authentication and
 remote signing; it does not configure a wallet provider's own network requests.
 
+## Experimental service requests
+
+`PublicClient.predictions` and `SecureClient.predictions` send requests to the
+endpoint used by the polymarket.com UI. This getter is experimental and is not
+intended for external consumers, who should use the high-level SDK actions.
+Breaking changes may occur in any release, including patch releases.
+
+Production requests go to `https://api.defi.polymarket.com`. Environment forks
+can override `predictions.rest` and `predictions.headers`. Trading credentials
+are not attached automatically, so callers supply any headers the endpoint
+requires.
+
+```ts
+const markets = await client.predictions.get("/next/markets", {
+  params: new URLSearchParams({ page_size: "1", closed: "false" }),
+  signal,
+});
+```
+
+Requests resolve parsed JSON and reject with SDK errors. Pass a `zod@^4` schema
+to validate the response and infer its type, or set `responseType` for `blob`,
+`arrayBuffer`, `text`, `empty` or `raw` responses. A `raw` response
+resolves for every status, including 4xx, so the caller can check
+`response.ok` and read the error body.
+
+## Removed `neverthrow` re-exports
+
+`@polymarket/types` no longer re-exports `neverthrow` APIs or the `unwrap`
+helper. Applications that still use `neverthrow` must add it as their own
+dependency and import from it directly:
+
+```ts
+// Before
+import { ResultAsync, ok } from "@polymarket/types";
+```
+
+```ts
+// After
+import { ResultAsync, ok } from "neverthrow";
+```
+
 ## License
 
 MIT

@@ -4,7 +4,6 @@ import {
   type PerpsPositionSnapshots,
   PerpsPositionSnapshotsSchema,
 } from '@polymarket/bindings/perps';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../../clients';
 import {
@@ -18,7 +17,6 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import type { RequestOptions } from '../../request-options';
-import { validateWith } from '../../response';
 import type { ServiceClient } from '../../ServiceClient';
 
 /** A historical fill key. Trade IDs remain decimal strings, including above 2^53.
@@ -112,7 +110,7 @@ export const FetchPerpsPositionSnapshotsError = makeErrorGuard(
 export async function fetchPerpsPositionSnapshots(
   client: BaseClient,
   request: FetchPerpsPositionSnapshotsRequest,
-  options?: RequestOptions,
+  options: RequestOptions = {},
 ): Promise<PerpsPositionSnapshots> {
   const parsed = parseUserInput(request, RequestSchema);
   return fetchSnapshots(client.perps, parsed, options);
@@ -124,39 +122,34 @@ export async function fetchOwnPerpsPositionSnapshots(
   request: PerpsPositionSnapshotSelection,
 ): Promise<PerpsPositionSnapshots> {
   const selection = parseUserInput(request, SelectionSchema);
-  const owner = await unwrap(
-    api
-      .get('/v1/account/credentials')
-      .andThen(validateWith(PerpsCredentialsResponseSchema)),
-  );
+  const owner = await api.get('/v1/account/credentials', {
+    schema: PerpsCredentialsResponseSchema,
+  });
   return fetchSnapshots(api, { ...selection, address: owner.address });
 }
 
 async function fetchSnapshots(
   api: ServiceClient,
   request: FetchPerpsPositionSnapshotsRequest,
-  options?: RequestOptions,
+  options: RequestOptions = {},
 ): Promise<PerpsPositionSnapshots> {
-  return unwrap(
-    api
-      .post('/v1/info/position-snapshots', {
-        signal: options?.signal,
-        json: {
-          address: request.address,
-          ...(request.activeInstrumentIds === undefined
-            ? {}
-            : { active_instrument_ids: request.activeInstrumentIds }),
-          ...(request.historyFills === undefined
-            ? {}
-            : {
-                history_fills: request.historyFills.map((fill) => ({
-                  instrument_id: fill.instrumentId,
-                  trade_id: fill.tradeId,
-                  timestamp: fill.timestamp,
-                })),
-              }),
-        },
-      })
-      .andThen(validateWith(PerpsPositionSnapshotsSchema, options)),
-  );
+  return api.post('/v1/info/position-snapshots', {
+    schema: PerpsPositionSnapshotsSchema,
+    signal: options.signal,
+    json: {
+      address: request.address,
+      ...(request.activeInstrumentIds === undefined
+        ? {}
+        : { active_instrument_ids: request.activeInstrumentIds }),
+      ...(request.historyFills === undefined
+        ? {}
+        : {
+            history_fills: request.historyFills.map((fill) => ({
+              instrument_id: fill.instrumentId,
+              trade_id: fill.tradeId,
+              timestamp: fill.timestamp,
+            })),
+          }),
+    },
+  });
 }

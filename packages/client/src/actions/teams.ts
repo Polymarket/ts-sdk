@@ -20,7 +20,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 const ListTeamsRequestSchema = z.object({
@@ -106,6 +105,7 @@ export function listTeams(
 
     return client.gamma
       .get('/teams', {
+        schema: ListTeamsResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -116,8 +116,7 @@ export function listTeams(
           snakeCase({ providerId: 'provider_id' }),
         ),
       })
-      .andThen(validateWith(ListTeamsResponseSchema, options))
-      .map((teams) => {
+      .then((teams) => {
         const hasMore = teams.length >= decoded.pageSize;
 
         return {

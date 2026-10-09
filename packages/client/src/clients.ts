@@ -84,6 +84,8 @@ type PublicContext = {
   /** @internal */
   onRateLimitUpdate?: RateLimitUpdateListener;
   /** @internal */
+  predictions: ServiceClient;
+  /** @internal */
   clob: ServiceClient;
   /** @internal */
   relayer: ServiceClient;
@@ -150,6 +152,16 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get environment(): EnvironmentConfig {
     return this.context.environment;
+  }
+
+  /**
+   * Service client for prediction requests using the configured endpoint.
+   * Requests return promises with parsed response data.
+   *
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  get predictions(): ServiceClient {
+    return this.context.predictions;
   }
 
   /** @internal */
@@ -312,6 +324,16 @@ type PublicClientConfig = {
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
+// Public and secure clients share one predictions endpoint configuration.
+function createPredictionsService(config: PublicClientConfig): ServiceClient {
+  return new ServiceClient({
+    fetch: config.fetch,
+    retry: config.retry,
+    headers: config.environment.predictions.headers,
+    root: config.environment.predictions.rest,
+  });
+}
+
 class BasePublicClient<
   TPublicActions extends ClientActions = ClientActions,
   TSecureActions extends ClientActions = TPublicActions,
@@ -323,6 +345,7 @@ class BasePublicClient<
       fetch: config.fetch,
       retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
+      predictions: createPredictionsService(config),
       data: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,
@@ -590,6 +613,7 @@ class BaseSecureClient<
       retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
+      predictions: createPredictionsService(config),
       clob: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,

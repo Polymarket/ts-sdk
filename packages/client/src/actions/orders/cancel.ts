@@ -2,7 +2,7 @@ import {
   type CancelOrdersResponse,
   CancelOrdersResponseSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
+
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import {
@@ -15,7 +15,6 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { validateWith } from '../../response';
 import { optionalExchangeAssetRequestSchema } from '../exchange-asset';
 import { mapTradingRestrictionError } from './restrictions';
 
@@ -236,13 +235,13 @@ async function cancel(
   path: string,
   payload?: unknown,
 ): Promise<CancelOrdersResponse> {
-  return unwrap(
-    client.secureClob
-      .del(path, {
-        json: payload,
-        rateLimitBucket: 'cancel',
-      })
-      .mapErr(mapTradingRestrictionError)
-      .andThen(validateWith(CancelOrdersResponseSchema)),
-  );
+  return client.secureClob
+    .del(path, {
+      json: payload,
+      rateLimitBucket: 'cancel',
+      schema: CancelOrdersResponseSchema,
+    })
+    .catch((error) => {
+      throw mapTradingRestrictionError(error);
+    });
 }

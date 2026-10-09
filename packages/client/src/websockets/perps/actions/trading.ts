@@ -38,7 +38,6 @@ import {
   expectPresent,
   invariant,
   setNonBlockingTimeout,
-  unwrap,
 } from '@polymarket/types';
 import { z } from 'zod';
 import {
@@ -54,7 +53,6 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
 import type { PerpsBuilderTermsInput } from './builder-terms';
@@ -1504,25 +1502,23 @@ export async function armPerpsAutoCancel(
   const op = ['autoCancel', [params.cancelAt]] as const satisfies PerpsSignedOp;
   const command = signCommand(op, params.expiresAt);
 
-  await unwrap(
-    client
-      .patch('/v1/trade/auto-cancel', {
-        json: {
-          ...command,
-          op: toPerpsCommandBodyOp(op),
-        },
-      })
-      .andThen(validateWith(PerpsAutoCancelResponseSchema))
-      .mapErr((error) =>
-        error instanceof RequestRejectedError &&
+  await client
+    .patch('/v1/trade/auto-cancel', {
+      schema: PerpsAutoCancelResponseSchema,
+      json: {
+        ...command,
+        op: toPerpsCommandBodyOp(op),
+      },
+    })
+    .catch((error: unknown) => {
+      throw error instanceof RequestRejectedError &&
         error.message.startsWith(`${AUTO_CANCEL_DAILY_LIMIT_REACHED} (`)
-          ? new AutoCancelDailyLimitError(
-              'Auto-cancel daily trigger limit reached.',
-              { cause: error },
-            )
-          : error,
-      ),
-  );
+        ? new AutoCancelDailyLimitError(
+            'Auto-cancel daily trigger limit reached.',
+            { cause: error },
+          )
+        : error;
+    });
 }
 
 const DisarmPerpsAutoCancelRequestSchema = z
@@ -1554,16 +1550,13 @@ export async function disarmPerpsAutoCancel(
   const op = ['autoCancel', [0]] as const satisfies PerpsSignedOp;
   const command = signCommand(op, params.expiresAt);
 
-  await unwrap(
-    client
-      .patch('/v1/trade/auto-cancel', {
-        json: {
-          ...command,
-          op: toPerpsCommandBodyOp(op),
-        },
-      })
-      .andThen(validateWith(PerpsAutoCancelResponseSchema)),
-  );
+  await client.patch('/v1/trade/auto-cancel', {
+    schema: PerpsAutoCancelResponseSchema,
+    json: {
+      ...command,
+      op: toPerpsCommandBodyOp(op),
+    },
+  });
 }
 
 const UpdatePerpsLeverageRequestSchema = z.object({

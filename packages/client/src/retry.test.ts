@@ -1,9 +1,8 @@
-import { errAsync, okAsync, type ResultAsync } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RateLimitError, RequestRejectedError } from './errors';
 import { withRateLimitRetry } from './retry';
 
-type Outcome = ResultAsync<string, RateLimitError | RequestRejectedError>;
+type Outcome = Promise<string>;
 
 function scripted(...outcomes: Array<() => Outcome>) {
   let call = 0;
@@ -37,14 +36,14 @@ describe('withRateLimitRetry', () => {
   it('returns the first rate limit without waiting when retries are disabled', async () => {
     const { waits, sleep } = recordingSleep();
     const limited = new RateLimitError('limited');
-    const pipeline = scripted(() => errAsync(limited));
+    const pipeline = scripted(() => Promise.reject(limited));
 
     const result = await withRateLimitRetry(pipeline.run, {
       retry: false,
       sleep,
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toBe(limited);
+    expect(result).toBe(limited);
     expect(pipeline.calls()).toBe(1);
     expect(waits).toEqual([]);
   });
@@ -58,9 +57,9 @@ describe('withRateLimitRetry', () => {
     const result = await withRateLimitRetry(pipeline.run, {
       retry: true,
       signal: controller.signal,
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toMatchObject({
+    expect(result).toMatchObject({
       name: 'RequestAbortedError',
       cause: reason,
     });
@@ -71,17 +70,19 @@ describe('withRateLimitRetry', () => {
     vi.useFakeTimers();
     const controller = new AbortController();
     const reason = new Error('query replaced');
-    const pipeline = scripted(() => errAsync(new RateLimitError('limited')));
+    const pipeline = scripted(() =>
+      Promise.reject(new RateLimitError('limited')),
+    );
     const pending = withRateLimitRetry(pipeline.run, {
       retry: true,
       signal: controller.signal,
-    });
+    }).catch((error: unknown) => error);
     await vi.advanceTimersByTimeAsync(0);
     expect(vi.getTimerCount()).toBe(1);
     controller.abort(reason);
 
     const result = await pending;
-    expect(result._unsafeUnwrapErr()).toMatchObject({
+    expect(result).toMatchObject({
       name: 'RequestAbortedError',
       cause: reason,
     });
@@ -91,7 +92,9 @@ describe('withRateLimitRetry', () => {
 
   it('checks cancellation again after a retry wait completes', async () => {
     const controller = new AbortController();
-    const pipeline = scripted(() => errAsync(new RateLimitError('limited')));
+    const pipeline = scripted(() =>
+      Promise.reject(new RateLimitError('limited')),
+    );
 
     const result = await withRateLimitRetry(pipeline.run, {
       retry: true,
@@ -99,9 +102,9 @@ describe('withRateLimitRetry', () => {
       sleep: async () => {
         controller.abort('cancelled at retry boundary');
       },
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toMatchObject({
+    expect(result).toMatchObject({
       name: 'RequestAbortedError',
       cause: 'cancelled at retry boundary',
     });
@@ -111,8 +114,8 @@ describe('withRateLimitRetry', () => {
   it('retries a rate-limited attempt and honors the server-requested delay', async () => {
     const { waits, sleep } = recordingSleep();
     const pipeline = scripted(
-      () => errAsync(new RateLimitError('limited', { retryAfter: 2 })),
-      () => okAsync('served'),
+      () => Promise.reject(new RateLimitError('limited', { retryAfter: 2 })),
+      () => Promise.resolve('served'),
     );
 
     const result = await withRateLimitRetry(pipeline.run, {
@@ -120,7 +123,7 @@ describe('withRateLimitRetry', () => {
       sleep,
     });
 
-    expect(result._unsafeUnwrap()).toBe('served');
+    expect(result).toBe('served');
     expect(pipeline.calls()).toBe(2);
     expect(waits).toEqual([2000]);
   });
@@ -128,8 +131,8 @@ describe('withRateLimitRetry', () => {
   it('assumes one second when the server supplies no delay', async () => {
     const { waits, sleep } = recordingSleep();
     const pipeline = scripted(
-      () => errAsync(new RateLimitError('limited')),
-      () => okAsync('served'),
+      () => Promise.reject(new RateLimitError('limited')),
+      () => Promise.resolve('served'),
     );
 
     const result = await withRateLimitRetry(pipeline.run, {
@@ -137,22 +140,22 @@ describe('withRateLimitRetry', () => {
       sleep,
     });
 
-    expect(result._unsafeUnwrap()).toBe('served');
+    expect(result).toBe('served');
     expect(waits).toEqual([1000]);
   });
 
   it('propagates instead of retrying early when the requested delay exceeds the cap', async () => {
     const { waits, sleep } = recordingSleep();
     const limited = new RateLimitError('limited', { retryAfter: 120 });
-    const pipeline = scripted(() => errAsync(limited));
+    const pipeline = scripted(() => Promise.reject(limited));
 
     const result = await withRateLimitRetry(pipeline.run, {
       maxDelaySeconds: 5,
       retry: true,
       sleep,
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toBe(limited);
+    expect(result).toBe(limited);
     expect(pipeline.calls()).toBe(1);
     expect(waits).toEqual([]);
   });
@@ -160,32 +163,33 @@ describe('withRateLimitRetry', () => {
   it('surfaces the rate limit once retries are exhausted', async () => {
     const { sleep } = recordingSleep();
     const pipeline = scripted(
-      () => errAsync(new RateLimitError('limited', { retryAfter: 0 })),
-      () => errAsync(new RateLimitError('limited', { retryAfter: 0 })),
-      () => errAsync(new RateLimitError('still limited', { retryAfter: 0 })),
+      () => Promise.reject(new RateLimitError('limited', { retryAfter: 0 })),
+      () => Promise.reject(new RateLimitError('limited', { retryAfter: 0 })),
+      () =>
+        Promise.reject(new RateLimitError('still limited', { retryAfter: 0 })),
     );
 
     const result = await withRateLimitRetry(pipeline.run, {
       retry: true,
       sleep,
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toBeInstanceOf(RateLimitError);
-    expect(result._unsafeUnwrapErr().message).toBe('still limited');
+    expect(result).toBeInstanceOf(RateLimitError);
+    expect(result).toMatchObject({ message: 'still limited' });
     expect(pipeline.calls()).toBe(3);
   });
 
   it('does not retry other errors', async () => {
     const { waits, sleep } = recordingSleep();
     const rejection = new RequestRejectedError('bad request', { status: 400 });
-    const pipeline = scripted(() => errAsync(rejection));
+    const pipeline = scripted(() => Promise.reject(rejection));
 
     const result = await withRateLimitRetry(pipeline.run, {
       retry: true,
       sleep,
-    });
+    }).catch((error: unknown) => error);
 
-    expect(result._unsafeUnwrapErr()).toBe(rejection);
+    expect(result).toBe(rejection);
     expect(pipeline.calls()).toBe(1);
     expect(waits).toEqual([]);
   });

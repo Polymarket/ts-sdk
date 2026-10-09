@@ -31,7 +31,6 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import { distinctIdList, TimeWindowSchema, toDataSearchParams } from './params';
 
@@ -155,6 +154,7 @@ export function listTrades(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/trades', {
+            schema: ListTradesResponseSchema,
             signal: options.signal,
             // The full original filter set rides along with every cursor: the
             // cursor binds only its paging anchor, and a filter dropped on a
@@ -167,7 +167,7 @@ export function listTrades(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListTradesResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -275,6 +275,7 @@ export function listActivity(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/activity', {
+            schema: ListActivityResponseSchema,
             signal: options.signal,
             params: toDataSearchParams({
               ...params,
@@ -288,7 +289,7 @@ export function listActivity(
             }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListActivityResponseSchema, options)),
+      ),
     cursor,
   );
 }
@@ -370,11 +371,12 @@ export function listComboActivity(
       withRateLimitRetry(
         () =>
           client.data.get('/v2/activity/combos', {
+            schema: ListComboActivityResponseSchema,
             signal: options.signal,
             params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
           }),
         { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListComboActivityResponseSchema, options)),
+      ),
     cursor,
   );
 }

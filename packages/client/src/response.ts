@@ -1,60 +1,21 @@
-import { err, ok, type Result, ResultAsync } from '@polymarket/types';
 import type { z } from 'zod';
-import { RequestAbortedError, UnexpectedResponseError } from './errors';
-import { type RequestOptions, withAbort } from './request-options';
+import { UnexpectedResponseError } from './errors';
 
-export function validateWith<TReturnType>(
-  schema: z.ZodType<TReturnType>,
-  options: RequestOptions = {},
-) {
-  return function validateResponse(
-    response: Response,
-  ): ResultAsync<TReturnType, UnexpectedResponseError | RequestAbortedError> {
-    return ResultAsync.fromPromise(
-      withAbort(response.json(), options.signal),
-      (error) =>
-        error instanceof RequestAbortedError
-          ? error
-          : new UnexpectedResponseError(
-              `Received non-JSON response from ${response.url}`,
-            ),
-    ).andThen((payload) => {
-      if (options.signal?.aborted)
-        return err(
-          new RequestAbortedError('Request aborted', {
-            cause: options.signal.reason,
-          }),
-        );
-      return parseResponse(response.url, schema, payload);
-    });
-  };
-}
-
-export function readBlob(
-  response: Response,
-  options: RequestOptions = {},
-): ResultAsync<Blob, UnexpectedResponseError | RequestAbortedError> {
-  return ResultAsync.fromPromise(
-    withAbort(response.blob(), options.signal),
-    (error) =>
-      error instanceof RequestAbortedError
-        ? error
-        : new UnexpectedResponseError(
-            `Received unreadable binary response from ${response.url}`,
-          ),
-  );
-}
-
-function parseResponse<TReturnType>(
+/** Validates an already parsed response value. @internal */
+export function parseResponse<T>(
   endpoint: string,
-  schema: z.ZodType<TReturnType>,
+  schema: z.ZodType<T>,
   response: unknown,
-): Result<TReturnType, UnexpectedResponseError> {
-  const result = schema.safeParse(response);
-
-  if (result.success) {
-    return ok(result.data);
+): T {
+  try {
+    const result = schema.safeParse(response);
+    if (result.success) return result.data;
+    throw UnexpectedResponseError.fromZodError(result.error, { endpoint });
+  } catch (error) {
+    if (error instanceof UnexpectedResponseError) throw error;
+    throw new UnexpectedResponseError(
+      `Could not validate response from ${endpoint}`,
+      { cause: error },
+    );
   }
-
-  return err(UnexpectedResponseError.fromZodError(result.error, { endpoint }));
 }

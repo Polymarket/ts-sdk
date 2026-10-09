@@ -27,7 +27,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 export enum SearchSort {
@@ -146,6 +145,7 @@ export function search(
 
       return client.gamma
         .get('/public-search', {
+          schema: PublicSearchResponseSchema,
           signal: options.signal,
           params: toSearchParams(
             {
@@ -158,8 +158,7 @@ export function search(
             }),
           ),
         })
-        .andThen(validateWith(PublicSearchResponseSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: toSearchResults(response),
           hasMore: response.pagination?.hasMore ?? false,
           limitReached:

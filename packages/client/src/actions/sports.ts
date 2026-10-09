@@ -4,7 +4,6 @@ import {
   SportsMarketTypesResponseSchema,
   type SportsMetadata,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
@@ -15,7 +14,6 @@ import {
   UnexpectedResponseError,
 } from '../errors';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 
 export type ListSportsError =
   | RequestAbortedError
@@ -51,11 +49,10 @@ export async function listSports(
   client: BaseClient,
   options: RequestOptions = {},
 ): Promise<SportsMetadata[]> {
-  return unwrap(
-    client.gamma
-      .get('/sports', options)
-      .andThen(validateWith(ListSportsMetadataResponseSchema, options)),
-  );
+  return client.gamma.get('/sports', {
+    ...options,
+    schema: ListSportsMetadataResponseSchema,
+  });
 }
 
 export type FetchSportsMarketTypesError =
@@ -92,9 +89,8 @@ export async function fetchSportsMarketTypes(
   client: BaseClient,
   options: RequestOptions = {},
 ): Promise<SportsMarketTypesResponse> {
-  return unwrap(
-    client.gamma
-      .get('/sports/market-types', options)
-      .andThen(validateWith(SportsMarketTypesResponseSchema, options)),
-  );
+  return client.gamma.get('/sports/market-types', {
+    ...options,
+    schema: SportsMarketTypesResponseSchema,
+  });
 }

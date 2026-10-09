@@ -24,7 +24,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 const ListMarketClarificationsRequestSchema = z.object({
@@ -119,6 +118,7 @@ export function listMarketClarifications(
 
     return client.gamma
       .get('/market-clarifications', {
+        schema: ListMarketClarificationsResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -129,8 +129,7 @@ export function listMarketClarifications(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListMarketClarificationsResponseSchema, options))
-      .map((clarifications) => {
+      .then((clarifications) => {
         const hasMore = clarifications.length >= decoded.pageSize;
 
         return {

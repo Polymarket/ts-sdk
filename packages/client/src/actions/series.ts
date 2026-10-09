@@ -4,7 +4,6 @@ import {
   type Series,
   SeriesSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -25,7 +24,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
 const ListSeriesRequestSchema = z.object({
@@ -118,6 +116,7 @@ export function listSeries(
 
     return client.gamma
       .get('/series', {
+        schema: ListSeriesResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -128,8 +127,7 @@ export function listSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListSeriesResponseSchema, options))
-      .map((series) => {
+      .then((series) => {
         const hasMore = series.length >= decoded.pageSize;
 
         return {
@@ -188,17 +186,14 @@ export async function fetchSeries(
 ): Promise<Series> {
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`series/${params.id}`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(SeriesSchema, options)),
-  );
+  return client.gamma.get(`series/${params.id}`, {
+    schema: SeriesSchema,
+    signal: options.signal,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }

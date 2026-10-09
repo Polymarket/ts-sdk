@@ -46,7 +46,6 @@ import {
   isPrivateKey,
   isSameEvmAddress,
   type PrivateKey,
-  unwrap,
 } from '@polymarket/types';
 import { Address, Secp256k1, TypedData } from 'ox';
 import { z } from 'zod';
@@ -71,7 +70,6 @@ import {
   paginate,
 } from '../pagination';
 import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
@@ -248,14 +246,11 @@ export async function fetchPerpsInstruments(
 ): Promise<PerpsInstrument[]> {
   const params = parseUserInput(request, FetchPerpsInstrumentsRequestSchema);
 
-  return unwrap(
-    client.perps
-      .get('/v1/info/instruments', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(FetchPerpsInstrumentsResponseSchema, options)),
-  );
+  return client.perps.get('/v1/info/instruments', {
+    schema: FetchPerpsInstrumentsResponseSchema,
+    signal: options.signal,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const FetchPerpsTickerRequestSchema = z.object({
@@ -349,16 +344,16 @@ export async function fetchPerpsTickers(
   const params = parseUserInput(request, FetchPerpsTickersRequestSchema);
   const query = toSearchParams(params, snakeCase());
   const [tickers, statistics] = await Promise.all([
-    unwrap(
-      client.perps
-        .get('/v1/info/tickers', { signal: options.signal, params: query })
-        .andThen(validateWith(FetchPerpsTickersResponseSchema, options)),
-    ),
-    unwrap(
-      client.perps
-        .get('/v1/info/statistics', { signal: options.signal, params: query })
-        .andThen(validateWith(FetchPerpsStatisticsResponseSchema, options)),
-    ),
+    client.perps.get('/v1/info/tickers', {
+      schema: FetchPerpsTickersResponseSchema,
+      signal: options.signal,
+      params: query,
+    }),
+    client.perps.get('/v1/info/statistics', {
+      schema: FetchPerpsStatisticsResponseSchema,
+      signal: options.signal,
+      params: query,
+    }),
   ]);
   const statisticsByInstrument = new Map(
     statistics.map((statistic) => [statistic.instrumentId, statistic]),
@@ -429,14 +424,11 @@ export async function fetchPerpsBook(
 ): Promise<PerpsBook> {
   const params = parseUserInput(request, FetchPerpsBookRequestSchema);
 
-  return unwrap(
-    client.perps
-      .get('/v1/info/book', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(PerpsBookSchema, options)),
-  );
+  return client.perps.get('/v1/info/book', {
+    schema: PerpsBookSchema,
+    signal: options.signal,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const ListPerpsCandlesInitialRequestSchema = z.object({
@@ -525,6 +517,7 @@ export function listPerpsCandles(
 
     return client.perps
       .get('/v1/info/klines', {
+        schema: FetchPerpsCandlesResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -536,8 +529,7 @@ export function listPerpsCandles(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsCandlesResponseSchema, options))
-      .map((response) => {
+      .then((response) => {
         const last = response.data.at(-1);
         const hasMore = response.more && last !== undefined;
 
@@ -659,6 +651,7 @@ export function listPerpsFundingHistory(
 
     return client.perps
       .get('/v1/info/funding', {
+        schema: FetchPerpsFundingHistoryResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -669,8 +662,7 @@ export function listPerpsFundingHistory(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsFundingHistoryResponseSchema, options))
-      .map((response) => {
+      .then((response) => {
         const last = response.data.at(-1);
         const hasMore =
           response.more &&
@@ -760,6 +752,7 @@ export function listPerpsTrades(
 
     return client.perps
       .get('/v1/info/trades', {
+        schema: FetchPerpsTradesResponseSchema,
         signal: options.signal,
         params: toSearchParams(
           {
@@ -770,8 +763,7 @@ export function listPerpsTrades(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsTradesResponseSchema, options))
-      .map((response) => {
+      .then((response) => {
         const items = response.data.filter(
           (trade) => !seenTradeIds.has(trade.tradeId),
         );
@@ -837,11 +829,10 @@ export async function fetchPerpsFees(
   client: BaseClient,
   options: RequestOptions = {},
 ): Promise<PerpsFeeScheduleEntry[]> {
-  const response = await unwrap(
-    client.perps
-      .get('/v1/info/fees', options)
-      .andThen(validateWith(FetchPerpsFeesResponseSchema, options)),
-  );
+  const response = await client.perps.get('/v1/info/fees', {
+    schema: FetchPerpsFeesResponseSchema,
+    signal: options.signal,
+  });
 
   return response.feeSchedule;
 }
@@ -1348,18 +1339,15 @@ export async function revokePerpsCredentials(
     timestamp,
   });
 
-  const response = await unwrap(
-    client.perps
-      .del('/v1/account/proxy', {
-        json: {
-          op,
-          salt,
-          sig: signature,
-          ts: timestamp,
-        },
-      })
-      .andThen(validateWith(PerpsDeleteProxyResponseSchema)),
-  );
+  const response = await client.perps.del('/v1/account/proxy', {
+    schema: PerpsDeleteProxyResponseSchema,
+    json: {
+      op,
+      salt,
+      sig: signature,
+      ts: timestamp,
+    },
+  });
 
   if (response.status === 'err') {
     throw new RequestRejectedError(
@@ -1462,18 +1450,15 @@ export async function withdrawFromPerps(
     timestamp,
   });
 
-  const response = await unwrap(
-    client.perps
-      .post('/v1/account/withdraw', {
-        json: {
-          op,
-          salt,
-          sig: signature,
-          ts: timestamp,
-        },
-      })
-      .andThen(validateWith(PerpsWithdrawResponseSchema)),
-  );
+  const response = await client.perps.post('/v1/account/withdraw', {
+    schema: PerpsWithdrawResponseSchema,
+    json: {
+      op,
+      salt,
+      sig: signature,
+      ts: timestamp,
+    },
+  });
 
   if (response.status === 'err') {
     throw new RequestRejectedError(
@@ -1544,10 +1529,9 @@ export async function transferPerpsCollateral(
         };
         if (transfer.label !== undefined) body.label = transfer.label;
 
-        const response = await unwrap(
-          client.perps
-            .post('/v1/account/internal-transfer', { json: body })
-            .andThen(validateWith(PerpsInternalTransferResponseSchema)),
+        const response = await client.perps.post(
+          '/v1/account/internal-transfer',
+          { schema: PerpsInternalTransferResponseSchema, json: body },
         );
         return response.transferId;
       },
@@ -1596,11 +1580,10 @@ async function createPerpsCredentials(
   };
   if (request.label !== undefined) body.label = request.label;
 
-  const response = await unwrap(
-    client.perps
-      .post('/v1/account/proxy', { json: body })
-      .andThen(validateWith(PerpsCreateProxyResponseSchema)),
-  );
+  const response = await client.perps.post('/v1/account/proxy', {
+    schema: PerpsCreateProxyResponseSchema,
+    json: body,
+  });
   const credentials = {
     expiresAt,
     privateKey,
@@ -1623,13 +1606,10 @@ async function validatePerpsCredentials(
   client: BaseSecureClient,
   credentials: PerpsCredentials,
 ): Promise<PerpsCredentials> {
-  const response = await unwrap(
-    client.perps
-      .get('/v1/account/credentials', {
-        headers: perpsCredentialHeaders(credentials),
-      })
-      .andThen(validateWith(PerpsCredentialsResponseSchema)),
-  );
+  const response = await client.perps.get('/v1/account/credentials', {
+    schema: PerpsCredentialsResponseSchema,
+    headers: perpsCredentialHeaders(credentials),
+  });
 
   if (!isSameEvmAddress(response.address, client.account.signer)) {
     throw new UnexpectedResponseError(
