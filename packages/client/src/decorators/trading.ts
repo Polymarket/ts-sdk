@@ -1,7 +1,9 @@
 import type {
   AcceptedOrderResponse,
   CancelOrdersResponse,
+  LegacyOrderHeartbeat,
   OpenOrder,
+  OrderHeartbeat,
   OrderResponse,
   OrderResponses,
 } from '@polymarket/bindings/clob';
@@ -27,6 +29,9 @@ import {
   placeMarketOrder,
   postOrder,
   postOrders,
+  type SendOrderHeartbeatRequest,
+  sendLegacyOrderHeartbeat,
+  sendOrderHeartbeat,
   type WaitForOrderFillSettlementRequest,
   waitForOrderFillSettlement,
 } from '../actions';
@@ -37,6 +42,30 @@ import type { Paginated } from '../pagination';
 export type { OrderSignature, SignedOrder } from '../actions';
 
 export type SecureTradingActions = {
+  /**
+   * Sends an authenticated order heartbeat and returns the ID for the next send.
+   * Start with an empty ID, serialize sends, and send every five seconds. Missing
+   * the ten-second deadline triggers cancellation of this API key's orders.
+   * No timer or retry is started. On OrderHeartbeatMismatchError retry explicitly
+   * with its heartbeatId; rejected sends do not refresh the deadline.
+   * @throws {@link SendOrderHeartbeatError} Thrown on failure.
+   * @example
+   * ```ts
+   * const heartbeat = await client.sendOrderHeartbeat();
+   * const next = await client.sendOrderHeartbeat({ heartbeatId: heartbeat.heartbeatId });
+   * ```
+   */
+  sendOrderHeartbeat(
+    request?: SendOrderHeartbeatRequest,
+  ): Promise<OrderHeartbeat>;
+  /**
+   * Sends a legacy order heartbeat without ID tracking. Shares this API key's
+   * registration with sendOrderHeartbeat and resets its expected ID to empty.
+   * Send every five seconds to avoid timeout cancellation. No timer or retry is started.
+   * @throws {@link SendLegacyOrderHeartbeatError} Thrown on failure.
+   */
+  sendLegacyOrderHeartbeat(): Promise<LegacyOrderHeartbeat>;
+
   /**
    * Creates a signed market order for the authenticated account.
    *
@@ -349,6 +378,8 @@ export type SecureTradingActions = {
 export function tradingActions(client: BaseSecureClient): SecureTradingActions;
 export function tradingActions(client: BaseSecureClient): SecureTradingActions {
   return {
+    sendOrderHeartbeat: sendOrderHeartbeat.bind(null, client),
+    sendLegacyOrderHeartbeat: sendLegacyOrderHeartbeat.bind(null, client),
     createMarketOrder: createMarketOrder.bind(null, client),
     placeMarketOrder: placeMarketOrder.bind(null, client),
     createLimitOrder: createLimitOrder.bind(null, client),
@@ -381,5 +412,8 @@ export {
   PlaceMarketOrderError,
   PostOrderError,
   PostOrdersError,
+  SendLegacyOrderHeartbeatError,
+  SendOrderHeartbeatError,
+  type SendOrderHeartbeatRequest,
   WaitForOrderFillSettlementError,
 } from '../actions';

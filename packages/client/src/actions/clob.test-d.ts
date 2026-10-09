@@ -126,3 +126,26 @@ describe('public CLOB price read types', () => {
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
   });
 });
+
+describe('order heartbeat public types', () => {
+  it('exposes authenticated heartbeat actions and recovery data', () => {
+    const request: import('../index').SendOrderHeartbeatRequest = {
+      heartbeatId: '',
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').SendOrderHeartbeatRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').sendOrderHeartbeat>
+    >().toEqualTypeOf<Promise<import('../index').OrderHeartbeat>>();
+    expectTypeOf<
+      ReturnType<typeof import('./index').sendLegacyOrderHeartbeat>
+    >().toEqualTypeOf<Promise<import('../index').LegacyOrderHeartbeat>>();
+    expectTypeOf<import('../index').PublicClient>().not.toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+    expectTypeOf<import('../index').SecureClient>().toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+  });
+});
