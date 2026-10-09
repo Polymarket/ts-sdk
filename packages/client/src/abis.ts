@@ -7,6 +7,11 @@ import type {
 import { type EvmAddress, type HexString, invariant } from '@polymarket/types';
 import { AbiFunction, AbiParameters } from 'ox';
 import { makeErrorGuard, UserInputError } from './errors';
+import { parseUserInput } from './input';
+import {
+  ConvertInputSchema,
+  HorizontalOperationInputSchema,
+} from './neg-risk-input';
 import type { CanonicalComboLegs } from './protocol';
 import type { TransactionCall } from './types';
 
@@ -56,6 +61,15 @@ const CTF_REDEEM_POSITIONS_FUNCTION = AbiFunction.from(
 );
 const ROUTER_SPLIT_FUNCTION = AbiFunction.from(
   'function split(bytes31 conditionId, uint256 amount)',
+);
+const ROUTER_CONVERT_FUNCTION = AbiFunction.from(
+  'function convert(bytes29 eventId, uint16 conditionIndex, uint256 amount)',
+);
+const ROUTER_HORIZONTAL_SPLIT_FUNCTION = AbiFunction.from(
+  'function horizontalSplit(bytes29 eventId, uint256 amount)',
+);
+const ROUTER_HORIZONTAL_MERGE_FUNCTION = AbiFunction.from(
+  'function horizontalMerge(bytes29 eventId, uint256 amount)',
 );
 const ROUTER_MERGE_FUNCTION = AbiFunction.from(
   'function merge(bytes31 conditionId, uint256 amount)',
@@ -362,6 +376,90 @@ export function ctfRedeemPositionsCall(
   return {
     data: encodeCtfRedeemPositionsCall(collateralTokenAddress, conditionId),
     to: conditionalTokensAddress,
+  };
+}
+
+export type RouterConvertCallError = UserInputError;
+export const RouterConvertCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router conversion of NO into every other condition's YES.
+ * Includes Other unless converting NO(Other).
+ * Accepts a bytes29 or zero-padded bytes32 event ID, an index from zero through
+ * the event arity (Other), and a positive uint256 amount in six-decimal base units.
+ * @throws {@link RouterConvertCallError} Thrown when input is invalid.
+ */
+export function routerConvertCall(
+  routerAddress: EvmAddress,
+  eventId: string,
+  conditionIndex: number,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { eventId, conditionIndex, amount },
+    ConvertInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_CONVERT_FUNCTION, [
+      params.eventId,
+      params.conditionIndex,
+      params.amount,
+    ]),
+  };
+}
+
+export type RouterHorizontalSplitCallError = UserInputError;
+export const RouterHorizontalSplitCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router split of pUSD into YES for every condition, including Other.
+ * Accepts a bytes29 or zero-padded bytes32 event ID and a positive uint256 amount
+ * in six-decimal base units.
+ * @throws {@link RouterHorizontalSplitCallError} Thrown when input is invalid.
+ */
+export function routerHorizontalSplitCall(
+  routerAddress: EvmAddress,
+  eventId: string,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { eventId, amount },
+    HorizontalOperationInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_SPLIT_FUNCTION, [
+      params.eventId,
+      params.amount,
+    ]),
+  };
+}
+
+export type RouterHorizontalMergeCallError = UserInputError;
+export const RouterHorizontalMergeCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router merge of equal YES amounts from every condition, including Other, into pUSD.
+ * Accepts a bytes29 or zero-padded bytes32 event ID and a positive uint256 amount
+ * per condition in six-decimal base units.
+ * @throws {@link RouterHorizontalMergeCallError} Thrown when input is invalid.
+ */
+export function routerHorizontalMergeCall(
+  routerAddress: EvmAddress,
+  eventId: string,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { eventId, amount },
+    HorizontalOperationInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_MERGE_FUNCTION, [
+      params.eventId,
+      params.amount,
+    ]),
   };
 }
 

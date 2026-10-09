@@ -11,6 +11,7 @@ export * from './gasless';
 export * from './leaderboards';
 export * from './market-clarifications';
 export * from './markets';
+export * from './neg-risk';
 export * from './orders';
 export * from './perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
