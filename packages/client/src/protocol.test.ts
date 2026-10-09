@@ -33,6 +33,13 @@ describe('Protocol helpers', () => {
     });
 
     it.each([
+      0, 4, 0x8001, 0x8003,
+    ])('routes directional descriptor %s through the native namespace', (descriptor) => {
+      expect(isV2PositionId(directionalPosition(descriptor, 0))).toBe(true);
+      expect(isV2PositionId(directionalPosition(descriptor, 1))).toBe(true);
+    });
+
+    it.each([
       '',
       '  ',
       '-1',
@@ -106,10 +113,42 @@ describe('Protocol helpers', () => {
       });
     });
 
+    it('preserves existing binary redemption input aliases', () => {
+      const canonical = v2Position(1, 7, 1);
+      const expected = decodeV2OutcomePositionId(canonical);
+      for (const alias of [
+        `0${canonical}`,
+        ` ${canonical} `,
+        `0x${BigInt(canonical).toString(16)}`,
+      ]) {
+        expect(decodeV2OutcomePositionId(toPositionId(alias))).toEqual(
+          expected,
+        );
+      }
+    });
+
     it('rejects unsupported protocol modules', () => {
-      expect(() => decodeV2OutcomePositionId(v2Position(4, 1, 0))).toThrow(
+      expect(() => decodeV2OutcomePositionId(v2Position(5, 1, 0))).toThrow(
         /supported protocol v2 module/,
       );
+    });
+
+    it.each([
+      0, 4, 0x8001, 0x8003,
+    ])('decodes directional bucket, Void, and threshold descriptor %s', (descriptor) => {
+      const positionId = directionalPosition(descriptor, 1);
+      expect(decodeV2OutcomePositionId(positionId)).toEqual({
+        conditionId: toConditionId(positionConditionId(positionId)),
+        outcomeIndex: 1,
+      });
+    });
+
+    it.each([
+      5, 0x8000, 0x8004,
+    ])('rejects an invalid directional descriptor %s', (descriptor) => {
+      expect(() =>
+        decodeV2OutcomePositionId(directionalPosition(descriptor, 0)),
+      ).toThrow(/directional condition descriptor/);
     });
 
     it('rejects position IDs with non-binary outcomes', () => {
@@ -119,6 +158,16 @@ describe('Protocol helpers', () => {
     });
   });
 });
+
+function directionalPosition(descriptor: number, outcome: number): PositionId {
+  const id =
+    (4n << 248n) |
+    (123n << 120n) |
+    (4n << 104n) |
+    (BigInt(descriptor) << 8n) |
+    BigInt(outcome);
+  return toPositionId(id.toString());
+}
 
 function legPosition(marker: number, outcome: number): PositionId {
   return v2Position(1, marker, outcome);

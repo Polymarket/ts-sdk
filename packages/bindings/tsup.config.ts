@@ -10,6 +10,7 @@ export default defineConfig(() => ({
     'src/data/index.ts',
     'src/gamma/index.ts',
     'src/perps/index.ts',
+    'src/protocol/index.ts',
     'src/relayer/index.ts',
     'src/subscriptions/index.ts',
   ],

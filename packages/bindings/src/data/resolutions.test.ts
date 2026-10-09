@@ -148,6 +148,35 @@ describe('FetchResolutionsResponseSchema', () => {
     ]);
   });
 
+  it.each([
+    ['ATOMIC_DIRECTIONAL', ResolutionMarketType.AtomicDirectional],
+    ['INCREMENTAL_DIRECTIONAL', ResolutionMarketType.IncrementalDirectional],
+  ])('preserves fractional, derived directional payouts for %s', (marketType, expectedType) => {
+    const [resolution] = FetchResolutionsResponseSchema.parse({
+      data: [
+        {
+          condition_id:
+            '0x0400112233445566778899aabbccddeeff0004000000000000000000008002',
+          status: 'resolved',
+          extended_review: false,
+          was_disputed: false,
+          new_version_q: false,
+          transaction_hash: '',
+          log_index: '',
+          last_update_timestamp: '1722470400',
+          market_type: marketType,
+          payouts: [125_000, 875_000],
+          resolution_source: 'derived',
+        },
+      ],
+    });
+    expect(resolution).toMatchObject({
+      marketType: expectedType,
+      payouts: ['0.125', '0.875'],
+      resolutionSource: ResolutionSource.Derived,
+    });
+  });
+
   it('rejects malformed transaction hashes', () => {
     expect(() =>
       FetchResolutionsResponseSchema.parse({
