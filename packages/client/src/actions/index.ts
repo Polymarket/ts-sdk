@@ -6,6 +6,8 @@ export * from './builders';
 export * from './clob';
 export * from './collateral-return';
 export * from './comments';
+export * from './directional';
+export * from './event-positions';
 export * from './events';
 export * from './gasless';
 export * from './leaderboards';

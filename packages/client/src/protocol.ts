@@ -7,6 +7,7 @@ import {
   toConditionId,
   toPositionId,
 } from '@polymarket/bindings';
+import { ProtocolPositionIdSchema } from '@polymarket/bindings/protocol';
 import type { Tagged } from '@polymarket/types';
 import { AbiParameters, Hash } from 'ox';
 import { UserInputError } from './errors';
@@ -15,6 +16,7 @@ const UINT256_BYTE_LENGTH = 32;
 const BINARY_MODULE_ID = 1n;
 const NEG_RISK_MODULE_ID = 2n;
 const COMBINATORIAL_MODULE_ID = 3n;
+const DIRECTIONAL_MODULE_ID = 4n;
 const MAX_COMBO_LEGS = 50;
 const UINT256_MAX = (1n << 256n) - 1n;
 const V2_RESERVED_BITS_MASK = ((1n << 64n) - 1n) << 40n;
@@ -144,6 +146,19 @@ export function isV2PositionId(assetId: PositionId | TokenId): boolean {
 }
 
 /**
+ * Returns whether a condition ID uses the structured V2 namespace.
+ *
+ * A bytes31 ID is structured by width. A bytes32 ID has position-ID layout, so
+ * it is structured when its reserved bits are zero.
+ */
+export function isV2ConditionId(conditionId: ConditionId): boolean {
+  return (
+    conditionId.length === 64 ||
+    (BigInt(conditionId) & V2_RESERVED_BITS_MASK) === 0n
+  );
+}
+
+/**
  * Decodes a protocol v2 YES/NO position ID into its condition ID and outcome index.
  *
  * @throws {@link UserInputError}
@@ -160,7 +175,8 @@ export function decodeV2OutcomePositionId(
   if (
     moduleId !== BINARY_MODULE_ID &&
     moduleId !== NEG_RISK_MODULE_ID &&
-    moduleId !== COMBINATORIAL_MODULE_ID
+    moduleId !== COMBINATORIAL_MODULE_ID &&
+    moduleId !== DIRECTIONAL_MODULE_ID
   ) {
     throw new UserInputError(
       'Position ID must use a supported protocol v2 module',
@@ -170,6 +186,15 @@ export function decodeV2OutcomePositionId(
   if (outcomeIndex !== 0 && outcomeIndex !== 1) {
     throw new UserInputError(
       'Protocol v2 position ID must be a YES/NO position ID',
+    );
+  }
+
+  if (
+    moduleId === DIRECTIONAL_MODULE_ID &&
+    !ProtocolPositionIdSchema.safeParse(value.toString()).success
+  ) {
+    throw new UserInputError(
+      'Position ID must use a supported directional condition descriptor',
     );
   }
 

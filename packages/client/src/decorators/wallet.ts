@@ -2,20 +2,34 @@ import {
   approveErc20,
   approveErc1155ForAll,
   type CollateralReturnPlanResponse,
+  composeThreshold,
+  convertPosition,
+  decomposeThreshold,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   type FetchTradingApprovalsStateRequest,
   fetchTradingApprovalsState,
+  mergeDirectionalPositions,
+  mergeEventPositions,
   mergePositions,
+  type PrepareComposeThresholdRequest,
+  type PrepareConvertPositionRequest,
+  type PrepareDecomposeThresholdRequest,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
   type PrepareErc1155ApprovalForAllRequest,
+  type PrepareMergeDirectionalPositionsRequest,
+  type PrepareMergeEventPositionsRequest,
   type PrepareMergePositionsRequest,
   type PrepareRedeemPositionsRequest,
+  type PrepareSplitDirectionalPositionsRequest,
+  type PrepareSplitEventPositionsRequest,
   type PrepareSplitPositionRequest,
   planCollateralReturn,
   redeemPositions,
   setupTradingApprovals,
+  splitDirectionalPositions,
+  splitEventPositions,
   splitPosition,
   type TradingApprovalsState,
   transferErc20,
@@ -147,6 +161,9 @@ export type SecureWalletActions = {
   /**
    * Splits collateral into positions.
    *
+   * Structured V2 condition IDs support native directional buckets, Void, and
+   * thresholds directly. A threshold produces complementary ABOVE/BELOW positions.
+   *
    * @throws {@link SplitPositionError}
    * Thrown on failure.
    *
@@ -180,6 +197,9 @@ export type SecureWalletActions = {
   /**
    * Merges complementary positions back into collateral.
    *
+   * Structured V2 condition IDs support native directional buckets, Void, and
+   * thresholds directly. A threshold consumes complementary ABOVE/BELOW positions.
+   *
    * @throws {@link MergePositionsError}
    * Thrown on failure.
    *
@@ -212,6 +232,9 @@ export type SecureWalletActions = {
   ): Promise<TransactionHandle>;
   /**
    * Redeems held positions for a market or a specific position by ID.
+   *
+   * Native directional bucket, Void, and threshold IDs work directly; redemption
+   * availability is determined by the protocol result for each selected position.
    *
    * @throws {@link RedeemPositionsError}
    * Thrown on failure.
@@ -252,6 +275,195 @@ export type SecureWalletActions = {
    */
   redeemPositions(
     request: PrepareRedeemPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Splits collateral into the complete YES set of a multi-outcome event.
+   *
+   * Accepts neg-risk and directional protocol event IDs. The set includes the
+   * synthetic Other or Void position.
+   *
+   * @throws {@link SplitEventPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.splitEventPositions({
+   *   amount: 1_000_000n,
+   *   eventId: '0x04…',
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  splitEventPositions(
+    request: PrepareSplitEventPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Merges the complete YES set of a multi-outcome event back into collateral.
+   *
+   * Consumes every real YES position and the synthetic Other or Void position.
+   * Use `'max'` to merge the minimum held balance across the set.
+   *
+   * @throws {@link MergeEventPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.mergeEventPositions({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  mergeEventPositions(
+    request: PrepareMergeEventPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Converts a NO position into YES positions for every other outcome in its
+   * event.
+   *
+   * Accepts NO positions of neg-risk conditions and directional buckets,
+   * including Other or Void. Threshold positions cannot be converted. Use
+   * `'max'` to convert the full held balance.
+   *
+   * @throws {@link ConvertPositionError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const { noPositionId } = deriveDirectionalBucketPositions({
+   *   bucketIndex: 1,
+   *   eventId: '0x04…',
+   * });
+   *
+   * const handle = await client.convertPosition({
+   *   amount: 'max',
+   *   positionId: noPositionId,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  convertPosition(
+    request: PrepareConvertPositionRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Composes bucket YES positions into one side of a directional threshold.
+   *
+   * ABOVE consumes the real buckets at or past the line. BELOW consumes the
+   * real buckets before the line and Void. Use `'max'` to compose the minimum
+   * held balance across the basket.
+   *
+   * @throws {@link ComposeThresholdError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.composeThreshold({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   *   line: 2,
+   *   side: ThresholdSide.Below,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  composeThreshold(
+    request: PrepareComposeThresholdRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Decomposes one side of a directional threshold into its bucket YES
+   * positions.
+   *
+   * ABOVE returns the real buckets at or past the line. BELOW returns the real
+   * buckets before the line and Void. Use `'max'` to decompose the full held
+   * balance.
+   *
+   * @throws {@link DecomposeThresholdError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.decomposeThreshold({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   *   line: 2,
+   *   side: ThresholdSide.Below,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  decomposeThreshold(
+    request: PrepareDecomposeThresholdRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Splits collateral and middle-bucket YES positions into ABOVE at `lowLine`
+   * and BELOW at `highLine`.
+   *
+   * Consumes `amount` of collateral and of each real bucket YES position in
+   * `[lowLine, highLine)`. Lines are ordinal bucket boundaries.
+   *
+   * @throws {@link SplitDirectionalPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.splitDirectionalPositions({
+   *   amount: 1_000_000n,
+   *   eventId: '0x04…',
+   *   highLine: 3,
+   *   lowLine: 1,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  splitDirectionalPositions(
+    request: PrepareSplitDirectionalPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Merges ABOVE at `lowLine` and BELOW at `highLine` into collateral and
+   * middle-bucket YES positions.
+   *
+   * Returns `amount` of collateral and of each real bucket YES position in
+   * `[lowLine, highLine)`. Use `'max'` to merge the minimum held balance of
+   * the two threshold positions.
+   *
+   * @throws {@link MergeDirectionalPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.mergeDirectionalPositions({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   *   highLine: 3,
+   *   lowLine: 1,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  mergeDirectionalPositions(
+    request: PrepareMergeDirectionalPositionsRequest,
   ): Promise<TransactionHandle>;
   /**
    * Plans a collateral return for the authenticated account.
@@ -337,6 +549,13 @@ export function walletActions(
     splitPosition: splitPosition.bind(null, client),
     mergePositions: mergePositions.bind(null, client),
     redeemPositions: redeemPositions.bind(null, client),
+    splitEventPositions: splitEventPositions.bind(null, client),
+    mergeEventPositions: mergeEventPositions.bind(null, client),
+    convertPosition: convertPosition.bind(null, client),
+    composeThreshold: composeThreshold.bind(null, client),
+    decomposeThreshold: decomposeThreshold.bind(null, client),
+    splitDirectionalPositions: splitDirectionalPositions.bind(null, client),
+    mergeDirectionalPositions: mergeDirectionalPositions.bind(null, client),
     planCollateralReturn: planCollateralReturn.bind(null, client),
     executeCollateralReturnPlan: executeCollateralReturnPlan.bind(null, client),
   };
@@ -354,6 +573,13 @@ export type {
   Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
   FetchTradingApprovalsStateRequest,
+  PrepareComposeThresholdRequest,
+  PrepareConvertPositionRequest,
+  PrepareDecomposeThresholdRequest,
+  PrepareMergeDirectionalPositionsRequest,
+  PrepareMergeEventPositionsRequest,
+  PrepareSplitDirectionalPositionsRequest,
+  PrepareSplitEventPositionsRequest,
   TradingApprovalRequirements,
   TradingApprovalsState,
 } from '../actions';
@@ -364,12 +590,19 @@ export {
   ApproveErc20Error,
   ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
+  ComposeThresholdError,
+  ConvertPositionError,
+  DecomposeThresholdError,
   ExecuteCollateralReturnPlanError,
   FetchTradingApprovalsStateError,
+  MergeDirectionalPositionsError,
+  MergeEventPositionsError,
   MergePositionsError,
   PlanCollateralReturnError,
   RedeemPositionsError,
   SetupTradingApprovalsError,
+  SplitDirectionalPositionsError,
+  SplitEventPositionsError,
   SplitPositionError,
   TransferErc20Error,
 } from '../actions';

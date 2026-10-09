@@ -4,6 +4,10 @@ import type {
   PositionId,
   TokenId,
 } from '@polymarket/bindings';
+import {
+  type ProtocolEventId,
+  ThresholdSide,
+} from '@polymarket/bindings/protocol';
 import { type EvmAddress, type HexString, invariant } from '@polymarket/types';
 import { AbiFunction, AbiParameters } from 'ox';
 import { makeErrorGuard, UserInputError } from './errors';
@@ -13,6 +17,7 @@ import type { TransactionCall } from './types';
 const BYTES31_HEX_LENGTH = 64;
 const PROTOCOL_V2_CONDITION_ID_BYTES31_PATTERN = /^0x[0-9a-fA-F]{62}$/;
 const PROTOCOL_V2_CONDITION_ID_BYTES32_PATTERN = /^0x[0-9a-fA-F]{64}$/;
+const PROTOCOL_V2_EVENT_ID_BYTES29_PATTERN = /^0x[0-9a-fA-F]{58}$/;
 const ZERO_BYTES32 =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
 const ERC20_APPROVE_FUNCTION = AbiFunction.from(
@@ -62,6 +67,27 @@ const ROUTER_MERGE_FUNCTION = AbiFunction.from(
 );
 const ROUTER_REDEEM_FUNCTION = AbiFunction.from(
   'function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount)',
+);
+const ROUTER_HORIZONTAL_SPLIT_FUNCTION = AbiFunction.from(
+  'function horizontalSplit(bytes29 eventId, uint256 amount)',
+);
+const ROUTER_HORIZONTAL_MERGE_FUNCTION = AbiFunction.from(
+  'function horizontalMerge(bytes29 eventId, uint256 amount)',
+);
+const ROUTER_CONVERT_FUNCTION = AbiFunction.from(
+  'function convert(bytes29 eventId, uint16 conditionIndex, uint256 amount)',
+);
+const ROUTER_COMPOSE_THRESHOLD_FUNCTION = AbiFunction.from(
+  'function composeThreshold(bytes29 eventId, uint256 line, uint8 side, uint256 amount)',
+);
+const ROUTER_DECOMPOSE_THRESHOLD_FUNCTION = AbiFunction.from(
+  'function decomposeThreshold(bytes29 eventId, uint256 line, uint8 side, uint256 amount)',
+);
+const ROUTER_MERGE_DIRECTIONAL_FUNCTION = AbiFunction.from(
+  'function mergeDirectional(bytes29 eventId, uint256 lowLine, uint256 highLine, uint256 amount)',
+);
+const ROUTER_SPLIT_DIRECTIONAL_FUNCTION = AbiFunction.from(
+  'function splitDirectional(bytes29 eventId, uint256 lowLine, uint256 highLine, uint256 amount)',
 );
 const COMBINATORIAL_MODULE_PREPARE_CONDITION_FUNCTION = AbiFunction.from(
   'function prepareCondition(uint256[] legs) returns (bytes31)',
@@ -436,6 +462,202 @@ export function routerRedeemCall(
   };
 }
 
+export type RouterHorizontalSplitCallError = UserInputError;
+export const RouterHorizontalSplitCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `horizontalSplit(bytes29,uint256)`.
+ * Includes the event's synthetic fallback in its complete YES set.
+ *
+ * @throws {@link RouterHorizontalSplitCallError}
+ * Thrown when the event ID or amount is invalid.
+ */
+export function routerHorizontalSplitCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_SPLIT_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectUint256(amount, 'Event split amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterHorizontalMergeCallError = UserInputError;
+export const RouterHorizontalMergeCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `horizontalMerge(bytes29,uint256)`.
+ * Includes the event's synthetic fallback in its complete YES set.
+ *
+ * @throws {@link RouterHorizontalMergeCallError}
+ * Thrown when the event ID or amount is invalid.
+ */
+export function routerHorizontalMergeCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_MERGE_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectUint256(amount, 'Event merge amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterConvertCallError = UserInputError;
+export const RouterConvertCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `convert(bytes29,uint16,uint256)`.
+ * Converts one bucket or fallback NO into every other bucket's YES.
+ *
+ * @throws {@link RouterConvertCallError}
+ * Thrown when the event ID, condition index, or amount is invalid.
+ */
+export function routerConvertCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  conditionIndex: number,
+  amount: bigint,
+): TransactionCall {
+  if (
+    !Number.isInteger(conditionIndex) ||
+    conditionIndex < 0 ||
+    conditionIndex > 0xffff
+  ) {
+    throw new UserInputError(
+      'Condition index must be an integer in uint16 range',
+    );
+  }
+
+  return {
+    data: AbiFunction.encodeData(ROUTER_CONVERT_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      conditionIndex,
+      expectUint256(amount, 'Convert amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterComposeThresholdCallError = UserInputError;
+export const RouterComposeThresholdCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `composeThreshold(bytes29,uint256,uint8,uint256)`.
+ * ABOVE maps to outcome 0 and BELOW maps to outcome 1, including Void.
+ *
+ * @throws {@link RouterComposeThresholdCallError}
+ * Thrown when the event ID, line, side, or amount is invalid.
+ */
+export function routerComposeThresholdCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  line: number,
+  side: ThresholdSide,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_COMPOSE_THRESHOLD_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectLine(line, 'Threshold line'),
+      encodeThresholdSide(side),
+      expectUint256(amount, 'Threshold amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterDecomposeThresholdCallError = UserInputError;
+export const RouterDecomposeThresholdCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `decomposeThreshold(bytes29,uint256,uint8,uint256)`.
+ * ABOVE maps to outcome 0 and BELOW maps to outcome 1, including Void.
+ *
+ * @throws {@link RouterDecomposeThresholdCallError}
+ * Thrown when the event ID, line, side, or amount is invalid.
+ */
+export function routerDecomposeThresholdCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  line: number,
+  side: ThresholdSide,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_DECOMPOSE_THRESHOLD_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectLine(line, 'Threshold line'),
+      encodeThresholdSide(side),
+      expectUint256(amount, 'Threshold amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterMergeDirectionalCallError = UserInputError;
+export const RouterMergeDirectionalCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `mergeDirectional(bytes29,uint256,uint256,uint256)`.
+ * Produces collateral and the middle bucket YES basket.
+ *
+ * @throws {@link RouterMergeDirectionalCallError}
+ * Thrown when the event ID, lines, or amount is invalid.
+ */
+export function routerMergeDirectionalCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  lowLine: number,
+  highLine: number,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_MERGE_DIRECTIONAL_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectLine(lowLine, 'Low line'),
+      expectLine(highLine, 'High line'),
+      expectUint256(amount, 'Directional amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
+export type RouterSplitDirectionalCallError = UserInputError;
+export const RouterSplitDirectionalCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Creates a transaction call for Router `splitDirectional(bytes29,uint256,uint256,uint256)`.
+ * Consumes collateral and the middle bucket YES basket.
+ *
+ * @throws {@link RouterSplitDirectionalCallError}
+ * Thrown when the event ID, lines, or amount is invalid.
+ */
+export function routerSplitDirectionalCall(
+  routerAddress: EvmAddress,
+  eventId: ProtocolEventId,
+  lowLine: number,
+  highLine: number,
+  amount: bigint,
+): TransactionCall {
+  return {
+    data: AbiFunction.encodeData(ROUTER_SPLIT_DIRECTIONAL_FUNCTION, [
+      normalizeProtocolV2EventId(eventId),
+      expectLine(lowLine, 'Low line'),
+      expectLine(highLine, 'High line'),
+      expectUint256(amount, 'Directional amount'),
+    ]),
+    to: routerAddress,
+  };
+}
+
 export type CombinatorialPrepareConditionCallError = UserInputError;
 export const CombinatorialPrepareConditionCallError =
   makeErrorGuard(UserInputError);
@@ -554,6 +776,42 @@ function normalizeProtocolV2ConditionId(
   throw new UserInputError(
     'Protocol v2 condition ID must be bytes31, or bytes32 with a binary outcome byte',
   );
+}
+
+function normalizeProtocolV2EventId(eventId: ProtocolEventId): HexString {
+  if (PROTOCOL_V2_EVENT_ID_BYTES29_PATTERN.test(eventId)) {
+    return eventId.toLowerCase() as HexString;
+  }
+
+  if (
+    PROTOCOL_V2_CONDITION_ID_BYTES32_PATTERN.test(eventId) &&
+    eventId.endsWith('000000')
+  ) {
+    return eventId.slice(0, 60).toLowerCase() as HexString;
+  }
+
+  throw new UserInputError(
+    'Protocol v2 event ID must be bytes29, or bytes32 with three zero padding bytes',
+  );
+}
+
+function expectLine(line: number, label: string): bigint {
+  if (!Number.isSafeInteger(line) || line < 0) {
+    throw new UserInputError(`${label} must be a non-negative safe integer`);
+  }
+
+  return BigInt(line);
+}
+
+function encodeThresholdSide(side: ThresholdSide): 0 | 1 {
+  switch (side) {
+    case ThresholdSide.Above:
+      return 0;
+    case ThresholdSide.Below:
+      return 1;
+    default:
+      throw new UserInputError('Threshold side must be above or below');
+  }
 }
 
 function expectProtocolV2OutcomeIndex(outcomeIndex: 0 | 1): 0 | 1 {

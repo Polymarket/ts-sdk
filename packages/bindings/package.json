@@ -45,6 +45,10 @@
     "./subscriptions": {
       "types": "./dist/subscriptions/index.d.ts",
       "default": "./dist/subscriptions/index.js"
+    },
+    "./protocol": {
+      "types": "./dist/protocol/index.d.ts",
+      "default": "./dist/protocol/index.js"
     }
   },
   "typesVersions": {
@@ -69,6 +73,9 @@
       ],
       "subscriptions": [
         "./dist/subscriptions/index.d.ts"
+      ],
+      "protocol": [
+        "./dist/protocol/index.d.ts"
       ]
     }
   },
