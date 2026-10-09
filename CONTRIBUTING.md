@@ -92,8 +92,8 @@ interrupted after it starts. High-level HTTP reads retain their trailing
 `{ signal }` option; this refactor does not extend cancellation into order
 submission, wallet workflows, or WebSocket sessions.
 
-`@polymarket/types` retains its `neverthrow` re-exports, dependency, and exported
-legacy `unwrap` helper for consumer compatibility. Their availability does not
-make them the composition model for client implementation: new and migrated
-client code uses promises. Removing those public exports is a separate
-compatibility decision.
+`@polymarket/types` no longer exports `neverthrow` APIs or the legacy `unwrap`
+helper. Client code uses promises directly. Consumers that still use
+`neverthrow` must declare their own dependency and import its APIs from
+`neverthrow` instead of `@polymarket/types`. SDK requests need no `unwrap`:
+return or await their promises directly.

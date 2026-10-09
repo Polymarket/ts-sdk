@@ -20,5 +20,5 @@ responses keep the request signal while the caller owns later body reads.
 High-level action results and existing pagination and recovery behavior remain
 unchanged.
 
-Public `neverthrow` re-exports and the legacy `unwrap` helper remain available for
-compatibility; client internals now compose promises directly.
+Client internals compose promises directly. The companion types-package
+changeset removes the legacy `neverthrow` re-exports and `unwrap` helper.

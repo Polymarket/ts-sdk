@@ -148,9 +148,24 @@ validation. It rejects with `RequestAbortedError` and preserves the signal's
 reason as `cause`. Raw body-read failures after the service promise resolves
 come from the body read itself.
 
-The public `neverthrow` re-exports and legacy `unwrap` helper in
-`@polymarket/types` remain available for compatibility. Service requests and
-client implementation use promises directly.
+`@polymarket/types` no longer re-exports `neverthrow` APIs or the legacy `unwrap`
+helper. This is a breaking change to those imports. Applications that still use
+`neverthrow` must add it as their own dependency and import its APIs directly:
+
+```ts
+// Before
+import { ResultAsync, ok } from "@polymarket/types";
+```
+
+```ts
+// After: declare neverthrow as an application dependency
+import { ResultAsync, ok } from "neverthrow";
+```
+
+SDK service requests now return promises. Replace
+`await unwrap(service.get(path))` with `await service.get(path)`; the promise
+resolves parsed response data rather than a raw response. Use
+`{ responseType: "raw" }` when you need the response object.
 
 ## License
 
