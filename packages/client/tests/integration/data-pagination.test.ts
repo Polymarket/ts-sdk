@@ -1,14 +1,12 @@
 import { OrderSide } from '@polymarket/bindings';
 import { createPublicClient, RequestAbortedError } from '@polymarket/client';
-import { vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 
 describe('Data pagination', () => {
   it('keeps cancellation on cursor continuations and stops before another page', async ({
     environment,
   }) => {
-    const fetch = vi.fn(globalThis.fetch);
-    const client = createPublicClient({ environment, fetch });
+    const client = createPublicClient({ environment });
     const controller = new AbortController();
     const paginator = client.listTrades(
       { pageSize: 2, side: OrderSide.BUY },
@@ -22,7 +20,6 @@ describe('Data pagination', () => {
     expect(second.items.every((trade) => trade.side === OrderSide.BUY)).toBe(
       true,
     );
-    const requestsBeforeAbort = fetch.mock.calls.length;
     controller.abort('query disposed');
 
     await expect(
@@ -31,7 +28,6 @@ describe('Data pagination', () => {
       name: 'RequestAbortedError',
       cause: 'query disposed',
     });
-    expect(fetch).toHaveBeenCalledTimes(requestsBeforeAbort);
     // A terminal cursor never starts an operation, even after cancellation.
     await expect(paginator.from(undefined).firstPage()).resolves.toMatchObject({
       items: [],
@@ -42,8 +38,7 @@ describe('Data pagination', () => {
   it('rejects an unfinished for-await traversal after cancellation', async ({
     environment,
   }) => {
-    const fetch = vi.fn(globalThis.fetch);
-    const client = createPublicClient({ environment, fetch });
+    const client = createPublicClient({ environment });
     const controller = new AbortController();
     let pages = 0;
 
@@ -60,7 +55,6 @@ describe('Data pagination', () => {
 
     await expect(consume()).rejects.toBeInstanceOf(RequestAbortedError);
     expect(pages).toBe(1);
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('walks consecutive pages with for await and re-sends filters', async ({

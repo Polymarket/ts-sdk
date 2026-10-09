@@ -195,6 +195,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsPositionSnapshots(
     request: FetchPerpsPositionSnapshotsRequest,
+    options?: RequestOptions,
   ): Promise<PerpsPositionSnapshots>;
   /**
    * Fetches whether an address has a Perps account without authentication.
@@ -204,6 +205,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsRegistration(
     request: FetchPerpsRegistrationRequest,
+    options?: RequestOptions,
   ): Promise<boolean>;
   /**
    * Fetches public builder availability and the platform fee cap.
@@ -500,8 +502,7 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
-    fetchPerpsPositionSnapshots: (request) =>
-      fetchPerpsPositionSnapshots(client, request),
+    fetchPerpsPositionSnapshots: fetchPerpsPositionSnapshots.bind(null, client),
     fetchPerpsRegistration: fetchPerpsRegistration.bind(null, client),
     fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
     fetchPerpsBook: fetchPerpsBook.bind(null, client),

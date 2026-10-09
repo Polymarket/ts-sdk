@@ -10,12 +10,14 @@ import type { BaseClient } from '../../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import type { RequestOptions } from '../../request-options';
 import { validateWith } from '../../response';
 import type { ServiceClient } from '../../ServiceClient';
 
@@ -87,6 +89,7 @@ const RequestSchema = z
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type FetchPerpsPositionSnapshotsError =
   | RateLimitError
+  | RequestAbortedError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
@@ -94,6 +97,7 @@ export type FetchPerpsPositionSnapshotsError =
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export const FetchPerpsPositionSnapshotsError = makeErrorGuard(
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -108,9 +112,10 @@ export const FetchPerpsPositionSnapshotsError = makeErrorGuard(
 export async function fetchPerpsPositionSnapshots(
   client: BaseClient,
   request: FetchPerpsPositionSnapshotsRequest,
+  options?: RequestOptions,
 ): Promise<PerpsPositionSnapshots> {
   const parsed = parseUserInput(request, RequestSchema);
-  return fetchSnapshots(client.perps, parsed);
+  return fetchSnapshots(client.perps, parsed, options);
 }
 
 /** @internal */
@@ -130,10 +135,12 @@ export async function fetchOwnPerpsPositionSnapshots(
 async function fetchSnapshots(
   api: ServiceClient,
   request: FetchPerpsPositionSnapshotsRequest,
+  options?: RequestOptions,
 ): Promise<PerpsPositionSnapshots> {
   return unwrap(
     api
       .post('/v1/info/position-snapshots', {
+        signal: options?.signal,
         json: {
           address: request.address,
           ...(request.activeInstrumentIds === undefined
@@ -150,6 +157,6 @@ async function fetchSnapshots(
               }),
         },
       })
-      .andThen(validateWith(PerpsPositionSnapshotsSchema)),
+      .andThen(validateWith(PerpsPositionSnapshotsSchema, options)),
   );
 }

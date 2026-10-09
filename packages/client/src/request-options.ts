@@ -31,7 +31,10 @@ export function assertNotAborted(signal?: AbortSignal): void {
   }
 }
 
-/** Stops awaiting work that may not itself support cancellation. @internal */
+/**
+ * Stops awaiting work that may not itself support cancellation.
+ * @internal
+ */
 export function withAbort<T>(
   promise: PromiseLike<T>,
   signal?: AbortSignal,
@@ -68,7 +71,10 @@ export function withAbort<T>(
   });
 }
 
-/** An interruptible delay that releases its timer on cancellation. @internal */
+/**
+ * An interruptible delay that releases its timer on cancellation.
+ * @internal
+ */
 export function waitForRetry(
   milliseconds: number,
   signal?: AbortSignal,

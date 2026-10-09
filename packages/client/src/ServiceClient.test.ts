@@ -32,6 +32,54 @@ describe('ServiceClient', () => {
     server.close();
   });
 
+  it('never dispatches a request whose signal is already cancelled', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = new ServiceClient({ root, fetch });
+    const controller = new AbortController();
+    const reason = { query: 'replaced' };
+    controller.abort(reason);
+
+    await expect(
+      unwrap(client.get('/cancelled', { signal: controller.signal })),
+    ).rejects.toMatchObject({ name: 'RequestAbortedError', cause: reason });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('forwards cancellation to an in-flight request without cancelling another request', async () => {
+    const dispatched = Promise.withResolvers<AbortSignal>();
+    const controller = new AbortController();
+    const reason = new Error('query superseded');
+    const fetch = vi.fn<typeof globalThis.fetch>((input) => {
+      const request = input as Request;
+      if (new URL(request.url).pathname === '/cancelled') {
+        dispatched.resolve(request.signal);
+        return new Promise<Response>((_, reject) => {
+          request.signal.addEventListener(
+            'abort',
+            () => reject(request.signal.reason),
+            { once: true },
+          );
+        });
+      }
+      return Promise.resolve(Response.json({ ok: true }));
+    });
+    const client = new ServiceClient({ root, fetch });
+    const cancelled = unwrap(
+      client.get('/cancelled', { signal: controller.signal }),
+    );
+    const unaffected = unwrap(client.get('/unaffected'));
+    const requestSignal = await dispatched.promise;
+    controller.abort(reason);
+
+    await expect(cancelled).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
+    await expect(unaffected).resolves.toBeInstanceOf(Response);
+    expect(requestSignal.aborted).toBe(true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     [false, 1],
     [undefined, 3],
