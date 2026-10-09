@@ -4,71 +4,25 @@
 
 ### Minor Changes
 
-- ea1237e: Read trading approval state from the indexed approvals endpoint while keeping
-  trading setup checks on chain. Recent grants and revocations may take time to
-  appear in reads. Return shapes and required approvals are unchanged.
-
-  Reads now follow the configured data endpoint, independently of RPC overrides,
-  and surface its failures without an RPC fallback. This includes rejected zero
-  and protocol-contract wallets, rate limits, and unavailable environments.
-  Incomplete or mismatched approval snapshots raise `UnexpectedResponseError`.
-
-- 61f140f: Add 60-second equity TWAP subscriptions with typed live updates and history snapshots.
-- 0c64cfb: Support a positive quantity on each position TP/SL trigger for partial exits, preserving omitted-quantity full closes and validating exact decimal representability before submission.
-- ab1e3b2: Support `position_deleveraged` notifications in Perps notification history and the existing session event iterator. The new notification includes the closed size, settlement price, realized PnL, and margin type. Perps remains experimental; exhaustive notification switches should handle this variant.
-- b824569: Add authenticated Perps chase creation, active reads and cancellation, with child order chase identities and exact decimal validation.
-- 2eea382: Support Perps good-till-date orders with a separate order expiry, batch validation, signing, and GTD order updates.
-- 04af7cc: Add experimental public and authenticated position snapshots with exact trade IDs and per-selection outcomes.
-- d918f6a: Add a public Perps registration lookup that validates an address and returns whether it has a Perps account.
-- 1e0b3dd: Expose instrument close-only state, optional settlement records and display labels, and settlement flags on public trades and account fills. Older responses default the new flags to false; canonical instrument identifiers remain unchanged.
-- 95766f8: Add experimental authenticated TWAP creation, active-run reads, pause, resume and cancellation.
-- 1a2e9ca: Expose a position's first acquisition time as `firstEntryAt`, in Unix epoch
-  milliseconds. Unrecorded acquisition times are `undefined`.
-- 8d7fccc: Add `PositionSortBy.Price` for sorting positions by current price. Redeemable
-  positions retain winners-first ordering, and closed wallet positions retain
-  realized-PnL ordering.
-- 2111cdf: Add a case-insensitive `title` filter to `listPositions`. Preserve title
-  patterns across pagination, including cursor replay, and validate the limit
-  of 200 Unicode characters while treating blank input as absent.
-- d0be2fd: Add optional Chainlink and Pyth provider selection to cryptocurrency, equity, and their 60-second TWAP subscriptions. Keep different requested providers on separate connections so fallback and disabled selection do not mix subscriptions. Price sources continue to identify the actual producer. An optional `onSubscribed` callback reports the provider the server confirms, on acceptance and after every reconnect.
-- bbbcb20: Expose the source of realtime price updates and history snapshots. Known sources
-  are available through `KnownPriceSource`, while `PriceSource` accepts future source
-  names. Cached history starts fresh when the source changes.
-- 5976187: Expose optional resolution settlement estimates and their basis through
-  `expectedSettlementTime` and `settlementTimeBasis`, with the public
-  `ResolutionSettlementTimeBasis` enum. Estimates are earliest settlement times,
-  not guaranteed deadlines.
-- d004008: Support trailing market stop losses for order and position protection, including partial position exits, activation events, and live trailing metadata.
+- ea1237e: Read indexed trading approvals from the configured data endpoint, with no RPC fallback. Recent changes may lag; setup still checks on chain. Incomplete snapshots raise `UnexpectedResponseError`.
+- 61f140f, d0be2fd, bbbcb20: Add 60-second equity TWAPs, Chainlink/Pyth provider selection, subscription confirmations, and price source metadata. Cached history resets when the source changes.
+- b824569, 95766f8: Add Perps chase and TWAP execution lifecycles.
+- 2eea382, d004008: Add Perps GTD orders and trailing stop losses with activation events.
+- 04af7cc, d918f6a: Add public and authenticated Perps position snapshots and public registration lookup.
+- 1e0b3dd: Expose Perps close-only state, settlement records, display labels, and settlement flags on trades and fills.
+- ab1e3b2: Add `position_deleveraged` notifications. Exhaustive notification handlers must handle this variant; Perps remains experimental.
+- 1a2e9ca, 8d7fccc: Add position acquisition time (`firstEntryAt`, epoch milliseconds) and `PositionSortBy.Price`. Redeemable and closed listings retain their existing ordering.
+- 5976187: Add `expectedSettlementTime` and `settlementTimeBasis` as earliest settlement estimates, not guaranteed deadlines.
+- 0c64cfb: Add quantities to position TP/SL triggers for partial exits; omission still closes the full position.
+- 2111cdf: Add a case-insensitive position `title` filter, preserved across pages and cursor replay (up to 200 Unicode characters).
 
 ### Patch Changes
 
 - 98adafb: Add ordered batch Perps leverage updates with per-instrument rejection results.
-- c7b7e1f: `RequestRejectedError.retryAfter` and `RateLimitError.retryAfter` now also honor the HTTP-date form of the `Retry-After` header, converted to whole seconds from now and never below zero, instead of dropping it. The existing retry policy and the set of retried requests are unchanged.
-- ae8b4e8: Emit server notification resync signals through the Perps session iterator with
-  `reason: 'server'`, the catch-up sequence, and the server timestamp. Backfill from
-  the last processed notification sequence and deduplicate by notification id.
-- fcbe83c: Accept current terminal Perps order statuses in order history and private order
-  updates, including instrument retirement, fill-time margin failures, and order
-  limits. Valid terminal updates now resolve order placement instead of timing out.
-- Updated dependencies [98adafb]
-- Updated dependencies [ea1237e]
-- Updated dependencies [61f140f]
-- Updated dependencies [ab1e3b2]
-- Updated dependencies [b824569]
-- Updated dependencies [2eea382]
-- Updated dependencies [ae8b4e8]
-- Updated dependencies [04af7cc]
-- Updated dependencies [d918f6a]
-- Updated dependencies [1e0b3dd]
-- Updated dependencies [fcbe83c]
-- Updated dependencies [95766f8]
-- Updated dependencies [1a2e9ca]
-- Updated dependencies [8d7fccc]
-- Updated dependencies [d0be2fd]
-- Updated dependencies [bbbcb20]
-- Updated dependencies [5976187]
-- Updated dependencies [d004008]
-  - @polymarket/bindings@0.13.0
+- ae8b4e8: Emit server notification resync signals with the catch-up sequence and timestamp. Backfill and deduplicate by notification ID.
+- fcbe83c: Accept current terminal Perps order statuses so valid terminal updates resolve placement.
+- c7b7e1f: Parse HTTP-date `Retry-After` headers into nonnegative whole seconds. Retry policy is unchanged.
+- Update `@polymarket/bindings` to `0.13.0`.
 
 ## 0.12.0
 
