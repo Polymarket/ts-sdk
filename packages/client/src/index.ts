@@ -1,3 +1,5 @@
+import type { ServiceClient as ServiceClientInstance } from './ServiceClient';
+
 export type * from '@polymarket/bindings';
 export {
   CommentParentEntityType,
@@ -71,6 +73,26 @@ export type {
 } from './rate-limit';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type { Fetch, RequestOptions } from './request-options';
-export * from './ServiceClient';
+/**
+ * Service client returned by the experimental `predictions` getter.
+ *
+ * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+ */
+export type ServiceClient = ServiceClientInstance;
+/** @experimental See {@link ServiceClient}. */
+export type {
+  ServiceClientDeleteOptions,
+  ServiceClientGetOptions,
+  ServiceClientJsonResponseOptions,
+  ServiceClientNonJsonResponseOptions,
+  ServiceClientNonJsonResponseType,
+  ServiceClientPatchOptions,
+  ServiceClientPostOptions,
+  ServiceClientRequestOptions,
+  ServiceClientResponse,
+  ServiceClientResponseOptions,
+  ServiceClientResponseType,
+} from './ServiceClient';
+export { ServiceClientRequestError } from './ServiceClient';
 export * from './types';
 export { type AccountIdentity, SignerType } from './wallet';

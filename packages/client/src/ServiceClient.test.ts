@@ -429,6 +429,36 @@ describe('ServiceClient', () => {
       expect(await raw.text()).toBe('download');
     });
 
+    it('resolves rejected and rate-limited raw responses for caller inspection', async () => {
+      server.use(
+        http.post(`${root}/rejected`, () =>
+          HttpResponse.json({ error: 'invalid_market' }, { status: 422 }),
+        ),
+        http.get(
+          `${root}/limited`,
+          () =>
+            new HttpResponse('slow down', {
+              status: 429,
+              headers: { 'retry-after': '3' },
+            }),
+        ),
+      );
+      const client = new ServiceClient({ root, retry: false });
+      const rejected = await client.post('/rejected', {
+        json: {},
+        responseType: 'raw',
+      });
+      expect(rejected.status).toBe(422);
+      expect(await rejected.json()).toEqual({ error: 'invalid_market' });
+      const limited = await client.get('/limited', { responseType: 'raw' });
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('retry-after')).toBe('3');
+      expect(await limited.text()).toBe('slow down');
+      await expect(
+        client.post('/rejected', { json: {} }),
+      ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 422 });
+    });
+
     it('preserves JSON and schema failures as response errors with context', async () => {
       server.use(
         http.get(`${root}/invalid-json`, () => HttpResponse.text('not JSON')),

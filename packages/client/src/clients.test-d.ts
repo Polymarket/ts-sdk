@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import type { PublicClient, SecureClient } from './clients';
+import { ServiceClient as RootServiceClient } from './index';
 import type { ServiceClient } from './ServiceClient';
 
 declare const publicClient: PublicClient;
@@ -67,5 +68,11 @@ describe('predictions service types', () => {
     expectTypeOf(publicClient.relayer).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.builderGateway).toEqualTypeOf<ServiceClient>();
+  });
+
+  it('exports the service type without its constructor from the root entry point', () => {
+    expectTypeOf<RootServiceClient>().toEqualTypeOf<ServiceClient>();
+    // @ts-expect-error The root entry point exports ServiceClient as a type only.
+    new RootServiceClient({ root: 'https://example.com' });
   });
 });

@@ -6,13 +6,14 @@ We are not broadly accepting external pull requests yet. Large changes should no
 
 ## HTTP request implementation
 
-`PublicClient.predictions` and `SecureClient.predictions` are reserved,
-unconfigured service getters for future polymarket.com UI use. Their
-`ServiceClient` has no root or transport and rejects requests with `UserInputError`
-before any fetch. This getter is experimental; breaking changes may occur in any
-release, including patch releases. Existing service getters, routes,
-authentication, and high-level actions retain their behavior. External consumers
-should use high-level SDK actions.
+`PublicClient.predictions` and `SecureClient.predictions` are experimental
+service getters for polymarket.com UI requests. Production uses
+`https://api.defi.polymarket.com`, and environment forks can override
+`predictions.rest` and `predictions.headers`. Trading credentials are not
+attached automatically. The getter may change in any release, including patch
+releases. Existing service getters, routes, authentication, and high-level
+actions retain their behavior. External consumers should use high-level SDK
+actions.
 
 Service-client methods return promises that resolve to response data and reject
 with SDK errors. In actions, use the configured service supplied by the client
@@ -59,10 +60,11 @@ Set `responseType` when the successful response is not JSON:
 | `arrayBuffer`    | `ArrayBuffer`                                                     |
 | `text`           | `string`                                                          |
 | `empty`          | `void`; consume and discard the successful response body          |
-| `raw`            | `Response`; return once successful response headers are available |
+| `raw`            | `Response` for any status, once response headers are available    |
 
 A schema applies only to JSON. Non-JSON response modes do not accept `schema`.
-Raw responses leave body consumption to the caller. The signal remains attached
+Raw responses never reject on HTTP status. Status checks and body consumption
+belong to the caller. The signal remains attached
 to the underlying request, but the fulfilled service-client promise cannot
 cover a later `response.json()`, `blob()`, or other body read. Handle those
 reads and their fetch errors at the call site.

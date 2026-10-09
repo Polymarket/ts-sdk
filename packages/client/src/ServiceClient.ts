@@ -24,10 +24,8 @@ import {
 } from './request-options';
 import { parseResponse } from './response';
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type ServiceRequest = {
   signal?: AbortSignal;
   method: ServiceRequestMethod;
@@ -38,12 +36,10 @@ export type ServiceRequest = {
   params?: URLSearchParams;
 };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type RequestHeadersResolver = (
   request: ServiceRequest,
 ) => Promise<HeadersInit>;
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
 export type ServiceClientConfig = {
   fetch?: Fetch;
   retry?: boolean;
@@ -60,7 +56,7 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientResponseType =
   | 'json'
   | 'blob'
@@ -69,13 +65,13 @@ export type ServiceClientResponseType =
   | 'empty'
   | 'raw';
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientNonJsonResponseType = Exclude<
   ServiceClientResponseType,
   'json'
 >;
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 // biome-ignore-start lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
 export type ServiceClientResponse<TResponse extends ServiceClientResponseType> =
   TResponse extends 'blob'
@@ -91,13 +87,13 @@ export type ServiceClientResponse<TResponse extends ServiceClientResponseType> =
             : unknown;
 // biome-ignore-end lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientJsonResponseOptions<T = unknown> = {
   responseType?: 'json';
   schema?: z.ZodType<T>;
 };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientNonJsonResponseOptions<
   TResponse extends
     ServiceClientNonJsonResponseType = ServiceClientNonJsonResponseType,
@@ -106,43 +102,43 @@ export type ServiceClientNonJsonResponseOptions<
   schema?: never;
 };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientResponseOptions<T = unknown> =
   | ServiceClientJsonResponseOptions<T>
   | ServiceClientNonJsonResponseOptions;
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientRequestOptions<T = unknown> = RequestOptions &
   ServiceClientResponseOptions<T> & {
-    /** Rate-limit bucket supplied by the action that owns the request. */
+    /** Rate-limit bucket supplied by the action that owns the request. @internal */
     rateLimitBucket?: RateLimitBucket;
     timeout?: ServiceClientTimeout;
     /** Disable transport retries for commands whose outcome may be uncertain. */
     retry?: false;
   };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientGetOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     params?: URLSearchParams;
   };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientPostOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientPatchOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientDeleteOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
@@ -150,7 +146,7 @@ export type ServiceClientDeleteOptions<T = unknown> =
     params?: URLSearchParams;
   };
 
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export type ServiceClientRequestError =
   | RateLimitError
   | RequestAbortedError
@@ -158,7 +154,7 @@ export type ServiceClientRequestError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-/** @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases. */
+/** @experimental See {@link ServiceClient}. */
 export const ServiceClientRequestError = makeErrorGuard(
   RateLimitError,
   RequestAbortedError,
@@ -259,8 +255,10 @@ function parseHttpDate(value: string, now: number): number | undefined {
 /**
  * Sends requests and consumes and validates their responses.
  *
- * Raw mode resolves at response headers; subsequent body consumption belongs
- * to the caller. The operation signal remains attached to the underlying fetch.
+ * Raw mode resolves at response headers for every status, including 4xx and
+ * 5xx responses, so callers can inspect error bodies. Status checks and body
+ * consumption belong to the caller. The operation signal remains attached to
+ * the underlying fetch.
  *
  * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
  */
@@ -294,7 +292,6 @@ export class ServiceClient {
   /**
    * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
-   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
    */
   get<T = unknown>(
     path: string,
@@ -313,7 +310,6 @@ export class ServiceClient {
   /**
    * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
-   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
    */
   post<T = unknown>(
     path: string,
@@ -332,7 +328,6 @@ export class ServiceClient {
   /**
    * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
-   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
    */
   patch<T = unknown>(
     path: string,
@@ -355,7 +350,6 @@ export class ServiceClient {
   /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
-   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
    */
   del<T = unknown>(
     path: string,
@@ -402,6 +396,8 @@ export class ServiceClient {
         options.rateLimitBucket,
       );
       if (rateLimit !== undefined) this.#notifyRateLimitUpdate(rateLimit);
+      // Raw callers inspect the status, headers and body themselves.
+      if (options.responseType === 'raw') return response;
       if (!response.ok) {
         const retryAfter = this.#parseRetryAfterHeader(response);
         if (response.status === 429) {
@@ -443,7 +439,6 @@ export class ServiceClient {
   ): Promise<unknown> {
     const mode = options.responseType ?? 'json';
     assertNotAborted(options.signal);
-    if (mode === 'raw') return response;
     let value: unknown;
     try {
       switch (mode) {
