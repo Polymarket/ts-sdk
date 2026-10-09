@@ -9,6 +9,50 @@ import { fetchTag } from '@polymarket/client/actions';
 import { describe, expect, it } from './fixtures';
 
 describe('HTTP request controls', () => {
+  it('reads a public markets page through the production gateway contract', async ({
+    environment,
+  }) => {
+    const inputs: (RequestInfo | URL)[] = [];
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      inputs.push(input);
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch, retry: false });
+    const params = new URLSearchParams({ page_size: '1', closed: 'false' });
+    const result = await client.predictions.get('/next/markets', {
+      params,
+      timeout: 10_000,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({ items: expect.any(Array) }),
+    );
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    expect(url.origin).toBe(new URL(environment.predictions.rest).origin);
+    expect(url.pathname).toBe('/next/markets');
+    expect(url.searchParams.get('page_size')).toBe('1');
+    expect(url.searchParams.get('closed')).toBe('false');
+  });
+  it('reads the live gateway ping through predictions with custom fetch', async ({
+    environment,
+  }) => {
+    const inputs: (RequestInfo | URL)[] = [];
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      inputs.push(input);
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch, retry: false });
+    const result = await client.predictions.get<{ status: string }>(
+      '/next/ping',
+      { timeout: 10_000 },
+    );
+    expect(result).toEqual({ status: 'ok' });
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    const url = input instanceof Request ? input.url : String(input);
+    expect(url).toBe(`${environment.predictions.rest}/next/ping`);
+  });
   it('forwards live reads through custom fetch for client and extended action calls', async ({
     environment,
   }) => {

@@ -155,8 +155,8 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /**
-   * Reserved service client with no configured endpoint.
-   * Requests reject with {@link UserInputError} until an endpoint is provided in a future release.
+   * Service client for prediction requests using the configured endpoint.
+   * Requests return promises with parsed response data.
    *
    * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
    */
@@ -338,6 +338,8 @@ class BasePublicClient<
       predictions: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,
+        headers: config.environment.predictions.headers,
+        root: config.environment.predictions.rest,
       }),
       data: new ServiceClient({
         fetch: config.fetch,
@@ -609,6 +611,8 @@ class BaseSecureClient<
       predictions: new ServiceClient({
         fetch: config.fetch,
         retry: config.retry,
+        headers: config.environment.predictions.headers,
+        root: config.environment.predictions.rest,
       }),
       clob: new ServiceClient({
         fetch: config.fetch,

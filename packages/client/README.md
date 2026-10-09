@@ -90,21 +90,49 @@ remote signing; it does not configure a wallet provider's own network requests.
 
 ## Experimental service requests
 
-`PublicClient.predictions` and `SecureClient.predictions` expose a reserved,
-unconfigured `ServiceClient` for future polymarket.com UI use. It has no service
-root or transport; its request methods reject with `UserInputError` before any
-fetch. The getter is experimental, and breaking changes may occur in any release,
-including patch releases. External consumers should use high-level SDK actions.
-Existing service getters, routes, authentication, and high-level actions retain
-their behavior.
+`PublicClient.predictions` and `SecureClient.predictions` expose a `ServiceClient`
+for polymarket.com UI requests. Production requests use
+`https://api.defi.polymarket.com`; advanced environment forks may override
+`predictions.rest` and `predictions.headers`. The internal preproduction
+environment uses `https://api-defi-staging.polymarket.dev`. The getter is
+experimental, and breaking changes may occur in any release, including patch
+releases. External consumers should use high-level SDK actions. Existing service
+getters, routes, authentication, and high-level actions retain their behavior.
+
+All four methods (`get`, `post`, `patch`, `del`) accept a flat options object:
+
+```ts
+const client = createPublicClient();
+const ping = await client.predictions.get<{ status: string }>("/next/ping", {
+  signal,
+});
+
+// endpoint, payload and ResponseSchema come from the UI's endpoint contract.
+const result = await client.predictions.post(endpoint, {
+  json: payload,
+  ...options,
+  signal,
+  schema: ResponseSchema,
+});
+```
+
+POST bodies use `json`; request controls such as `headers`, `timeout` and
+`retry: false` sit alongside `signal` and `schema`, rather than inside a nested
+`options` object. GET query parameters use `params: URLSearchParams`. Responses
+resolve as parsed data; errors reject the promise and can be handled with
+`try/catch`. A schema validates/transforms the response and infers the result
+type; a generic alone declares an unchecked JSON result type. Existing trading
+credentials are not automatically attached to these requests. Supply headers
+required by the chosen gateway endpoint; gateway identity login and refresh are
+not implemented here. Configuring the URL does not establish edge availability
+or grant access through its deployment gates.
 
 Configured service clients return promises from `get`,
 `post`, `patch`, and `del`. JSON is the default response mode. Supply the verified
 endpoint's schema and the operation's signal in the same options object; schema
 validation and transformations determine the resolved type. The following
 helper illustrates inference for an endpoint whose response is a numeric string;
-its caller supplies a configured service and endpoint path. These examples apply
-to configured services. The UI project
+its caller supplies a configured service and endpoint path. The UI project
 needs its own `zod` dependency for this schema example (`pnpm add zod`):
 
 ```ts

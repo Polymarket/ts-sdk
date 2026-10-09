@@ -18,8 +18,8 @@ import {
   vi,
 } from 'vitest';
 import { createPublicClient, createSecureClient } from './clients';
-import { forkEnvironmentConfig } from './environments';
-import { UserInputError } from './errors';
+import { forkEnvironmentConfig, production } from './environments';
+import { RequestAbortedError, TransportError } from './errors';
 import { ServiceClient } from './ServiceClient';
 import type { ApiKeyAuthorization, Signer } from './types';
 import {
@@ -78,9 +78,14 @@ const signer: Signer = {
   },
 };
 
-describe('empty predictions service', () => {
-  it('exposes the reserved service without dispatching or changing existing services', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>();
+describe('predictions gateway service', () => {
+  it('dispatches every verb through custom fetch to the production gateway', async () => {
+    const failure = new Error('custom fetch stopped at the transport boundary');
+    const observedRequests: Request[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      if (input instanceof Request) observedRequests.push(input.clone());
+      throw failure;
+    });
     const client = createPublicClient({ fetch, retry: false });
     const predictions = client.predictions;
     const extended = client.extend(() => ({ predictionService: predictions }));
@@ -92,10 +97,88 @@ describe('empty predictions service', () => {
     expect(client.gamma).toBeInstanceOf(ServiceClient);
     expect(client.data).toBeInstanceOf(ServiceClient);
     expect(client.relayer).toBeInstanceOf(ServiceClient);
-    await expect(predictions.get('/reserved')).rejects.toBeInstanceOf(
-      UserInputError,
+    const controller = new AbortController();
+    for (const operation of [
+      () => predictions.get('/next/ping', { signal: controller.signal }),
+      () => predictions.post('/endpoint', { json: { value: 1 } }),
+      () => predictions.patch('/endpoint', { json: { value: 2 } }),
+      () => predictions.del('/endpoint'),
+    ]) {
+      await expect(operation()).rejects.toMatchObject({
+        name: TransportError.name,
+        cause: failure,
+      });
+    }
+    expect(fetch).toHaveBeenCalledTimes(4);
+    const requests = observedRequests;
+    expect(requests.map((request) => request.url)).toEqual([
+      'https://api.defi.polymarket.com/next/ping',
+      'https://api.defi.polymarket.com/endpoint',
+      'https://api.defi.polymarket.com/endpoint',
+      'https://api.defi.polymarket.com/endpoint',
+    ]);
+    expect(requests.map((request) => request.method)).toEqual([
+      'GET',
+      'POST',
+      'PATCH',
+      'DELETE',
+    ]);
+    expect(await requests[1]?.text()).toBe('{"value":1}');
+    expect(await requests[2]?.text()).toBe('{"value":2}');
+    controller.abort();
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it('merges gateway environment headers and respects pre-dispatch cancellation', async () => {
+    const failure = new Error('custom fetch stopped at the transport boundary');
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      throw failure;
+    });
+    const base = forkEnvironmentConfig({
+      name: 'gateway-base',
+      predictions: {
+        headers: { 'x-base': 'base', 'x-override': 'base' },
+      },
+    });
+    const fork = forkEnvironmentConfig(
+      {
+        name: 'gateway-fork',
+        predictions: {
+          rest: 'https://api-defi-staging.polymarket.dev',
+          headers: { 'x-override': 'fork' },
+        },
+      },
+      base,
     );
-    expect(fetch).not.toHaveBeenCalled();
+    const client = createPublicClient({
+      environment: fork,
+      fetch,
+      retry: false,
+    });
+    await expect(
+      client.predictions.get('/next/ping', {
+        headers: { 'x-request': 'request' },
+      }),
+    ).rejects.toMatchObject({ cause: failure });
+    const request = fetch.mock.calls[0]?.[0] as Request;
+    expect(request.url).toBe(
+      'https://api-defi-staging.polymarket.dev/next/ping',
+    );
+    expect(request.headers.get('x-base')).toBe('base');
+    expect(request.headers.get('x-override')).toBe('fork');
+    expect(request.headers.get('x-request')).toBe('request');
+    expect(production.predictions.rest).toBe('https://api.defi.polymarket.com');
+    const controller = new AbortController();
+    controller.abort('superseded');
+    await expect(
+      client.predictions.get('/next/ping', {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({
+      name: RequestAbortedError.name,
+      cause: 'superseded',
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -399,10 +482,24 @@ describe('secure client gasless wallet setup', () => {
     server.use(
       http.delete(`${clobRoot}/auth/api-key`, () => HttpResponse.json('OK')),
     );
+    const failure = new Error('gateway dispatch observed');
+    const gatewayRequests: Request[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      if (
+        input instanceof Request &&
+        input.url.startsWith(environment.predictions.rest)
+      ) {
+        gatewayRequests.push(input);
+        throw failure;
+      }
+      return globalThis.fetch(input, init);
+    });
     const client = await createSecureClient({
       apiKey,
       credentials,
       environment,
+      fetch,
+      retry: false,
       signer,
       wallet: signerAddress,
     });
@@ -412,14 +509,22 @@ describe('secure client gasless wallet setup', () => {
     client.webSockets.rfqQuoter.shutdown = rfqShutdown;
 
     expect(client.predictions).toBeInstanceOf(ServiceClient);
-    await expect(client.predictions.get('/reserved')).rejects.toBeInstanceOf(
-      UserInputError,
-    );
+    await expect(client.predictions.get('/next/ping')).rejects.toMatchObject({
+      name: TransportError.name,
+      cause: failure,
+    });
     const publicClient = await client.endAuthentication();
     expect(publicClient.predictions).toBeInstanceOf(ServiceClient);
     await expect(
-      publicClient.predictions.get('/reserved'),
-    ).rejects.toBeInstanceOf(UserInputError);
+      publicClient.predictions.get('/next/ping'),
+    ).rejects.toMatchObject({ name: TransportError.name, cause: failure });
+    expect(gatewayRequests).toHaveLength(2);
+    for (const request of gatewayRequests) {
+      expect(request.url).toBe(`${environment.predictions.rest}/next/ping`);
+      expect(request.headers.has('POLY_API_KEY')).toBe(false);
+      expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
+      expect(request.headers.has('RELAYER_API_KEY')).toBe(false);
+    }
     expect(() => client.predictions).toThrow(
       'This client has ended authentication',
     );

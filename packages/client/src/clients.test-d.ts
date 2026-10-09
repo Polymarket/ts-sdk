@@ -6,7 +6,7 @@ import type { ServiceClient } from './ServiceClient';
 declare const publicClient: PublicClient;
 declare const secureClient: SecureClient;
 
-describe('reserved predictions service types', () => {
+describe('predictions service types', () => {
   it('exposes the same precise Promise service on public and secure clients', () => {
     const schema = z.object({ count: z.string().transform(Number) });
     expectTypeOf(publicClient.predictions).toEqualTypeOf<ServiceClient>();
