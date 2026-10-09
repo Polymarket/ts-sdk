@@ -98,6 +98,12 @@ export type PublicAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+   * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+   * Keep the original filters and requested sort when resuming a cursor. If
+   * an older cursor is rejected with HTTP 400 because the ordering changed,
+   * discard it and explicitly fetch a new first page; the paginator does not
+   * restart the listing.
    * `title` filters by case-insensitive substring (max 200 Unicode characters).
    * `%` and `_` are wildcards. Blank input is ignored; other patterns are
    * preserved unchanged on every page, including cursor replay.
@@ -365,6 +371,12 @@ export type SecureAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+   * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+   * Keep the original filters and requested sort when resuming a cursor. If
+   * an older cursor is rejected with HTTP 400 because the ordering changed,
+   * discard it and explicitly fetch a new first page; the paginator does not
+   * restart the listing.
    * `title` filters by case-insensitive substring (max 200 Unicode characters).
    * `%` and `_` are wildcards. Blank input is ignored; other patterns are
    * preserved unchanged on every page, including cursor replay.

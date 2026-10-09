@@ -1,7 +1,11 @@
 import { toPaginationCursor } from '@polymarket/bindings';
-import { okAsync } from '@polymarket/types';
+import { errAsync, okAsync } from '@polymarket/types';
 import { describe, expect, it } from 'vitest';
-import { PaginationLimitError, UserInputError } from './errors';
+import {
+  PaginationLimitError,
+  RequestRejectedError,
+  UserInputError,
+} from './errors';
 import {
   decodeOffsetCursor,
   encodeKeysetCursor,
@@ -16,6 +20,46 @@ import {
 const LIMITS = { maxOffset: 200, maxPageSize: 100 };
 
 describe('paginate', () => {
+  it('preserves a rejected saved cursor without restarting the listing', async () => {
+    const savedCursor = toPaginationCursor('obsolete-closed-order');
+    const rejection = new RequestRejectedError('Restart this listing', {
+      status: 400,
+    });
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate<number[], RequestRejectedError>((cursor) => {
+      requested.push(cursor);
+      return errAsync(rejection);
+    });
+
+    await expect(paginator.from(savedCursor).firstPage()).rejects.toBe(
+      rejection,
+    );
+    expect(requested).toEqual([savedCursor]);
+  });
+
+  it('keeps yielded pages and propagates a rejected continuation without replay', async () => {
+    const nextCursor = toPaginationCursor('obsolete-closed-order');
+    const rejection = new RequestRejectedError('Restart this listing', {
+      status: 400,
+    });
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate<number[], RequestRejectedError>((cursor) => {
+      requested.push(cursor);
+      return cursor === undefined
+        ? okAsync({ items: [1], hasMore: true, nextCursor })
+        : errAsync(rejection);
+    });
+    const pages: Page<number[]>[] = [];
+
+    await expect(async () => {
+      for await (const page of paginator) {
+        pages.push(page);
+      }
+    }).rejects.toBe(rejection);
+    expect(pages.map((page) => page.items)).toEqual([[1]]);
+    expect(requested).toEqual([undefined, nextCursor]);
+  });
+
   it('yields a depth-limited page and stops without following its cursor', async () => {
     const boundaryCursor = encodeOffsetCursor({ offset: 200, pageSize: 100 });
     const nextCursor = encodeOffsetCursor({ offset: 300, pageSize: 100 });
