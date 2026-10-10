@@ -82,6 +82,12 @@ export const PerpsPortfolioPositionSchema = z
     unrealized_pnl: DecimalStringSchema,
     return_on_equity: DecimalStringSchema,
     cumulative_funding: DecimalStringSchema,
+    adl_index: z.union([
+      z.literal(0),
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+    ]),
   })
   .transform((position) => ({
     instrumentId: position.instrument_id,
@@ -97,6 +103,8 @@ export const PerpsPortfolioPositionSchema = z
     unrealizedPnl: position.unrealized_pnl,
     returnOnEquity: position.return_on_equity,
     cumulativeFunding: position.cumulative_funding,
+    /** Auto-deleveraging risk tier; higher values indicate higher risk. */
+    adlIndex: position.adl_index,
   }));
 
 /**
@@ -111,6 +119,7 @@ export type PerpsPortfolioPosition = z.infer<
  */
 export const PerpsMarginSummarySchema = z.object({
   totalAccountValue: DecimalStringSchema,
+  availableOrderMargin: DecimalStringSchema,
   totalInitialMargin: DecimalStringSchema,
   totalMaintenanceMargin: DecimalStringSchema,
   totalPositionValue: DecimalStringSchema,
@@ -124,12 +133,14 @@ export type PerpsMarginSummary = z.infer<typeof PerpsMarginSummarySchema>;
 const RawPerpsMarginSummarySchema = z
   .object({
     total_account_value: DecimalStringSchema,
+    available_order_margin: DecimalStringSchema,
     total_initial_margin: DecimalStringSchema,
     total_maintenance_margin: DecimalStringSchema,
     total_position_value: DecimalStringSchema,
   })
   .transform((margin) => ({
     totalAccountValue: margin.total_account_value,
+    availableOrderMargin: margin.available_order_margin,
     totalInitialMargin: margin.total_initial_margin,
     totalMaintenanceMargin: margin.total_maintenance_margin,
     totalPositionValue: margin.total_position_value,
@@ -144,6 +155,7 @@ export const PerpsPortfolioSchema = z
     margin: RawPerpsMarginSummarySchema,
     withdrawable: DecimalStringSchema,
     in_liquidation: z.boolean(),
+    fee_tier: z.number().int(),
     timestamp: EpochMillisecondsSchema,
   })
   .transform((portfolio) => ({
@@ -151,6 +163,8 @@ export const PerpsPortfolioSchema = z
     margin: portfolio.margin,
     withdrawable: portfolio.withdrawable,
     inLiquidation: portfolio.in_liquidation,
+    /** Zero-based index into the perpetual fee schedule's tiers. */
+    feeTier: portfolio.fee_tier,
     timestamp: portfolio.timestamp,
   }));
 

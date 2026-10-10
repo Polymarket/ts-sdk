@@ -3747,6 +3747,7 @@ function mockPortfolioPosition(request: { size: string }) {
         {
           cross: false,
           cumulative_funding: '0',
+          adl_index: 0,
           entry_price: '100',
           initial_margin: '30',
           instrument_id: 1,
@@ -3762,12 +3763,14 @@ function mockPortfolioPosition(request: { size: string }) {
       ],
       margin: {
         total_account_value: '1000',
+        available_order_margin: '970',
         total_initial_margin: '30',
         total_maintenance_margin: '10',
         total_position_value: '150',
       },
       withdrawable: '970',
       in_liquidation: false,
+      fee_tier: 0,
       timestamp: 1_700_000_000_000,
     }),
   );
