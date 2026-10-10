@@ -22,12 +22,17 @@ import {
   type WaitForGaslessTransactionError,
 } from './actions/gasless';
 import { createApiKeyAuthTypedDataPayload } from './authentication';
+import { createClientMetadata } from './client-metadata';
 import {
   allActions,
   type PublicActions,
   type SecureActions,
 } from './decorators';
-import { type EnvironmentConfig, production } from './environments';
+import {
+  type EnvironmentConfig,
+  production,
+  type RestEndpoint,
+} from './environments';
 import {
   CancelledSigningError,
   makeErrorGuard,
@@ -86,6 +91,8 @@ type PublicContext = {
   rpc: JsonRpcClient;
   /** @internal */
   gamma: ServiceClient;
+  /** @internal */
+  gateway: ServiceClient;
   /** @internal */
   data: ServiceClient;
   /** @internal */
@@ -160,6 +167,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get gamma(): ServiceClient {
     return this.context.gamma;
+  }
+
+  /** @internal */
+  get gateway(): ServiceClient {
+    return this.context.gateway;
   }
 
   /** @internal */
@@ -300,6 +312,9 @@ class BasePublicClient<
 > extends AbstractClient<PublicContext> {
   constructor(config: PublicClientConfig) {
     super({
+      gateway: createGatewayClient(
+        config.environment.gateway ?? production.gateway,
+      ),
       apiKey: config.apiKey,
       environment: config.environment,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -545,6 +560,9 @@ class BaseSecureClient<
     });
     super({
       account: config.account,
+      gateway: createGatewayClient(
+        config.environment.gateway ?? production.gateway,
+      ),
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
@@ -963,6 +981,15 @@ export function createPublicClient(
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
   }).extend(allActions);
+}
+
+function createGatewayClient(endpoint: RestEndpoint): ServiceClient {
+  const metadata = createClientMetadata();
+  return new ServiceClient({
+    root: endpoint.rest,
+    headers: endpoint.headers,
+    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
+  });
 }
 
 export type CreateSecureClientError =
