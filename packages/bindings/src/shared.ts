@@ -441,6 +441,8 @@ export const TickSizeValueSchema = z.union([
   z.literal(0.001),
   z.literal(0.0001),
 ]);
+/** The finest tick size a market can be moved to. */
+export const MINIMUM_TICK_SIZE_VALUE: TickSizeValue = 0.0001;
 export const IsoDateTimeStringSchema = z
   .string()
   .transform(toIsoDateTimeString)
