@@ -13,6 +13,7 @@ import type {
   OpenInterest,
   PriceHistoryPoint,
   Resolution,
+  TokenReference,
   Trade,
 } from '@polymarket/bindings/data';
 import {
@@ -31,6 +32,7 @@ import {
   type FetchResolutionsRequest,
   type FetchSpreadRequest,
   type FetchSpreadsRequest,
+  type FetchTokenReferencesRequest,
   fetchEventLiveVolume,
   fetchLastTradePrice,
   fetchLastTradePrices,
@@ -44,6 +46,7 @@ import {
   fetchResolutions,
   fetchSpread,
   fetchSpreads,
+  fetchTokenReferences,
   type ListMarketHoldersRequest,
   type ListPriceHistoryRequest,
   type ListTradesRequest,
@@ -59,6 +62,31 @@ import type {
 import type { Paginated } from '../pagination';
 
 export type DataActions = {
+  /**
+   * Fetches reference and settlement metadata for outcome assets.
+   *
+   * Provide exactly one selector family: up to 50 distinct decimal `assetIds`,
+   * or up to 10 distinct 31-byte or 32-byte hex `conditionIds`. Elements are
+   * trimmed, blanks dropped, and duplicates removed in first-seen order.
+   * Decimal IDs have leading zeros stripped and at most 78 remaining digits.
+   * Conditions are lowercased without changing their width.
+   *
+   * Returns a direct collection. Unknown selectors contribute no rows; asset
+   * lookups retain request order and condition groups retain server order.
+   * Overlapping conditions can repeat assets. Settlement metadata and outcome
+   * labels can lag by up to a minute. Transient rate limits are retried automatically.
+   *
+   * @throws {@link FetchTokenReferencesError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const references = await client.fetchTokenReferences({ assetIds: ['123'] });
+   * ```
+   */
+  fetchTokenReferences(
+    request: FetchTokenReferencesRequest,
+  ): Promise<TokenReference[]>;
   /**
    * Fetches cumulative taker volume for one or more events.
    *
@@ -387,6 +415,7 @@ export function dataActions(client: BasePublicClient): DataActions;
 export function dataActions(client: BaseSecureClient): DataActions;
 export function dataActions(client: BaseClient): DataActions {
   return {
+    fetchTokenReferences: fetchTokenReferences.bind(null, client),
     fetchEventLiveVolume: fetchEventLiveVolume.bind(null, client),
     fetchResolutions: fetchResolutions.bind(null, client),
     fetchMidpoint: fetchMidpoint.bind(null, client),
@@ -407,6 +436,7 @@ export function dataActions(client: BaseClient): DataActions {
   };
 }
 
+export type { FetchTokenReferencesRequest } from '../actions';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on DataActions.
@@ -425,6 +455,7 @@ export {
   FetchResolutionsError,
   FetchSpreadError,
   FetchSpreadsError,
+  FetchTokenReferencesError,
   ListMarketHoldersError,
   ListPriceHistoryError,
   ListTradesError,
