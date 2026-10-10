@@ -11,8 +11,10 @@ import type {
   Midpoints,
   Prices,
   Spreads,
+  TotalUserEarning,
 } from '@polymarket/bindings/clob';
 import { describe, expectTypeOf, it } from 'vitest';
+import type { SecureClient } from '../clients';
 import type { DataActions } from '../decorators';
 import type {
   FetchOrderBookRequest,
@@ -124,5 +126,24 @@ describe('public CLOB price read types', () => {
     expectTypeOf<
       ReturnType<typeof actions.fetchLastTradePrice>
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
+  });
+});
+
+declare const earningsClient: SecureClient;
+describe('total earnings public client types', () => {
+  it('accepts the sponsored option and returns decimal breakdowns', async () => {
+    const earnings = earningsClient.fetchTotalEarningsForUserForDay({
+      date: '2026-10-06',
+      sponsored: true,
+    });
+    expectTypeOf(earnings).toEqualTypeOf<Promise<TotalUserEarning[]>>();
+    for (const earning of await earnings) {
+      expectTypeOf(earning.nativeEarnings).toEqualTypeOf<
+        DecimalString | undefined
+      >();
+      expectTypeOf(earning.sponsoredEarnings).toEqualTypeOf<
+        DecimalString | undefined
+      >();
+    }
   });
 });
