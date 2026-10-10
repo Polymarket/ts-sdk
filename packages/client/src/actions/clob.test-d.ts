@@ -1,5 +1,6 @@
 import {
   type DecimalString,
+  type IsoCalendarDateString,
   type OrderSide,
   type PositionId,
   type TokenId,
@@ -9,11 +10,14 @@ import {
 import type {
   LastTradePrice,
   Midpoints,
+  NotificationsResponse,
   Prices,
   Spreads,
 } from '@polymarket/bindings/clob';
 import { describe, expectTypeOf, it } from 'vitest';
+import type { SecureClient } from '../clients';
 import type { DataActions } from '../decorators';
+import { NotificationType } from '../index';
 import type {
   FetchOrderBookRequest,
   fetchLastTradePrice,
@@ -124,5 +128,23 @@ describe('public CLOB price read types', () => {
     expectTypeOf<
       ReturnType<typeof actions.fetchLastTradePrice>
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
+  });
+});
+
+declare const notificationsClient: SecureClient;
+describe('notifications public client types', () => {
+  it('narrows tier upgrade payloads through the bound method', async () => {
+    const notifications = notificationsClient.fetchNotifications();
+    expectTypeOf(notifications).toEqualTypeOf<Promise<NotificationsResponse>>();
+    for (const notification of await notifications) {
+      if (notification.type === NotificationType.TAKER_TIER_UPGRADED) {
+        expectTypeOf(notification.payload.previousTier).toEqualTypeOf<number>();
+        expectTypeOf(notification.payload.tier).toEqualTypeOf<number>();
+        expectTypeOf(notification.payload.rebateBps).toEqualTypeOf<number>();
+        expectTypeOf(
+          notification.payload.snapshotDate,
+        ).toEqualTypeOf<IsoCalendarDateString>();
+      }
+    }
   });
 });
