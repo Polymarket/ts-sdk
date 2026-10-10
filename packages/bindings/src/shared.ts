@@ -377,13 +377,34 @@ const EpochMillisecondsLikeSchema = z.union([
   z.number().int(),
   z.string().regex(/^\d+$/).transform(Number),
 ]);
+// Timestamps also arrive as Postgres text, such as `2026-10-17 23:30:00+00`:
+// a space separator and an offset without minutes, neither of which is ISO 8601.
+const PostgresDateTimePattern =
+  /^(\d{4}-\d{2}-\d{2})([ T])(\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)([+-]\d{2})(?::?(\d{2}))?$/;
+const IsoDateTimeWithOffsetSchema = z.iso.datetime({ offset: true });
 const DateLikeStringToIsoDateTimeStringSchema = z
   .string()
-  .transform((value) => {
+  .transform((value, ctx) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       return toIsoDateTimeString(
         new Date(`${value}T00:00:00.000Z`).toISOString(),
       );
+    }
+
+    const match = PostgresDateTimePattern.exec(value);
+    const [, date, separator, time, hours, minutes] = match ?? [];
+
+    if (date && (separator === ' ' || minutes === undefined)) {
+      const rebuilt = `${date}T${time}${hours}:${minutes ?? '00'}`;
+
+      // A well-formed string can still name a day or hour that does not
+      // exist; `Date` would throw or roll it over, so reject it here instead.
+      if (!IsoDateTimeWithOffsetSchema.safeParse(rebuilt).success) {
+        ctx.addIssue({ code: 'custom', message: `Invalid datetime: ${value}` });
+        return z.NEVER;
+      }
+
+      return toIsoDateTimeString(new Date(rebuilt).toISOString());
     }
 
     return toIsoDateTimeString(value);
