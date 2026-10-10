@@ -1,5 +1,14 @@
 import { ComboPositionStatus } from '@polymarket/bindings/data';
-import { describe, it } from 'vitest';
+import { describe, expectTypeOf, it } from 'vitest';
+import type {
+  ClobRedeemActivity,
+  ComboConditionId,
+  ComboRedemptionActivity,
+  ComboTradeActivity,
+  ConditionId,
+  PublicClient,
+} from '../index';
+import { ActivityType } from '../index';
 import type { ListComboPositionsRequest } from './portfolio';
 
 const user = '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b';
@@ -37,5 +46,34 @@ describe('combo position status filter types', () => {
 
     void commaSeparatedRequest;
     void emptyRequest;
+  });
+});
+
+declare const activityClient: PublicClient;
+describe('public activity result types', () => {
+  it('narrows combo outcomes and redemption identities through the public client', async () => {
+    const page = await activityClient.listActivity({ user }).firstPage();
+    for (const activity of page.items) {
+      if (activity.type === ActivityType.TRADE && activity.isCombo) {
+        expectTypeOf(activity).toEqualTypeOf<ComboTradeActivity>();
+        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
+        expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
+      }
+      if (activity.type === ActivityType.REDEEM) {
+        if (activity.isCombo) {
+          expectTypeOf(activity).toEqualTypeOf<ComboRedemptionActivity>();
+          expectTypeOf(activity.conditionId).toEqualTypeOf<ComboConditionId>();
+          expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
+          // @ts-expect-error A basket has no single market URL slug.
+          void activity.slug;
+        } else {
+          expectTypeOf(activity).toEqualTypeOf<ClobRedeemActivity>();
+          expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
+          expectTypeOf(activity.slug).toEqualTypeOf<string>();
+        }
+        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
+        expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
+      }
+    }
   });
 });
