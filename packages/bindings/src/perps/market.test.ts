@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PerpsMarketDataEventSchema } from '../subscriptions/perps';
 import {
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
@@ -216,5 +217,51 @@ describe('legacy instrument metadata and sequence precision', () => {
         sequence: Number.MAX_SAFE_INTEGER + 1,
       }),
     ).toThrow();
+  });
+});
+
+describe('Perps market event horizons', () => {
+  it.each([
+    { ch: 'trades::1', data: [] },
+    { ch: 'book::1', data: { b: [], a: [] } },
+    { ch: 'bbo::1', data: { iid: 1, bp: '1', bq: '2', ap: '3', aq: '4' } },
+    {
+      ch: 'tickers::all',
+      data: {
+        iid: 1,
+        idx: '1',
+        mark: '1',
+        last: '1',
+        mid: '1',
+        oi: '0',
+        fr: '0',
+        nxf: 1_767_225_600_000,
+      },
+    },
+    {
+      ch: 'statistics::all',
+      data: { iid: 1, vol: '0', open: '1', klines: [] },
+    },
+    { ch: 'klines::1::1m', data: [] },
+  ])('preserves the event horizon independently of send time on $ch', (frame) => {
+    const wire = {
+      ...frame,
+      ts: 1_767_225_600_100,
+      sq: 42,
+      ets: 1_767_225_600_000,
+    };
+    expect(PerpsMarketDataEventSchema.parse(wire)).toMatchObject({
+      timestamp: wire.ts,
+      eventTimestamp: wire.ets,
+      sequence: wire.sq,
+    });
+    expect(
+      PerpsMarketDataEventSchema.parse({ ...wire, ets: 0 }).eventTimestamp,
+    ).toBe(0);
+    const { ets: _horizon, ...missing } = wire;
+    expect(PerpsMarketDataEventSchema.safeParse(missing).success).toBe(false);
+    expect(
+      PerpsMarketDataEventSchema.safeParse({ ...wire, ets: null }).success,
+    ).toBe(false);
   });
 });

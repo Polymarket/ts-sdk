@@ -105,6 +105,7 @@ describe('PerpsSubscriptionManager', () => {
         a: [['101', '2']],
         b: [['100', '1']],
       },
+      ets: 1_699_999_999_000,
       sq: 10,
       ts: 1_700_000_000_000,
     });
@@ -146,6 +147,7 @@ describe('PerpsSubscriptionManager', () => {
       unknownFrame: {
         ch: 'future_channel::1',
         data: { hello: 'world' },
+        ets: 1_699_999_999_000,
         sq: 1,
         ts: 1_700_000_000_000,
       },
@@ -155,6 +157,7 @@ describe('PerpsSubscriptionManager', () => {
           a: [['101', '2']],
           b: [['100', '1']],
         },
+        ets: 1_699_999_999_000,
         sq: 10,
         ts: 1_700_000_000_000,
       },
@@ -191,6 +194,7 @@ describe('PerpsSubscriptionManager', () => {
           hash: `0x${'b'.repeat(64)}`,
         },
       ],
+      ets: 1_699_999_999_000,
       sq: 5,
       ts: 1_700_000_000_002,
     });

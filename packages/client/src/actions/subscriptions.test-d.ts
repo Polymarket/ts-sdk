@@ -26,6 +26,7 @@ import {
   createPublicClient,
   type EquityTwapPriceSubscription,
   KnownPriceSource,
+  PerpsKlineInterval,
   PriceProvider,
   type PriceSource,
   type PriceSubscriptionConfirmation,
@@ -452,5 +453,61 @@ describe('PublicClient.subscribe', () => {
       expectTypeOf(event).toEqualTypeOf<StandardMarketEvent>();
       expectTypeOf<Extract<typeof event, UserEvent>>().toEqualTypeOf<never>();
     }
+  });
+});
+
+describe('Perps event horizon public subscription types', () => {
+  it('keeps precise requested market variants and event horizon metadata', () => {
+    async function consume(client: ClientExports.PublicClient) {
+      const handles = [
+        await client.subscribe([{ topic: 'perps.trades', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.bbo', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.book', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.tickers' }]),
+        await client.subscribe([{ topic: 'perps.statistics' }]),
+        await client.subscribe([
+          {
+            topic: 'perps.candles',
+            instrumentId: 1,
+            interval: PerpsKlineInterval.OneMinute,
+          },
+        ]),
+      ] as const;
+      for (const handle of handles) {
+        for await (const event of handle) {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<ClientExports.EpochMilliseconds>();
+        }
+      }
+      const mixed = await client.subscribe([
+        { topic: 'perps.trades', instrumentId: 1 },
+        { topic: 'perps.book', instrumentId: 1 },
+      ]);
+      for await (const event of mixed) {
+        expectTypeOf(event).toEqualTypeOf<
+          BindingExports.PerpsTradeEvent | BindingExports.PerpsBookEvent
+        >();
+      }
+      for await (const event of handles[0]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsTradeEvent>();
+      }
+      for await (const event of handles[1]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsBboEvent>();
+      }
+      for await (const event of handles[2]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsBookEvent>();
+      }
+      for await (const event of handles[3]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsTickerEvent>();
+      }
+      for await (const event of handles[4]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsStatisticEvent>();
+      }
+      for await (const event of handles[5]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsCandleEvent>();
+      }
+    }
+    void consume;
   });
 });

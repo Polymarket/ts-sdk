@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PerpsNotificationsResyncFrameSchema,
+  PerpsSessionUpdateEventSchema,
+} from '../subscriptions/perps';
+import {
   ListPerpsNotificationsResponseSchema,
   PerpsMarginType,
   PerpsNotificationOrderType,
@@ -221,5 +225,55 @@ describe('ListPerpsNotificationsResponseSchema', () => {
         next_cursor: null,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('Perps account event horizons', () => {
+  it.each([
+    { ch: 'fills', data: [] },
+    { ch: 'builderFills', data: [] },
+    { ch: 'notifications', data: DELEVERAGED_NOTIFICATION },
+    { ch: 'tpsl::1', data: { oid: 1, st: 'armed' } },
+  ])('retains event horizons on $ch', (frame) => {
+    const wire = {
+      ...frame,
+      ts: 1_767_225_600_100,
+      sq: 42,
+      ets: 1_767_225_600_000,
+    };
+    expect(PerpsSessionUpdateEventSchema.parse(wire)).toMatchObject({
+      timestamp: wire.ts,
+      eventTimestamp: wire.ets,
+      sequence: wire.sq,
+    });
+    expect(
+      PerpsSessionUpdateEventSchema.parse({ ...wire, ets: 0 }).eventTimestamp,
+    ).toBe(0);
+    const { ets: _horizon, ...missing } = wire;
+    expect(PerpsSessionUpdateEventSchema.safeParse(missing).success).toBe(
+      false,
+    );
+  });
+
+  it('preserves the horizon supplied with server notification recovery', () => {
+    const wire = {
+      ch: 'notifications',
+      type: 'resync',
+      ts: 1_767_225_600_100,
+      ets: 1_767_225_600_000,
+      sq: 42,
+    };
+    expect(PerpsNotificationsResyncFrameSchema.parse(wire)).toMatchObject({
+      eventTimestamp: wire.ets,
+      timestamp: wire.ts,
+    });
+    expect(
+      PerpsNotificationsResyncFrameSchema.parse({ ...wire, ets: 0 })
+        .eventTimestamp,
+    ).toBe(0);
+    const { ets: _horizon, ...missing } = wire;
+    expect(PerpsNotificationsResyncFrameSchema.safeParse(missing).success).toBe(
+      false,
+    );
   });
 });
