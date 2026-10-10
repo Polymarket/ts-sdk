@@ -1,5 +1,9 @@
 import { toPaginationCursor } from '@polymarket/bindings';
-import { createPublicClient, UserInputError } from '@polymarket/client';
+import {
+  createPublicClient,
+  ProtocolVersion,
+  UserInputError,
+} from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
 import { afterEach, vi } from 'vitest';
 import { describe, environment, expect, it } from './fixtures';
@@ -27,6 +31,7 @@ describe('Events', () => {
 
   describe('listEvents', () => {
     it('fetches events', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const paginator = publicClient.listEvents({
         closed: false,
         pageSize: 100,
@@ -35,6 +40,72 @@ describe('Events', () => {
 
       expect(firstPage.items.length).toBeGreaterThan(0);
       await expectPageWindow(paginator, firstPage, 99);
+
+      for (const [input] of fetchSpy.mock.calls) {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.pathname === '/events/keyset') {
+          expect(url.searchParams.has('version')).toBe(false);
+        }
+      }
+    });
+
+    for (const version of [ProtocolVersion.V1, ProtocolVersion.V2]) {
+      it(`retains protocol ${version} on first and continuation pages`, async ({
+        publicClient,
+      }) => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const paginator = publicClient.listEvents({ version, pageSize: 2 });
+        const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
+        const nextCursor = expectPresent(firstPage.nextCursor);
+
+        for await (const page of paginator.from(nextCursor)) {
+          expect(page.items.length).toBeLessThanOrEqual(2);
+          break;
+        }
+
+        const urls = fetchSpy.mock.calls
+          .map(
+            ([input]) =>
+              new URL(input instanceof Request ? input.url : String(input)),
+          )
+          .filter((url) => url.pathname === '/events/keyset');
+        expect(urls).toHaveLength(2);
+        for (const url of urls) {
+          expect(url.searchParams.getAll('version')).toEqual([version]);
+        }
+        expect(urls[0]?.searchParams.has('after_cursor')).toBe(false);
+        expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
+
+        fetchSpy.mockClear();
+        for (const request of [
+          {
+            version:
+              version === ProtocolVersion.V1
+                ? ProtocolVersion.V2
+                : ProtocolVersion.V1,
+          },
+          {},
+        ]) {
+          await expect(
+            publicClient.listEvents(request).from(nextCursor).firstPage(),
+          ).rejects.toThrow(UserInputError);
+        }
+        expect(fetchSpy).not.toHaveBeenCalled();
+      });
+    }
+
+    it('rejects non-scalar and unsupported protocol filters before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const version of [1, ['v1'], 'v3', null]) {
+        expect(() =>
+          publicClient.listEvents({ version: version as never }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('refuses a cursor reused for a different query before any request', async ({
@@ -45,6 +116,18 @@ describe('Events', () => {
         .firstPage()
         .then(expectNonEmptyPage);
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        publicClient
+          .listEvents({
+            closed: false,
+            pageSize: 2,
+            version: ProtocolVersion.V1,
+          })
+          .from(nextCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
 
       await expect(
         publicClient

@@ -70,6 +70,8 @@ export type DiscoveryActions = {
    * Lists events.
    *
    * Defaults to open events. Pass `closed: true` to list settled events.
+   * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+   * `ProtocolVersion.V2`. Omitting `version` leaves the protocol filter unset.
    *
    * @remarks
    * Cursors continue the exact query they were minted for and are rejected for
