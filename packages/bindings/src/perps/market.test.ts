@@ -50,9 +50,56 @@ const baseInstrument = {
   quote_asset: 'USD',
   risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
   symbol: 'BTC-PERP',
+  ui_live_time: null,
 };
 
 describe('PerpsInstrumentSchema', () => {
+  it('preserves advisory visibility independently of logo metadata', () => {
+    const visible = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      ui_live_time: 1_786_032_000_000,
+      logo: {
+        light: 'https://assets.example/light.svg',
+        dark: 'https://assets.example/dark.svg',
+      },
+    });
+    expect(visible.uiLiveTime).toBe(1_786_032_000_000);
+    expect(visible.logo).toEqual({
+      light: 'https://assets.example/light.svg',
+      dark: 'https://assets.example/dark.svg',
+    });
+    const hidden = PerpsInstrumentSchema.parse(baseInstrument);
+    expect(hidden.uiLiveTime).toBeNull();
+    expect(hidden.logo).toBeUndefined();
+    expect(
+      PerpsInstrumentSchema.parse({ ...baseInstrument, ui_live_time: 0 })
+        .uiLiveTime,
+    ).toBe(0);
+  });
+
+  it('requires visibility metadata and rejects malformed timestamps or incomplete logo pairs', () => {
+    const { ui_live_time: _visibility, ...missing } = baseInstrument;
+    expect(PerpsInstrumentSchema.safeParse(missing).success).toBe(false);
+    for (const ui_live_time of [
+      -1,
+      1.5,
+      '1786032000000',
+      true,
+      253_402_300_799_001,
+    ]) {
+      expect(
+        PerpsInstrumentSchema.safeParse({ ...baseInstrument, ui_live_time })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      PerpsInstrumentSchema.safeParse({
+        ...baseInstrument,
+        logo: { light: 'light.svg' },
+      }).success,
+    ).toBe(false);
+  });
+
   it('normalizes instrument identifiers without exposing instrument type', () => {
     const instrument = PerpsInstrumentSchema.parse(baseInstrument);
 

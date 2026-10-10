@@ -349,6 +349,12 @@ describe('instrument retirement metadata', () => {
     async function read(client: PublicPerpsActions) {
       const instruments = await client.fetchPerpsInstruments();
       for (const instrument of instruments) {
+        expectTypeOf(
+          instrument.uiLiveTime,
+        ).toEqualTypeOf<EpochMilliseconds | null>();
+        expectTypeOf(instrument.logo).toEqualTypeOf<
+          { light: string; dark: string } | undefined
+        >();
         expectTypeOf(instrument.closeOnly).toEqualTypeOf<boolean>();
         expectTypeOf(instrument.displaySymbol).toEqualTypeOf<
           string | undefined
