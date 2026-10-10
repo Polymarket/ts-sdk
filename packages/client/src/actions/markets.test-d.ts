@@ -6,6 +6,12 @@ import {
 import type { Market } from '@polymarket/bindings/gamma';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
+import {
+  MarketResolutionStatus,
+  ProtocolVersion,
+  type PublicClient,
+  type ResolutionRequestId,
+} from '../index';
 import type { Paginated } from '../pagination';
 import type {
   ListPriceHistoryRequest,
@@ -88,3 +94,25 @@ function listMarketHoldersForMarket(actions: DataActions, market: Market) {
 }
 
 void listMarketHoldersForMarket;
+
+function listMarketsByOracleMetadata(client: PublicClient, market: Market) {
+  expectTypeOf(
+    client.listMarkets({
+      requestIds: ['request-1', 'request-2'],
+      onchainEventIds: ['event-1'],
+      resolutionStatus: MarketResolutionStatus.Active,
+      version: ProtocolVersion.V2,
+    }),
+  ).toEqualTypeOf<Paginated<Market[]>>();
+  expectTypeOf(market.resolution.onchainEventId).toEqualTypeOf<
+    string | null | undefined
+  >();
+  expectTypeOf(market.resolution.requestId).toEqualTypeOf<
+    ResolutionRequestId | null | undefined
+  >();
+  expectTypeOf(market.resolution.resolutionStatus).toEqualTypeOf<
+    MarketResolutionStatus | null | undefined
+  >();
+}
+
+void listMarketsByOracleMetadata;
