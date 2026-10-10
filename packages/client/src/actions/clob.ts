@@ -33,14 +33,18 @@ import {
   OrderBooksSchema,
   PaginatedCurrentRewardsSchema,
   PaginatedMarketRewardsSchema,
+  PaginatedRewardMarketsSchema,
   PriceSchema,
   type Prices,
   PricesSchema,
   ResolveConditionByTokenResponseSchema,
+  type RewardMarket,
+  RewardMarketSort,
   SpreadSchema,
   type Spreads,
   SpreadsSchema,
 } from '@polymarket/bindings/clob';
+import { SortDirectionSchema } from '@polymarket/bindings/data';
 import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
@@ -1199,5 +1203,102 @@ function toAssetSearchParams(
   return toSearchParams(
     { ...rest, tokenId: params.assetId ?? params.tokenId },
     snakeCase(),
+  );
+}
+
+const ListRewardMarketsRequestSchema = z.object({
+  query: z.string().optional(),
+  tagSlugs: z.array(z.string().min(1)).optional(),
+  excludeTagSlugs: z
+    .array(
+      z
+        .string()
+        .trim()
+        .toLowerCase()
+        .max(64)
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    )
+    .transform((slugs) => [...new Set(slugs)])
+    .refine(
+      (slugs) => slugs.length <= 20,
+      'At most 20 unique excluded tags are supported',
+    )
+    .optional(),
+  marketId: z.number().int().positive().optional(),
+  eventIds: z.array(z.number().int().positive()).optional(),
+  eventTitle: z.string().optional(),
+  orderBy: z.enum(RewardMarketSort).optional(),
+  sortDirection: SortDirectionSchema.optional(),
+  minVolume24hr: z.number().nonnegative().optional(),
+  maxVolume24hr: z.number().nonnegative().optional(),
+  minSpread: z.number().nonnegative().optional(),
+  maxSpread: z.number().nonnegative().optional(),
+  minPrice: z.number().nonnegative().optional(),
+  maxPrice: z.number().nonnegative().optional(),
+  pageSize: z.number().int().min(1).max(500).default(100),
+  cursor: PaginationCursorSchema.optional(),
+});
+export type ListRewardMarketsRequest = z.input<
+  typeof ListRewardMarketsRequestSchema
+>;
+export type ListRewardMarketsError =
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListRewardMarketsError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists active markets with reward configurations and discovery metadata.
+ * Configurations may be empty. Positive range bounds are min-exclusive and max-inclusive; zero disables a bound.
+ * Pages default to 100 items, with a maximum of 500. Without orderBy the order is unspecified; with it sortDirection defaults to ASC.
+ * @throws {@link ListRewardMarketsError} Thrown on failure.
+ * @example
+ * ```ts
+ * for await (const page of listRewardMarkets(client, { query: 'sports' })) {
+ *   console.log(page.items);
+ * }
+ * ```
+ */
+export function listRewardMarkets(
+  client: BaseClient,
+  request: ListRewardMarketsRequest = {},
+): Paginated<RewardMarket[]> {
+  const { cursor, ...params } = parseUserInput(
+    request,
+    ListRewardMarketsRequestSchema,
+  );
+  return paginate(
+    (nextCursor) =>
+      client.clob
+        .get('/rewards/markets/multi', {
+          params: toSearchParams(
+            { ...params, nextCursor },
+            snakeCase({
+              query: 'q',
+              tagSlugs: 'tag_slug',
+              excludeTagSlugs: 'exclude_tag_slug',
+              eventIds: 'event_id',
+              sortDirection: 'position',
+            }),
+          ),
+        })
+        .andThen(validateWith(PaginatedRewardMarketsSchema))
+        .map((response) => ({
+          items: response.data,
+          hasMore: response.nextCursor !== END_CURSOR,
+          nextCursor:
+            response.nextCursor === END_CURSOR
+              ? undefined
+              : toPaginationCursor(response.nextCursor),
+        })),
+    cursor,
   );
 }
