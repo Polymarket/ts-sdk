@@ -50,13 +50,18 @@ describe('MarketSchema', () => {
     );
   });
 
-  it('accepts absent and explicitly null v2 resolution metadata', () => {
+  it('accepts absent, empty and explicitly null v2 resolution metadata', () => {
     for (const fields of [
       {},
       {
         onchainEventId: null,
         requestId: null,
         resolutionStatus: null,
+      },
+      {
+        onchainEventId: '',
+        requestId: '',
+        resolutionStatus: '',
       },
     ]) {
       const market = MarketSchema.parse({ ...rawBinaryMarket, ...fields });

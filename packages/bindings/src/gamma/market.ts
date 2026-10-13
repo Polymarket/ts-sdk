@@ -261,9 +261,15 @@ export type Market = {
 export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
   version: ProtocolVersionSchema.nullish(),
-  onchainEventId: OnchainEventIdSchema.nullish(),
-  requestId: V2RequestIdSchema.nullish(),
-  resolutionStatus: z.enum(MarketResolutionStatus).nullish(),
+  onchainEventId: z.preprocess(
+    emptyStringToNull,
+    OnchainEventIdSchema.nullish(),
+  ),
+  requestId: z.preprocess(emptyStringToNull, V2RequestIdSchema.nullish()),
+  resolutionStatus: z.preprocess(
+    emptyStringToNull,
+    z.enum(MarketResolutionStatus).nullish(),
+  ),
   question: z.string().nullish(),
   conditionId: z
     .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())

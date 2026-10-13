@@ -92,7 +92,12 @@ const ListMarketsRequestSchema = z.object({
   tagId: z.number().int().optional(),
   tagMatch: z.enum(['any', 'all']).optional(),
   umaResolutionStatus: z.string().optional(),
-  version: z.enum(ProtocolVersion).optional(),
+  version: z
+    .union([
+      z.enum(ProtocolVersion),
+      z.array(z.enum(ProtocolVersion)).min(1).max(2),
+    ])
+    .optional(),
   volumeNumMax: z.number().optional(),
   volumeNumMin: z.number().optional(),
 });
@@ -158,7 +163,9 @@ export const ListMarketsError = makeErrorGuard(
  * Legacy multi-outcome markets cannot be represented by the binary
  * {@link Market} model and are omitted from results.
  *
- * Filter v2 markets by `version`, `resolutionStatus`, `requestIds`, or
+ * Select one protocol with `version`, or pass both protocol versions in an array.
+ * Arrays accept one or two values. Omitting `version` uses the current server
+ * default of CTF markets (v1). Filter v2 markets by `resolutionStatus`, `requestIds`, or
  * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
  * use the separate `umaResolutionStatus` filter.
  *
