@@ -1237,6 +1237,7 @@ export const FetchCurrentRebatesError = makeErrorGuard(
 /**
  * Fetches maker fee rebates for a calendar day as a direct collection.
  * Amounts are decimal strings in USDC units. No authentication is required.
+ * Returns an empty array when the maker has no rebates for the date.
  * @throws {@link FetchCurrentRebatesError} Thrown on failure.
  * @example
  * ```ts

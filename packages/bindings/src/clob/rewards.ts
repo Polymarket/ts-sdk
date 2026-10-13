@@ -225,4 +225,7 @@ export const RebatedFeeSchema = z
     }),
   );
 export type RebatedFee = z.infer<typeof RebatedFeeSchema>;
-export const RebatedFeesResponseSchema = z.array(RebatedFeeSchema);
+export const RebatedFeesResponseSchema = z
+  .array(RebatedFeeSchema)
+  .nullable()
+  .transform((fees) => fees ?? []);

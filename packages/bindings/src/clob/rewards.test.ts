@@ -17,5 +17,9 @@ describe('maker rebate response', () => {
     );
     expect(fees[0]?.date).toBe('2026-10-06');
     expect(RebatedFeesResponseSchema.parse([])).toEqual([]);
+    expect(RebatedFeesResponseSchema.parse(null)).toEqual([]);
+    expect(RebatedFeesResponseSchema.safeParse({ data: [] }).success).toBe(
+      false,
+    );
   });
 });
