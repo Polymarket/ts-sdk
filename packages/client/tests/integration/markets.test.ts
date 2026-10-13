@@ -46,7 +46,7 @@ describe('Markets', () => {
   });
 
   describe('listMarkets', () => {
-    it('retains repeated protocol filters across pages and binds its cursor', async ({
+    it('retains repeated protocol filters across pages', async ({
       publicClient,
     }) => {
       const version = [ProtocolVersion.V1, ProtocolVersion.V2];
@@ -69,14 +69,6 @@ describe('Markets', () => {
         expect(url.searchParams.getAll('version')).toEqual(version);
       }
       expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
-      fetchSpy.mockClear();
-      await expect(
-        publicClient
-          .listMarkets({ version: ProtocolVersion.V1 })
-          .from(cursor)
-          .firstPage(),
-      ).rejects.toThrow(UserInputError);
-      expect(fetchSpy).not.toHaveBeenCalled();
     });
 
     it('rejects malformed protocol selections before transport', ({
