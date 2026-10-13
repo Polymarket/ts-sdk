@@ -283,7 +283,7 @@ export type PublicAccountActions = Prettify<{
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
-   * Trades and redemptions expose available token outcomes. Narrow redemptions on
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
    * `isCombo` before using market-only metadata; a basket's outcome names its
    * token side, not a selected leg.
    *
@@ -491,7 +491,7 @@ export type SecureAccountActions = Prettify<{
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
-   * Trades and redemptions expose available token outcomes. Narrow redemptions on
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
    * `isCombo` before using market-only metadata; a basket's outcome names its
    * token side, not a selected leg.
    *

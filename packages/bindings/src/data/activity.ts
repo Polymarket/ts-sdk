@@ -114,45 +114,81 @@ export type ComboTradeActivity = TradeActivityBase & {
 
 export type TradeActivity = ClobTradeActivity | ComboTradeActivity;
 
-export type SplitActivity = ActivityBase & {
-  /** Splitting collateral into a complete market set. */
-  type: 'SPLIT';
-  /** Condition id of the market whose complete set was created. */
-  conditionId: ConditionId;
-  /** The collateral amount split into the complete set in USD. */
-  amount: DecimalString;
-  /** Human-readable title of the market whose complete set was created. */
-  title: string;
-  /** URL slug of the market whose complete set was created. */
-  slug: string;
-  /** Icon URL for the market whose complete set was created, when available. */
-  icon: string | null;
-  /** URL slug of the event containing the split market. */
-  eventSlug: string;
-};
+/** Collateral split into a market or Combo complete set; narrow on isCombo for market URLs. */
+export type SplitActivity = ActivityBase &
+  (
+    | {
+        /** Splitting collateral into a complete market set. */
+        type: 'SPLIT';
+        /** Ordinary complete-set activity; parsed rows return false. */
+        isCombo?: false;
+        /** Condition id of the market whose complete set was created. */
+        conditionId: ConditionId;
+        /** The collateral amount split into the complete set in USD. */
+        amount: DecimalString;
+        /** Human-readable title of the market whose complete set was created. */
+        title: string;
+        /** URL slug of the market whose complete set was created. */
+        slug: string;
+        /** Icon URL for the market whose complete set was created, when available. */
+        icon: string | null;
+        /** URL slug of the event containing the split market. */
+        eventSlug: string;
+      }
+    | {
+        /** Complete-set activity for a Combo basket. */
+        type: 'SPLIT';
+        isCombo: true;
+        /** Canonical Combo condition id of the basket. */
+        conditionId: ComboConditionId;
+        /** Collateral amount in USD. */
+        amount: DecimalString;
+        /** Human-readable basket title, when available. */
+        title?: string;
+        icon: string | null;
+      }
+  );
 
-export type MergeActivity = ActivityBase & {
-  /** Merging a complete market set into collateral. */
-  type: 'MERGE';
-  /** Condition id of the market whose complete set was merged. */
-  conditionId: ConditionId;
-  /** The collateral amount received from merging the complete set in USD. */
-  amount: DecimalString;
-  /** Human-readable title of the market whose complete set was merged. */
-  title: string;
-  /** URL slug of the market whose complete set was merged. */
-  slug: string;
-  /** Icon URL for the market whose complete set was merged, when available. */
-  icon: string | null;
-  /** URL slug of the event containing the merged market. */
-  eventSlug: string;
-};
+/** A complete set merged into collateral; narrow on isCombo for market URLs. */
+export type MergeActivity = ActivityBase &
+  (
+    | {
+        /** Merging a complete market set into collateral. */
+        type: 'MERGE';
+        /** Ordinary complete-set activity; parsed rows return false. */
+        isCombo?: false;
+        /** Condition id of the market whose complete set was merged. */
+        conditionId: ConditionId;
+        /** The collateral amount received from merging the complete set in USD. */
+        amount: DecimalString;
+        /** Human-readable title of the market whose complete set was merged. */
+        title: string;
+        /** URL slug of the market whose complete set was merged. */
+        slug: string;
+        /** Icon URL for the market whose complete set was merged, when available. */
+        icon: string | null;
+        /** URL slug of the event containing the merged market. */
+        eventSlug: string;
+      }
+    | {
+        /** Complete-set activity for a Combo basket. */
+        type: 'MERGE';
+        isCombo: true;
+        /** Canonical Combo condition id of the basket. */
+        conditionId: ComboConditionId;
+        /** Collateral amount in USD. */
+        amount: DecimalString;
+        /** Human-readable basket title, when available. */
+        title?: string;
+        icon: string | null;
+      }
+  );
 
 export type ClobRedeemActivity = ActivityBase & {
   /** Redeeming resolved market proceeds. */
   type: 'REDEEM';
-  /** Ordinary market redemptions are distinct from Combo redemptions. */
-  isCombo: false;
+  /** Ordinary redemption; parsed rows return false, constructed values may omit it. */
+  isCombo?: false;
   /** Label of the redeemed token, when available. */
   outcome?: string;
   /** Index of the redeemed token's outcome, when known. */
@@ -499,7 +535,13 @@ const RawActivitySchema = z
     profile_image_optimized: OptionalTextSchema,
   })
   .superRefine((activity, ctx) => {
-    if (activity.type !== ActivityType.REDEEM || activity.is_combo !== true) {
+    if (
+      activity.is_combo !== true ||
+      (activity.type !== ActivityType.TRADE &&
+        activity.type !== ActivityType.REDEEM &&
+        activity.type !== ActivityType.SPLIT &&
+        activity.type !== ActivityType.MERGE)
+    ) {
       return;
     }
 
@@ -580,6 +622,28 @@ function normalizeActivity(activity: RawActivity): Activity {
       return normalizeRedeemActivity(activity, base);
     case ActivityType.SPLIT:
     case ActivityType.MERGE:
+      if (activity.is_combo === true) {
+        return {
+          ...base,
+          type: activity.type,
+          isCombo: true,
+          conditionId: ComboConditionIdSchema.parse(activity.condition_id),
+          amount: activity.usdc_size,
+          title: activity.title,
+          icon: activity.icon ?? null,
+        };
+      }
+      return {
+        ...base,
+        type: activity.type,
+        isCombo: false,
+        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        amount: activity.usdc_size,
+        title: expectPresent(activity.title, 'title'),
+        slug: expectPresent(activity.slug, 'slug'),
+        icon: activity.icon ?? null,
+        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+      };
     case ActivityType.CONVERSION:
       return {
         ...base,

@@ -207,7 +207,7 @@ export const ListActivityError = makeErrorGuard(
 
 /**
  * Lists wallet activity, newest-first by default.
- * Trades and redemptions expose available token outcomes. Narrow redemptions on
+ * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
  * `isCombo` before using market-only metadata; a basket's outcome names its
  * token side, not a selected leg.
  *

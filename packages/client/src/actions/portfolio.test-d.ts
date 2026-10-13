@@ -1,12 +1,17 @@
 import { ComboPositionStatus } from '@polymarket/bindings/data';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ActivityBase,
   ClobRedeemActivity,
   ComboConditionId,
   ComboRedemptionActivity,
   ComboTradeActivity,
   ConditionId,
+  DecimalString,
+  MergeActivity,
   PublicClient,
+  RedeemActivity,
+  SplitActivity,
 } from '../index';
 import { ActivityType } from '../index';
 import type { ListComboPositionsRequest } from './portfolio';
@@ -54,10 +59,38 @@ describe('public activity result types', () => {
   it('narrows combo outcomes and redemption identities through the public client', async () => {
     const page = await activityClient.listActivity({ user }).firstPage();
     for (const activity of page.items) {
+      if (
+        (activity.type === ActivityType.SPLIT ||
+          activity.type === ActivityType.MERGE ||
+          activity.type === ActivityType.REDEEM) &&
+        !activity.isCombo
+      ) {
+        expectTypeOf(activity.slug).toEqualTypeOf<string>();
+        expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
+        expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
+      }
       if (activity.type === ActivityType.TRADE && activity.isCombo) {
         expectTypeOf(activity).toEqualTypeOf<ComboTradeActivity>();
         expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
         expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
+      }
+      if (
+        activity.type === ActivityType.SPLIT ||
+        activity.type === ActivityType.MERGE
+      ) {
+        if (activity.isCombo) {
+          expectTypeOf(activity.conditionId).toEqualTypeOf<ComboConditionId>();
+          expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
+          // @ts-expect-error A basket has no single market URL slug.
+          void activity.slug;
+          // @ts-expect-error A basket has no single event URL slug.
+          void activity.eventSlug;
+        } else {
+          expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
+          expectTypeOf(activity.title).toEqualTypeOf<string>();
+          expectTypeOf(activity.slug).toEqualTypeOf<string>();
+          expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
+        }
       }
       if (activity.type === ActivityType.REDEEM) {
         if (activity.isCombo) {
@@ -76,4 +109,26 @@ describe('public activity result types', () => {
       }
     }
   });
+});
+
+declare const legacyBase: ActivityBase;
+declare const marketConditionId: ConditionId;
+declare const collateralAmount: DecimalString;
+
+it('retains ordinary object construction without an explicit Combo flag', () => {
+  const metadata = {
+    ...legacyBase,
+    conditionId: marketConditionId,
+    amount: collateralAmount,
+    title: 'A market',
+    slug: 'a-market',
+    eventSlug: 'an-event',
+    icon: null,
+  };
+  const split = { ...metadata, type: 'SPLIT' } satisfies SplitActivity;
+  const merge = { ...metadata, type: 'MERGE' } satisfies MergeActivity;
+  const redemption = { ...metadata, type: 'REDEEM' } satisfies RedeemActivity;
+  void split;
+  void merge;
+  void redemption;
 });

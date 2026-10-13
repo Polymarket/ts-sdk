@@ -352,3 +352,75 @@ it.each([
     icon: null,
   });
 });
+
+// Backend fixture activity_combo_outcomes.sql includes asset-less SPLIT/MERGE.
+it.each([
+  [ActivityType.SPLIT, ''],
+  [ActivityType.SPLIT, undefined],
+  [ActivityType.MERGE, ''],
+  [ActivityType.MERGE, undefined],
+] as const)('keeps Combo %s with missing metadata in a mixed page: %s', (type, title) => {
+  const page = ListActivityResponseSchema.parse({
+    data: [
+      activityRow({ type: ActivityType.REWARD, usdc_size: 2 }),
+      { ...comboRow(type, '', 999), title, token_id: '', side: '' },
+    ],
+    pagination: { limit: 2, offset: 0, has_more: true, next_cursor: 'opaque' },
+  });
+  expect(page.items.map((item) => item.type)).toEqual(['REWARD', type]);
+  expect(page.items[1]).toMatchObject({
+    type,
+    isCombo: true,
+    conditionId: comboConditionId,
+    amount: '0.5',
+    title: undefined,
+    icon: null,
+  });
+  expect(page.items[1]).not.toHaveProperty('slug');
+  expect(page.items[1]).not.toHaveProperty('eventSlug');
+  expect(page.nextCursor).toBe('opaque');
+});
+
+it.each([
+  ActivityType.SPLIT,
+  ActivityType.MERGE,
+])('rejects a malformed Combo condition on %s', (type) => {
+  const result = ActivitySchema.safeParse({
+    ...comboRow(type, '', 999),
+    condition_id: `0x01${'ab'.repeat(30)}`,
+  });
+  expect(result.success).toBe(false);
+  if (!result.success) {
+    expect(
+      result.error.issues.some(({ path }) => path[0] === 'condition_id'),
+    ).toBe(true);
+  }
+});
+
+it.each([
+  [ActivityType.SPLIT, false],
+  [ActivityType.SPLIT, undefined],
+  [ActivityType.MERGE, false],
+  [ActivityType.MERGE, undefined],
+] as const)('keeps ordinary %s market URLs with is_combo=%s', (type, isCombo) => {
+  const conditionId = `0x03${'cd'.repeat(30)}00`;
+  expect(
+    ActivitySchema.parse(
+      activityRow({
+        type,
+        is_combo: isCombo,
+        condition_id: conditionId,
+        title: 'A market',
+        slug: 'a-market',
+        event_slug: 'an-event',
+      }),
+    ),
+  ).toMatchObject({
+    type,
+    isCombo: false,
+    conditionId,
+    title: 'A market',
+    slug: 'a-market',
+    eventSlug: 'an-event',
+  });
+});
