@@ -51,7 +51,11 @@ describe('Events', () => {
       }
     });
 
-    for (const version of [ProtocolVersion.V1, ProtocolVersion.V2]) {
+    for (const version of [
+      ProtocolVersion.V1,
+      ProtocolVersion.V2,
+      [ProtocolVersion.V1, ProtocolVersion.V2],
+    ]) {
       it(`retains protocol ${version} on first and continuation pages`, async ({
         publicClient,
       }) => {
@@ -73,7 +77,9 @@ describe('Events', () => {
           .filter((url) => url.pathname === '/events/keyset');
         expect(urls).toHaveLength(2);
         for (const url of urls) {
-          expect(url.searchParams.getAll('version')).toEqual([version]);
+          expect(url.searchParams.getAll('version')).toEqual(
+            Array.isArray(version) ? version : [version],
+          );
         }
         expect(urls[0]?.searchParams.has('after_cursor')).toBe(false);
         expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
@@ -96,11 +102,18 @@ describe('Events', () => {
       });
     }
 
-    it('rejects non-scalar and unsupported protocol filters before transport', ({
+    it('rejects malformed and unsupported protocol filters before transport', ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
-      for (const version of [1, ['v1'], 'v3', null]) {
+      for (const version of [
+        1,
+        [],
+        ['v1', 'v2', 'v1'],
+        ['v1', 'v3'],
+        'v3',
+        null,
+      ]) {
         expect(() =>
           publicClient.listEvents({ version: version as never }),
         ).toThrow(UserInputError);

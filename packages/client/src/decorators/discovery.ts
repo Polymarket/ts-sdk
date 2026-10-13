@@ -71,7 +71,9 @@ export type DiscoveryActions = {
    *
    * Defaults to open events. Pass `closed: true` to list settled events.
    * Optionally filter by protocol with `version: ProtocolVersion.V1` or
-   * `ProtocolVersion.V2`. Omitting `version` leaves the protocol filter unset.
+   * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF events (v1).
    *
    * @remarks
    * Cursors continue the exact query they were minted for and are rejected for
