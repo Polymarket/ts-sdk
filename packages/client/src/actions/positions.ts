@@ -5,11 +5,7 @@ import type {
   PositionId,
   TokenId,
 } from '@polymarket/bindings';
-import {
-  ConditionIdSchema,
-  MarketIdSchema,
-  PositionIdSchema,
-} from '@polymarket/bindings';
+import { MarketIdSchema, PositionIdSchema } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type EvmAddress,
@@ -70,7 +66,9 @@ import {
 import { listMarkets } from './markets';
 import {
   normalizeMarketPositionContext,
+  PositionConditionIdSchema,
   PositionProtocol,
+  resolveDirectionalConditionPositionContext,
 } from './positions-market';
 
 export type SplitPositionWorkflowRequest =
@@ -102,12 +100,13 @@ export const PrepareSplitPositionError = makeErrorGuard(
  *
  * @remarks
  * The condition ID may identify either a CTF or Polymarket V2 market. The SDK
- * resolves the protocol internally.
+ * resolves the protocol internally. Directional bucket, Void, and threshold
+ * conditions resolve without a market listing.
  */
 export type PrepareSplitMarketPositionRequest = {
   /** Amount of collateral to convert into market positions. */
   amount: bigint;
-  /** Existing market condition ID that identifies the positions to mint. */
+  /** Market or directional condition ID that identifies the positions to mint. */
   conditionId: string | ConditionId;
   /** Optional transaction metadata for workflows that support metadata. */
   metadata?: string;
@@ -115,7 +114,7 @@ export type PrepareSplitMarketPositionRequest = {
 
 const PrepareSplitMarketPositionRequestSchema = z.object({
   amount: z.bigint().min(0n),
-  conditionId: ConditionIdSchema,
+  conditionId: PositionConditionIdSchema,
   metadata: GaslessTransactionMetadataSchema.optional(),
 }) satisfies z.ZodType<PrepareSplitMarketPositionRequest>;
 
@@ -180,7 +179,7 @@ export async function prepareSplitMarketPosition(
       calls: [call],
       metadata:
         params.metadata ??
-        `Split ${params.amount} positions for market ${context.marketId} (condition ${context.conditionId})`,
+        `Split ${params.amount} positions for ${describePositionContext(context)}`,
     });
   }.call(null);
 }
@@ -423,12 +422,13 @@ export const PrepareMergePositionsError = makeErrorGuard(
  *
  * @remarks
  * The condition ID may identify either a CTF or Polymarket V2 market. The SDK
- * resolves the protocol internally.
+ * resolves the protocol internally. Directional bucket, Void, and threshold
+ * conditions resolve without a market listing.
  */
 export type PrepareMergeMarketPositionRequest = {
   /** Amount per complementary market position to merge. */
   amount: bigint | 'max';
-  /** Existing market condition ID that identifies the positions to merge. */
+  /** Market or directional condition ID that identifies the positions to merge. */
   conditionId: string | ConditionId;
   /** Optional transaction metadata for workflows that support metadata. */
   metadata?: string;
@@ -436,7 +436,7 @@ export type PrepareMergeMarketPositionRequest = {
 
 const PrepareMergeMarketPositionRequestSchema = z.object({
   amount: z.union([z.bigint().positive(), z.literal('max')]),
-  conditionId: ConditionIdSchema,
+  conditionId: PositionConditionIdSchema,
   metadata: GaslessTransactionMetadataSchema.optional(),
 }) satisfies z.ZodType<PrepareMergeMarketPositionRequest>;
 
@@ -515,7 +515,7 @@ export async function prepareMergeMarketPosition(
       calls: [call],
       metadata:
         params.metadata ??
-        `Merge ${amount} positions for market ${context.marketId} (condition ${context.conditionId})`,
+        `Merge ${amount} positions for ${describePositionContext(context)}`,
     });
   }.call(null);
 }
@@ -798,7 +798,7 @@ export type PrepareRedeemMarketPositionsRequest =
   | PrepareRedeemMarketPositionsByMarketIdRequest;
 
 const PrepareRedeemMarketPositionsByConditionIdRequestSchema = z.object({
-  conditionId: ConditionIdSchema,
+  conditionId: PositionConditionIdSchema,
   marketId: z.never().optional(),
   amount: z.never().optional(),
   positionId: z.never().optional(),
@@ -872,7 +872,7 @@ export async function prepareRedeemMarketPositions(
       calls,
       metadata:
         params.metadata ??
-        `Redeem positions for market ${context.marketId} (condition ${context.conditionId})`,
+        `Redeem positions for ${describePositionContext(context)}`,
     });
   }.call(null);
 }
@@ -881,7 +881,7 @@ export async function prepareRedeemMarketPositions(
  * Parameters for preparing a Polymarket V2 position redemption.
  */
 export type PrepareRedeemPositionRequest = {
-  /** Polymarket V2 YES/NO position ID to redeem. */
+  /** Polymarket V2 YES/NO position ID, or directional position ID, to redeem. */
   positionId: string | PositionId;
   conditionId?: never;
   marketId?: never;
@@ -1115,7 +1115,7 @@ async function* sendRedeemPositionCalls(
 }
 
 type MarketPositionContextBase = {
-  marketId: MarketId;
+  marketId?: MarketId;
   conditionId: ConditionId;
 };
 
@@ -1142,6 +1142,18 @@ async function resolveMarketPositionContext(
   client: BaseSecureClient,
   request: ResolveMarketPositionContextRequest,
 ): Promise<MarketPositionContext> {
+  if (request.conditionId !== undefined) {
+    const directionalContext = resolveDirectionalConditionPositionContext(
+      request.conditionId,
+    );
+    if (directionalContext !== undefined) {
+      return {
+        ...directionalContext,
+        positionErc1155Address: client.environment.contracts.positionManager,
+      };
+    }
+  }
+
   const context =
     request.conditionId !== undefined
       ? `condition ${request.conditionId}`
@@ -1186,6 +1198,12 @@ async function resolveMarketPositionContext(
       ? client.environment.contracts.negRiskAdapter
       : client.environment.contracts.conditionalTokens,
   };
+}
+
+function describePositionContext(context: MarketPositionContext): string {
+  return context.marketId === undefined
+    ? `condition ${context.conditionId}`
+    : `market ${context.marketId} (condition ${context.conditionId})`;
 }
 
 function parseMarketId(id: MarketId): number {

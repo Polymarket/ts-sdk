@@ -16,9 +16,12 @@ pnpm --filter @polymarket/examples stream:realtime
 pnpm --filter @polymarket/examples order:create-limit
 pnpm --filter @polymarket/examples order:create-market
 pnpm --filter @polymarket/examples positions:list
+pnpm --filter @polymarket/examples directional:positions
 ```
 
 Secure client examples use the same environment variables as the integration tests. Copy the root `.env.example` to `.env` and set `POLYMARKET_PRIVATE_KEY` and `POLYMARKET_DEPOSIT_WALLET` before running them.
+
+The directional positions example derives bucket and threshold position IDs locally from a sample event ID and needs no environment variables.
 
 The realtime price example only requires `POLYMARKET_PRIVATE_KEY`. It authenticates with the signer’s own address and connects to the production price endpoint, `wss://ws-live-v2.polymarket.com/ws`. It prints snapshots and updates, then closes after 20 events.
 

@@ -9,6 +9,10 @@ import { AssetTypeSchema, SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  deriveDirectionalBucketPositions,
+  deriveDirectionalThresholdPositions,
+} from '../../directional';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
 import { AssetType } from '../../index';
 import { SignerType } from '../../wallet';
@@ -25,6 +29,16 @@ const SAFE_WALLET = '0x766b6851a199bf91ae3fa13b1cfac5187355118f' as EvmAddress;
 describe('order balance and allowance asset selection', () => {
   const ctfTokenId = toTokenId((1n << 40n).toString());
   const protocolV2PositionId = toPositionId((1n << 248n).toString());
+  const eventId =
+    '0x0400112233445566778899aabbccddeeff000400000000000000000000';
+  const voidPositions = deriveDirectionalBucketPositions({
+    eventId,
+    bucketIndex: 4,
+  });
+  const thresholdPositions = deriveDirectionalThresholdPositions({
+    eventId,
+    line: 2,
+  });
 
   it('exports the Protocol V2 asset type from the client entry point', () => {
     expect(AssetType.CONDITIONAL_V2).toBe('CONDITIONAL-V2');
@@ -35,6 +49,11 @@ describe('order balance and allowance asset selection', () => {
     [OrderSide.BUY, protocolV2PositionId, 'COLLATERAL'],
     [OrderSide.SELL, ctfTokenId, 'CONDITIONAL'],
     [OrderSide.SELL, protocolV2PositionId, 'CONDITIONAL-V2'],
+    [OrderSide.SELL, voidPositions.yesPositionId, 'CONDITIONAL-V2'],
+    [OrderSide.SELL, voidPositions.noPositionId, 'CONDITIONAL-V2'],
+    [OrderSide.SELL, thresholdPositions.abovePositionId, 'CONDITIONAL-V2'],
+    [OrderSide.SELL, thresholdPositions.belowPositionId, 'CONDITIONAL-V2'],
+    [OrderSide.BUY, thresholdPositions.belowPositionId, 'COLLATERAL'],
   ] as const)('selects %s %s as %s for reads and refreshes', (side, assetId, expected) => {
     const assetType = resolveBalanceAllowanceAssetType(side, assetId);
 
@@ -138,6 +157,24 @@ describe('createUnsignedOrder', () => {
     );
 
     expect(order.tokenId).toBe(positionId);
+    expect(order.protocolVersion).toBe(ExchangeOrderProtocolVersion.V3);
+  });
+
+  it('preserves directional threshold assets in V3 orders', () => {
+    const { belowPositionId } = deriveDirectionalThresholdPositions({
+      eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
+      line: 2,
+    });
+    const order = createUnsignedOrder(
+      createOrderDraft({ assetId: belowPositionId, wallet: DEPOSIT_WALLET }),
+      {
+        signer: SIGNER,
+        signerType: SignerType.OWNER,
+        wallet: DEPOSIT_WALLET,
+        walletType: WalletType.DEPOSIT_WALLET,
+      },
+    );
+    expect(order.tokenId).toBe(belowPositionId);
     expect(order.protocolVersion).toBe(ExchangeOrderProtocolVersion.V3);
   });
 });
