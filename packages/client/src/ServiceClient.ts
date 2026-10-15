@@ -21,6 +21,7 @@ import {
 } from './rate-limit';
 import {
   assertNotAborted,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   type Fetch,
   parseRequestOptions,
   type RequestOptions,
@@ -56,8 +57,12 @@ export type ServiceClientConfig = {
 };
 
 /**
- * Request timeout in milliseconds, or `false` to disable the timeout.
- * Defaults to the transport's standard timeout.
+ * Timeout in milliseconds for each individual HTTP request attempt until response
+ * headers arrive, or `false` to disable it. Defaults to 30 seconds.
+ * This is not a total SDK method deadline: each permitted retry receives a fresh
+ * timeout, so multiple requests, retries, and backoff can take longer in total.
+ * Timeout errors are not retried. Excludes header resolution, hooks, retry waits,
+ * and response body download/parsing.
  */
 type ServiceClientTimeout = number | false;
 
@@ -297,6 +302,7 @@ export class ServiceClient {
     if (root !== undefined) {
       this.#client = ky.create({
         prefixUrl: root,
+        timeout: DEFAULT_REQUEST_TIMEOUT_MS,
         throwHttpErrors: false,
         ...(fetch === undefined ? {} : { fetch }),
         ...(retryMutations === false && { retry: { methods: ['get'] } }),

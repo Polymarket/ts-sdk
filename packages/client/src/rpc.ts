@@ -8,6 +8,7 @@ import {
 } from './errors';
 import {
   assertNotAborted,
+  DEFAULT_REQUEST_TIMEOUT_MS,
   type Fetch,
   type RequestOptions,
   withAbort,
@@ -108,7 +109,10 @@ export class JsonRpcClient {
     return this.#ethCallBatchWithSplit(requests, options);
   }
 
-  async ethEstimateGas(request: EthEstimateGasRequest): Promise<bigint> {
+  async ethEstimateGas(
+    request: EthEstimateGasRequest,
+    options?: RequestOptions,
+  ): Promise<bigint> {
     const call: Record<string, string> = { to: request.to };
 
     if (request.data !== undefined) {
@@ -127,12 +131,15 @@ export class JsonRpcClient {
       call.value = toRpcQuantity(request.value);
     }
 
-    const response = await this.#post<HexString>({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_estimateGas',
-      params: [call],
-    });
+    const response = await this.#post<HexString>(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_estimateGas',
+        params: [call],
+      },
+      options,
+    );
 
     if ('error' in response) {
       throw new RequestRejectedError(
@@ -231,6 +238,7 @@ export class JsonRpcClient {
         ky.post(this.#url, {
           fetch: this.#fetch,
           signal: options?.signal,
+          timeout: options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
           json,
           throwHttpErrors: false,
         }),
@@ -279,6 +287,7 @@ export class JsonRpcClient {
         ky.post(this.#url, {
           fetch: this.#fetch,
           signal: options?.signal,
+          timeout: options?.timeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
           json,
           throwHttpErrors: false,
         }),
