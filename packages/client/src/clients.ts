@@ -22,6 +22,7 @@ import {
   type WaitForGaslessTransactionError,
 } from './actions/gasless';
 import { createApiKeyAuthTypedDataPayload } from './authentication';
+import { createClientMetadata } from './client-metadata';
 import {
   allActions,
   type PublicActions,
@@ -318,11 +319,13 @@ type PublicClientConfig = {
 
 // Public and secure clients share one predictions endpoint configuration.
 function createPredictionsService(config: PublicClientConfig): ServiceClient {
+  const metadata = createClientMetadata();
   return new ServiceClient({
     fetch: config.fetch,
     retryMutations: false,
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
+    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
   });
 }
 

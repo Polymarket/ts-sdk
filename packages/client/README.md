@@ -110,6 +110,14 @@ cancellation may already have taken effect. Aborting a mutation stops the local
 request but cannot prove it had no effect. Raw callers inspect the status/body,
 including rate limits; raw mode only retries transport failures.
 
+Prediction requests include `POLYMARKET_CLIENT` with the installed SDK package
+version and locally detected runtime/version. This value is sampled when the
+client is constructed and overrides configured or per-request values of that
+header. Detection is best-effort, with no network or high-entropy browser probes.
+Direct service requests do not receive generated metadata. Gateway parsing and
+CORS support landed in [gateway #777](https://github.com/Polymarket/defi-api-gateway/pull/777);
+verify that support is deployed before releasing browser clients with this header.
+
 ```ts
 const markets = await client.predictions.get("/next/markets", {
   params: new URLSearchParams({ page_size: "1", closed: "false" }),

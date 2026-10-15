@@ -17,6 +17,7 @@ import {
   it,
   vi,
 } from 'vitest';
+import { version } from '../package.json';
 import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig, production } from './environments';
 import { RequestAbortedError, TransportError, UserInputError } from './errors';
@@ -104,6 +105,76 @@ describe('predictions gateway service', () => {
       client.fetchMidpoints([{ assetId: '1' }], { retries: 0 }),
     ).rejects.toBeInstanceOf(TransportError);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('generates metadata once per client and overrides only prediction headers', async () => {
+    const expected = `@polymarket/client@${version}:nodejs@${process.versions.node}`;
+    const failure = new Error('request headers observed');
+    const requests: Request[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      if (input instanceof Request) requests.push(input);
+      throw failure;
+    });
+    const client = createPublicClient({
+      fetch,
+      environment: forkEnvironmentConfig({
+        name: 'metadata',
+        predictions: {
+          rest: 'https://api-defi-staging.polymarket.dev',
+          headers: {
+            polymarket_client: 'environment override',
+            'x-environment': 'retained',
+          },
+        },
+      }),
+    });
+    try {
+      vi.stubGlobal('Bun', { version: '1.2.3' });
+      for (const method of ['get', 'post', 'patch', 'del'] as const) {
+        const options = {
+          headers: {
+            POLYMARKET_CLIENT: 'request override',
+            'x-request': 'retained',
+          },
+        };
+        const result =
+          method === 'get'
+            ? client.predictions.get('/metadata', { ...options, retries: 0 })
+            : client.predictions[method]('/metadata', options);
+        await expect(result).rejects.toMatchObject({ cause: failure });
+        const request = requests.at(-1);
+        expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
+        expect(request?.headers.get('x-environment')).toBe('retained');
+        expect(request?.headers.get('x-request')).toBe('retained');
+        expect(request?.url).toBe(
+          'https://api-defi-staging.polymarket.dev/metadata',
+        );
+      }
+      for (const service of [
+        client.clob,
+        client.gamma,
+        client.data,
+        client.relayer,
+        client.perps,
+      ]) {
+        await expect(
+          service.get('/direct', { retries: 0 }),
+        ).rejects.toMatchObject({
+          cause: failure,
+        });
+        expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
+      }
+      const controller = new AbortController();
+      controller.abort('cancelled');
+      await expect(
+        client.predictions.get('/metadata', { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'cancelled',
+      });
+      expect(fetch).toHaveBeenCalledTimes(9);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
   it('dispatches every verb through custom fetch to the production gateway', async () => {
     const failure = new Error('custom fetch stopped at the transport boundary');
@@ -567,6 +638,9 @@ describe('secure client gasless wallet setup', () => {
     ).rejects.toMatchObject({ name: TransportError.name, cause: failure });
     expect(gatewayRequests).toHaveLength(2);
     for (const request of gatewayRequests) {
+      expect(request.headers.get('POLYMARKET_CLIENT')).toBe(
+        `@polymarket/client@${version}:nodejs@${process.versions.node}`,
+      );
       expect(request.url).toBe(`${environment.predictions.rest}/cancel-all`);
       expect(request.headers.has('POLY_API_KEY')).toBe(false);
       expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
