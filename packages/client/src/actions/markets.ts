@@ -45,6 +45,7 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
+  ClosedFilterSchema,
   distinctIdList,
   EpochSecondsLikeSchema,
   snakeCase,
@@ -58,7 +59,7 @@ export { PriceHistoryInterval };
 const ListMarketsRequestSchema = z
   .object({
     ascending: z.boolean().optional(),
-    closed: z.union([z.boolean(), z.literal('any')]).optional(),
+    closed: ClosedFilterSchema.optional(),
     clobTokenIds: z.array(z.string()).optional(),
     cursor: PaginationCursorSchema.optional(),
     pageSize: PageSizeSchema.optional(),

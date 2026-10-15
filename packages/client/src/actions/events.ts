@@ -43,6 +43,7 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
+  ClosedFilterSchema,
   PositiveInt32EventIdSchema,
   snakeCase,
   toDataSearchParams,
@@ -59,7 +60,7 @@ export {
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
-  closed: z.union([z.boolean(), z.literal('any')]).default(false),
+  closed: ClosedFilterSchema.default(false),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
   cyom: z.boolean().optional(),
