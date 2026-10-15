@@ -4,7 +4,6 @@ import {
   SportsMarketTypesResponseSchema,
   type SportsMetadata,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
@@ -13,22 +12,24 @@ import {
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 } from '../errors';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 
 export type ListSportsError =
   | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const ListSportsError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -51,11 +52,11 @@ export async function listSports(
   client: BaseClient,
   options: RequestOptions = {},
 ): Promise<SportsMetadata[]> {
-  return unwrap(
-    client.gamma
-      .get('/sports', options)
-      .andThen(validateWith(ListSportsMetadataResponseSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  return client.gamma.get('/sports', {
+    ...requestOptions,
+    schema: ListSportsMetadataResponseSchema,
+  });
 }
 
 export type FetchSportsMarketTypesError =
@@ -63,13 +64,15 @@ export type FetchSportsMarketTypesError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchSportsMarketTypesError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -92,9 +95,9 @@ export async function fetchSportsMarketTypes(
   client: BaseClient,
   options: RequestOptions = {},
 ): Promise<SportsMarketTypesResponse> {
-  return unwrap(
-    client.gamma
-      .get('/sports/market-types', options)
-      .andThen(validateWith(SportsMarketTypesResponseSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  return client.gamma.get('/sports/market-types', {
+    ...requestOptions,
+    schema: SportsMarketTypesResponseSchema,
+  });
 }

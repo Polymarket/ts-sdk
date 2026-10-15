@@ -1,6 +1,5 @@
 import { EvmAddressSchema } from '@polymarket/bindings';
 import { PerpsRegistrationResponseSchema } from '@polymarket/bindings/perps';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../../clients';
 import {
@@ -13,8 +12,10 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import type { RequestOptions } from '../../request-options';
-import { validateWith } from '../../response';
+import {
+  parseRequestOptions,
+  type RequestOptions,
+} from '../../request-options';
 import { toSearchParams } from '../params';
 
 const FetchPerpsRegistrationRequestSchema = z.object({
@@ -56,15 +57,13 @@ export const FetchPerpsRegistrationError = makeErrorGuard(
 export async function fetchPerpsRegistration(
   client: BaseClient,
   request: FetchPerpsRegistrationRequest,
-  options?: RequestOptions,
+  options: RequestOptions = {},
 ): Promise<boolean> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsRegistrationRequestSchema);
-  return unwrap(
-    client.perps
-      .get('/v1/info/registered', {
-        signal: options?.signal,
-        params: toSearchParams(params, { address: 'address' }),
-      })
-      .andThen(validateWith(PerpsRegistrationResponseSchema, options)),
-  );
+  return client.perps.get('/v1/info/registered', {
+    schema: PerpsRegistrationResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(params, { address: 'address' }),
+  });
 }

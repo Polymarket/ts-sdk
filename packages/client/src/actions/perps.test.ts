@@ -14,8 +14,15 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BaseClient } from '../clients';
-import { RequestRejectedError, SigningError, TransportError } from '../errors';
+import { z } from 'zod';
+import { type BaseClient, createPublicClient } from '../clients';
+import { production } from '../environments';
+import {
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+} from '../errors';
 import { ServiceClient } from '../ServiceClient';
 import {
   listPerpsCandles,
@@ -61,6 +68,46 @@ describe('Perps actions', () => {
 
   afterAll(() => {
     server.close();
+  });
+
+  it('rejects malformed fee schedules even when shared options include a schema', async () => {
+    server.use(
+      http.get(`${production.perps.rest}/v1/info/fees`, () =>
+        HttpResponse.json({ feeSchedule: 'invalid fee table' }),
+      ),
+    );
+    const client = createPublicClient();
+    const options = {
+      signal: new AbortController().signal,
+      schema: z.object({ feeSchedule: z.string() }),
+    };
+
+    await expect(client.fetchPerpsFees(options)).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
+  });
+
+  it('keeps fee parsing and cancellation when shared options request raw responses', async () => {
+    server.use(
+      http.get(`${production.perps.rest}/v1/info/fees`, () =>
+        HttpResponse.json({ fee_schedule: [] }),
+      ),
+    );
+    const client = createPublicClient();
+    const controller = new AbortController();
+    const options = {
+      signal: controller.signal,
+      responseType: 'raw' as const,
+    };
+
+    await expect(client.fetchPerpsFees(options)).resolves.toEqual([]);
+
+    const reason = new Error('fee request no longer needed');
+    controller.abort(reason);
+    await expect(client.fetchPerpsFees(options)).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
   });
 
   it('continues candle pages from the next interval boundary', async () => {

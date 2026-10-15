@@ -1,4 +1,3 @@
-import { unwrap } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -13,28 +12,17 @@ import {
 } from 'vitest';
 import { z } from 'zod';
 import { SendOrderHeartbeatError } from './actions/order-heartbeats';
+import { createPublicClient } from './clients';
 import { OrderHeartbeatMismatchError, RequestRejectedError } from './errors';
 import { buildHmacSignature } from './hmac';
-import { readBlob, validateWith } from './response';
-import { ServiceClient } from './ServiceClient';
+import { GatewayKnownErrorCode } from './index';
+import { paginate } from './pagination';
+import { ServiceClient, type ServiceRequest } from './ServiceClient';
 
 const root = 'http://localhost:4011';
 const server = setupServer();
 
 describe('ServiceClient', () => {
-  beforeAll(() => {
-    server.listen({ onUnhandledRequest: 'bypass' });
-  });
-
-  afterEach(() => {
-    server.resetHandlers();
-    vi.useRealTimers();
-  });
-
-  afterAll(() => {
-    server.close();
-  });
-
   it('signs the exact heartbeat JSON in a single request', async () => {
     const observed: Array<{
       path: string;
@@ -63,12 +51,10 @@ describe('ServiceClient', () => {
         ),
       }),
     });
-    await unwrap(
-      client.post('/v1/heartbeats', {
-        json: { heartbeat_id: 'current-id' },
-        retry: false,
-      }),
-    );
+    await client.post('/v1/heartbeats', {
+      json: { heartbeat_id: 'current-id' },
+      retry: false,
+    });
     expect(observed[0]).toEqual({
       path: '/v1/heartbeats',
       body: '{"heartbeat_id":"current-id"}',
@@ -100,21 +86,20 @@ describe('ServiceClient', () => {
       }),
     );
     const client = new ServiceClient({ root: serviceRoot });
-    const result = await client.post('/v1/heartbeats', {
-      json: { heartbeat_id: 'stale-id' },
-      retry: false,
+    const result = await client
+      .post('/v1/heartbeats', {
+        json: { heartbeat_id: 'stale-id' },
+        retry: false,
+      })
+      .catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(OrderHeartbeatMismatchError);
+    expect(result).toBeInstanceOf(RequestRejectedError);
+    expect(SendOrderHeartbeatError.isError(result)).toBe(true);
+    expect(result).toMatchObject({
+      name: 'OrderHeartbeatMismatchError',
+      status: 400,
+      heartbeatId,
     });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error).toBeInstanceOf(OrderHeartbeatMismatchError);
-      expect(result.error).toBeInstanceOf(RequestRejectedError);
-      expect(SendOrderHeartbeatError.isError(result.error)).toBe(true);
-      expect(result.error).toMatchObject({
-        name: 'OrderHeartbeatMismatchError',
-        status: 400,
-        heartbeatId,
-      });
-    }
     expect(requests).toBe(1);
   });
 
@@ -128,13 +113,12 @@ describe('ServiceClient', () => {
       ),
     );
     const client = new ServiceClient({ root: serviceRoot });
-    const result = await client.post('/v1/heartbeats', { retry: false });
-    expect(result.isErr()).toBe(true);
-    if (result.isErr()) {
-      expect(result.error).toBeInstanceOf(RequestRejectedError);
-      expect(result.error).not.toBeInstanceOf(OrderHeartbeatMismatchError);
-      expect(result.error.name).toBe('RequestRejectedError');
-    }
+    const result = await client
+      .post('/v1/heartbeats', { retry: false })
+      .catch((error: unknown) => error);
+    expect(result).toBeInstanceOf(RequestRejectedError);
+    expect(result).not.toBeInstanceOf(OrderHeartbeatMismatchError);
+    expect(result).toHaveProperty('name', 'RequestRejectedError');
   });
 
   it.each([
@@ -150,10 +134,510 @@ describe('ServiceClient', () => {
       ),
     );
     const client = new ServiceClient({ root: serviceRoot });
-    const result = await client.post('/other-route');
-    if (result.isErr())
-      expect(result.error).not.toBeInstanceOf(OrderHeartbeatMismatchError);
-    else throw new Error('Expected rejection');
+    await expect(client.post('/other-route')).rejects.not.toBeInstanceOf(
+      OrderHeartbeatMismatchError,
+    );
+  });
+
+  describe('per-request read retry budgets', () => {
+    it.each([
+      undefined,
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+    ])('shares retries=%s across alternating transport failures and rate limits', async (retries) => {
+      vi.useFakeTimers();
+      let attempts = 0;
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+        attempts++;
+        if (attempts % 2 === 1) throw new TypeError('connection reset');
+        return new Response(null, {
+          status: 429,
+          headers: { 'retry-after': '0' },
+        });
+      });
+      const client = new ServiceClient({ root, fetch });
+      const result = client
+        .get('/read', { retries, timeout: false })
+        .catch((error: unknown) => error);
+      await vi.runAllTimersAsync();
+      expect(attempts).toBe(1 + (retries ?? 2));
+      expect(await result).toMatchObject({
+        name: attempts % 2 === 1 ? 'TransportError' : 'RateLimitError',
+      });
+    });
+
+    it.each([
+      'get',
+      'postRead',
+    ] as const)('recovers through one shared budget for %s reads', async (method) => {
+      vi.useFakeTimers();
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          new Response(null, { status: 429, headers: { 'retry-after': '0' } }),
+        )
+        .mockRejectedValueOnce(new TypeError('connection reset'))
+        .mockResolvedValueOnce(Response.json({ count: '42' }));
+      const client = new ServiceClient({ root, fetch });
+      const options = {
+        retries: 2,
+        schema: z.object({ count: z.string().transform(Number) }),
+      };
+      const result =
+        method === 'get'
+          ? client.get('/read', options)
+          : client.postRead('/read', options);
+      await vi.runAllTimersAsync();
+      expect(await result).toEqual({ count: 42 });
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
+    it.each([
+      -1,
+      6,
+      1.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      '2',
+      null,
+      false,
+    ])('rejects invalid retries=%s before signing or dispatch', async (retries) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      await expect(
+        client.get('/read', { retries: retries as number }),
+      ).rejects.toMatchObject({ name: 'UserInputError' });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(resolveHeaders).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      undefined,
+      '2',
+      '6',
+    ])('honors the server delay %s or surfaces long waits', async (retryAfter) => {
+      vi.useFakeTimers();
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          new Response(null, {
+            status: 429,
+            headers:
+              retryAfter === undefined ? {} : { 'retry-after': retryAfter },
+          }),
+        )
+        .mockResolvedValueOnce(Response.json('served'));
+      const client = new ServiceClient({ root, fetch });
+      const result = client
+        .get('/read', { timeout: false })
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      if (retryAfter === '6') {
+        expect(await result).toMatchObject({
+          name: 'RateLimitError',
+          retryAfter: 6,
+        });
+        expect(vi.getTimerCount()).toBe(0);
+      } else {
+        const delay = Number(retryAfter ?? '1') * 1000;
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await result).toBe('served');
+        expect(fetch).toHaveBeenCalledTimes(2);
+      }
+    });
+
+    it('cancels a rate-limit wait without spending another attempt', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const fetch = vi.fn<typeof globalThis.fetch>(
+        async () => new Response(null, { status: 429 }),
+      );
+      const client = new ServiceClient({ root, fetch });
+      const result = client
+        .get('/read', { signal: controller.signal, timeout: false })
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(vi.getTimerCount()).toBe(1);
+      controller.abort('query replaced');
+      expect(await result).toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'query replaced',
+      });
+      await vi.runAllTimersAsync();
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('gives concurrent requests independent budgets', async () => {
+      vi.useFakeTimers();
+      const attempts = new Map<string, number>();
+      const client = new ServiceClient({
+        root,
+        fetch: async (input) => {
+          const path = new URL(new Request(input).url).pathname;
+          attempts.set(path, (attempts.get(path) ?? 0) + 1);
+          return new Response(null, {
+            status: 429,
+            headers: { 'retry-after': '0' },
+          });
+        },
+      });
+      const results = Promise.all([
+        client.get('/once', { retries: 0 }).catch((error: unknown) => error),
+        client.get('/retry', { retries: 2 }).catch((error: unknown) => error),
+      ]);
+      await vi.runAllTimersAsync();
+      expect(await results).toEqual([
+        expect.objectContaining({ name: 'RateLimitError' }),
+        expect.objectContaining({ name: 'RateLimitError' }),
+      ]);
+      expect(Object.fromEntries(attempts)).toEqual({ '/once': 1, '/retry': 3 });
+    });
+
+    it('starts a fresh budget for each pagination request and continuation', async () => {
+      vi.useFakeTimers();
+      let attempts = 0;
+      const client = new ServiceClient({
+        root,
+        fetch: async (input) => {
+          attempts++;
+          if (attempts % 2 === 1) throw new TypeError('connection reset');
+          const cursor = new URL(new Request(input).url).searchParams.get(
+            'cursor',
+          );
+          return Response.json(
+            cursor === null
+              ? { items: ['first'], hasMore: true, nextCursor: 'next-page' }
+              : { items: ['second'], hasMore: false },
+          );
+        },
+      });
+      const pages = paginate((cursor) =>
+        client.get('/page', {
+          params: new URLSearchParams(cursor === undefined ? {} : { cursor }),
+          schema: z.object({
+            items: z.array(z.string()),
+            hasMore: z.boolean(),
+            nextCursor: PaginationCursorSchema.optional(),
+          }),
+          retries: 1,
+        }),
+      );
+      const first = pages.firstPage();
+      await vi.runAllTimersAsync();
+      const firstPage = await first;
+      expect(firstPage.items).toEqual(['first']);
+      const continuation = (async () => {
+        const items: string[] = [];
+        for await (const page of pages.from(firstPage.nextCursor))
+          items.push(...page.items);
+        return items;
+      })();
+      await vi.runAllTimersAsync();
+      expect(await continuation).toEqual(['second']);
+      expect(attempts).toBe(4);
+    });
+  });
+  describe('workflow GET retry policy', () => {
+    it('surfaces rate limits without replaying a GET command', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(
+        async () =>
+          new Response(null, { status: 429, headers: { 'retry-after': '0' } }),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(
+        client.getWorkflow('/balance-allowance/update', {
+          responseType: 'empty',
+        }),
+      ).rejects.toMatchObject({ name: 'RateLimitError', retryAfter: 0 });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains existing transport recovery for workflow GETs', async () => {
+      vi.useFakeTimers();
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockRejectedValueOnce(new TypeError('connection reset'))
+        .mockRejectedValueOnce(new TypeError('connection reset'))
+        .mockResolvedValueOnce(Response.json({ ok: true }));
+      const client = new ServiceClient({ root, fetch });
+      const result = client.getWorkflow('/workflow', {
+        schema: z.object({ ok: z.boolean() }),
+      });
+      await vi.runAllTimersAsync();
+      expect(await result).toEqual({ ok: true });
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+  });
+  describe('gateway error and retry policy', () => {
+    it.each([
+      'json',
+      'blob',
+      'arrayBuffer',
+      'text',
+      'empty',
+    ] as const)('preserves gateway diagnostics in %s mode without replaying a 502 cancel', async (responseType) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          {
+            code: 'cancel_outcome_unknown',
+            message:
+              'Cancellation may have taken effect. Check open orders before retrying.',
+          },
+          { status: 502 },
+        ),
+      );
+      const client = createPublicClient({ fetch });
+      await expect(
+        client.predictions.del('/cancel-all', { responseType }),
+      ).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 502,
+        code: 'cancel_outcome_unknown',
+        message: expect.stringContaining('Check open orders before retrying.'),
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      'post',
+      'patch',
+      'del',
+    ] as const)('never replays a prediction %s after a dropped connection', async (method) => {
+      vi.useFakeTimers();
+      const failure = new TypeError('connection dropped after dispatch');
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+        throw failure;
+      });
+      const client = createPublicClient({ fetch });
+      // A JavaScript caller's stray read control must not enable mutation replay.
+      const options = { json: {}, retries: 5 };
+      const result = client.predictions[method]('/mutation', options).catch(
+        (error: unknown) => error,
+      );
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await result).toMatchObject({
+        name: 'TransportError',
+        cause: failure,
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains safe GET transport retries and explicit retry opt-out', async () => {
+      vi.useFakeTimers();
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+        throw new TypeError('connection dropped');
+      });
+      const client = createPublicClient({ fetch });
+      const result = client.predictions
+        .get('/ping')
+        .catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await result).toMatchObject({ name: 'TransportError' });
+      expect(fetch).toHaveBeenCalledTimes(3);
+      fetch.mockClear();
+      await expect(
+        client.predictions.get('/ping', { retries: 0 }),
+      ).rejects.toMatchObject({ name: 'TransportError' });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      null,
+      [],
+      'invalid',
+      { code: 'invalid_query_param' },
+      { code: 123, message: 'invalid query' },
+      { code: 'invalid_query_param', message: { detail: 'invalid query' } },
+      { error: { detail: 'invalid query' } },
+      { error: 'invalid query', retry_after_seconds: -1 },
+      { error: 'invalid query', retry_after_seconds: '5' },
+    ])('handles JSON rejection values without transport errors: %j', async (body) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(body, { status: 400 }),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.get('/invalid')).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 400,
+        code: undefined,
+        message: expect.stringContaining('unreadable response body'),
+      });
+    });
+
+    it.each([
+      GatewayKnownErrorCode.InvalidQueryParam,
+      'future_gateway_code',
+    ])('preserves native rejection code %s and its message', async (code) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json({ code, message: 'Invalid page size' }, { status: 400 }),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.get('/invalid')).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 400,
+        code,
+        message: expect.stringContaining('Invalid page size'),
+      });
+    });
+
+    it('preserves legacy error/code/retry hints and legacy message precedence', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          {
+            error: 'legacy error',
+            message: 'other message',
+            code: 'legacy_code',
+            retry_after_seconds: 5,
+          },
+          { status: 422 },
+        ),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.get('/legacy')).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        code: 'legacy_code',
+        retryAfter: 5,
+        message: expect.stringContaining('legacy error'),
+      });
+    });
+
+    it.each([
+      {
+        body: { error: 'upstream rejection', code: null },
+        code: undefined,
+        retryAfter: undefined,
+      },
+      {
+        body: {
+          error: 'upstream rejection',
+          code: 'upstream_code',
+          retry_after_seconds: null,
+        },
+        code: 'upstream_code',
+        retryAfter: undefined,
+      },
+      {
+        body: {
+          error: 'upstream rejection',
+          code: null,
+          retry_after_seconds: 5,
+        },
+        code: undefined,
+        retryAfter: 5,
+      },
+      {
+        body: {
+          error: 'upstream rejection',
+          message: 'other message',
+          code: 'upstream_code',
+          retry_after_seconds: null,
+        },
+        code: 'upstream_code',
+        retryAfter: undefined,
+      },
+      {
+        body: {
+          error: 'upstream rejection',
+          message: 'other message',
+          code: null,
+          retry_after_seconds: 0,
+        },
+        code: undefined,
+        retryAfter: 0,
+      },
+      {
+        body: {
+          error: 'upstream rejection',
+          message: 'other message',
+          code: null,
+          retry_after_seconds: null,
+        },
+        code: undefined,
+        retryAfter: undefined,
+      },
+    ])('retains upstream diagnostics with nullable hints: $body', async ({
+      body,
+      code,
+      retryAfter,
+    }) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(body, { status: 422 }),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.get('/nullable')).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 422,
+        message: expect.stringContaining('upstream rejection'),
+        code,
+        retryAfter,
+      });
+    });
+
+    it.each([
+      { hint: 5, retryAfter: 5 },
+      { hint: 0, retryAfter: 0 },
+      { hint: null, retryAfter: undefined },
+      { hint: undefined, retryAfter: undefined },
+    ])('retains native retry hint $hint', async ({ hint, retryAfter }) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          {
+            code: GatewayKnownErrorCode.InvalidQueryParam,
+            message: 'Invalid page size',
+            retry_after_seconds: hint,
+          },
+          { status: 400 },
+        ),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.get('/native-hint')).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 400,
+        message: expect.stringContaining('Invalid page size'),
+        code: GatewayKnownErrorCode.InvalidQueryParam,
+        retryAfter,
+      });
+    });
+
+    it('leaves ambiguous raw responses inspectable without mutation replay', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          { code: 'cancel_outcome_unknown', message: 'Check before retrying' },
+          { status: 502 },
+        ),
+      );
+      const client = createPublicClient({ fetch });
+      const response = await client.predictions.del('/cancel-all', {
+        responseType: 'raw',
+      });
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({
+        code: 'cancel_outcome_unknown',
+        message: 'Check before retrying',
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+  });
+  beforeAll(() => {
+    server.listen({ onUnhandledRequest: 'bypass' });
+  });
+
+  afterEach(() => {
+    server.resetHandlers();
+    vi.useRealTimers();
+  });
+
+  afterAll(() => {
+    server.close();
   });
 
   it('never dispatches a request whose signal is already cancelled', async () => {
@@ -164,7 +648,10 @@ describe('ServiceClient', () => {
     controller.abort(reason);
 
     await expect(
-      unwrap(client.get('/cancelled', { signal: controller.signal })),
+      client.get('/cancelled', {
+        signal: controller.signal,
+        responseType: 'raw',
+      }),
     ).rejects.toMatchObject({ name: 'RequestAbortedError', cause: reason });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -188,10 +675,11 @@ describe('ServiceClient', () => {
       return Promise.resolve(Response.json({ ok: true }));
     });
     const client = new ServiceClient({ root, fetch });
-    const cancelled = unwrap(
-      client.get('/cancelled', { signal: controller.signal }),
-    );
-    const unaffected = unwrap(client.get('/unaffected'));
+    const cancelled = client.get('/cancelled', {
+      signal: controller.signal,
+      responseType: 'raw',
+    });
+    const unaffected = client.get('/unaffected', { responseType: 'raw' });
     const requestSignal = await dispatched.promise;
     controller.abort(reason);
 
@@ -204,10 +692,485 @@ describe('ServiceClient', () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  describe('promise response lifecycle', () => {
+    it.each([
+      'get',
+      'post',
+      'patch',
+      'del',
+    ] as const)('rejects %s on an empty client before resolving headers or fetching', async (method) => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ fetch, resolveHeaders });
+      const result =
+        method === 'get'
+          ? client.get('/unused')
+          : client[method]('/unused', {});
+      await expect(result).rejects.toMatchObject({
+        name: 'UserInputError',
+        message: 'This service client has no configured endpoint',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('preserves already-aborted signal priority on an empty client', async () => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ fetch, resolveHeaders });
+      const controller = new AbortController();
+      const reason = { query: 'superseded before endpoint configuration' };
+      controller.abort(reason);
+      await expect(
+        client.get('/unused', { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'resolves',
+      'rejects',
+    ] as const)('cancels pending transport and observes a late fetch that %s', async (outcome) => {
+      const controller = new AbortController();
+      const reason = { query: 'superseded during transport' };
+      const dispatched = Promise.withResolvers<void>();
+      const transport = Promise.withResolvers<Response>();
+      let requestSignal: AbortSignal | null | undefined;
+      const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        requestSignal = input instanceof Request ? input.signal : init?.signal;
+        dispatched.resolve();
+        return transport.promise;
+      });
+      const transform = vi.fn((value: string) => value.length);
+      const client = new ServiceClient({ root, fetch });
+      const pending = client.get('/pending', {
+        signal: controller.signal,
+        schema: z.string().transform(transform),
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await dispatched.promise;
+      controller.abort(reason);
+      await rejection;
+      expect(requestSignal?.aborted).toBe(true);
+      expect(requestSignal?.reason).toBe(reason);
+      if (outcome === 'resolves')
+        transport.resolve(HttpResponse.json('late value'));
+      else transport.reject(new Error('late network failure'));
+      await transport.promise.catch(() => undefined);
+      await Promise.resolve();
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(transform).not.toHaveBeenCalled();
+    });
+
+    it('cancels a transport retry backoff without any subsequent dispatch', async () => {
+      vi.useFakeTimers();
+      const controller = new AbortController();
+      const reason = new Error('retry no longer wanted');
+      let requestSignal: AbortSignal | null | undefined;
+      const fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          requestSignal =
+            input instanceof Request ? input.signal : init?.signal;
+          throw new TypeError('connection reset');
+        },
+      );
+      const client = new ServiceClient({ root, fetch });
+      const pending = client.get('/backoff', {
+        signal: controller.signal,
+        timeout: false,
+      });
+      const rejection = expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetch).toHaveBeenCalledOnce();
+      // With request timeout disabled, the pending timer is the retry backoff.
+      expect(vi.getTimerCount()).toBe(1);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(fetch).toHaveBeenCalledOnce();
+      controller.abort(reason);
+      await rejection;
+      expect(requestSignal?.aborted).toBe(true);
+      expect(requestSignal?.reason).toBe(reason);
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('isolates cancellation between concurrent body consumers on one client', async () => {
+      const cancelledController = new AbortController();
+      const unaffectedController = new AbortController();
+      const reason = new Error('first body no longer needed');
+      const cancelledReading = Promise.withResolvers<void>();
+      const unaffectedReading = Promise.withResolvers<void>();
+      const bodies = new Map<
+        string,
+        ReadableStreamDefaultController<Uint8Array>
+      >();
+      const signals = new Map<string, AbortSignal | null | undefined>();
+      const encoder = new TextEncoder();
+      const fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = input instanceof Request ? input.url : String(input);
+          const name = url.endsWith('/cancelled') ? 'cancelled' : 'unaffected';
+          const signal = input instanceof Request ? input.signal : init?.signal;
+          signals.set(name, signal);
+          let supplied = false;
+          return new Response(
+            new ReadableStream<Uint8Array>(
+              {
+                start(stream) {
+                  bodies.set(name, stream);
+                  signal?.addEventListener(
+                    'abort',
+                    () => stream.error(signal.reason),
+                    { once: true },
+                  );
+                },
+                pull(stream) {
+                  if (supplied) return;
+                  supplied = true;
+                  (name === 'cancelled'
+                    ? cancelledReading
+                    : unaffectedReading
+                  ).resolve();
+                  stream.enqueue(encoder.encode('{"value":'));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+          );
+        },
+      );
+      const client = new ServiceClient({ root, fetch });
+      const schema = z.object({ value: z.number() });
+      const cancelled = client.get('/cancelled', {
+        schema,
+        signal: cancelledController.signal,
+      });
+      const unaffected = client.get('/unaffected', {
+        schema,
+        signal: unaffectedController.signal,
+      });
+      const rejection = expect(cancelled).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+      await Promise.all([cancelledReading.promise, unaffectedReading.promise]);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(signals.get('cancelled')).not.toBe(signals.get('unaffected'));
+      cancelledController.abort(reason);
+      await rejection;
+      expect(signals.get('cancelled')?.aborted).toBe(true);
+      expect(signals.get('cancelled')?.reason).toBe(reason);
+      expect(unaffectedController.signal.aborted).toBe(false);
+      expect(signals.get('unaffected')?.aborted).toBe(false);
+      const remainingBody = bodies.get('unaffected');
+      if (remainingBody === undefined)
+        throw new Error('Expected the unaffected response body');
+      remainingBody.enqueue(encoder.encode('7}'));
+      remainingBody.close();
+      await expect(unaffected).resolves.toEqual({ value: 7 });
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('rejects invalid response modes and non-JSON schema combinations before dispatch', async () => {
+      const fetch = vi.fn(globalThis.fetch);
+      const resolveHeaders = vi.fn(async () => ({}));
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      for (const options of [
+        { responseType: 'unsupported' },
+        { responseType: 'blob', schema: z.string() },
+        { responseType: 'raw', schema: z.string() },
+      ]) {
+        await expect(
+          client.get('/unused', options as never),
+        ).rejects.toMatchObject({ name: 'UserInputError' });
+      }
+      const controller = new AbortController();
+      controller.abort('abort wins');
+      await expect(
+        client.get('/unused', {
+          signal: controller.signal,
+          responseType: 'unsupported',
+        } as never),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'abort wins',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('maps thrown schema transforms to response errors, never transport errors', async () => {
+      server.use(
+        http.get(`${root}/throwing-schema`, () => HttpResponse.json('value')),
+      );
+      const cause = new Error('transform failed');
+      const client = new ServiceClient({ root });
+      await expect(
+        client.get('/throwing-schema', {
+          schema: z.string().transform(() => {
+            throw cause;
+          }),
+        }),
+      ).rejects.toMatchObject({ name: 'UnexpectedResponseError', cause });
+    });
+
+    it('checks cancellation after parsing and before schema transformation', async () => {
+      const controller = new AbortController();
+      const reason = new Error('cancelled before validation');
+      const response = HttpResponse.json('value');
+      vi.spyOn(response, 'json').mockImplementation(async () => {
+        controller.abort(reason);
+        return 'value';
+      });
+      const transform = vi.fn((value: string) => value.length);
+      const client = new ServiceClient({ root, fetch: async () => response });
+      await expect(
+        client.get('/schema', {
+          signal: controller.signal,
+          schema: z.string().transform(transform),
+        }),
+      ).rejects.toMatchObject({ name: 'RequestAbortedError', cause: reason });
+      expect(transform).not.toHaveBeenCalled();
+    });
+
+    it('signs the exact serialized bytes sent through custom fetch', async () => {
+      const resolveHeaders = vi.fn(async (request: ServiceRequest) => ({
+        'x-signed-body': request.body ?? '',
+      }));
+      const fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const request = input as Request;
+        expect(await request.text()).toBe('{"count":42}');
+        expect(request.headers.get('x-signed-body')).toBe('{"count":42}');
+        expect(request.headers.get('content-type')).toBe('application/json');
+        return HttpResponse.json({ ok: true });
+      });
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      await expect(
+        client.post('/bytes', { json: { count: 42, absent: undefined } }),
+      ).resolves.toEqual({ ok: true });
+      expect(resolveHeaders).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'POST',
+          path: '/bytes',
+          body: '{"count":42}',
+        }),
+      );
+    });
+
+    it('leaves raw response body consumption connected to the operation signal', async () => {
+      const controller = new AbortController();
+      const reason = new Error('raw reader cancelled');
+      let requestSignal: AbortSignal | null | undefined;
+      const client = new ServiceClient({
+        root,
+        fetch: async (input, init) => {
+          requestSignal =
+            input instanceof Request ? input.signal : init?.signal;
+          return new Response(
+            new ReadableStream({
+              start(stream) {
+                requestSignal?.addEventListener(
+                  'abort',
+                  () => stream.error(reason),
+                  { once: true },
+                );
+              },
+            }),
+          );
+        },
+      });
+      const raw = await client.get('/raw', {
+        responseType: 'raw',
+        signal: controller.signal,
+      });
+      controller.abort(reason);
+      expect(requestSignal?.aborted).toBe(true);
+      await expect(raw.text()).rejects.toBe(reason);
+    });
+
+    it.each([
+      'get',
+      'post',
+      'patch',
+      'del',
+    ] as const)('parses and transforms JSON through %s', async (method) => {
+      server.use(
+        http.all(`${root}/transform`, () => HttpResponse.json({ count: '42' })),
+      );
+      const client = new ServiceClient({ root });
+      const schema = z.object({ count: z.string().transform(Number) });
+      const result =
+        method === 'get'
+          ? client.get('/transform', { schema })
+          : client[method]('/transform', { schema });
+      await expect(result).resolves.toEqual({
+        count: 42,
+      });
+      await expect(client.get('/transform')).resolves.toEqual({ count: '42' });
+    });
+
+    it('owns binary, text, empty and raw response consumption', async () => {
+      server.use(
+        http.get(`${root}/bytes`, () => HttpResponse.text('download')),
+        http.delete(
+          `${root}/empty`,
+          () => new HttpResponse(null, { status: 204 }),
+        ),
+      );
+      const client = new ServiceClient({ root });
+      const blob = await client.get('/bytes', { responseType: 'blob' });
+      expect(await blob.text()).toBe('download');
+      const bytes = await client.get('/bytes', { responseType: 'arrayBuffer' });
+      expect(new TextDecoder().decode(bytes)).toBe('download');
+      await expect(
+        client.get('/bytes', { responseType: 'text' }),
+      ).resolves.toBe('download');
+      await expect(
+        client.del('/empty', { responseType: 'empty' }),
+      ).resolves.toBeUndefined();
+      await expect(
+        client.get('/bytes', { responseType: 'empty' }),
+      ).resolves.toBeUndefined();
+      const raw = await client.get('/bytes', { responseType: 'raw' });
+      expect(raw.bodyUsed).toBe(false);
+      expect(await raw.text()).toBe('download');
+    });
+
+    it('resolves rejected and rate-limited raw responses for caller inspection', async () => {
+      server.use(
+        http.post(`${root}/rejected`, () =>
+          HttpResponse.json({ error: 'invalid_market' }, { status: 422 }),
+        ),
+        http.get(
+          `${root}/limited`,
+          () =>
+            new HttpResponse('slow down', {
+              status: 429,
+              headers: { 'retry-after': '3' },
+            }),
+        ),
+      );
+      const client = new ServiceClient({ root });
+      const rejected = await client.post('/rejected', {
+        json: {},
+        responseType: 'raw',
+      });
+      expect(rejected.status).toBe(422);
+      expect(await rejected.json()).toEqual({ error: 'invalid_market' });
+      const limited = await client.get('/limited', { responseType: 'raw' });
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('retry-after')).toBe('3');
+      expect(await limited.text()).toBe('slow down');
+      await expect(
+        client.post('/rejected', { json: {} }),
+      ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 422 });
+    });
+
+    it('preserves JSON and schema failures as response errors with context', async () => {
+      server.use(
+        http.get(`${root}/invalid-json`, () => HttpResponse.text('not JSON')),
+        http.get(`${root}/invalid-shape`, () =>
+          HttpResponse.json({ count: 'forty two' }),
+        ),
+      );
+      const client = new ServiceClient({ root });
+      await expect(client.get('/invalid-json')).rejects.toMatchObject({
+        name: 'UnexpectedResponseError',
+        message: `Received non-JSON response from ${root}/invalid-json`,
+      });
+      await expect(
+        client.get('/invalid-shape', {
+          schema: z.object({ count: z.number() }),
+        }),
+      ).rejects.toMatchObject({
+        name: 'UnexpectedResponseError',
+        cause: expect.any(z.ZodError),
+      });
+    });
+
+    it('rejects an already aborted operation before authorization or dispatch', async () => {
+      const resolveHeaders = vi.fn(async () => ({}));
+      const fetch = vi.fn(globalThis.fetch);
+      const client = new ServiceClient({ root, fetch, resolveHeaders });
+      const controller = new AbortController();
+      controller.abort('already replaced');
+      await expect(
+        client.get('/unused', { signal: controller.signal }),
+      ).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'already replaced',
+      });
+      expect(resolveHeaders).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      'json',
+      'text',
+    ] as const)('preserves cancellation while reading %s error bodies', async (format) => {
+      let started: () => void = () => {};
+      const reading = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const controller = new AbortController();
+      const reason = new Error('error body cancelled');
+      let supplied = false;
+      const client = new ServiceClient({
+        root,
+        fetch: async () =>
+          new Response(
+            new ReadableStream(
+              {
+                start(stream) {
+                  controller.signal.addEventListener(
+                    'abort',
+                    () => stream.error(reason),
+                    { once: true },
+                  );
+                },
+                pull(stream) {
+                  if (supplied) return;
+                  supplied = true;
+                  started();
+                  stream.enqueue(new TextEncoder().encode('partial'));
+                },
+              },
+              { highWaterMark: 0 },
+            ),
+            {
+              status: 400,
+              headers: {
+                'content-type':
+                  format === 'json' ? 'application/json' : 'text/plain',
+              },
+            },
+          ),
+      });
+      const pending = client.get('/error-body', { signal: controller.signal });
+      await reading;
+      controller.abort(reason);
+      await expect(pending).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: reason,
+      });
+    });
+  });
+
   it.each([
-    [false, 1],
+    [0, 1],
     [undefined, 3],
-  ])('uses retry=%s for transport failures (%i attempts)', async (retry, attempts) => {
+  ])('uses retries=%s for transport failures (%i attempts)', async (retries, attempts) => {
     let requests = 0;
     server.use(
       http.get(`${root}/connection-reset`, () => {
@@ -215,13 +1178,13 @@ describe('ServiceClient', () => {
         return HttpResponse.error();
       }),
     );
-    const client = new ServiceClient({ retry, root });
+    const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/connection-reset'))).rejects.toMatchObject(
-      {
-        name: 'TransportError',
-      },
-    );
+    await expect(
+      client.get('/connection-reset', { retries }),
+    ).rejects.toMatchObject({
+      name: 'TransportError',
+    });
     expect(requests).toBe(attempts);
   });
 
@@ -244,9 +1207,7 @@ describe('ServiceClient', () => {
       },
     });
     const controller = new AbortController();
-    const pending = unwrap(
-      client.get('/headers', { signal: controller.signal }),
-    );
+    const pending = client.get('/headers', { signal: controller.signal });
     await started;
     controller.abort('query cancelled while signing');
 
@@ -266,26 +1227,39 @@ describe('ServiceClient', () => {
   it.each([
     'json',
     'blob',
+    'arrayBuffer',
+    'text',
+    'empty',
   ] as const)('preserves cancellation during %s body consumption', async (format) => {
     const controller = new AbortController();
     const reason = new Error('body read cancelled');
+    const reading = Promise.withResolvers<void>();
+    let supplied = false;
     const response = new Response(
-      new ReadableStream({
-        start(stream) {
-          stream.enqueue(new TextEncoder().encode('"partial'));
-          controller.signal.addEventListener(
-            'abort',
-            () => stream.error(reason),
-            { once: true },
-          );
+      new ReadableStream(
+        {
+          pull(stream) {
+            if (supplied) return;
+            supplied = true;
+            reading.resolve();
+            stream.enqueue(new TextEncoder().encode('"partial'));
+            controller.signal.addEventListener(
+              'abort',
+              () => stream.error(reason),
+              { once: true },
+            );
+          },
         },
-      }),
+        { highWaterMark: 0 },
+      ),
     );
     const options = { signal: controller.signal };
+    const client = new ServiceClient({ root, fetch: async () => response });
     const pending =
       format === 'json'
-        ? unwrap(validateWith(z.string(), options)(response))
-        : unwrap(readBlob(response, options));
+        ? client.get('/body', { ...options, schema: z.string() })
+        : client.get('/body', { ...options, responseType: format });
+    await reading.promise;
     controller.abort(reason);
 
     await expect(pending).rejects.toMatchObject({
@@ -302,7 +1276,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/json-error'))).rejects.toMatchObject({
+    await expect(client.get('/json-error')).rejects.toMatchObject({
       message: `structured failure (${root}/json-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -319,7 +1293,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
     await expect(
-      unwrap(client.del('/single-attempt', { retry: false })),
+      client.del('/single-attempt', { retry: false }),
     ).rejects.toMatchObject({ name: 'TransportError' });
     expect(requests).toBe(1);
   });
@@ -335,7 +1309,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/json-error-code'))).rejects.toMatchObject({
+    await expect(client.get('/json-error-code')).rejects.toMatchObject({
       code: 'INVALID_ACCEPTANCE',
       message: `invalid acceptance (${root}/json-error-code)`,
       name: 'RequestRejectedError',
@@ -354,9 +1328,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/json-error-identifier')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/json-error-identifier')).rejects.toMatchObject({
       code: 'signer_does_not_match_account',
       message: `signer_does_not_match_account (${root}/json-error-identifier)`,
       name: 'RequestRejectedError',
@@ -373,7 +1345,7 @@ describe('ServiceClient', () => {
     const client = new ServiceClient({ root });
 
     await expect(
-      unwrap(client.get('/json-400-error-identifier')),
+      client.get('/json-400-error-identifier'),
     ).rejects.toMatchObject({
       code: undefined,
       name: 'RequestRejectedError',
@@ -391,7 +1363,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/single-attempt'))).rejects.toMatchObject({
+    await expect(client.post('/single-attempt')).rejects.toMatchObject({
       code: 'internal_error',
       name: 'RequestRejectedError',
       status: 500,
@@ -413,13 +1385,13 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/json-explicit-error-code')),
-    ).rejects.toMatchObject({
-      code: 'EXPLICIT_CODE',
-      name: 'RequestRejectedError',
-      status: 422,
-    });
+    await expect(client.get('/json-explicit-error-code')).rejects.toMatchObject(
+      {
+        code: 'EXPLICIT_CODE',
+        name: 'RequestRejectedError',
+        status: 422,
+      },
+    );
   });
 
   it('prefers JSON error fields over Cloudflare response detection', async () => {
@@ -433,9 +1405,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/cloudflare-json-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/cloudflare-json-error')).rejects.toMatchObject({
       message: `structured cloudflare failure (${root}/cloudflare-json-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -455,7 +1425,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/text-error'))).rejects.toMatchObject({
+    await expect(client.get('/text-error')).rejects.toMatchObject({
       message: `plain failure (${root}/text-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -475,9 +1445,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/cloudflare-text-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/cloudflare-text-error')).rejects.toMatchObject({
       message: `plain cloudflare failure (${root}/cloudflare-text-error)`,
       name: 'RequestRejectedError',
       status: 400,
@@ -500,7 +1468,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/html-error'))).rejects.toMatchObject({
+    await expect(client.get('/html-error')).rejects.toMatchObject({
       message: `Request to ${root}/html-error was blocked by Cloudflare with status 502`,
       name: 'RequestRejectedError',
       status: 502,
@@ -526,9 +1494,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.get('/headers'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.get('/headers')).resolves.toEqual({ ok: true });
   });
 
   it('identifies unreadable HTML errors when the server is unknown', async () => {
@@ -544,9 +1510,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/generic-html-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/generic-html-error')).rejects.toMatchObject({
       message: `Request to ${root}/generic-html-error failed with status 502 and an unexpected HTML response body`,
       name: 'RequestRejectedError',
       status: 502,
@@ -566,9 +1530,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.get('/retry-after-error')),
-    ).rejects.toMatchObject({
+    await expect(client.get('/retry-after-error')).rejects.toMatchObject({
       name: 'RequestRejectedError',
       retryAfter: 17,
       status: 503,
@@ -589,7 +1551,7 @@ describe('ServiceClient', () => {
     const client = new ServiceClient({ root });
 
     await expect(
-      unwrap(client.get('/retry-after-rate-limit')),
+      client.get('/retry-after-rate-limit', { retries: 0 }),
     ).rejects.toMatchObject({
       name: 'RateLimitError',
       retryAfter: 3,
@@ -604,7 +1566,9 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/no-retry-after'))).rejects.toMatchObject({
+    await expect(
+      client.get('/no-retry-after', { retries: 0 }),
+    ).rejects.toMatchObject({
       name: 'RequestRejectedError',
       restriction: undefined,
       retryAfter: undefined,
@@ -636,7 +1600,7 @@ describe('ServiceClient', () => {
         ),
       );
       return expect(
-        unwrap(new ServiceClient({ root }).get('/retry-after-date')),
+        new ServiceClient({ root }).get('/retry-after-date', { retries: 0 }),
       ).rejects;
     }
 
@@ -717,7 +1681,7 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/rate-limited-order', { rateLimitBucket: 'order' })),
+      client.post('/rate-limited-order', { rateLimitBucket: 'order' }),
     ).rejects.toMatchObject({
       name: 'RateLimitError',
       rateLimit: {
@@ -763,8 +1727,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.post('/order', { rateLimitBucket: 'order' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'order',
@@ -798,8 +1762,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.del('/order', { rateLimitBucket: 'cancel' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.del('/order', { rateLimitBucket: 'cancel' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'cancel',
@@ -826,9 +1790,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         remaining: 10,
@@ -861,8 +1823,8 @@ describe('ServiceClient', () => {
     });
 
     await expect(
-      unwrap(client.post('/order', { rateLimitBucket: 'order' })),
-    ).resolves.toBeInstanceOf(Response);
+      client.post('/order', { rateLimitBucket: 'order' }),
+    ).resolves.toEqual({ ok: true });
     expect(updates).toEqual([
       {
         bucket: 'order',
@@ -882,9 +1844,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.get('/uncovered'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.get('/uncovered')).resolves.toEqual({});
     expect(updates).toEqual([]);
   });
 
@@ -904,9 +1864,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
   });
 
   it('ignores asynchronous rate-limit listener errors', async () => {
@@ -926,9 +1884,7 @@ describe('ServiceClient', () => {
       root,
     });
 
-    await expect(unwrap(client.post('/order'))).resolves.toBeInstanceOf(
-      Response,
-    );
+    await expect(client.post('/order')).resolves.toEqual({ ok: true });
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
   });
 
@@ -941,7 +1897,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/restarting'))).rejects.toMatchObject({
+    await expect(client.post('/restarting')).rejects.toMatchObject({
       name: 'RequestRejectedError',
       restriction: undefined,
       status: 425,
@@ -964,7 +1920,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.post('/post-only'))).rejects.toMatchObject({
+    await expect(client.post('/post-only')).rejects.toMatchObject({
       code: 'post_only_mode',
       message: `post-only mode: only post-only orders and cancels are allowed (${root}/post-only)`,
       name: 'RequestRejectedError',
@@ -989,9 +1945,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(
-      unwrap(client.post('/post-only-header')),
-    ).rejects.toMatchObject({
+    await expect(client.post('/post-only-header')).rejects.toMatchObject({
       code: 'post_only_mode',
       name: 'RequestRejectedError',
       retryAfter: 80,
@@ -1012,10 +1966,12 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root });
 
-    await expect(unwrap(client.get('/binary-error'))).rejects.toMatchObject({
+    await expect(client.get('/binary-error')).rejects.toMatchObject({
       message: `Request to ${root}/binary-error failed with status 500 and unreadable response body`,
       name: 'RequestRejectedError',
       status: 500,
     });
   });
 });
+
+import { PaginationCursorSchema } from '@polymarket/bindings';

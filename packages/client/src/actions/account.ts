@@ -28,7 +28,6 @@ import {
   type UserRewardsEarning,
   UserRewardsEarningsPageSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -43,8 +42,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { toSignatureType } from '../wallet';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
@@ -55,7 +53,8 @@ export type FetchClosedOnlyModeError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchClosedOnlyModeError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
@@ -63,6 +62,7 @@ export const FetchClosedOnlyModeError = makeErrorGuard(
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -82,11 +82,11 @@ export async function fetchClosedOnlyMode(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<boolean> {
-  const response = await unwrap(
-    client.secureClob
-      .get('/auth/ban-status/closed-only', options)
-      .andThen(validateWith(ClosedOnlyModeSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  const response = await client.secureClob.get('/auth/ban-status/closed-only', {
+    ...requestOptions,
+    schema: ClosedOnlyModeSchema,
+  });
 
   return response.closedOnly;
 }
@@ -176,6 +176,7 @@ export function listOpenOrders(
   request?: ListOpenOrdersRequest,
   options: RequestOptions = {},
 ): Paginated<OpenOrder[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListOpenOrdersRequestSchema);
   const { cursor } = params;
 
@@ -183,7 +184,8 @@ export function listOpenOrders(
     (nextCursor) =>
       client.secureClob
         .get('/data/orders', {
-          signal: options.signal,
+          schema: OpenOrdersPageSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               assetId: params.assetId ?? params.tokenId,
@@ -194,8 +196,7 @@ export function listOpenOrders(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(OpenOrdersPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -250,13 +251,13 @@ export async function fetchOrder(
   request: FetchOrderRequest,
   options: RequestOptions = {},
 ): Promise<OpenOrder> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
-  return unwrap(
-    client.secureClob
-      .get(`/data/order/${params.orderId}`, options)
-      .andThen(validateWith(OpenOrderSchema, options)),
-  );
+  return client.secureClob.get(`/data/order/${params.orderId}`, {
+    ...requestOptions,
+    schema: OpenOrderSchema,
+  });
 }
 
 const ListAccountTradesRequestFields = {
@@ -353,6 +354,7 @@ export function listAccountTrades(
   request?: ListAccountTradesRequest,
   options: RequestOptions = {},
 ): Paginated<ClobTrade[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListAccountTradesRequestSchema);
   const { cursor } = params;
 
@@ -360,7 +362,8 @@ export function listAccountTrades(
     (nextCursor) =>
       client.secureClob
         .get('/data/trades', {
-          signal: options.signal,
+          schema: ClobTradesPageSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               after: params.after,
@@ -374,8 +377,7 @@ export function listAccountTrades(
             snakeCase({ assetId: 'asset_id' }),
           ),
         })
-        .andThen(validateWith(ClobTradesPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -393,7 +395,8 @@ export type FetchNotificationsError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchNotificationsError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
@@ -401,6 +404,7 @@ export const FetchNotificationsError = makeErrorGuard(
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 const DropNotificationsRequestSchema = z.object({
@@ -429,16 +433,14 @@ export async function fetchNotifications(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<NotificationsResponse> {
+  const requestOptions = parseRequestOptions(options);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/notifications', {
-        signal: options.signal,
-        params: toSearchParams({ signatureType }, snakeCase()),
-      })
-      .andThen(validateWith(NotificationsResponseSchema, options)),
-  );
+  return client.secureClob.get('/notifications', {
+    schema: NotificationsResponseSchema,
+    ...requestOptions,
+    params: toSearchParams({ signatureType }, snakeCase()),
+  });
 }
 
 export type DropNotificationsError =
@@ -487,11 +489,10 @@ export async function dropNotifications(
     snakeCase(),
   );
 
-  await unwrap(
-    client.secureClob.del('/notifications', {
-      params: searchParams,
-    }),
-  );
+  await client.secureClob.del('/notifications', {
+    responseType: 'empty',
+    params: searchParams,
+  });
 }
 
 const BalanceAllowanceRequestFieldsSchema = z.object({
@@ -555,24 +556,22 @@ export async function fetchBalanceAllowance(
   request: FetchBalanceAllowanceRequest,
   options: RequestOptions = {},
 ): Promise<BalanceAllowanceResponse> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchBalanceAllowanceRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/balance-allowance', {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            assetType: params.assetType,
-            tokenId: params.assetId ?? params.tokenId,
-            signatureType,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(BalanceAllowanceResponseSchema, options)),
-  );
+  return client.secureClob.get('/balance-allowance', {
+    schema: BalanceAllowanceResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        assetType: params.assetType,
+        tokenId: params.assetId ?? params.tokenId,
+        signatureType,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 const UpdateBalanceAllowanceRequestSchema = optionalExchangeAssetRequestSchema(
@@ -640,11 +639,10 @@ export async function updateBalanceAllowance(
     snakeCase(),
   );
 
-  await unwrap(
-    client.secureClob.get('/balance-allowance/update', {
-      params: searchParams,
-    }),
-  );
+  await client.secureClob.getWorkflow('/balance-allowance/update', {
+    responseType: 'empty',
+    params: searchParams,
+  });
 
   return fetchBalanceAllowance(client, params);
 }
@@ -694,15 +692,13 @@ export async function fetchOrderScoring(
   request: FetchOrderScoringRequest,
   options: RequestOptions = {},
 ): Promise<boolean> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderScoringRequestSchema);
-  const response = await unwrap(
-    client.secureClob
-      .get('/order-scoring', {
-        signal: options.signal,
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(OrderScoringResponseSchema, options)),
-  );
+  const response = await client.secureClob.get('/order-scoring', {
+    schema: OrderScoringResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(params, snakeCase()),
+  });
 
   return response.scoring;
 }
@@ -752,14 +748,15 @@ export async function fetchOrdersScoring(
   request: FetchOrdersScoringRequest,
   options: RequestOptions = {},
 ): Promise<OrdersScoringResponse> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrdersScoringRequestSchema);
   const body = params.orderIds;
 
-  return unwrap(
-    client.secureClob
-      .post('/orders-scoring', { signal: options.signal, json: body })
-      .andThen(validateWith(OrdersScoringResponseSchema, options)),
-  );
+  return client.secureClob.postRead('/orders-scoring', {
+    schema: OrdersScoringResponseSchema,
+    ...requestOptions,
+    json: body,
+  });
 }
 
 const ListUserEarningsForDayRequestSchema = z.object({
@@ -828,6 +825,7 @@ export function listUserEarningsForDay(
   request: ListUserEarningsForDayRequest,
   options: RequestOptions = {},
 ): Paginated<UserEarning[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, ...params } = parseUserInput(
     request,
     ListUserEarningsForDayRequestSchema,
@@ -838,7 +836,8 @@ export function listUserEarningsForDay(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user', {
-          signal: options.signal,
+          schema: UserEarningsPageSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               ...params,
@@ -848,8 +847,7 @@ export function listUserEarningsForDay(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserEarningsPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -911,26 +909,24 @@ export async function fetchTotalEarningsForUserForDay(
   request: FetchTotalEarningsForUserForDayRequest,
   options: RequestOptions = {},
 ): Promise<TotalUserEarning[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(
     request,
     FetchTotalEarningsForUserForDayRequestSchema,
   );
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/rewards/user/total', {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            ...params,
-            signatureType,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(TotalUserEarningsResponseSchema, options)),
-  );
+  return client.secureClob.get('/rewards/user/total', {
+    schema: TotalUserEarningsResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        ...params,
+        signatureType,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 const ListUserEarningsAndMarketsConfigRequestSchema = z.object({
@@ -1003,6 +999,7 @@ export function listUserEarningsAndMarketsConfig(
   request: ListUserEarningsAndMarketsConfigRequest,
   options: RequestOptions = {},
 ): Paginated<UserRewardsEarning[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, ...params } = parseUserInput(
     request,
     ListUserEarningsAndMarketsConfigRequestSchema,
@@ -1013,7 +1010,8 @@ export function listUserEarningsAndMarketsConfig(
     (nextCursor) =>
       client.secureClob
         .get('/rewards/user/markets', {
-          signal: options.signal,
+          schema: UserRewardsEarningsPageSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               ...params,
@@ -1023,8 +1021,7 @@ export function listUserEarningsAndMarketsConfig(
             snakeCase(),
           ),
         })
-        .andThen(validateWith(UserRewardsEarningsPageSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -1042,7 +1039,8 @@ export type FetchRewardPercentagesError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchRewardPercentagesError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
@@ -1050,6 +1048,7 @@ export const FetchRewardPercentagesError = makeErrorGuard(
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -1069,14 +1068,12 @@ export async function fetchRewardPercentages(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<RewardsPercentages> {
+  const requestOptions = parseRequestOptions(options);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return unwrap(
-    client.secureClob
-      .get('/rewards/user/percentages', {
-        signal: options.signal,
-        params: toSearchParams({ signatureType }, snakeCase()),
-      })
-      .andThen(validateWith(RewardsPercentagesSchema, options)),
-  );
+  return client.secureClob.get('/rewards/user/percentages', {
+    schema: RewardsPercentagesSchema,
+    ...requestOptions,
+    params: toSearchParams({ signatureType }, snakeCase()),
+  });
 }

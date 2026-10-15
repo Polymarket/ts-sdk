@@ -40,6 +40,7 @@ import type {
   PerpsLiquidationDetails,
   PerpsLiquidationMethod,
   PerpsPositionDeleveragedNotification,
+  PerpsPositionSnapshots,
   PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionEvent,
@@ -50,6 +51,7 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicClient,
   PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
@@ -87,6 +89,29 @@ describe('registration lookup types', () => {
       });
       // @ts-expect-error An address is required.
       client.fetchPerpsRegistration({});
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
+describe('cancellable public Perps read types', () => {
+  it('accepts the operation signal on registration and position snapshots on both public clients', () => {
+    function read(client: PublicClient | SecureClient, signal: AbortSignal) {
+      expectTypeOf(
+        client.fetchPerpsRegistration(
+          { address: '0x1111111111111111111111111111111111111111' },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<boolean>>();
+      expectTypeOf(
+        client.fetchPerpsPositionSnapshots(
+          {
+            address: '0x1111111111111111111111111111111111111111',
+            activeInstrumentIds: [7],
+          },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<PerpsPositionSnapshots>>();
     }
     expectTypeOf(read).toBeFunction();
   });

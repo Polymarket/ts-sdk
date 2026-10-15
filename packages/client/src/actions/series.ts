@@ -4,7 +4,6 @@ import {
   type Series,
   SeriesSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -24,8 +23,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 const ListSeriesRequestSchema = z.object({
@@ -108,6 +106,7 @@ export function listSeries(
   request: ListSeriesRequest = {},
   options: RequestOptions = {},
 ): Paginated<Series[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     ListSeriesRequestSchema,
@@ -118,7 +117,8 @@ export function listSeries(
 
     return client.gamma
       .get('/series', {
-        signal: options.signal,
+        schema: ListSeriesResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             ...params,
@@ -128,8 +128,7 @@ export function listSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListSeriesResponseSchema, options))
-      .map((series) => {
+      .then((series) => {
         const hasMore = series.length >= decoded.pageSize;
 
         return {
@@ -186,19 +185,17 @@ export async function fetchSeries(
   request: FetchSeriesRequest,
   options: RequestOptions = {},
 ): Promise<Series> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`series/${params.id}`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(SeriesSchema, options)),
-  );
+  return client.gamma.get(`series/${params.id}`, {
+    schema: SeriesSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }

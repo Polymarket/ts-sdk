@@ -28,7 +28,6 @@ import {
   MarketSchema,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -43,9 +42,7 @@ import {
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   distinctIdList,
   EpochSecondsLikeSchema,
@@ -191,20 +188,21 @@ export function listMarkets(
   request: ListMarketsRequest = {},
   options: RequestOptions = {},
 ): Paginated<Market[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListMarketsRequestSchema);
 
   return paginate(
     (cursor) =>
       client.gamma
         .get('/markets/keyset', {
-          signal: options.signal,
+          schema: ListMarketsKeysetResponseSchema,
+          ...requestOptions,
           params: toMarketsSearchParams({
             ...params,
             cursor: cursor ?? params.cursor,
           }),
         })
-        .andThen(validateWith(ListMarketsKeysetResponseSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
           nextCursor: response.nextCursor,
@@ -277,20 +275,21 @@ export function listComboMarkets(
   request: ListComboMarketsRequest = {},
   options: RequestOptions = {},
 ): Paginated<ComboMarket[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListComboMarketsRequestSchema);
 
   return paginate(
     (cursor) =>
       client.rfq
         .get('/v1/rfq/combo-markets', {
-          signal: options.signal,
+          schema: ListComboMarketsResponseSchema,
+          ...requestOptions,
           params: toComboMarketsSearchParams({
             ...params,
             cursor: cursor ?? params.cursor,
           }),
         })
-        .andThen(validateWith(ListComboMarketsResponseSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.markets,
           hasMore: response.nextCursor !== undefined,
           nextCursor: response.nextCursor,
@@ -350,10 +349,11 @@ export async function fetchMarket(
   request: FetchMarketRequest,
   options: RequestOptions = {},
 ): Promise<Market> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMarketRequestSchema);
 
   if ('id' in params) {
-    return fetchMarketById(client, params, options);
+    return fetchMarketById(client, params, requestOptions);
   }
 
   if ('url' in params) {
@@ -364,11 +364,11 @@ export async function fetchMarket(
         locale: params.locale,
         slug: parsePolymarketSlugUrl(params.url, 'market'),
       },
-      options,
+      requestOptions,
     );
   }
 
-  return fetchMarketBySlug(client, params, options);
+  return fetchMarketBySlug(client, params, requestOptions);
 }
 
 export type FetchMarketTagsError =
@@ -410,13 +410,13 @@ export async function fetchMarketTags(
   request: FetchMarketTagsRequest,
   options: RequestOptions = {},
 ): Promise<TagReference[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMarketTagsRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`markets/${params.id}/tags`, options)
-      .andThen(validateWith(FetchMarketTagsResponseSchema, options)),
-  );
+  return client.gamma.get(`markets/${params.id}/tags`, {
+    ...requestOptions,
+    schema: FetchMarketTagsResponseSchema,
+  });
 }
 
 const ListMarketHoldersRequestSchema = z
@@ -501,25 +501,23 @@ export function listMarketHolders(
   request: ListMarketHoldersRequest,
   options: RequestOptions = {},
 ): Paginated<MetaHolder[]> {
+  const requestOptions = parseRequestOptions(options);
   const { conditionIds, cursor, includePnl, minBalance, pageSize } =
     parseUserInput(request, ListMarketHoldersRequestSchema);
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(
-        () =>
-          client.data.get('/v2/holders', {
-            signal: options.signal,
-            params: toDataSearchParams({
-              condition: conditionIds,
-              limit: pageSize,
-              cursor,
-              includePnl,
-              minBalance,
-            }),
-          }),
-        { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListMarketHoldersResponseSchema, options)),
+      client.data.get('/v2/holders', {
+        schema: ListMarketHoldersResponseSchema,
+        ...requestOptions,
+        params: toDataSearchParams({
+          condition: conditionIds,
+          limit: pageSize,
+          cursor,
+          includePnl,
+          minBalance,
+        }),
+      }),
     cursor,
   );
 }
@@ -699,6 +697,7 @@ export function listPriceHistory(
   request: ListPriceHistoryRequest,
   options: RequestOptions = {},
 ): Paginated<PriceHistoryPoint[]> {
+  const requestOptions = parseRequestOptions(options);
   const { assetId, cursor, pageSize, ...params } = parseUserInput(
     request,
     ListPriceHistoryRequestSchema,
@@ -706,19 +705,16 @@ export function listPriceHistory(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(
-        () =>
-          client.data.get('/v2/prices-history', {
-            signal: options.signal,
-            params: toDataSearchParams({
-              ...params,
-              tokenId: assetId,
-              limit: pageSize,
-              cursor,
-            }),
-          }),
-        { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListPriceHistoryResponseSchema, options)),
+      client.data.get('/v2/prices-history', {
+        schema: ListPriceHistoryResponseSchema,
+        ...requestOptions,
+        params: toDataSearchParams({
+          ...params,
+          tokenId: assetId,
+          limit: pageSize,
+          cursor,
+        }),
+      }),
     cursor,
   );
 }
@@ -776,21 +772,17 @@ export async function fetchOpenInterest(
   request: FetchOpenInterestRequest = {},
   options: RequestOptions = {},
 ): Promise<OpenInterest[]> {
+  const requestOptions = parseRequestOptions(options);
   const { conditionIds } = parseUserInput(
     request,
     FetchOpenInterestRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/oi', {
-          signal: options.signal,
-          params: toDataSearchParams({ condition: conditionIds }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchOpenInterestResponseSchema, options)),
-  );
+  return client.data.get('/v2/oi', {
+    schema: FetchOpenInterestResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({ condition: conditionIds }),
+  });
 }
 
 function toMarketsSearchParams(params: ListMarketsParams): URLSearchParams {
@@ -828,20 +820,18 @@ async function fetchMarketBySlug(
   params: z.output<typeof FetchMarketBySlugRequestSchema>,
   options: RequestOptions = {},
 ): Promise<Market> {
-  return unwrap(
-    client.gamma
-      .get(`markets/slug/${params.slug}`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            includeTag: params.includeTag,
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(MarketSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  return client.gamma.get(`markets/slug/${params.slug}`, {
+    schema: MarketSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        includeTag: params.includeTag,
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 async function fetchMarketById(
@@ -849,18 +839,16 @@ async function fetchMarketById(
   params: z.output<typeof FetchMarketByIdRequestSchema>,
   options: RequestOptions = {},
 ): Promise<Market> {
-  return unwrap(
-    client.gamma
-      .get(`markets/${params.id}`, {
-        signal: options.signal,
-        params: toSearchParams(
-          {
-            includeTag: params.includeTag,
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(MarketSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  return client.gamma.get(`markets/${params.id}`, {
+    schema: MarketSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        includeTag: params.includeTag,
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }

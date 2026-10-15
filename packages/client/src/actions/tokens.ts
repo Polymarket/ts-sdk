@@ -2,7 +2,6 @@ import {
   FetchTokenReferencesResponseSchema,
   type TokenReference,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -15,9 +14,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { toDataSearchParams } from './params';
 
 const AssetSelectorsSchema = z
@@ -121,21 +118,17 @@ export async function fetchTokenReferences(
   request: FetchTokenReferencesRequest,
   options: RequestOptions = {},
 ): Promise<TokenReference[]> {
+  const requestOptions = parseRequestOptions(options);
   const { assetIds, conditionIds } = parseUserInput(
     request,
     FetchTokenReferencesRequestSchema,
   );
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/tokens', {
-          signal: options.signal,
-          params: toDataSearchParams({
-            tokenId: assetIds,
-            condition: conditionIds,
-          }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchTokenReferencesResponseSchema, options)),
-  );
+  return client.data.get('/v2/tokens', {
+    schema: FetchTokenReferencesResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({
+      tokenId: assetIds,
+      condition: conditionIds,
+    }),
+  });
 }

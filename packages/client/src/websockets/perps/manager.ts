@@ -12,7 +12,6 @@ export type PerpsSessionManagerOptions = {
   chainId: number;
   fetch?: Fetch;
   headers?: Record<string, string>;
-  retry?: boolean;
   restUrl: string;
   wsUrl: string;
 };
@@ -24,7 +23,6 @@ export class PerpsSessionManager {
   readonly #chainId: number;
   readonly #fetch: Fetch | undefined;
   readonly #headers: Record<string, string> | undefined;
-  readonly #retry: boolean | undefined;
   readonly #restUrl: string;
   readonly #wsUrl: string;
   readonly #sessions = new Set<PerpsSession>();
@@ -39,7 +37,6 @@ export class PerpsSessionManager {
     this.#chainId = options.chainId;
     this.#fetch = options.fetch;
     this.#headers = options.headers;
-    this.#retry = options.retry;
     this.#restUrl = options.restUrl;
     this.#wsUrl = options.wsUrl;
   }
@@ -70,7 +67,6 @@ export class PerpsSessionManager {
       credentials,
       fetch: this.#fetch,
       headers: this.#headers,
-      retry: this.#retry,
       onClose: (closedSession) => this.#clearSession(closedSession),
       restUrl: this.#restUrl,
       wsUrl: this.#wsUrl,

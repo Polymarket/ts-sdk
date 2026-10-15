@@ -21,8 +21,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
@@ -116,6 +115,7 @@ export function listBuilderTrades(
   request: ListBuilderTradesRequest,
   options: RequestOptions = {},
 ): Paginated<BuilderTrade[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListBuilderTradesRequestSchema);
   const { cursor } = params;
 
@@ -123,7 +123,7 @@ export function listBuilderTrades(
     (nextCursor) =>
       client.clob
         .get('/builder/trades', {
-          signal: options.signal,
+          ...requestOptions,
           params: toSearchParams(
             {
               after: params.after,
@@ -139,9 +139,9 @@ export function listBuilderTrades(
               builderCode: 'builder_code',
             }),
           ),
+          schema: PaginatedBuilderTradesSchema,
         })
-        .andThen(validateWith(PaginatedBuilderTradesSchema, options))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:

@@ -1,3 +1,10 @@
+import type { GatewayErrorCode } from '@polymarket/bindings';
+
+export {
+  type GatewayErrorCode,
+  GatewayKnownErrorCode,
+} from '@polymarket/bindings';
+
 import type { PerpsCancelOrderResult } from '@polymarket/bindings/perps';
 
 export {
@@ -178,7 +185,7 @@ export type RequestRejectedErrorOptions = {
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  code?: string;
+  code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -204,7 +211,7 @@ export class RequestRejectedError extends PolymarketError {
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  readonly code?: string;
+  readonly code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.

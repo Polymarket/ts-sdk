@@ -76,13 +76,13 @@ type PublicContext = {
   /** @internal */
   fetch?: Fetch;
   /** @internal */
-  retry: boolean;
-  /** @internal */
   apiKey?: ApiKeyAuthorization;
   /** @internal */
   environment: EnvironmentConfig;
   /** @internal */
   onRateLimitUpdate?: RateLimitUpdateListener;
+  /** @internal */
+  predictions: ServiceClient;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -143,13 +143,18 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get retry(): boolean {
-    return this.context.retry;
-  }
-
-  /** @internal */
   get environment(): EnvironmentConfig {
     return this.context.environment;
+  }
+
+  /**
+   * Service client for prediction requests using the configured endpoint.
+   * Requests return promises with parsed response data.
+   *
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  get predictions(): ServiceClient {
+    return this.context.predictions;
   }
 
   /** @internal */
@@ -306,11 +311,20 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
 
 type PublicClientConfig = {
   fetch?: Fetch;
-  retry?: boolean;
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
+
+// Public and secure clients share one predictions endpoint configuration.
+function createPredictionsService(config: PublicClientConfig): ServiceClient {
+  return new ServiceClient({
+    fetch: config.fetch,
+    retryMutations: false,
+    headers: config.environment.predictions.headers,
+    root: config.environment.predictions.rest,
+  });
+}
 
 class BasePublicClient<
   TPublicActions extends ClientActions = ClientActions,
@@ -321,23 +335,20 @@ class BasePublicClient<
       apiKey: config.apiKey,
       environment: config.environment,
       fetch: config.fetch,
-      retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
+      predictions: createPredictionsService(config),
       data: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       gamma: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       clob: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
@@ -345,27 +356,23 @@ class BasePublicClient<
       }),
       relayer: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rfq: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
-        retry: config.retry,
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -540,7 +547,6 @@ class BasePublicClient<
       environment: this.environment,
       onRateLimitUpdate: this.context.onRateLimitUpdate,
       fetch: this.context.fetch,
-      retry: this.context.retry,
       signer,
     });
 
@@ -587,12 +593,11 @@ class BaseSecureClient<
       apiKey: config.apiKey,
       environment: config.environment,
       fetch: config.fetch,
-      retry: config.retry ?? true,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
+      predictions: createPredictionsService(config),
       clob: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
@@ -600,7 +605,6 @@ class BaseSecureClient<
       }),
       relayer: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
@@ -608,35 +612,29 @@ class BaseSecureClient<
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
-        retry: config.retry,
       }),
       gamma: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       data: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       rfq: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
       secureClob: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => ({
@@ -647,14 +645,12 @@ class BaseSecureClient<
       }),
       combos: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.combos.collateralReturn.rest,
       }),
       builderGateway: new ServiceClient({
         fetch: config.fetch,
-        retry: config.retry,
         headers: config.environment.combos.builderGateway.headers,
         resolveHeaders: async (request) => ({
           ...(await this.#resolveBuilderGatewayHeaders(request)),
@@ -696,7 +692,6 @@ class BaseSecureClient<
         }),
         perpsSession: new PerpsSessionManager({
           fetch: config.fetch,
-          retry: config.retry,
           chainId: config.environment.chainId,
           headers: config.environment.perps.headers,
           restUrl: config.environment.perps.rest,
@@ -839,8 +834,7 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate, fetch, retry } =
-      this.context;
+    const { apiKey, environment, onRateLimitUpdate, fetch } = this.context;
 
     try {
       await deleteApiKey(this);
@@ -858,7 +852,6 @@ class BaseSecureClient<
       environment,
       onRateLimitUpdate,
       fetch,
-      retry,
     });
 
     for (const decorator of this.decorators) {
@@ -965,13 +958,6 @@ export type PublicClientOptions = {
    */
   fetch?: Fetch;
   /**
-   * Set false to disable HTTP transport retries and automatic read retries.
-   * Does not disable wallet workflow recovery or WebSocket command retries.
-   * @defaultValue true
-   * @experimental This API may change in a breaking way in any release, including patch releases.
-   */
-  retry?: boolean;
-  /**
    * The environment configuration used by the client.
    *
    * @defaultValue `production`
@@ -1046,7 +1032,6 @@ export function createPublicClient(
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
     fetch: options.fetch,
-    retry: options.retry,
   }).extend(allActions);
 }
 
@@ -1099,7 +1084,6 @@ export async function createSecureClient(
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
     fetch: options.fetch,
-    retry: options.retry,
   });
   const wallet = await resolveRequestedWallet(client, options);
 

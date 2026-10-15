@@ -1,13 +1,18 @@
+import { ErrorResponseSchema } from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
-import { ResultAsync } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
+import { z } from 'zod';
 import {
+  makeErrorGuard,
   OrderHeartbeatMismatchError,
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
   TransportError,
+  UnexpectedResponseError,
+  UserInputError,
 } from './errors';
+import { parseUserInput } from './input';
 import {
   parseRateLimitHeaders,
   type RateLimitBucket,
@@ -17,13 +22,17 @@ import {
 import {
   assertNotAborted,
   type Fetch,
+  parseRequestOptions,
   type RequestOptions,
   withAbort,
 } from './request-options';
+import { parseResponse } from './response';
+
+export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
 
 export type ServiceRequest = {
   signal?: AbortSignal;
-  method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
+  method: ServiceRequestMethod;
   path: string;
   body?: string;
   headers?: HeadersInit;
@@ -37,8 +46,10 @@ export type RequestHeadersResolver = (
 
 export type ServiceClientConfig = {
   fetch?: Fetch;
-  retry?: boolean;
-  root: string;
+  /** Disable automatic replay of mutation requests. @internal */
+  retryMutations?: false;
+  /** Omit the endpoint root to create an empty client whose requests reject with UserInputError. */
+  root?: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
   onRateLimitUpdate?: RateLimitUpdateListener;
@@ -50,34 +61,143 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-type ServiceClientRequestOptions = RequestOptions & {
-  /** Rate-limit bucket supplied by the action that owns the request. */
-  rateLimitBucket?: RateLimitBucket;
-  timeout?: ServiceClientTimeout;
-  /** Disable transport retries for commands whose outcome may be uncertain. */
-  retry?: false;
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientResponseType =
+  | 'json'
+  | 'blob'
+  | 'arrayBuffer'
+  | 'text'
+  | 'empty'
+  | 'raw';
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientNonJsonResponseType = Exclude<
+  ServiceClientResponseType,
+  'json'
+>;
+
+/** @experimental See {@link ServiceClient}. */
+// biome-ignore-start lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
+export type ServiceClientResponse<TResponse extends ServiceClientResponseType> =
+  TResponse extends 'blob'
+    ? Blob
+    : TResponse extends 'arrayBuffer'
+      ? ArrayBuffer
+      : TResponse extends 'text'
+        ? string
+        : TResponse extends 'empty'
+          ? void
+          : TResponse extends 'raw'
+            ? Response
+            : unknown;
+// biome-ignore-end lint/suspicious/noConfusingVoidType: Empty mode represents Promise<void>.
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientJsonResponseOptions<T = unknown> = {
+  responseType?: 'json';
+  schema?: z.ZodType<T>;
 };
 
-export type ServiceClientGetOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  params?: URLSearchParams;
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientNonJsonResponseOptions<
+  TResponse extends
+    ServiceClientNonJsonResponseType = ServiceClientNonJsonResponseType,
+> = {
+  responseType: TResponse;
+  schema?: never;
 };
 
-export type ServiceClientPostOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-};
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientResponseOptions<T = unknown> =
+  | ServiceClientJsonResponseOptions<T>
+  | ServiceClientNonJsonResponseOptions;
 
-export type ServiceClientPatchOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-};
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientRequestOptions<T = unknown> =
+  ServiceClientResponseOptions<T> & {
+    signal?: AbortSignal;
+    /** Rate-limit bucket supplied by the action that owns the request. @internal */
+    rateLimitBucket?: RateLimitBucket;
+    timeout?: ServiceClientTimeout;
+  };
 
-export type ServiceClientDeleteOptions = ServiceClientRequestOptions & {
-  headers?: HeadersInit;
-  json?: unknown;
-  params?: URLSearchParams;
-};
+type ServiceClientMutationOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    /** Disable transport retries for commands whose outcome may be uncertain. */
+    retry?: false;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientGetOptions<T = unknown> =
+  ServiceClientRequestOptions<T> &
+    RequestOptions & {
+      headers?: HeadersInit;
+      params?: URLSearchParams;
+    };
+
+type ServiceClientWorkflowGetOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    params?: URLSearchParams;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientPostOptions<T = unknown> =
+  ServiceClientMutationOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientPatchOptions<T = unknown> =
+  ServiceClientMutationOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientDeleteOptions<T = unknown> =
+  ServiceClientMutationOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+    params?: URLSearchParams;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientRequestError =
+  | RateLimitError
+  | RequestAbortedError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/** @experimental See {@link ServiceClient}. */
+export const ServiceClientRequestError = makeErrorGuard(
+  RateLimitError,
+  RequestAbortedError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+const ServiceClientResponseControlsSchema = z
+  .object({
+    responseType: z
+      .enum(['json', 'blob', 'arrayBuffer', 'text', 'empty', 'raw'])
+      .optional(),
+    schema: z.unknown().optional(),
+  })
+  .refine(
+    ({ responseType, schema }) =>
+      schema === undefined ||
+      responseType === undefined ||
+      responseType === 'json',
+    {
+      path: ['schema'],
+      message: 'Schemas are supported only with JSON responses',
+    },
+  );
 
 const HTTP_DATE_MONTHS: readonly string[] = [
   'Jan',
@@ -150,70 +270,162 @@ function parseHttpDate(value: string, now: number): number | undefined {
 }
 
 /**
- * Internal wrapper around a service-scoped `ky` instance.
+ * Sends requests and consumes and validates their responses.
+ *
+ * Raw mode resolves at response headers for every status, including 4xx and
+ * 5xx responses, so callers can inspect error bodies. Status checks and body
+ * consumption belong to the caller. The operation signal remains attached to
+ * the underlying fetch.
+ *
+ * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
  */
 export class ServiceClient {
-  readonly #client: KyInstance;
+  readonly #client?: KyInstance;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
-  constructor({
-    root,
-    headers,
-    resolveHeaders,
-    onRateLimitUpdate,
-    fetch,
-    retry,
-  }: ServiceClientConfig) {
-    this.#client = ky.create({
-      prefixUrl: root,
-      throwHttpErrors: false,
-      ...(fetch === undefined ? {} : { fetch }),
-      ...(retry === false ? { retry: 0 } : {}),
-    });
+  constructor(config: ServiceClientConfig) {
+    const {
+      root,
+      headers,
+      resolveHeaders,
+      onRateLimitUpdate,
+      fetch,
+      retryMutations,
+    } = config;
+    if (root !== undefined) {
+      this.#client = ky.create({
+        prefixUrl: root,
+        throwHttpErrors: false,
+        ...(fetch === undefined ? {} : { fetch }),
+        ...(retryMutations === false && { retry: { methods: ['get'] } }),
+      });
+    }
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
   }
 
-  get(
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  get<T = unknown>(
     path: string,
-    options: ServiceClientGetOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+    options?: ServiceClientGetOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  get<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientGetOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  get(path: string, options: ServiceClientGetOptions): Promise<unknown>;
+  get(path: string, options: ServiceClientGetOptions = {}): Promise<unknown> {
+    return this.#request('GET', path, options, true);
+  }
+
+  /**
+   * Sends a workflow GET with its existing transport policy and no optional
+   * data-read retries. Some command and authentication endpoints require GET.
+   * @internal
+   */
+  getWorkflow<T = unknown>(
+    path: string,
+    options: ServiceClientWorkflowGetOptions<T> &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  /** @internal */
+  getWorkflow<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientWorkflowGetOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  /** @internal */
+  getWorkflow(
+    path: string,
+    options: ServiceClientWorkflowGetOptions,
+  ): Promise<unknown> {
     return this.#request('GET', path, options);
   }
 
-  post(
+  /**
+   * Sends an idempotent JSON read whose endpoint requires POST.
+   * Actions own the decision that replay is safe.
+   * @internal
+   */
+  postRead<T = unknown>(
     path: string,
-    options: ServiceClientPostOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+    options: ServiceClientPostOptions<T> &
+      RequestOptions &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  postRead(
+    path: string,
+    options: ServiceClientPostOptions & RequestOptions,
+  ): Promise<unknown> {
+    return this.#request('POST', path, options, true);
+  }
+
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  post<T = unknown>(
+    path: string,
+    options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  post<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPostOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  post(path: string, options: ServiceClientPostOptions): Promise<unknown>;
+  post(path: string, options: ServiceClientPostOptions = {}): Promise<unknown> {
     return this.#request('POST', path, options);
   }
 
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  patch<T = unknown>(
+    path: string,
+    options?: ServiceClientPatchOptions<T> &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  patch<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPatchOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  patch(path: string, options: ServiceClientPatchOptions): Promise<unknown>;
   patch(
     path: string,
     options: ServiceClientPatchOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+  ): Promise<unknown> {
     return this.#request('PATCH', path, options);
   }
 
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  del<T = unknown>(
+    path: string,
+    options?: ServiceClientDeleteOptions<T> &
+      ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  del<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientDeleteOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  del(path: string, options: ServiceClientDeleteOptions): Promise<unknown>;
   del(
     path: string,
     options: ServiceClientDeleteOptions = {},
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
+  ): Promise<unknown> {
     return this.#request('DELETE', path, options);
   }
 
@@ -221,36 +433,137 @@ export class ServiceClient {
     return path.startsWith('/') ? path.slice(1) : path;
   }
 
-  #request(
-    method: ServiceRequest['method'],
+  async #request(
+    method: ServiceRequestMethod,
     path: string,
-    options:
+    options: (
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
-      | ServiceClientPostOptions,
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
-    return this.#toResult(
-      this.#send(method, path, options),
-      path,
-      options.rateLimitBucket,
-      options.signal,
-    );
+      | ServiceClientPostOptions
+    ) &
+      RequestOptions,
+    readOnly = false,
+  ): Promise<unknown> {
+    const signal = options.signal;
+    try {
+      assertNotAborted(signal);
+      parseUserInput(
+        { responseType: options.responseType, schema: options.schema },
+        ServiceClientResponseControlsSchema,
+      );
+      const retries = readOnly
+        ? parseRequestOptions(options).retries
+        : undefined;
+      const response = await this.#send(method, path, options, retries);
+      assertNotAborted(signal);
+      const rateLimit = parseRateLimitHeaders(
+        response.headers,
+        options.rateLimitBucket,
+      );
+      if (rateLimit !== undefined) this.#notifyRateLimitUpdate(rateLimit);
+      // Raw callers inspect the status, headers and body themselves.
+      if (options.responseType === 'raw') return response;
+      if (!response.ok) {
+        const retryAfter = this.#parseRetryAfterHeader(response);
+        if (response.status === 429) {
+          throw new RateLimitError(
+            `Request to ${response.url} was rate limited`,
+            { rateLimit, retryAfter },
+          );
+        }
+        const {
+          code,
+          message,
+          heartbeatId,
+          retryAfter: retryAfterSeconds,
+        } = await withAbort(this.#extractResponseError(response, path), signal);
+        if (heartbeatId !== undefined) {
+          throw new OrderHeartbeatMismatchError(heartbeatId);
+        }
+        throw new RequestRejectedError(message, {
+          code,
+          retryAfter: retryAfter ?? retryAfterSeconds,
+          status: response.status,
+        });
+      }
+      return await this.#consumeResponse(response, options);
+    } catch (error) {
+      assertNotAborted(signal);
+      if (
+        error instanceof RequestAbortedError ||
+        error instanceof RateLimitError ||
+        error instanceof RequestRejectedError ||
+        error instanceof UnexpectedResponseError ||
+        error instanceof UserInputError ||
+        error instanceof TransportError
+      )
+        throw error;
+      throw TransportError.fromError(error);
+    }
+  }
+
+  async #consumeResponse(
+    response: Response,
+    options: ServiceClientRequestOptions,
+  ): Promise<unknown> {
+    const mode = options.responseType ?? 'json';
+    assertNotAborted(options.signal);
+    let value: unknown;
+    try {
+      switch (mode) {
+        case 'blob':
+          value = await withAbort(response.blob(), options.signal);
+          break;
+        case 'arrayBuffer':
+          value = await withAbort(response.arrayBuffer(), options.signal);
+          break;
+        case 'text':
+          value = await withAbort(response.text(), options.signal);
+          break;
+        case 'empty':
+          await withAbort(response.arrayBuffer(), options.signal);
+          value = undefined;
+          break;
+        case 'json':
+          value = await withAbort(response.json(), options.signal);
+          break;
+      }
+    } catch (error) {
+      assertNotAborted(options.signal);
+      if (error instanceof RequestAbortedError) throw error;
+      const message =
+        mode === 'json'
+          ? `Received non-JSON response from ${response.url}`
+          : `Received unreadable ${mode === 'blob' || mode === 'arrayBuffer' ? 'binary' : mode} response from ${response.url}`;
+      throw new UnexpectedResponseError(message);
+    }
+    assertNotAborted(options.signal);
+    if (mode === 'json' && options.schema !== undefined) {
+      const parsed = parseResponse(response.url, options.schema, value);
+      assertNotAborted(options.signal);
+      return parsed;
+    }
+    return value;
   }
 
   async #send(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
+    retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
+    const client = this.#client;
+    if (client === undefined) {
+      throw new UserInputError(
+        'This service client has no configured endpoint',
+      );
+    }
     const request = this.#createRequest(method, path, options);
     const resolvedHeaders = await withAbort(
       Promise.resolve(this.#resolveHeaders?.(request)),
@@ -268,21 +581,48 @@ export class ServiceClient {
     }
 
     return withAbort(
-      this.#client(this.#normalizePath(path), {
+      client(this.#normalizePath(path), {
         body: request.body,
         headers,
         method,
         searchParams: request.params,
         signal: options.signal,
         ...(options.timeout !== undefined && { timeout: options.timeout }),
-        ...(options.retry === false && { retry: 0 }),
+        ...('retry' in options && options.retry === false && { retry: 0 }),
+        ...(retries !== undefined && {
+          // One transport-owned counter covers both network failures and 429s.
+          // A new call (including each page) starts with a fresh counter.
+          retry: { limit: retries, methods: [method.toLowerCase()] },
+          hooks: {
+            afterResponse: [
+              (_request, _options, response, { retryCount }) => {
+                if (
+                  options.responseType === 'raw' ||
+                  response.status !== 429 ||
+                  retryCount >= retries
+                )
+                  return;
+                const delaySeconds = this.#parseRetryAfterHeader(response) ?? 1;
+                // Never retry earlier than the server asks. Leave long waits to callers.
+                if (delaySeconds > 5) return;
+                const rateLimit = parseRateLimitHeaders(
+                  response.headers,
+                  options.rateLimitBucket,
+                );
+                if (rateLimit !== undefined)
+                  this.#notifyRateLimitUpdate(rateLimit);
+                return ky.retry({ delay: delaySeconds * 1000 });
+              },
+            ],
+          },
+        }),
       }),
       options.signal,
     );
   }
 
   #createRequest(
-    method: ServiceRequest['method'],
+    method: ServiceRequestMethod,
     path: string,
     options:
       | ServiceClientDeleteOptions
@@ -323,78 +663,6 @@ export class ServiceClient {
     }
 
     return headers;
-  }
-
-  #toResult(
-    promise: Promise<Response>,
-    path: string,
-    rateLimitBucket?: RateLimitBucket,
-    signal?: AbortSignal,
-  ): ResultAsync<
-    Response,
-    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
-  > {
-    return ResultAsync.fromPromise(
-      withAbort(
-        promise.then(async (response) => {
-          assertNotAborted(signal);
-          const rateLimit = parseRateLimitHeaders(
-            response.headers,
-            rateLimitBucket,
-          );
-          if (rateLimit !== undefined) {
-            this.#notifyRateLimitUpdate(rateLimit);
-          }
-
-          if (response.ok) {
-            return response;
-          }
-
-          const retryAfter = this.#parseRetryAfterHeader(response);
-
-          if (response.status === 429) {
-            throw new RateLimitError(
-              `Request to ${response.url} was rate limited`,
-              { rateLimit, retryAfter },
-            );
-          }
-
-          const {
-            code,
-            message,
-            heartbeatId,
-            retryAfter: retryAfterSeconds,
-          } = await withAbort(
-            this.#extractResponseError(response, path),
-            signal,
-          );
-          if (heartbeatId !== undefined) {
-            throw new OrderHeartbeatMismatchError(heartbeatId);
-          }
-          throw new RequestRejectedError(message, {
-            code,
-            retryAfter: retryAfter ?? retryAfterSeconds,
-            status: response.status,
-          });
-        }),
-        signal,
-      ),
-      (error) => {
-        if (signal?.aborted)
-          return new RequestAbortedError('Request aborted', {
-            cause: signal.reason,
-          });
-        if (
-          error instanceof RequestAbortedError ||
-          error instanceof RateLimitError ||
-          error instanceof RequestRejectedError
-        ) {
-          return error;
-        }
-
-        return TransportError.fromError(error);
-      },
-    );
   }
 
   #notifyRateLimitUpdate(update: RateLimitUpdate): void {
@@ -441,16 +709,15 @@ export class ServiceClient {
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
+      const body: unknown = await response
+        .clone()
+        .json()
+        .catch(() => undefined);
       if (
         response.status === 400 &&
         this.#normalizePath(path) === 'v1/heartbeats'
       ) {
-        const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(
-          await response
-            .clone()
-            .json()
-            .catch(() => undefined),
-        );
+        const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(body);
         if (parsed.success) {
           return {
             message: parsed.data.error_msg,
@@ -458,34 +725,19 @@ export class ServiceClient {
           };
         }
       }
-
-      const {
-        error,
-        code,
-        retry_after_seconds: retryAfterSeconds,
-      } = await response
-        .clone()
-        .json()
-        .catch(() => ({}));
-      if (error) {
-        const explicitCode =
-          typeof code === 'string' && code !== '' ? code : undefined;
+      const parsed = ErrorResponseSchema.safeParse(body);
+      if (parsed.success) {
+        const { message, code, retryAfter } = parsed.data;
         const inferredCode =
-          explicitCode === undefined &&
+          code === undefined &&
           response.status !== 400 &&
-          typeof error === 'string' &&
-          /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(error)
-            ? error
+          /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(message)
+            ? message
             : undefined;
-        const responseCode = explicitCode ?? inferredCode;
         return {
-          message: `${String(error)} (${response.url})`,
-          ...(responseCode !== undefined ? { code: responseCode } : {}),
-          ...(typeof retryAfterSeconds === 'number' &&
-          Number.isFinite(retryAfterSeconds) &&
-          retryAfterSeconds >= 0
-            ? { retryAfter: retryAfterSeconds }
-            : {}),
+          message: `${message} (${response.url})`,
+          code: code ?? inferredCode,
+          retryAfter,
         };
       }
     }

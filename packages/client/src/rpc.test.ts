@@ -203,7 +203,7 @@ describe('JsonRpcClient', () => {
         return new HttpResponse(null, { status: 503 });
       }),
     );
-    const client = new JsonRpcClient({ url: root, retry: false });
+    const client = new JsonRpcClient({ url: root });
 
     await expect(
       client.ethCallBatch([

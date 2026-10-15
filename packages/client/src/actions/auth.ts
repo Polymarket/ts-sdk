@@ -8,7 +8,7 @@ import {
   BuilderApiKeyCredsSchema,
   BuilderApiKeysResponseSchema,
 } from '@polymarket/bindings/clob';
-import { type EvmAddress, type EvmSignature, unwrap } from '@polymarket/types';
+import type { EvmAddress, EvmSignature } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient, BaseSecureClient } from '../clients';
 import {
@@ -19,9 +19,9 @@ import {
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 } from '../errors';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 
 export type ApiKeyAuthRequest = {
   address: EvmAddress;
@@ -60,13 +60,10 @@ export async function createApiKey(
   client: BaseClient,
   request: ApiKeyAuthRequest,
 ): Promise<ApiKeyCreds> {
-  return unwrap(
-    client.clob
-      .post('/auth/api-key', {
-        headers: toL1Headers(request),
-      })
-      .andThen(validateWith(ApiKeyCredsSchema)),
-  );
+  return client.clob.post('/auth/api-key', {
+    headers: toL1Headers(request),
+    schema: ApiKeyCredsSchema,
+  });
 }
 
 export type DeriveApiKeyError =
@@ -99,13 +96,10 @@ export async function deriveApiKey(
   client: BaseClient,
   request: ApiKeyAuthRequest,
 ): Promise<ApiKeyCreds> {
-  return unwrap(
-    client.clob
-      .get('/auth/derive-api-key', {
-        headers: toL1Headers(request),
-      })
-      .andThen(validateWith(ApiKeyCredsSchema)),
-  );
+  return client.clob.getWorkflow('/auth/derive-api-key', {
+    headers: toL1Headers(request),
+    schema: ApiKeyCredsSchema,
+  });
 }
 
 export type CreateOrDeriveApiKeyError =
@@ -155,7 +149,8 @@ export type FetchApiKeysError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchApiKeysError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
@@ -163,6 +158,7 @@ export const FetchApiKeysError = makeErrorGuard(
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -183,11 +179,11 @@ export async function fetchApiKeys(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<ApiKey[]> {
-  const response = await unwrap(
-    client.secureClob
-      .get('/auth/api-keys', options)
-      .andThen(validateWith(ApiKeysResponseSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  const response = await client.secureClob.get('/auth/api-keys', {
+    ...requestOptions,
+    schema: ApiKeysResponseSchema,
+  });
 
   return response.apiKeys;
 }
@@ -222,11 +218,7 @@ export const DeleteApiKeyError = makeErrorGuard(
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function deleteApiKey(client: BaseSecureClient): Promise<void> {
-  await unwrap(
-    client.secureClob
-      .del('/auth/api-key')
-      .andThen(validateWith(z.literal('OK'))),
-  );
+  await client.secureClob.del('/auth/api-key', { schema: z.literal('OK') });
 }
 
 export type CreateBuilderApiKeyError =
@@ -261,11 +253,9 @@ export const CreateBuilderApiKeyError = makeErrorGuard(
 export async function createBuilderApiKey(
   client: BaseSecureClient,
 ): Promise<BuilderApiKeyCreds> {
-  return unwrap(
-    client.secureClob
-      .post('/auth/builder-api-key')
-      .andThen(validateWith(BuilderApiKeyCredsSchema)),
-  );
+  return client.secureClob.post('/auth/builder-api-key', {
+    schema: BuilderApiKeyCredsSchema,
+  });
 }
 
 export type FetchBuilderApiKeysError =
@@ -274,7 +264,8 @@ export type FetchBuilderApiKeysError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const FetchBuilderApiKeysError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
@@ -282,6 +273,7 @@ export const FetchBuilderApiKeysError = makeErrorGuard(
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -303,11 +295,11 @@ export async function fetchBuilderApiKeys(
   client: BaseSecureClient,
   options: RequestOptions = {},
 ): Promise<BuilderApiKey[]> {
-  return unwrap(
-    client.secureClob
-      .get('/auth/builder-api-key', options)
-      .andThen(validateWith(BuilderApiKeysResponseSchema, options)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  return client.secureClob.get('/auth/builder-api-key', {
+    ...requestOptions,
+    schema: BuilderApiKeysResponseSchema,
+  });
 }
 
 export type RevokeBuilderApiKeyError =
@@ -340,11 +332,7 @@ export const RevokeBuilderApiKeyError = makeErrorGuard(
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function revokeBuilderApiKey(client: BaseClient): Promise<void> {
-  await unwrap(
-    client.clob
-      .del('/auth/builder-api-key')
-      .andThen(validateWith(z.literal('OK'))),
-  );
+  await client.clob.del('/auth/builder-api-key', { schema: z.literal('OK') });
 }
 
 function toL1Headers(auth: ApiKeyAuthRequest): HeadersInit {

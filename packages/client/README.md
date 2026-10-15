@@ -28,34 +28,35 @@ for await (const page of result) {
 ## HTTP request controls
 
 HTTP request controls are experimental and may change in a breaking way in any
-release, including patch releases. This includes the `fetch` and `retry` client
-options, per-operation `signal`, and `RequestAbortedError`.
+release, including patch releases. This includes the `fetch` client
+option, per-operation `signal` and `retries`, and `RequestAbortedError`.
 
 Provide a custom `fetch` for instrumentation or your application's transport.
-Set `retry: false` when a query library owns retries:
+Set `retries: 0` on reads when a query library owns retries:
 
 ```ts
 import { createPublicClient } from '@polymarket/client';
 
 const client = createPublicClient({
   fetch: appFetch,
-  retry: false,
 });
 
 useQuery({
   queryKey: ['order-book', assetId],
-  queryFn: ({ signal }) => client.fetchOrderBook({ assetId }, { signal }),
+  queryFn: ({ signal }) => client.fetchOrderBook({ assetId }, { signal, retries: 0 }),
 });
 ```
 
-Without these options, the SDK uses native fetch and its existing retry policy.
-Rate-limited reads allow two retries, wait one second when no retry delay is
-provided, and propagate delays longer than five seconds to the caller.
-`retry: false` disables HTTP transport retries and read recovery. Wallet workflow
-recovery, such as refreshing a nonce or approving and resubmitting a transaction,
-is unchanged. Retries inside your custom fetch are controlled by your application.
+Without a custom fetch, the SDK uses native fetch. Eligible data reads accept
+`retries`, an integer from 0 through 5, defaulting to 2. Zero means one attempt;
+two means at most three attempts. Transport failures and rate limits share one
+budget per request, and each pagination request gets a fresh budget. Invalid
+values reject with `UserInputError` before sending a request. Rate-limit waits
+default to one second when no delay is provided; delays longer than five seconds
+propagate to the caller. Wallet workflow recovery, such as refreshing a nonce,
+approving and resubmitting a transaction, or relay recovery, is unchanged. Retries inside your custom fetch are controlled by your application.
 
-HTTP reads accept an optional final `{ signal }` argument. Aborting rejects with
+HTTP reads accept an optional final `{ signal, retries }` argument. Aborting rejects with
 `RequestAbortedError`, whose `cause` is the signal's reason, and stops pending
 requests, response reads, and retry waits. A custom fetch must honor the request's
 signal. Concurrent operations on the same client have independent cancellation.
@@ -72,7 +73,7 @@ useInfiniteQuery({
   queryKey: ['positions', user],
   initialPageParam: undefined as PaginationCursor | undefined,
   queryFn: ({ pageParam, signal }) =>
-    client.listPositions({ user, cursor: pageParam }, { signal }).firstPage(),
+    client.listPositions({ user, cursor: pageParam }, { signal, retries: 0 }).firstPage(),
   getNextPageParam: (page) =>
     page.hasMore && !page.limitReached ? page.nextCursor : undefined,
 });
@@ -83,10 +84,60 @@ aborted unfinished traversal rejects; pages already returned remain usable.
 For authenticated methods with optional filters, keep the request argument slot:
 `secureClient.listPositions(undefined, { signal }).firstPage()`.
 
-`createSecureClient` accepts the same `fetch` and `retry` options. Authentication,
-client extensions, and the public client returned by `endAuthentication()` retain
-these settings. Custom fetch covers SDK-owned HTTP, including authentication and
+`createSecureClient` accepts the same `fetch` option. Authentication, client
+extensions, and the public client returned by `endAuthentication()` retain it.
+Retry budgets belong to each read; there is no client-level retry setting.
+Custom fetch covers SDK-owned HTTP, including authentication and
 remote signing; it does not configure a wallet provider's own network requests.
+
+## Experimental service requests
+
+`PublicClient.predictions` and `SecureClient.predictions` send requests to the
+endpoint used by the polymarket.com UI. This getter is experimental and is not
+intended for external consumers, who should use the high-level SDK actions.
+Breaking changes may occur in any release, including patch releases.
+
+Production requests go to `https://api.defi.polymarket.com`. Environment forks
+can override `predictions.rest` and `predictions.headers`. Trading credentials
+are not attached automatically, so callers supply any headers the endpoint
+requires.
+
+Prediction POST, PATCH, and DELETE requests are sent once, including when a
+connection drops after dispatch. GET accepts the same per-request `retries` budget.
+Gateway rejections preserve their `code` and message on `RequestRejectedError`.
+After `cancel_outcome_unknown`, check open orders before manually retrying;
+cancellation may already have taken effect. Aborting a mutation stops the local
+request but cannot prove it had no effect. Raw callers inspect the status/body,
+including rate limits; raw mode only retries transport failures.
+
+```ts
+const markets = await client.predictions.get("/next/markets", {
+  params: new URLSearchParams({ page_size: "1", closed: "false" }),
+  signal,
+});
+```
+
+Requests resolve parsed JSON and reject with SDK errors. Pass a `zod@^4` schema
+to validate the response and infer its type, or set `responseType` for `blob`,
+`arrayBuffer`, `text`, `empty` or `raw` responses. A `raw` response
+resolves for every status, including 4xx, so the caller can check
+`response.ok` and read the error body.
+
+## Removed `neverthrow` re-exports
+
+`@polymarket/types` no longer re-exports `neverthrow` APIs or the `unwrap`
+helper. Applications that still use `neverthrow` must add it as their own
+dependency and import from it directly:
+
+```ts
+// Before
+import { ResultAsync, ok } from "@polymarket/types";
+```
+
+```ts
+// After
+import { ResultAsync, ok } from "neverthrow";
+```
 
 ## Neg-risk positions (protocol V2)
 

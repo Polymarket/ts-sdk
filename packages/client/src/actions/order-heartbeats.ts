@@ -2,7 +2,6 @@ import {
   type OrderHeartbeat,
   OrderHeartbeatSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -15,7 +14,6 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
 
 const SendOrderHeartbeatRequestSchema = z.object({
   heartbeatId: z.string().default(''),
@@ -68,12 +66,9 @@ export async function sendOrderHeartbeat(
     request,
     SendOrderHeartbeatRequestSchema,
   );
-  return unwrap(
-    client.secureClob
-      .post('/v1/heartbeats', {
-        json: { heartbeat_id: heartbeatId },
-        retry: false,
-      })
-      .andThen(validateWith(OrderHeartbeatSchema)),
-  );
+  return client.secureClob.post('/v1/heartbeats', {
+    schema: OrderHeartbeatSchema,
+    json: { heartbeat_id: heartbeatId },
+    retry: false,
+  });
 }

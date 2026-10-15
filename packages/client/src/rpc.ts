@@ -48,19 +48,16 @@ type JsonRpcResponse<TResult> = JsonRpcSuccess<TResult> | JsonRpcFailure;
 
 export type JsonRpcClientConfig = {
   fetch?: Fetch;
-  retry?: boolean;
   url: string;
 };
 
 /** @internal */
 export class JsonRpcClient {
   readonly #fetch: Fetch | undefined;
-  readonly #retry: boolean;
   readonly #url: string;
 
-  constructor({ fetch, retry, url }: JsonRpcClientConfig) {
+  constructor({ fetch, url }: JsonRpcClientConfig) {
     this.#fetch = fetch;
-    this.#retry = retry ?? true;
     this.#url = url;
   }
 
@@ -233,7 +230,6 @@ export class JsonRpcClient {
       response = await withAbort(
         ky.post(this.#url, {
           fetch: this.#fetch,
-          retry: this.#retry ? undefined : 0,
           signal: options?.signal,
           json,
           throwHttpErrors: false,
@@ -282,7 +278,6 @@ export class JsonRpcClient {
       response = await withAbort(
         ky.post(this.#url, {
           fetch: this.#fetch,
-          retry: this.#retry ? undefined : 0,
           signal: options?.signal,
           json,
           throwHttpErrors: false,

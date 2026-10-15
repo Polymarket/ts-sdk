@@ -15,7 +15,7 @@ describe('token lookup public methods', () => {
     expectTypeOf(
       client.fetchTokenReferences(
         { assetIds: ['123'] },
-        { signal: new AbortController().signal },
+        { signal: new AbortController().signal, retries: 0 },
       ),
     ).toEqualTypeOf<Promise<TokenReference[]>>();
     expectTypeOf(

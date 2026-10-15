@@ -20,7 +20,10 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import type { RequestOptions } from '../../request-options';
+import {
+  parseRequestOptions,
+  type RequestOptions,
+} from '../../request-options';
 import { fetchOrderBook } from '../clob';
 import { AssetIdOrderAssetSchema, TokenIdOrderAssetSchema } from './asset';
 
@@ -192,6 +195,7 @@ export async function estimateMarketPrice(
   request: EstimateMarketPriceRequest,
   options: RequestOptions = {},
 ): Promise<number> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, EstimateMarketPriceRequestSchema);
   const amount = params.side === OrderSide.BUY ? params.amount : params.shares;
 
@@ -203,7 +207,7 @@ export async function estimateMarketPrice(
       orderType: params.orderType,
       side: params.side,
     },
-    options,
+    requestOptions,
   );
 }
 
@@ -218,12 +222,13 @@ export async function resolveEstimatedMarketPrice(
   },
   options: RequestOptions = {},
 ): Promise<number> {
+  const requestOptions = parseRequestOptions(options);
   const orderBook = await fetchOrderBook(
     client,
     {
       assetId: params.assetId,
     },
-    options,
+    requestOptions,
   );
 
   return resolveMarketPriceFromOrderBook({

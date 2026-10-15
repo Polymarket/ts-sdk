@@ -14,7 +14,6 @@ import {
   TraderLeaderboardSortSchema,
   type TraderLeaderboardStanding,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
@@ -28,9 +27,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
-import type { RequestOptions } from '../request-options';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { toDataSearchParams } from './params';
 
 export {
@@ -115,6 +112,7 @@ export function listBuilderLeaderboard(
   request: ListBuilderLeaderboardRequest = {},
   options: RequestOptions = {},
 ): Paginated<BuilderStanding[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, window } = parseUserInput(
     request,
     ListBuilderLeaderboardRequestSchema,
@@ -122,20 +120,17 @@ export function listBuilderLeaderboard(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(
-        () =>
-          client.data.get('/v2/builders/leaderboard', {
-            signal: options.signal,
-            // Retain the original window across the cursor walk. The cursor pins
-            // it, while the server rejects a contradictory window explicitly.
-            params: toDataSearchParams({
-              timePeriod: window,
-              limit: pageSize,
-              cursor,
-            }),
-          }),
-        { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListBuilderLeaderboardResponseSchema, options)),
+      client.data.get('/v2/builders/leaderboard', {
+        schema: ListBuilderLeaderboardResponseSchema,
+        ...requestOptions,
+        // Retain the original window across the cursor walk. The cursor pins
+        // it, while the server rejects a contradictory window explicitly.
+        params: toDataSearchParams({
+          timePeriod: window,
+          limit: pageSize,
+          cursor,
+        }),
+      }),
     cursor,
   );
 }
@@ -196,21 +191,17 @@ export async function fetchBuilderVolume(
   request: FetchBuilderVolumeRequest = {},
   options: RequestOptions = {},
 ): Promise<BuilderVolumePoint[]> {
+  const requestOptions = parseRequestOptions(options);
   const { interval, bucketLimit } = parseUserInput(
     request,
     FetchBuilderVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/builders/volume', {
-          signal: options.signal,
-          params: toDataSearchParams({ interval, limit: bucketLimit }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(validateWith(FetchBuilderVolumeResponseSchema, options)),
-  );
+  return client.data.get('/v2/builders/volume', {
+    schema: FetchBuilderVolumeResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({ interval, limit: bucketLimit }),
+  });
 }
 
 const BoardCategorySchema = z.string().min(1);
@@ -294,6 +285,7 @@ export function listTraderLeaderboard(
   request: ListTraderLeaderboardRequest = {},
   options: RequestOptions = {},
 ): Paginated<TraderLeaderboardEntry[]> {
+  const requestOptions = parseRequestOptions(options);
   const { category, cursor, pageSize, sortBy, window } = parseUserInput(
     request,
     ListTraderLeaderboardRequestSchema,
@@ -301,22 +293,19 @@ export function listTraderLeaderboard(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(
-        () =>
-          client.data.get('/v2/leaderboard', {
-            signal: options.signal,
-            // Retain the selected board across the cursor walk. The cursor pins
-            // these values and the server rejects contradictory restatements.
-            params: toDataSearchParams({
-              category,
-              cursor,
-              limit: pageSize,
-              sortBy,
-              timePeriod: window,
-            }),
-          }),
-        { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListTraderLeaderboardResponseSchema, options)),
+      client.data.get('/v2/leaderboard', {
+        schema: ListTraderLeaderboardResponseSchema,
+        ...requestOptions,
+        // Retain the selected board across the cursor walk. The cursor pins
+        // these values and the server rejects contradictory restatements.
+        params: toDataSearchParams({
+          category,
+          cursor,
+          limit: pageSize,
+          sortBy,
+          timePeriod: window,
+        }),
+      }),
     cursor,
   );
 }
@@ -374,27 +363,21 @@ export async function fetchTraderLeaderboardStanding(
   request: FetchTraderLeaderboardStandingRequest,
   options: RequestOptions = {},
 ): Promise<TraderLeaderboardStanding | null> {
+  const requestOptions = parseRequestOptions(options);
   const { category, user, window } = parseUserInput(
     request,
     FetchTraderLeaderboardStandingRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(
-      () =>
-        client.data.get('/v2/leaderboard', {
-          signal: options.signal,
-          params: toDataSearchParams({
-            category,
-            timePeriod: window,
-            user,
-          }),
-        }),
-      { retry: client.retry, signal: options.signal },
-    ).andThen(
-      validateWith(FetchTraderLeaderboardStandingResponseSchema, options),
-    ),
-  );
+  return client.data.get('/v2/leaderboard', {
+    schema: FetchTraderLeaderboardStandingResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({
+      category,
+      timePeriod: window,
+      user,
+    }),
+  });
 }
 
 const ListBiggestWinnersRequestSchema = z.object({
@@ -458,6 +441,7 @@ export function listBiggestWinners(
   request: ListBiggestWinnersRequest = {},
   options: RequestOptions = {},
 ): Paginated<BiggestWinner[]> {
+  const requestOptions = parseRequestOptions(options);
   const { category, cursor, pageSize, window } = parseUserInput(
     request,
     ListBiggestWinnersRequestSchema,
@@ -465,19 +449,16 @@ export function listBiggestWinners(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(
-        () =>
-          client.data.get('/v2/biggest-winners', {
-            signal: options.signal,
-            params: toDataSearchParams({
-              category,
-              cursor,
-              limit: pageSize,
-              timePeriod: window,
-            }),
-          }),
-        { retry: client.retry, signal: options.signal },
-      ).andThen(validateWith(ListBiggestWinnersResponseSchema, options)),
+      client.data.get('/v2/biggest-winners', {
+        schema: ListBiggestWinnersResponseSchema,
+        ...requestOptions,
+        params: toDataSearchParams({
+          category,
+          cursor,
+          limit: pageSize,
+          timePeriod: window,
+        }),
+      }),
     cursor,
   );
 }
