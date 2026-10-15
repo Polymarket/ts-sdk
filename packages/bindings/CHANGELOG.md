@@ -1,5 +1,31 @@
 # @polymarket/bindings
 
+## 0.14.0
+
+### Minor Changes
+
+- 8ae8885: Add Router v2 neg-risk workflows using market condition IDs; low-level helpers retain explicit protocol event IDs.
+- 3d93028: Add the authenticated order heartbeat method. ID-mismatch errors expose the current heartbeat ID for caller recovery; callers own scheduling and ID serialization.
+
+  The first accepted send enables API-key-wide timeout cancellation; there is no disarm operation. Each call sends one request, and callers must maintain the heartbeat loop. Cancellation after expiry is best effort. OrderHeartbeatMismatchError now reports its own runtime name while retaining RequestRejectedError inheritance.
+
+- a2ebe7c: Preserve exchange event horizons independently of send time across existing Perps update and recovery streams. Server-originated events expose `eventTimestamp: EpochMilliseconds | null`, normalizing the wire zero sentinel to `null` for an unknown horizon; local synthetic recovery does not invent one. Perps remains experimental.
+- 84e07ef: Add an optional instrument filter to account fill pagination, and retain ADL flags and optional liquidation details in account fill workflows. Perps remains experimental.
+- bdcfad0: Expose nullable UI live time and optional light/dark logos on instruments. Visibility metadata is advisory and does not establish trading eligibility. Perps remains experimental.
+- d79941a: Expose available order margin, fee tier and position ADL index in portfolio reads and existing account session updates. Perps remains experimental.
+- 8d0ecfb: Add filtered and sorted reward market discovery through normalized cursor pagination, preserving selection options across continuation.
+
+  Use the supported 24-hour volume query keys, omit the removed tag-exclusion filter, and normalize Postgres datetime strings to ISO 8601.
+
+- 66b441d: Add outcome asset reference lookup with decimal asset and condition selectors, explicit nullable metadata, and direct collection results.
+
+### Patch Changes
+
+- d54c900: `gameStartTime` on new-market events and market notifications now normalizes space-separated and hour-only-offset datetime strings (such as `2026-10-17 23:30:00+00`) to ISO 8601; values that are already ISO 8601 are unchanged. An empty upstream value is now `null` instead of an empty string, and a string that names an impossible date or time fails validation instead of throwing.
+- 7705d09: Clarify that UMA resolution lifecycle rows retain the initial RequestPrice log index while the transaction hash can identify a later lifecycle event. Do not combine those fields as a log locator. Condition-resolution fallback rows instead carry their condition event's transaction and log metadata.
+- 911574f: Expose the optional native and sponsored earnings breakdown through total user earnings, and support its sponsored query option while preserving the existing default behavior.
+- edf336f: Retain taker tier upgrade notifications alongside existing account notification variants, including the previous tier, current tier, rebate basis points and snapshot date.
+
 ## 0.13.0
 
 ### Minor Changes
