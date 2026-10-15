@@ -17,6 +17,7 @@ import {
   EventSchema,
   FetchEventTagsResponseSchema,
   ListEventsKeysetResponseSchema,
+  ProtocolVersion,
   type TagReference,
 } from '@polymarket/bindings/gamma';
 import { unwrap } from '@polymarket/types';
@@ -96,6 +97,12 @@ const ListEventsRequestSchema = z.object({
   tagMatch: z.enum(['any', 'all']).optional(),
   tagSlug: z.string().optional(),
   titleSearch: z.string().optional(),
+  version: z
+    .union([
+      z.enum(ProtocolVersion),
+      z.array(z.enum(ProtocolVersion)).min(1).max(2),
+    ])
+    .optional(),
   volumeMax: z.number().optional(),
   volumeMin: z.number().optional(),
 });
@@ -154,6 +161,10 @@ export const ListEventsError = makeErrorGuard(
  * Lists events.
  *
  * Defaults to open events. Pass `closed: true` to list settled events.
+ * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+ * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+ * Arrays accept one or two values. Omitting `version` uses the current server
+ * default of CTF events (v1).
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
