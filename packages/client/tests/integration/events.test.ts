@@ -26,6 +26,20 @@ describe('Events', () => {
   });
 
   describe('listEvents', () => {
+    it('allows either closed state without identifiers and preserves the open default', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      await publicClient.listEvents({ closed: 'any', pageSize: 1 }).firstPage();
+      await publicClient.listEvents({ pageSize: 1 }).firstPage();
+
+      const closedFilters = fetchSpy.mock.calls.map(([request]) =>
+        new URL(
+          request instanceof Request ? request.url : String(request),
+        ).searchParams.get('closed'),
+      );
+      expect(closedFilters).toEqual(['any', 'false']);
+    });
     it('fetches events', async ({ publicClient }) => {
       const paginator = publicClient.listEvents({
         closed: false,

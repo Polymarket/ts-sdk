@@ -43,6 +43,7 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
+  ClosedFilterSchema,
   PositiveInt32EventIdSchema,
   snakeCase,
   toDataSearchParams,
@@ -59,7 +60,7 @@ export {
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
-  closed: z.boolean().default(false),
+  closed: ClosedFilterSchema.default(false),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
   cyom: z.boolean().optional(),
@@ -153,7 +154,8 @@ export const ListEventsError = makeErrorGuard(
 /**
  * Lists events.
  *
- * Defaults to open events. Pass `closed: true` to list settled events.
+ * Defaults to open events. Pass `closed: true` for closed events or
+ * `closed: 'any'` for either state; no identifier filter is required.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

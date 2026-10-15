@@ -45,6 +45,7 @@ import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
+  ClosedFilterSchema,
   distinctIdList,
   EpochSecondsLikeSchema,
   snakeCase,
@@ -55,39 +56,56 @@ import {
 export { PriceHistoryInterval };
 
 // The public markets endpoint forces active=true and archived=false server-side.
-const ListMarketsRequestSchema = z.object({
-  ascending: z.boolean().optional(),
-  closed: z.boolean().optional(),
-  clobTokenIds: z.array(z.string()).optional(),
-  cursor: PaginationCursorSchema.optional(),
-  pageSize: PageSizeSchema.optional(),
-  conditionIds: z.array(ConditionIdSchema).optional(),
-  cyom: z.boolean().optional(),
-  decimalized: z.boolean().optional(),
-  endDateMax: IsoDateTimeStringSchema.optional(),
-  endDateMin: IsoDateTimeStringSchema.optional(),
-  gameId: z.string().optional(),
-  ids: z.array(z.number().int()).optional(),
-  includeTag: z.boolean().optional(),
-  liquidityNumMax: z.number().optional(),
-  liquidityNumMin: z.number().optional(),
-  locale: z.string().optional(),
-  order: z.string().optional(),
-  positionIds: z.array(PositionIdSchema).optional(),
-  questionIds: z.array(z.string()).optional(),
-  relatedTags: z.boolean().optional(),
-  rfqEnabled: z.boolean().optional(),
-  rewardsMinSize: z.number().optional(),
-  slug: z.array(z.string()).optional(),
-  sportsMarketTypes: z.array(z.string()).optional(),
-  startDateMax: IsoDateTimeStringSchema.optional(),
-  startDateMin: IsoDateTimeStringSchema.optional(),
-  tagId: z.number().int().optional(),
-  tagMatch: z.enum(['any', 'all']).optional(),
-  umaResolutionStatus: z.string().optional(),
-  volumeNumMax: z.number().optional(),
-  volumeNumMin: z.number().optional(),
-});
+const ListMarketsRequestSchema = z
+  .object({
+    ascending: z.boolean().optional(),
+    closed: ClosedFilterSchema.optional(),
+    clobTokenIds: z.array(z.string()).optional(),
+    cursor: PaginationCursorSchema.optional(),
+    pageSize: PageSizeSchema.optional(),
+    conditionIds: z.array(ConditionIdSchema).optional(),
+    cyom: z.boolean().optional(),
+    decimalized: z.boolean().optional(),
+    endDateMax: IsoDateTimeStringSchema.optional(),
+    endDateMin: IsoDateTimeStringSchema.optional(),
+    gameId: z.string().optional(),
+    ids: z.array(z.number().int()).optional(),
+    includeTag: z.boolean().optional(),
+    liquidityNumMax: z.number().optional(),
+    liquidityNumMin: z.number().optional(),
+    locale: z.string().optional(),
+    order: z.string().optional(),
+    positionIds: z.array(PositionIdSchema).optional(),
+    questionIds: z.array(z.string()).optional(),
+    relatedTags: z.boolean().optional(),
+    rfqEnabled: z.boolean().optional(),
+    rewardsMinSize: z.number().optional(),
+    slug: z.array(z.string()).optional(),
+    sportsMarketTypes: z.array(z.string()).optional(),
+    startDateMax: IsoDateTimeStringSchema.optional(),
+    startDateMin: IsoDateTimeStringSchema.optional(),
+    tagId: z.number().int().optional(),
+    tagMatch: z.enum(['any', 'all']).optional(),
+    umaResolutionStatus: z.string().optional(),
+    volumeNumMax: z.number().optional(),
+    volumeNumMin: z.number().optional(),
+  })
+  .refine(
+    (params) =>
+      params.closed !== 'any' ||
+      [
+        params.ids,
+        params.slug,
+        params.clobTokenIds,
+        params.positionIds,
+        params.conditionIds,
+        params.questionIds,
+      ].some((ids) => ids !== undefined && ids.length > 0),
+    {
+      message: "closed: 'any' requires at least one identifier filter",
+      path: ['closed'],
+    },
+  );
 
 export type ListMarketsRequest = z.input<typeof ListMarketsRequestSchema>;
 
@@ -143,6 +161,10 @@ export const ListMarketsError = makeErrorGuard(
 
 /**
  * Lists markets.
+ *
+ * Defaults to open markets. Pass `closed: true` for closed markets or
+ * `closed: 'any'` for either state. The latter requires a non-empty `ids`,
+ * `slug`, `clobTokenIds`, `positionIds`, `conditionIds`, or `questionIds` filter.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

@@ -69,7 +69,8 @@ export type DiscoveryActions = {
   /**
    * Lists events.
    *
-   * Defaults to open events. Pass `closed: true` to list settled events.
+   * Defaults to open events. Pass `closed: true` for closed events or
+   * `closed: 'any'` for either state; no identifier filter is required.
    *
    * @remarks
    * Cursors continue the exact query they were minted for and are rejected for
@@ -148,6 +149,10 @@ export type DiscoveryActions = {
 
   /**
    * Lists markets.
+   *
+   * Defaults to open markets. Pass `closed: true` for closed markets or
+   * `closed: 'any'` for either state. The latter requires a non-empty `ids`,
+   * `slug`, `clobTokenIds`, `positionIds`, `conditionIds`, or `questionIds` filter.
    *
    * @remarks
    * Legacy multi-outcome markets cannot be represented by the binary
