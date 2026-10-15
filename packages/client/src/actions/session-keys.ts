@@ -25,6 +25,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -34,6 +35,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import type { TransactionOutcome } from '../types';
 import { SignerType } from '../wallet';
@@ -60,6 +62,7 @@ export type SessionKey = {
 };
 
 export type FetchSessionKeysError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -67,6 +70,7 @@ export type FetchSessionKeysError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSessionKeysError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -91,13 +95,14 @@ export const FetchSessionKeysError = makeErrorGuard(
  */
 export async function fetchSessionKeys(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<SessionKey[]> {
   assertOwnerDepositWallet(client);
 
   const response = await unwrap(
     client.secureClob
-      .get('/v1/user/session-signers')
-      .andThen(validateWith(ActiveSessionSignersResponseSchema)),
+      .get('/v1/user/session-signers', options)
+      .andThen(validateWith(ActiveSessionSignersResponseSchema, options)),
   );
 
   if (!isSameEvmAddress(response.wallet, client.account.wallet)) {

@@ -23,6 +23,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type AnalyticsActions = {
   /**
@@ -60,6 +61,7 @@ export type AnalyticsActions = {
    */
   listBuilderTrades(
     request: ListBuilderTradesRequest,
+    options?: RequestOptions,
   ): Paginated<BuilderTrade[]>;
 
   /**
@@ -68,7 +70,7 @@ export type AnalyticsActions = {
    * Builders are ranked by attributed share volume within `window`, which
    * defaults to one day. `builderCode` is the stable identifier; names and
    * profile images are display metadata. `pageSize` defaults to 100 (max 1000).
-   * Transient rate limits are retried automatically.
+   * Transient rate limits are retried by default.
    *
    * @throws {@link ListBuilderLeaderboardError}
    * Thrown on failure.
@@ -104,6 +106,7 @@ export type AnalyticsActions = {
    */
   listBuilderLeaderboard(
     request?: ListBuilderLeaderboardRequest,
+    options?: RequestOptions,
   ): Paginated<BuilderStanding[]>;
 
   /**
@@ -113,7 +116,7 @@ export type AnalyticsActions = {
    * {@link BuilderVolumeInterval.Year} for one bucket per calendar year.
    * `bucketLimit` returns that many complete recent buckets (default 30, max 90),
    * not that many builder rows. Results are newest bucket first, and volume is
-   * measured in shares. Transient rate limits are retried automatically.
+   * measured in shares. Transient rate limits are retried by default.
    *
    * @throws {@link FetchBuilderVolumeError}
    * Thrown on failure.
@@ -128,6 +131,7 @@ export type AnalyticsActions = {
    */
   fetchBuilderVolume(
     request?: FetchBuilderVolumeRequest,
+    options?: RequestOptions,
   ): Promise<BuilderVolumePoint[]>;
 
   /**
@@ -174,6 +178,7 @@ export type AnalyticsActions = {
    */
   listTraderLeaderboard(
     request?: ListTraderLeaderboardRequest,
+    options?: RequestOptions,
   ): Paginated<TraderLeaderboardEntry[]>;
 
   /**
@@ -203,6 +208,7 @@ export type AnalyticsActions = {
    */
   listBiggestWinners(
     request?: ListBiggestWinnersRequest,
+    options?: RequestOptions,
   ): Paginated<BiggestWinner[]>;
 };
 

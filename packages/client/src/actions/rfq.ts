@@ -57,6 +57,7 @@ import {
   ConnectionLostError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -72,6 +73,7 @@ import {
   encodeExchangeOrderSide,
 } from '../exchange';
 import { parseUserInput } from '../input';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { resolveOrderIdentity, SignerType } from '../wallet';
 
@@ -477,6 +479,7 @@ export class RfqRequestRejectedError extends PolymarketError {
 }
 
 type BuilderGatewayRequestError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -485,6 +488,7 @@ type BuilderGatewayRequestError =
 function toRfqRequestRejection(
   error: BuilderGatewayRequestError,
 ):
+  | RequestAbortedError
   | RateLimitError
   | RfqRequestRejectedError
   | TransportError
@@ -1390,12 +1394,14 @@ const FetchRfqStatusParamsSchema = z.object({
 });
 
 export type FetchRfqStatusError =
+  | RequestAbortedError
   | RateLimitError
   | RfqRequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchRfqStatusError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RfqRequestRejectedError,
   TransportError,
@@ -1421,6 +1427,7 @@ export const FetchRfqStatusError = makeErrorGuard(
 export function fetchRfqStatus(
   client: BaseSecureClient,
   params: FetchRfqStatusParams,
+  options: RequestOptions = {},
 ): Promise<RfqStatusResult> {
   assertCombosSupportedForAccount(client);
 
@@ -1428,8 +1435,11 @@ export function fetchRfqStatus(
 
   return unwrap(
     client.builderGateway
-      .get(`${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`)
-      .andThen(validateWith(BuilderRfqStatusResponseSchema))
+      .get(
+        `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`,
+        options,
+      )
+      .andThen(validateWith(BuilderRfqStatusResponseSchema, options))
       .mapErr(toRfqRequestRejection),
   );
 }

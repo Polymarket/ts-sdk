@@ -60,6 +60,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type DataActions = {
   /**
@@ -86,6 +87,7 @@ export type DataActions = {
    */
   fetchTokenReferences(
     request: FetchTokenReferencesRequest,
+    options?: RequestOptions,
   ): Promise<TokenReference[]>;
   /**
    * Fetches cumulative taker volume for one or more events.
@@ -93,7 +95,7 @@ export type DataActions = {
    * Results contain one row per market, ordered by taker volume descending, and
    * a total across all returned markets. Volume is measured in shares. Event
    * IDs must be positive 32-bit integers. Transient rate limits are retried
-   * automatically.
+   * by default.
    *
    * @throws {@link FetchEventLiveVolumeError}
    * Thrown on failure.
@@ -107,6 +109,7 @@ export type DataActions = {
    */
   fetchEventLiveVolume(
     request: FetchEventLiveVolumeRequest,
+    options?: RequestOptions,
   ): Promise<LiveVolume>;
   /**
    * Fetches resolution lifecycle rows by question, condition, or event.
@@ -127,7 +130,10 @@ export type DataActions = {
    * });
    * ```
    */
-  fetchResolutions(request: FetchResolutionsRequest): Promise<Resolution[]>;
+  fetchResolutions(
+    request: FetchResolutionsRequest,
+    options?: RequestOptions,
+  ): Promise<Resolution[]>;
   /**
    * Fetches the midpoint price for an exchange asset as a decimal string.
    *
@@ -139,7 +145,10 @@ export type DataActions = {
    * const midpoint = await client.fetchMidpoint({ assetId: '0x0122…0000' });
    * ```
    */
-  fetchMidpoint(request: FetchMidpointRequest): Promise<DecimalString>;
+  fetchMidpoint(
+    request: FetchMidpointRequest,
+    options?: RequestOptions,
+  ): Promise<DecimalString>;
   /**
    * Fetches midpoint prices for multiple exchange assets as an asset ID keyed lookup.
    *
@@ -151,7 +160,10 @@ export type DataActions = {
    * const midpoints = await client.fetchMidpoints([{ assetId: '0x0122…0000' }]);
    * ```
    */
-  fetchMidpoints(request: FetchMidpointsRequest): Promise<Midpoints>;
+  fetchMidpoints(
+    request: FetchMidpointsRequest,
+    options?: RequestOptions,
+  ): Promise<Midpoints>;
   /**
    * Fetches the current quoted price for an exchange asset and side as a decimal string.
    *
@@ -163,7 +175,10 @@ export type DataActions = {
    * const price = await client.fetchPrice({ assetId: '0x0122…0000', side: OrderSide.BUY });
    * ```
    */
-  fetchPrice(request: FetchPriceRequest): Promise<DecimalString>;
+  fetchPrice(
+    request: FetchPriceRequest,
+    options?: RequestOptions,
+  ): Promise<DecimalString>;
   /**
    * Fetches quoted prices for multiple exchange assets as an asset ID keyed lookup.
    *
@@ -175,7 +190,10 @@ export type DataActions = {
    * const prices = await client.fetchPrices([{ assetId: '0x0122…0000', side: OrderSide.BUY }]);
    * ```
    */
-  fetchPrices(request: FetchPricesRequest): Promise<Prices>;
+  fetchPrices(
+    request: FetchPricesRequest,
+    options?: RequestOptions,
+  ): Promise<Prices>;
   /**
    * Fetches the current order book for an exchange asset.
    *
@@ -187,7 +205,10 @@ export type DataActions = {
    * const book = await client.fetchOrderBook({ assetId: '0x0122…0000' });
    * ```
    */
-  fetchOrderBook(request: FetchOrderBookRequest): Promise<OrderBook>;
+  fetchOrderBook(
+    request: FetchOrderBookRequest,
+    options?: RequestOptions,
+  ): Promise<OrderBook>;
   /**
    * Fetches order books for multiple exchange assets.
    *
@@ -199,7 +220,10 @@ export type DataActions = {
    * const books = await client.fetchOrderBooks([{ assetId: '0x0122…0000' }]);
    * ```
    */
-  fetchOrderBooks(request: FetchOrderBooksRequest): Promise<OrderBook[]>;
+  fetchOrderBooks(
+    request: FetchOrderBooksRequest,
+    options?: RequestOptions,
+  ): Promise<OrderBook[]>;
   /**
    * Fetches the spread for an exchange asset as a decimal string.
    *
@@ -211,7 +235,10 @@ export type DataActions = {
    * const spread = await client.fetchSpread({ assetId: '0x0122…0000' });
    * ```
    */
-  fetchSpread(request: FetchSpreadRequest): Promise<DecimalString>;
+  fetchSpread(
+    request: FetchSpreadRequest,
+    options?: RequestOptions,
+  ): Promise<DecimalString>;
   /**
    * Fetches spreads for multiple exchange assets as an asset ID keyed lookup.
    *
@@ -223,7 +250,10 @@ export type DataActions = {
    * const spreads = await client.fetchSpreads([{ assetId: '0x0122…0000' }]);
    * ```
    */
-  fetchSpreads(request: FetchSpreadsRequest): Promise<Spreads>;
+  fetchSpreads(
+    request: FetchSpreadsRequest,
+    options?: RequestOptions,
+  ): Promise<Spreads>;
   /**
    * Fetches the last traded price for an exchange asset.
    *
@@ -241,6 +271,7 @@ export type DataActions = {
    */
   fetchLastTradePrice(
     request: FetchLastTradePriceRequest,
+    options?: RequestOptions,
   ): Promise<LastTradePrice | null>;
   /**
    * Fetches last traded prices for multiple exchange assets.
@@ -259,6 +290,7 @@ export type DataActions = {
    */
   fetchLastTradePrices(
     request: FetchLastTradePricesRequest,
+    options?: RequestOptions,
   ): Promise<LastTradePriceForAsset[]>;
   /**
    * Lists historical price observations for an exchange asset.
@@ -273,7 +305,7 @@ export type DataActions = {
    * strings and returned timestamps are Unix epoch milliseconds. Series pages
    * are ordered oldest first; an `asOf` request returns at most one item. Series
    * page sizes default to and are capped at 10,000 points. Transient rate limits
-   * are retried automatically.
+   * are retried by default.
    *
    * @throws {@link ListPriceHistoryError}
    * Thrown on failure.
@@ -293,6 +325,7 @@ export type DataActions = {
    */
   listPriceHistory(
     request: ListPriceHistoryRequest,
+    options?: RequestOptions,
   ): Paginated<PriceHistoryPoint[]>;
   /**
    * Estimates the price level a market order would cross at current book depth.
@@ -312,7 +345,10 @@ export type DataActions = {
    * });
    * ```
    */
-  estimateMarketPrice(request: EstimateMarketPriceRequest): Promise<number>;
+  estimateMarketPrice(
+    request: EstimateMarketPriceRequest,
+    options?: RequestOptions,
+  ): Promise<number>;
   /**
    * Fetches priced gross open interest for selected markets or globally.
    *
@@ -320,7 +356,7 @@ export type DataActions = {
    * the global aggregate, whose `conditionId` is `null`. A requested servable
    * market with no holdings has a zero value; an absent row means the market
    * is not servable. Values are in USDC. Transient rate limits are retried
-   * automatically.
+   * by default.
    *
    * @throws {@link FetchOpenInterestError}
    * Thrown on failure.
@@ -334,6 +370,7 @@ export type DataActions = {
    */
   fetchOpenInterest(
     request?: FetchOpenInterestRequest,
+    options?: RequestOptions,
   ): Promise<OpenInterest[]>;
   /**
    * Lists top holders grouped by outcome for one or more markets.
@@ -345,7 +382,7 @@ export type DataActions = {
    * equivalent to 1,000,000 base units.
    * Amounts are net holdings by default. `includePnl` switches to per-outcome
    * gross holdings and adds position economics; it requires one condition ID and
-   * a page size of at most 100. Transient rate limits are retried automatically.
+   * a page size of at most 100. Transient rate limits are retried by default.
    *
    * @throws {@link ListMarketHoldersError}
    * Thrown on failure.
@@ -362,7 +399,10 @@ export type DataActions = {
    * }
    * ```
    */
-  listMarketHolders(request: ListMarketHoldersRequest): Paginated<MetaHolder[]>;
+  listMarketHolders(
+    request: ListMarketHoldersRequest,
+    options?: RequestOptions,
+  ): Paginated<MetaHolder[]>;
   /**
    * Lists trades for a wallet, market, or event — or the global recent-trades
    * feed when no filter is given.
@@ -374,7 +414,7 @@ export type DataActions = {
    * defaults to 100 (max 1000). `window: 'full'` requests the complete
    * history; an omitted window serves the recent feed. Window bounds accept
    * Unix epoch seconds or `Date` values. Transient rate limits are retried
-   * automatically.
+   * by default.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.
@@ -408,7 +448,10 @@ export type DataActions = {
    * }
    * ```
    */
-  listTrades(request?: ListTradesRequest): Paginated<Trade[]>;
+  listTrades(
+    request?: ListTradesRequest,
+    options?: RequestOptions,
+  ): Paginated<Trade[]>;
 };
 
 export function dataActions(client: BasePublicClient): DataActions;

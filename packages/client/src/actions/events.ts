@@ -25,6 +25,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -40,6 +41,7 @@ import {
   readCursorPayload,
 } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
@@ -137,12 +139,14 @@ export type FetchEventTagsRequest = z.input<typeof FetchEventTagsRequestSchema>;
 type ListEventsParams = z.output<typeof ListEventsRequestSchema>;
 
 export type ListEventsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListEventsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -197,6 +201,7 @@ export const ListEventsError = makeErrorGuard(
 export function listEvents(
   client: BaseClient,
   request: ListEventsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Event[]> {
   const {
     cursor: initialCursor,
@@ -208,6 +213,7 @@ export function listEvents(
     (cursor) =>
       client.gamma
         .get('/events/keyset', {
+          signal: options.signal,
           params: toEventsSearchParams({
             ...query,
             pageSize,
@@ -215,7 +221,7 @@ export function listEvents(
               cursor === undefined ? undefined : toEventsCursor(cursor, query),
           }),
         })
-        .andThen(validateWith(ListEventsKeysetResponseSchema))
+        .andThen(validateWith(ListEventsKeysetResponseSchema, options))
         .map((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
@@ -240,12 +246,14 @@ function toEventsCursor(cursor: PaginationCursor, query: object) {
 }
 
 export type FetchEventError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -282,6 +290,7 @@ export const FetchEventError = makeErrorGuard(
 export async function fetchEvent(
   client: BaseClient,
   request: FetchEventRequest,
+  options: RequestOptions = {},
 ): Promise<Event> {
   const params = parseUserInput(request, FetchEventRequestSchema);
 
@@ -289,9 +298,10 @@ export async function fetchEvent(
     return unwrap(
       client.gamma
         .get(`events/${params.id}`, {
+          signal: options.signal,
           params: toFetchEventByIdSearchParams(params),
         })
-        .andThen(validateWith(EventSchema)),
+        .andThen(validateWith(EventSchema, options)),
     );
   }
 
@@ -301,19 +311,22 @@ export async function fetchEvent(
   return unwrap(
     client.gamma
       .get(`events/slug/${slug}`, {
+        signal: options.signal,
         params: toFetchEventBySlugSearchParams(params),
       })
-      .andThen(validateWith(EventSchema)),
+      .andThen(validateWith(EventSchema, options)),
   );
 }
 
 export type FetchEventTagsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventTagsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -342,13 +355,14 @@ export const FetchEventTagsError = makeErrorGuard(
 export async function fetchEventTags(
   client: BaseClient,
   request: FetchEventTagsRequest,
+  options: RequestOptions = {},
 ): Promise<TagReference[]> {
   const params = parseUserInput(request, FetchEventTagsRequestSchema);
 
   return unwrap(
     client.gamma
-      .get(`events/${params.id}/tags`)
-      .andThen(validateWith(FetchEventTagsResponseSchema)),
+      .get(`events/${params.id}/tags`, options)
+      .andThen(validateWith(FetchEventTagsResponseSchema, options)),
   );
 }
 
@@ -409,12 +423,14 @@ export type FetchResolutionsRequest =
   | FetchResolutionsByEventRequest;
 
 export type FetchResolutionsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchResolutionsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -449,6 +465,7 @@ export const FetchResolutionsError = makeErrorGuard(
 export async function fetchResolutions(
   client: BaseClient,
   request: FetchResolutionsRequest,
+  options: RequestOptions = {},
 ): Promise<Resolution[]> {
   const { conditionIds, eventIds, questionId } = parseUserInput(
     request,
@@ -456,15 +473,18 @@ export async function fetchResolutions(
   );
 
   return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/resolutions', {
-        params: toDataSearchParams({
-          questionId,
-          condition: conditionIds,
-          eventId: eventIds,
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/resolutions', {
+          signal: options.signal,
+          params: toDataSearchParams({
+            questionId,
+            condition: conditionIds,
+            eventId: eventIds,
+          }),
         }),
-      }),
-    ).andThen(validateWith(FetchResolutionsResponseSchema)),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(validateWith(FetchResolutionsResponseSchema, options)),
   );
 }
 
@@ -480,12 +500,14 @@ export type FetchEventLiveVolumeRequest = z.input<
 >;
 
 export type FetchEventLiveVolumeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventLiveVolumeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -499,7 +521,7 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
  * Results contain one row per market, ordered by taker volume descending, and
  * a total across all returned markets. Volume is measured in shares. Event IDs
  * must be positive 32-bit integers. Transient rate limits are retried
- * automatically.
+ * by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -519,6 +541,7 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
 export async function fetchEventLiveVolume(
   client: BaseClient,
   request: FetchEventLiveVolumeRequest,
+  options: RequestOptions = {},
 ): Promise<LiveVolume> {
   const { eventIds } = parseUserInput(
     request,
@@ -526,11 +549,14 @@ export async function fetchEventLiveVolume(
   );
 
   return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/live-volume', {
-        params: toDataSearchParams({ eventId: eventIds }),
-      }),
-    ).andThen(validateWith(FetchEventLiveVolumeResponseSchema)),
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/live-volume', {
+          signal: options.signal,
+          params: toDataSearchParams({ eventId: eventIds }),
+        }),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(validateWith(FetchEventLiveVolumeResponseSchema, options)),
   );
 }
 

@@ -8,12 +8,14 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
@@ -26,12 +28,14 @@ export type FetchPublicProfileRequest = z.input<
 >;
 
 export type FetchPublicProfileError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchPublicProfileError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -60,15 +64,17 @@ export const FetchPublicProfileError = makeErrorGuard(
 export async function fetchPublicProfile(
   client: BaseClient,
   request: FetchPublicProfileRequest,
+  options: RequestOptions = {},
 ): Promise<PublicProfile | null> {
   const params = parseUserInput(request, FetchPublicProfileRequestSchema);
 
   return unwrap(
     client.gamma
       .get('/public-profile', {
+        signal: options.signal,
         params: toSearchParams(params, snakeCase()),
       })
-      .andThen(validateWith(PublicProfileSchema))
+      .andThen(validateWith(PublicProfileSchema, options))
       .orElse((error) => {
         if (error instanceof RequestRejectedError && error.status === 404) {
           return ok(null);

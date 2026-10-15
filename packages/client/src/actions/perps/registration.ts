@@ -6,12 +6,14 @@ import type { BaseClient } from '../../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import type { RequestOptions } from '../../request-options';
 import { validateWith } from '../../response';
 import { toSearchParams } from '../params';
 
@@ -28,6 +30,7 @@ export type FetchPerpsRegistrationRequest = {
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type FetchPerpsRegistrationError =
   | RateLimitError
+  | RequestAbortedError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
@@ -36,6 +39,7 @@ export type FetchPerpsRegistrationError =
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export const FetchPerpsRegistrationError = makeErrorGuard(
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -52,13 +56,15 @@ export const FetchPerpsRegistrationError = makeErrorGuard(
 export async function fetchPerpsRegistration(
   client: BaseClient,
   request: FetchPerpsRegistrationRequest,
+  options?: RequestOptions,
 ): Promise<boolean> {
   const params = parseUserInput(request, FetchPerpsRegistrationRequestSchema);
   return unwrap(
     client.perps
       .get('/v1/info/registered', {
+        signal: options?.signal,
         params: toSearchParams(params, { address: 'address' }),
       })
-      .andThen(validateWith(PerpsRegistrationResponseSchema)),
+      .andThen(validateWith(PerpsRegistrationResponseSchema, options)),
   );
 }

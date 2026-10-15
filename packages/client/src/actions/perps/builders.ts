@@ -11,6 +11,7 @@ import type { BaseClient, BaseSecureClient } from '../../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TransportError,
@@ -18,6 +19,7 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
+import type { RequestOptions } from '../../request-options';
 import { validateWith } from '../../response';
 import type { TypedDataPayload } from '../../types';
 import { PerpsBuilderFeeRateInputSchema } from '../../websockets/perps/actions/builder-terms';
@@ -44,6 +46,7 @@ export type FetchPerpsBuilderStatusRequest = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type FetchPerpsBuilderStatusError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -54,6 +57,7 @@ export type FetchPerpsBuilderStatusError =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const FetchPerpsBuilderStatusError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -72,12 +76,16 @@ export const FetchPerpsBuilderStatusError = makeErrorGuard(
 export async function fetchPerpsBuilderStatus(
   client: BaseClient,
   request: FetchPerpsBuilderStatusRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsBuilderStatus> {
   const params = parseUserInput(request, FetchPerpsBuilderStatusRequestSchema);
   return unwrap(
     client.perps
-      .get('/v1/info/builder', { params: toSearchParams(params, snakeCase()) })
-      .andThen(validateWith(PerpsBuilderStatusSchema)),
+      .get('/v1/info/builder', {
+        signal: options.signal,
+        params: toSearchParams(params, snakeCase()),
+      })
+      .andThen(validateWith(PerpsBuilderStatusSchema, options)),
   );
 }
 

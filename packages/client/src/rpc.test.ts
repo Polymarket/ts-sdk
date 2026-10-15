@@ -1,8 +1,20 @@
 import { expectEvmAddress } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { RequestRejectedError, UnexpectedResponseError } from './errors';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  RequestAbortedError,
+  RequestRejectedError,
+  UnexpectedResponseError,
+} from './errors';
 import { JsonRpcClient } from './rpc';
 
 const root = 'http://localhost:4012';
@@ -180,6 +192,68 @@ describe('JsonRpcClient', () => {
         status: 200,
       }),
     );
+  });
+
+  it('splits a failed batch even when retries are disabled', async () => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    let requestCount = 0;
+    server.use(
+      http.post(root, () => {
+        requestCount += 1;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    const client = new JsonRpcClient({ url: root, retry: false });
+
+    await expect(
+      client.ethCallBatch([
+        { to, data: '0x11111111' },
+        { to, data: '0x22222222' },
+      ]),
+    ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 503 });
+    expect(requestCount).toBe(3);
+  });
+
+  it.each([
+    false,
+    true,
+  ])('preserves cancellation while parsing a response (batch: %s)', async (batch) => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const controller = new AbortController();
+    const reason = new Error('Query replaced');
+    const parsing = Promise.withResolvers<void>();
+    const body = Promise.withResolvers<unknown>();
+    const response = new Response();
+    vi.spyOn(response, 'json').mockImplementation(() => {
+      parsing.resolve();
+      return body.promise;
+    });
+    const fetch = vi.fn(async () => response);
+    const client = new JsonRpcClient({ url: root, fetch });
+    const operation = batch
+      ? client.ethCallBatch(
+          [
+            { to, data: '0x11111111' },
+            { to, data: '0x22222222' },
+          ],
+          { signal: controller.signal },
+        )
+      : client.ethCall(
+          { to, data: '0x11111111' },
+          { signal: controller.signal },
+        );
+    const rejected = expect(operation).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
+
+    await parsing.promise;
+    controller.abort(reason);
+    await rejected;
+    await expect(operation).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    // Late body failure remains observed after the caller stops awaiting it.
+    body.reject(new Error('Body stream closed'));
   });
 
   it('rejects malformed eth_call result data', async () => {

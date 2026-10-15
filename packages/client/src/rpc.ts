@@ -1,10 +1,17 @@
 import type { EvmAddress, HexString } from '@polymarket/types';
 import ky from 'ky';
 import {
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
 } from './errors';
+import {
+  assertNotAborted,
+  type Fetch,
+  type RequestOptions,
+  withAbort,
+} from './request-options';
 
 export type EthCallRequest = {
   to: EvmAddress;
@@ -40,24 +47,36 @@ type JsonRpcFailure = {
 type JsonRpcResponse<TResult> = JsonRpcSuccess<TResult> | JsonRpcFailure;
 
 export type JsonRpcClientConfig = {
+  fetch?: Fetch;
+  retry?: boolean;
   url: string;
 };
 
 /** @internal */
 export class JsonRpcClient {
+  readonly #fetch: Fetch | undefined;
+  readonly #retry: boolean;
   readonly #url: string;
 
-  constructor({ url }: JsonRpcClientConfig) {
+  constructor({ fetch, retry, url }: JsonRpcClientConfig) {
+    this.#fetch = fetch;
+    this.#retry = retry ?? true;
     this.#url = url;
   }
 
-  async ethCall(request: EthCallRequest): Promise<HexString> {
-    const response = await this.#post<HexString>({
-      jsonrpc: '2.0',
-      id: 1,
-      method: 'eth_call',
-      params: [{ to: request.to, data: request.data }, 'latest'],
-    });
+  async ethCall(
+    request: EthCallRequest,
+    options?: RequestOptions,
+  ): Promise<HexString> {
+    const response = await this.#post<HexString>(
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'eth_call',
+        params: [{ to: request.to, data: request.data }, 'latest'],
+      },
+      options,
+    );
 
     if ('error' in response) {
       throw new RequestRejectedError(
@@ -83,12 +102,13 @@ export class JsonRpcClient {
 
   async ethCallBatch(
     requests: readonly EthCallRequest[],
+    options?: RequestOptions,
   ): Promise<HexString[]> {
     if (requests.length === 0) {
       return [];
     }
 
-    return this.#ethCallBatchWithSplit(requests);
+    return this.#ethCallBatchWithSplit(requests, options);
   }
 
   async ethEstimateGas(request: EthEstimateGasRequest): Promise<bigint> {
@@ -129,13 +149,14 @@ export class JsonRpcClient {
 
   async #ethCallBatchWithSplit(
     requests: readonly EthCallRequest[],
+    options?: RequestOptions,
   ): Promise<HexString[]> {
     if (requests.length === 1) {
-      return [await this.ethCall(requests[0] as EthCallRequest)];
+      return [await this.ethCall(requests[0] as EthCallRequest, options)];
     }
 
     try {
-      return await this.#postEthCallBatch(requests);
+      return await this.#postEthCallBatch(requests, options);
     } catch (error) {
       if (!(error instanceof RequestRejectedError) || error.status < 500) {
         throw error;
@@ -143,8 +164,8 @@ export class JsonRpcClient {
 
       const midpoint = Math.ceil(requests.length / 2);
       const [left, right] = await Promise.all([
-        this.#ethCallBatchWithSplit(requests.slice(0, midpoint)),
-        this.#ethCallBatchWithSplit(requests.slice(midpoint)),
+        this.#ethCallBatchWithSplit(requests.slice(0, midpoint), options),
+        this.#ethCallBatchWithSplit(requests.slice(midpoint), options),
       ]);
 
       return [...left, ...right];
@@ -153,6 +174,7 @@ export class JsonRpcClient {
 
   async #postEthCallBatch(
     requests: readonly EthCallRequest[],
+    options?: RequestOptions,
   ): Promise<HexString[]> {
     const responses = await this.#postBatch<HexString>(
       requests.map((request, index) => ({
@@ -161,6 +183,7 @@ export class JsonRpcClient {
         method: 'eth_call',
         params: [{ to: request.to, data: request.data }, 'latest'],
       })),
+      options,
     );
 
     const responsesById = new Map<number, JsonRpcResponse<HexString>>();
@@ -199,15 +222,26 @@ export class JsonRpcClient {
     });
   }
 
-  async #post<TResult>(json: unknown): Promise<JsonRpcResponse<TResult>> {
+  async #post<TResult>(
+    json: unknown,
+    options?: RequestOptions,
+  ): Promise<JsonRpcResponse<TResult>> {
+    assertNotAborted(options?.signal);
     let response: Response;
 
     try {
-      response = await ky.post(this.#url, {
-        json,
-        throwHttpErrors: false,
-      });
+      response = await withAbort(
+        ky.post(this.#url, {
+          fetch: this.#fetch,
+          retry: this.#retry ? undefined : 0,
+          signal: options?.signal,
+          json,
+          throwHttpErrors: false,
+        }),
+        options?.signal,
+      );
     } catch (error) {
+      if (error instanceof RequestAbortedError) throw error;
       throw TransportError.fromError(error);
     }
 
@@ -221,8 +255,9 @@ export class JsonRpcClient {
     let body: unknown;
 
     try {
-      body = await response.json();
+      body = await withAbort(response.json(), options?.signal);
     } catch (error) {
+      if (error instanceof RequestAbortedError) throw error;
       throw new UnexpectedResponseError(
         'Expected JSON-RPC response body to be JSON',
         { cause: error },
@@ -238,15 +273,24 @@ export class JsonRpcClient {
 
   async #postBatch<TResult>(
     json: unknown,
+    options?: RequestOptions,
   ): Promise<JsonRpcResponse<TResult>[]> {
+    assertNotAborted(options?.signal);
     let response: Response;
 
     try {
-      response = await ky.post(this.#url, {
-        json,
-        throwHttpErrors: false,
-      });
+      response = await withAbort(
+        ky.post(this.#url, {
+          fetch: this.#fetch,
+          retry: this.#retry ? undefined : 0,
+          signal: options?.signal,
+          json,
+          throwHttpErrors: false,
+        }),
+        options?.signal,
+      );
     } catch (error) {
+      if (error instanceof RequestAbortedError) throw error;
       throw TransportError.fromError(error);
     }
 
@@ -260,8 +304,9 @@ export class JsonRpcClient {
     let body: unknown;
 
     try {
-      body = await response.json();
+      body = await withAbort(response.json(), options?.signal);
     } catch (error) {
+      if (error instanceof RequestAbortedError) throw error;
       throw new UnexpectedResponseError(
         'Expected JSON-RPC response body to be JSON',
         { cause: error },

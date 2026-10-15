@@ -41,6 +41,7 @@ import type { BaseClient, BaseSecureClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TimeoutError,
   TransactionFailedError,
@@ -49,6 +50,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import type {
   TransactionCall,
@@ -114,12 +116,14 @@ export type FetchExecuteParamsRequest = z.input<
 >;
 
 export type FetchExecuteParamsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchExecuteParamsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -139,15 +143,17 @@ export const FetchExecuteParamsError = makeErrorGuard(
 export async function fetchExecuteParams(
   client: BaseClient,
   request: FetchExecuteParamsRequest,
+  options: RequestOptions = {},
 ): Promise<RelayerExecuteParams> {
   const params = parseUserInput(request, FetchExecuteParamsRequestSchema);
 
   return unwrap(
     client.relayer
       .get('/v1/account/transactions/params', {
+        signal: options.signal,
         params: toSearchParams(params, { address: 'address', type: 'type' }),
       })
-      .andThen(validateWith(RelayerExecuteParamsSchema)),
+      .andThen(validateWith(RelayerExecuteParamsSchema, options)),
   );
 }
 
@@ -169,12 +175,14 @@ export type IsWalletDeployedRequest = z.input<
 >;
 
 export type IsWalletDeployedError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const IsWalletDeployedError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -204,8 +212,9 @@ export const IsWalletDeployedError = makeErrorGuard(
 export async function isWalletDeployed(
   client: BaseClient,
   request?: IsWalletDeployedRequest,
+  options: RequestOptions = {},
 ): Promise<boolean> {
-  const params = await resolveWalletDeploymentTarget(client, request);
+  const params = await resolveWalletDeploymentTarget(client, request, options);
 
   if (params.type === WalletType.EOA) {
     return false;
@@ -214,6 +223,7 @@ export async function isWalletDeployed(
   return unwrap(
     client.relayer
       .get('/deployed', {
+        signal: options.signal,
         params: toSearchParams(
           {
             address: params.wallet,
@@ -225,7 +235,7 @@ export async function isWalletDeployed(
           { address: 'address', type: 'type' },
         ),
       })
-      .andThen(validateWith(RelayerDeployedResponseSchema))
+      .andThen(validateWith(RelayerDeployedResponseSchema, options))
       .map(({ deployed }) => deployed),
   );
 }
@@ -233,6 +243,7 @@ export async function isWalletDeployed(
 async function resolveWalletDeploymentTarget(
   client: BaseClient,
   request: IsWalletDeployedRequest | undefined,
+  options: RequestOptions = {},
 ): Promise<z.output<typeof IsWalletDeployedRequestSchema>> {
   if (request !== undefined) {
     return parseUserInput(request, IsWalletDeployedRequestSchema);
@@ -256,6 +267,7 @@ async function resolveWalletDeploymentTarget(
       client.rpc,
       client.account.signer,
       client.environment.walletDerivation,
+      options,
     ),
     type: WalletType.DEPOSIT_WALLET,
   };
@@ -304,6 +316,22 @@ export async function deployDepositWallet(
   });
 }
 
+export type FetchGaslessTransactionError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchGaslessTransactionError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 /**
  * Fetches a submitted transaction.
  *
@@ -316,13 +344,14 @@ export async function deployDepositWallet(
 export async function fetchTransaction(
   client: BaseClient,
   request: FetchGaslessTransactionRequest,
+  options: RequestOptions = {},
 ): Promise<GaslessTransaction> {
   const params = parseUserInput(request, FetchGaslessTransactionRequestSchema);
 
   return unwrap(
     client.relayer
-      .get(`/v1/account/transactions/${params.transactionId}`)
-      .andThen(validateWith(GaslessTransactionSchema)),
+      .get(`/v1/account/transactions/${params.transactionId}`, options)
+      .andThen(validateWith(GaslessTransactionSchema, options)),
   );
 }
 

@@ -14,11 +14,13 @@ import type { BaseClient, BaseSecureClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TransportError,
   UnexpectedResponseError,
 } from '../errors';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 
 export type ApiKeyAuthRequest = {
@@ -148,12 +150,14 @@ export async function createOrDeriveApiKey(
 }
 
 export type FetchApiKeysError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const FetchApiKeysError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -177,11 +181,12 @@ export const FetchApiKeysError = makeErrorGuard(
  */
 export async function fetchApiKeys(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<ApiKey[]> {
   const response = await unwrap(
     client.secureClob
-      .get('/auth/api-keys')
-      .andThen(validateWith(ApiKeysResponseSchema)),
+      .get('/auth/api-keys', options)
+      .andThen(validateWith(ApiKeysResponseSchema, options)),
   );
 
   return response.apiKeys;
@@ -264,12 +269,14 @@ export async function createBuilderApiKey(
 }
 
 export type FetchBuilderApiKeysError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
   | TransportError
   | UnexpectedResponseError;
 export const FetchBuilderApiKeysError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -294,11 +301,12 @@ export const FetchBuilderApiKeysError = makeErrorGuard(
  */
 export async function fetchBuilderApiKeys(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<BuilderApiKey[]> {
   return unwrap(
     client.secureClob
-      .get('/auth/builder-api-key')
-      .andThen(validateWith(BuilderApiKeysResponseSchema)),
+      .get('/auth/builder-api-key', options)
+      .andThen(validateWith(BuilderApiKeysResponseSchema, options)),
   );
 }
 

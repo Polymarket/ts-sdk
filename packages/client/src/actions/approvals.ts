@@ -17,6 +17,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -26,6 +27,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { withRateLimitRetry } from '../retry';
 import {
@@ -357,12 +359,14 @@ export type TradingApprovalsState = {
 };
 
 export type FetchTradingApprovalsStateError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTradingApprovalsStateError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -394,17 +398,21 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
 export async function fetchTradingApprovalsState(
   client: BaseClient,
   request: FetchTradingApprovalsStateRequest,
+  options: RequestOptions = {},
 ): Promise<TradingApprovalsState> {
   const { user } = parseUserInput(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
   const snapshot = await unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/approvals', {
-        params: toDataSearchParams({ user }),
-      }),
-    ).andThen(validateWith(FetchApprovalsResponseSchema)),
+    withRateLimitRetry(
+      () =>
+        client.data.get('/v2/approvals', {
+          signal: options.signal,
+          params: toDataSearchParams({ user }),
+        }),
+      { retry: client.retry, signal: options.signal },
+    ).andThen(validateWith(FetchApprovalsResponseSchema, options)),
   );
   const missing = resolveIndexedTradingApprovals(
     snapshot,

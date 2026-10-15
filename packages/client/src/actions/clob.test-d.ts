@@ -177,6 +177,10 @@ describe('reward market discovery public types', () => {
   it('exposes supported discovery filters on the public client', () => {
     expectTypeOf<import('../index').PublicClient>()
       .toHaveProperty('listRewardMarkets')
+      .parameter(1)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('listRewardMarkets')
       .parameter(0)
       .toEqualTypeOf<import('../index').ListRewardMarketsRequest | undefined>();
     expectTypeOf<

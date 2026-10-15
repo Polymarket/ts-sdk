@@ -13,7 +13,10 @@ describe('token lookup public methods', () => {
   it('returns precise direct models from primitive selectors', () => {
     const client = createPublicClient();
     expectTypeOf(
-      client.fetchTokenReferences({ assetIds: ['123'] }),
+      client.fetchTokenReferences(
+        { assetIds: ['123'] },
+        { signal: new AbortController().signal },
+      ),
     ).toEqualTypeOf<Promise<TokenReference[]>>();
     expectTypeOf(
       client.fetchTokenReferences({ conditionIds: [`0x${'a'.repeat(62)}`] }),

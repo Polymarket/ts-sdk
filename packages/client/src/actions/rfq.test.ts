@@ -557,7 +557,10 @@ describe('acceptComboQuote', () => {
       status: 'executing',
       takerOrderHash: TAKER_ORDER_HASH,
     });
-    expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1');
+    expect(gatewayGet).toHaveBeenCalledWith(
+      '/v1/builder/rfq/requests/rfq-1',
+      {},
+    );
   }, 10_000);
 });
 

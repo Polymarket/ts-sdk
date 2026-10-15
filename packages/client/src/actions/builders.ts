@@ -13,6 +13,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -20,6 +21,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
@@ -62,12 +64,14 @@ export type ListBuilderTradesRequest =
     };
 
 export type ListBuilderTradesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListBuilderTradesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -110,6 +114,7 @@ export const ListBuilderTradesError = makeErrorGuard(
 export function listBuilderTrades(
   client: BaseClient,
   request: ListBuilderTradesRequest,
+  options: RequestOptions = {},
 ): Paginated<BuilderTrade[]> {
   const params = parseUserInput(request, ListBuilderTradesRequestSchema);
   const { cursor } = params;
@@ -118,6 +123,7 @@ export function listBuilderTrades(
     (nextCursor) =>
       client.clob
         .get('/builder/trades', {
+          signal: options.signal,
           params: toSearchParams(
             {
               after: params.after,
@@ -134,7 +140,7 @@ export function listBuilderTrades(
             }),
           ),
         })
-        .andThen(validateWith(PaginatedBuilderTradesSchema))
+        .andThen(validateWith(PaginatedBuilderTradesSchema, options))
         .map((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,

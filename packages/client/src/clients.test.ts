@@ -17,7 +17,7 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createSecureClient } from './clients';
+import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
 import type { ApiKeyAuthorization, Signer } from './types';
 import {
@@ -75,6 +75,30 @@ const signer: Signer = {
     throw new Error('Unexpected sendTransaction call');
   },
 };
+
+describe('public client HTTP reads', () => {
+  it('cancels new public reads before transport when the signal is already aborted', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = createPublicClient({ fetch });
+    const controller = new AbortController();
+    controller.abort('query disposed');
+    for (const read of [
+      () =>
+        client.fetchTokenReferences(
+          { assetIds: ['123'] },
+          { signal: controller.signal },
+        ),
+      () =>
+        client.listRewardMarkets({}, { signal: controller.signal }).firstPage(),
+    ]) {
+      await expect(async () => read()).rejects.toMatchObject({
+        name: 'RequestAbortedError',
+        cause: 'query disposed',
+      });
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {

@@ -34,6 +34,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type PublicRewardsActions = {
   /**
@@ -50,6 +51,7 @@ export type PublicRewardsActions = {
    */
   listRewardMarkets(
     request?: ListRewardMarketsRequest,
+    options?: RequestOptions,
   ): Paginated<RewardMarket[]>;
 
   /**
@@ -83,6 +85,7 @@ export type PublicRewardsActions = {
    */
   listCurrentRewards(
     request?: ListCurrentRewardsRequest,
+    options?: RequestOptions,
   ): Paginated<CurrentReward[]>;
   /**
    * Lists reward configurations for a market.
@@ -121,6 +124,7 @@ export type PublicRewardsActions = {
    */
   listMarketRewards(
     request: ListMarketRewardsRequest,
+    options?: RequestOptions,
   ): Paginated<MarketReward[]>;
 };
 
@@ -139,7 +143,10 @@ export type SecureRewardsActions = Prettify<
      * });
      * ```
      */
-    fetchOrderScoring(request: FetchOrderScoringRequest): Promise<boolean>;
+    fetchOrderScoring(
+      request: FetchOrderScoringRequest,
+      options?: RequestOptions,
+    ): Promise<boolean>;
     /**
      * Fetches scoring state for multiple orders.
      *
@@ -155,6 +162,7 @@ export type SecureRewardsActions = Prettify<
      */
     fetchOrdersScoring(
       request: FetchOrdersScoringRequest,
+      options?: RequestOptions,
     ): Promise<OrdersScoringResponse>;
     /**
      * Lists per-market earnings for the authenticated account on a given day.
@@ -191,6 +199,7 @@ export type SecureRewardsActions = Prettify<
      */
     listUserEarningsForDay(
       request: ListUserEarningsForDayRequest,
+      options?: RequestOptions,
     ): Paginated<UserEarning[]>;
     /**
      * Fetches total earnings for the authenticated account on a given day.
@@ -210,6 +219,7 @@ export type SecureRewardsActions = Prettify<
      */
     fetchTotalEarningsForUserForDay(
       request: FetchTotalEarningsForUserForDayRequest,
+      options?: RequestOptions,
     ): Promise<TotalUserEarning[]>;
     /**
      * Lists market reward configuration and earnings for the authenticated account on a given day.
@@ -246,6 +256,7 @@ export type SecureRewardsActions = Prettify<
      */
     listUserEarningsAndMarketsConfig(
       request: ListUserEarningsAndMarketsConfigRequest,
+      options?: RequestOptions,
     ): Paginated<UserRewardsEarning[]>;
     /**
      * Fetches reward percentages for the authenticated account.
@@ -258,7 +269,9 @@ export type SecureRewardsActions = Prettify<
      * const percentages = await client.fetchRewardPercentages();
      * ```
      */
-    fetchRewardPercentages(): Promise<RewardsPercentages>;
+    fetchRewardPercentages(
+      options?: RequestOptions,
+    ): Promise<RewardsPercentages>;
   }
 >;
 

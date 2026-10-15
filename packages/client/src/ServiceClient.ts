@@ -4,6 +4,7 @@ import ky, { type KyInstance } from 'ky';
 import {
   OrderHeartbeatMismatchError,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
 } from './errors';
@@ -13,8 +14,15 @@ import {
   type RateLimitUpdate,
   type RateLimitUpdateListener,
 } from './rate-limit';
+import {
+  assertNotAborted,
+  type Fetch,
+  type RequestOptions,
+  withAbort,
+} from './request-options';
 
 export type ServiceRequest = {
+  signal?: AbortSignal;
   method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
   path: string;
   body?: string;
@@ -28,6 +36,8 @@ export type RequestHeadersResolver = (
 ) => Promise<HeadersInit>;
 
 export type ServiceClientConfig = {
+  fetch?: Fetch;
+  retry?: boolean;
   root: string;
   headers?: HeadersInit;
   resolveHeaders?: RequestHeadersResolver;
@@ -40,7 +50,7 @@ export type ServiceClientConfig = {
  */
 type ServiceClientTimeout = number | false;
 
-type ServiceClientRequestOptions = {
+type ServiceClientRequestOptions = RequestOptions & {
   /** Rate-limit bucket supplied by the action that owns the request. */
   rateLimitBucket?: RateLimitBucket;
   timeout?: ServiceClientTimeout;
@@ -153,8 +163,15 @@ export class ServiceClient {
     headers,
     resolveHeaders,
     onRateLimitUpdate,
+    fetch,
+    retry,
   }: ServiceClientConfig) {
-    this.#client = ky.create({ prefixUrl: root, throwHttpErrors: false });
+    this.#client = ky.create({
+      prefixUrl: root,
+      throwHttpErrors: false,
+      ...(fetch === undefined ? {} : { fetch }),
+      ...(retry === false ? { retry: 0 } : {}),
+    });
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
@@ -165,7 +182,7 @@ export class ServiceClient {
     options: ServiceClientGetOptions = {},
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return this.#request('GET', path, options);
   }
@@ -175,7 +192,7 @@ export class ServiceClient {
     options: ServiceClientPostOptions = {},
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return this.#request('POST', path, options);
   }
@@ -185,7 +202,7 @@ export class ServiceClient {
     options: ServiceClientPatchOptions = {},
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return this.#request('PATCH', path, options);
   }
@@ -195,7 +212,7 @@ export class ServiceClient {
     options: ServiceClientDeleteOptions = {},
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return this.#request('DELETE', path, options);
   }
@@ -214,12 +231,13 @@ export class ServiceClient {
       | ServiceClientPostOptions,
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return this.#toResult(
       this.#send(method, path, options),
       path,
       options.rateLimitBucket,
+      options.signal,
     );
   }
 
@@ -232,8 +250,13 @@ export class ServiceClient {
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
   ): Promise<Response> {
+    assertNotAborted(options.signal);
     const request = this.#createRequest(method, path, options);
-    const resolvedHeaders = await this.#resolveHeaders?.(request);
+    const resolvedHeaders = await withAbort(
+      Promise.resolve(this.#resolveHeaders?.(request)),
+      options.signal,
+    );
+    assertNotAborted(options.signal);
     const headers = this.#mergeHeaders(
       this.#headers,
       request.headers,
@@ -244,14 +267,18 @@ export class ServiceClient {
       headers.set('content-type', 'application/json');
     }
 
-    return this.#client(this.#normalizePath(path), {
-      body: request.body,
-      headers,
-      method,
-      searchParams: request.params,
-      ...(options.timeout !== undefined && { timeout: options.timeout }),
-      ...(options.retry === false && { retry: 0 }),
-    });
+    return withAbort(
+      this.#client(this.#normalizePath(path), {
+        body: request.body,
+        headers,
+        method,
+        searchParams: request.params,
+        signal: options.signal,
+        ...(options.timeout !== undefined && { timeout: options.timeout }),
+        ...(options.retry === false && { retry: 0 }),
+      }),
+      options.signal,
+    );
   }
 
   #createRequest(
@@ -264,6 +291,7 @@ export class ServiceClient {
       | ServiceClientPostOptions,
   ): ServiceRequest {
     return {
+      signal: options.signal,
       body: 'json' in options ? this.#serializeJson(options.json) : undefined,
       headers: options.headers,
       json: 'json' in options ? options.json : undefined,
@@ -301,50 +329,63 @@ export class ServiceClient {
     promise: Promise<Response>,
     path: string,
     rateLimitBucket?: RateLimitBucket,
+    signal?: AbortSignal,
   ): ResultAsync<
     Response,
-    RateLimitError | RequestRejectedError | TransportError
+    RateLimitError | RequestAbortedError | RequestRejectedError | TransportError
   > {
     return ResultAsync.fromPromise(
-      promise.then(async (response) => {
-        const rateLimit = parseRateLimitHeaders(
-          response.headers,
-          rateLimitBucket,
-        );
-        if (rateLimit !== undefined) {
-          this.#notifyRateLimitUpdate(rateLimit);
-        }
-
-        if (response.ok) {
-          return response;
-        }
-
-        const retryAfter = this.#parseRetryAfterHeader(response);
-
-        if (response.status === 429) {
-          throw new RateLimitError(
-            `Request to ${response.url} was rate limited`,
-            { rateLimit, retryAfter },
+      withAbort(
+        promise.then(async (response) => {
+          assertNotAborted(signal);
+          const rateLimit = parseRateLimitHeaders(
+            response.headers,
+            rateLimitBucket,
           );
-        }
+          if (rateLimit !== undefined) {
+            this.#notifyRateLimitUpdate(rateLimit);
+          }
 
-        const {
-          code,
-          message,
-          heartbeatId,
-          retryAfter: retryAfterSeconds,
-        } = await this.#extractResponseError(response, path);
-        if (heartbeatId !== undefined) {
-          throw new OrderHeartbeatMismatchError(heartbeatId);
-        }
-        throw new RequestRejectedError(message, {
-          code,
-          retryAfter: retryAfter ?? retryAfterSeconds,
-          status: response.status,
-        });
-      }),
+          if (response.ok) {
+            return response;
+          }
+
+          const retryAfter = this.#parseRetryAfterHeader(response);
+
+          if (response.status === 429) {
+            throw new RateLimitError(
+              `Request to ${response.url} was rate limited`,
+              { rateLimit, retryAfter },
+            );
+          }
+
+          const {
+            code,
+            message,
+            heartbeatId,
+            retryAfter: retryAfterSeconds,
+          } = await withAbort(
+            this.#extractResponseError(response, path),
+            signal,
+          );
+          if (heartbeatId !== undefined) {
+            throw new OrderHeartbeatMismatchError(heartbeatId);
+          }
+          throw new RequestRejectedError(message, {
+            code,
+            retryAfter: retryAfter ?? retryAfterSeconds,
+            status: response.status,
+          });
+        }),
+        signal,
+      ),
       (error) => {
+        if (signal?.aborted)
+          return new RequestAbortedError('Request aborted', {
+            cause: signal.reason,
+          });
         if (
+          error instanceof RequestAbortedError ||
           error instanceof RateLimitError ||
           error instanceof RequestRejectedError
         ) {

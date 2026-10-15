@@ -21,6 +21,7 @@ import {
   makeErrorGuard,
   PaginationLimitError,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -39,6 +40,7 @@ import {
   paginate,
   readCursorPayload,
 } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import { validateWith } from '../response';
 import { snakeCase, toSearchParams } from './params';
 
@@ -84,6 +86,7 @@ export type ListCommentsByUserAddressRequest = z.input<
 >;
 
 export type ListCommentsError =
+  | RequestAbortedError
   | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
@@ -91,6 +94,7 @@ export type ListCommentsError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListCommentsError = makeErrorGuard(
+  RequestAbortedError,
   PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
@@ -218,6 +222,7 @@ function toKeysetCommentsQuery(
 export function listComments(
   client: BaseClient,
   request: ListCommentsRequest,
+  options: RequestOptions = {},
 ): Paginated<Comment[]> {
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -228,8 +233,19 @@ export function listComments(
   return paginate((cursor) => {
     if (cursor === undefined) {
       return keysetQuery === undefined
-        ? fetchCommentsOffsetPage(client, params, { offset: 0, pageSize })
-        : fetchCommentsKeysetPage(client, keysetQuery, pageSize);
+        ? fetchCommentsOffsetPage(
+            client,
+            params,
+            { offset: 0, pageSize },
+            options,
+          )
+        : fetchCommentsKeysetPage(
+            client,
+            keysetQuery,
+            pageSize,
+            undefined,
+            options,
+          );
     }
 
     // Cursors minted before cursor pagination carry only offset state and
@@ -245,10 +261,17 @@ export function listComments(
         client,
         params,
         offsetCursorFromPayload(payload, COMMENT_CURSOR_LIMITS),
+        options,
       );
     }
 
-    return fetchCommentsKeysetPage(client, keysetQuery, pageSize, afterCursor);
+    return fetchCommentsKeysetPage(
+      client,
+      keysetQuery,
+      pageSize,
+      afterCursor,
+      options,
+    );
   }, cursor);
 }
 
@@ -258,9 +281,11 @@ function fetchCommentsOffsetPage(
   client: BaseClient,
   params: ListCommentsParams,
   page: { offset: number; pageSize: number },
+  options: RequestOptions = {},
 ): ResultAsync<Page<Comment[]>, ListCommentsPageError> {
   return client.gamma
     .get('/comments', {
+      signal: options.signal,
       params: toSearchParams(
         {
           ascending: params.ascending,
@@ -275,7 +300,7 @@ function fetchCommentsOffsetPage(
         snakeCase(),
       ),
     })
-    .andThen(validateWith(ListCommentsResponseSchema))
+    .andThen(validateWith(ListCommentsResponseSchema, options))
     .map((comments) => {
       // The page size bounds top-level comments; their replies ride along
       // in the same array, so count the roots to judge whether the page
@@ -305,9 +330,11 @@ function fetchCommentsKeysetPage(
   query: KeysetCommentsQuery,
   pageSize: number,
   afterCursor?: PaginationCursor,
+  options: RequestOptions = {},
 ): ResultAsync<Page<Comment[]>, ListCommentsPageError> {
   return client.gamma
     .get('/comments/keyset', {
+      signal: options.signal,
       params: toSearchParams(
         {
           afterCursor,
@@ -320,7 +347,7 @@ function fetchCommentsKeysetPage(
         snakeCase(),
       ),
     })
-    .andThen(validateWith(ListCommentsKeysetResponseSchema))
+    .andThen(validateWith(ListCommentsKeysetResponseSchema, options))
     .map((response) => ({
       items: response.items,
       hasMore: response.nextCursor !== undefined,
@@ -332,12 +359,14 @@ function fetchCommentsKeysetPage(
 }
 
 export type FetchCommentsByIdError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchCommentsByIdError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -367,12 +396,14 @@ export const FetchCommentsByIdError = makeErrorGuard(
 export async function fetchCommentsById(
   client: BaseClient,
   request: FetchCommentsByIdRequest,
+  options: RequestOptions = {},
 ): Promise<Comment[]> {
   const params = parseUserInput(request, FetchCommentsByIdRequestSchema);
 
   return unwrap(
     client.gamma
       .get(`comments/${params.id}`, {
+        signal: options.signal,
         params: toSearchParams(
           {
             getPositions: params.getPositions,
@@ -380,11 +411,12 @@ export async function fetchCommentsById(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListCommentsResponseSchema)),
+      .andThen(validateWith(ListCommentsResponseSchema, options)),
   );
 }
 
 export type ListCommentsByUserAddressError =
+  | RequestAbortedError
   | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
@@ -392,6 +424,7 @@ export type ListCommentsByUserAddressError =
   | UnexpectedResponseError
   | UserInputError;
 export const ListCommentsByUserAddressError = makeErrorGuard(
+  RequestAbortedError,
   PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
@@ -453,6 +486,7 @@ export const ListCommentsByUserAddressError = makeErrorGuard(
 export function listCommentsByUserAddress(
   client: BaseClient,
   request: ListCommentsByUserAddressRequest,
+  options: RequestOptions = {},
 ): Paginated<Comment[]> {
   const { address, cursor, pageSize, ...params } = parseUserInput(
     request,
@@ -464,6 +498,7 @@ export function listCommentsByUserAddress(
 
     return client.gamma
       .get(`comments/user_address/${address}`, {
+        signal: options.signal,
         params: toSearchParams(
           {
             ascending: params.ascending,
@@ -474,7 +509,7 @@ export function listCommentsByUserAddress(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListCommentsResponseSchema))
+      .andThen(validateWith(ListCommentsResponseSchema, options))
       .map((comments) => {
         const hasMore = comments.length >= decoded.pageSize;
 
