@@ -241,39 +241,33 @@ describe('general activity token outcomes', () => {
     expect(activity).toHaveProperty('outcome', undefined);
     expect(activity).toHaveProperty('outcomeIndex', undefined);
   });
+});
 
+describe.each([
+  ActivityType.SPLIT,
+  ActivityType.MERGE,
+  ActivityType.REDEEM,
+])('%s activity', (type) => {
+  // Backend fixture activity_combo_outcomes.sql includes asset-less SPLIT/MERGE.
   it.each([
-    false,
+    '',
     undefined,
-  ])('preserves full CTF identifiers when is_combo=%s', (isCombo) => {
-    const conditionId = `0x03${'cd'.repeat(30)}00`;
-    const activity = ActivitySchema.parse(
-      activityRow({
-        type: ActivityType.REDEEM,
-        is_combo: isCombo,
-        condition_id: conditionId,
-        title: 'Georgia vs. Arkansas',
-        slug: 'georgia-arkansas',
-        event_slug: 'basketball',
-        outcome: 'Arkansas',
-        outcome_index: 1,
-      }),
-    );
-    expect(activity).toMatchObject({
-      type: ActivityType.REDEEM,
-      isCombo: false,
-      conditionId,
-      outcome: 'Arkansas',
-      outcomeIndex: 1,
-    });
-  });
-
-  it('retains mixed page order and the server cursor', () => {
+  ])('keeps sparse Combo metadata (%s) in mixed pages', (metadata) => {
     const page = ListActivityResponseSchema.parse({
       data: [
         comboRow(ActivityType.TRADE, 'Yes', 0),
-        comboRow(ActivityType.REDEEM, 'No', 1),
         activityRow({ type: ActivityType.REWARD, usdc_size: 2 }),
+        {
+          ...comboRow(type, 'No', 1),
+          ...(type === ActivityType.REDEEM
+            ? {}
+            : { token_id: '', outcome: '', outcome_index: 999 }),
+          side: '',
+          title: metadata,
+          icon: metadata,
+          slug: metadata,
+          event_slug: metadata,
+        },
       ],
       pagination: {
         limit: 3,
@@ -282,130 +276,49 @@ describe('general activity token outcomes', () => {
         next_cursor: 'opaque',
       },
     });
-    expect(page.items.map(({ type }) => type)).toEqual([
+    expect(page.items.map((item) => item.type)).toEqual([
       'TRADE',
-      'REDEEM',
       'REWARD',
+      type,
     ]);
+    expect(page.items[2]).toMatchObject({
+      type,
+      isCombo: true,
+      conditionId: comboConditionId,
+      amount: '0.5',
+      title: undefined,
+      icon: null,
+    });
+    if (type === ActivityType.REDEEM) {
+      expect(page.items[2]).toMatchObject({ outcome: 'No', outcomeIndex: 1 });
+    }
+    expect(page.items[2]).not.toHaveProperty('slug');
+    expect(page.items[2]).not.toHaveProperty('eventSlug');
     expect(page.hasMore).toBe(true);
     expect(page.nextCursor).toBe('opaque');
-    expect(page.items[1]).toMatchObject({ isCombo: true, outcome: 'No' });
   });
 
-  it('rejects malformed combo redemption identifiers', () => {
+  it('rejects a malformed Combo condition before normalization', () => {
     const result = ActivitySchema.safeParse({
-      ...comboRow(ActivityType.REDEEM, 'No', 1),
+      ...comboRow(type, '', 999),
       condition_id: `0x01${'ab'.repeat(30)}`,
     });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(
-        result.error.issues.some(({ path }) => path[0] === 'condition_id'),
-      ).toBe(true);
+      expect(result.error.issues).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: ['condition_id'] }),
+        ]),
+      );
     }
   });
-});
 
-it.each([
-  ActivityType.SPLIT,
-  ActivityType.MERGE,
-])('preserves the existing %s variant', (type) => {
-  expect(
-    ActivitySchema.parse(
-      activityRow({
-        type,
-        condition_id: `0x${'c'.repeat(64)}`,
-        title: 'A market',
-        slug: 'a-market',
-        event_slug: 'an-event',
-      }),
-    ).type,
-  ).toBe(type);
-});
-
-it.each([
-  '',
-  undefined,
-])('retains combo redemptions without presentation metadata: %s', (title) => {
-  const redemption = {
-    ...comboRow(ActivityType.REDEEM, 'No', 1),
-    title,
-    icon: undefined,
-    slug: undefined,
-    event_slug: undefined,
-  };
-  const page = ListActivityResponseSchema.parse({
-    data: [
-      activityRow({ type: ActivityType.REWARD, usdc_size: 2 }),
-      redemption,
-    ],
-    pagination: { limit: 2, offset: 0, has_more: false, next_cursor: null },
-  });
-  expect(page.items.map(({ type }) => type)).toEqual(['REWARD', 'REDEEM']);
-  expect(page.items[1]).toMatchObject({
-    isCombo: true,
-    conditionId: comboConditionId,
-    outcome: 'No',
-    outcomeIndex: 1,
-    amount: '0.5',
-    title: undefined,
-    icon: null,
-  });
-});
-
-// Backend fixture activity_combo_outcomes.sql includes asset-less SPLIT/MERGE.
-it.each([
-  [ActivityType.SPLIT, ''],
-  [ActivityType.SPLIT, undefined],
-  [ActivityType.MERGE, ''],
-  [ActivityType.MERGE, undefined],
-] as const)('keeps Combo %s with missing metadata in a mixed page: %s', (type, title) => {
-  const page = ListActivityResponseSchema.parse({
-    data: [
-      activityRow({ type: ActivityType.REWARD, usdc_size: 2 }),
-      { ...comboRow(type, '', 999), title, token_id: '', side: '' },
-    ],
-    pagination: { limit: 2, offset: 0, has_more: true, next_cursor: 'opaque' },
-  });
-  expect(page.items.map((item) => item.type)).toEqual(['REWARD', type]);
-  expect(page.items[1]).toMatchObject({
-    type,
-    isCombo: true,
-    conditionId: comboConditionId,
-    amount: '0.5',
-    title: undefined,
-    icon: null,
-  });
-  expect(page.items[1]).not.toHaveProperty('slug');
-  expect(page.items[1]).not.toHaveProperty('eventSlug');
-  expect(page.nextCursor).toBe('opaque');
-});
-
-it.each([
-  ActivityType.SPLIT,
-  ActivityType.MERGE,
-])('rejects a malformed Combo condition on %s', (type) => {
-  const result = ActivitySchema.safeParse({
-    ...comboRow(type, '', 999),
-    condition_id: `0x01${'ab'.repeat(30)}`,
-  });
-  expect(result.success).toBe(false);
-  if (!result.success) {
-    expect(
-      result.error.issues.some(({ path }) => path[0] === 'condition_id'),
-    ).toBe(true);
-  }
-});
-
-it.each([
-  [ActivityType.SPLIT, false],
-  [ActivityType.SPLIT, undefined],
-  [ActivityType.MERGE, false],
-  [ActivityType.MERGE, undefined],
-] as const)('keeps ordinary %s market URLs with is_combo=%s', (type, isCombo) => {
-  const conditionId = `0x03${'cd'.repeat(30)}00`;
-  expect(
-    ActivitySchema.parse(
+  it.each([
+    false,
+    undefined,
+  ])('keeps ordinary market URLs and full CTF IDs with is_combo=%s', (isCombo) => {
+    const conditionId = `0x03${'cd'.repeat(30)}00`;
+    const activity = ActivitySchema.parse(
       activityRow({
         type,
         is_combo: isCombo,
@@ -413,14 +326,20 @@ it.each([
         title: 'A market',
         slug: 'a-market',
         event_slug: 'an-event',
+        outcome: 'Arkansas',
+        outcome_index: 1,
       }),
-    ),
-  ).toMatchObject({
-    type,
-    isCombo: false,
-    conditionId,
-    title: 'A market',
-    slug: 'a-market',
-    eventSlug: 'an-event',
+    );
+    expect(activity).toMatchObject({
+      type,
+      isCombo: false,
+      conditionId,
+      title: 'A market',
+      slug: 'a-market',
+      eventSlug: 'an-event',
+    });
+    if (type === ActivityType.REDEEM) {
+      expect(activity).toMatchObject({ outcome: 'Arkansas', outcomeIndex: 1 });
+    }
   });
 });

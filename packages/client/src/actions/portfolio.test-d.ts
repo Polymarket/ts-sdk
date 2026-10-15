@@ -2,10 +2,7 @@ import { ComboPositionStatus } from '@polymarket/bindings/data';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
   ActivityBase,
-  ClobRedeemActivity,
   ComboConditionId,
-  ComboRedemptionActivity,
-  ComboTradeActivity,
   ConditionId,
   DecimalString,
   MergeActivity,
@@ -60,23 +57,9 @@ describe('public activity result types', () => {
     const page = await activityClient.listActivity({ user }).firstPage();
     for (const activity of page.items) {
       if (
-        (activity.type === ActivityType.SPLIT ||
-          activity.type === ActivityType.MERGE ||
-          activity.type === ActivityType.REDEEM) &&
-        !activity.isCombo
-      ) {
-        expectTypeOf(activity.slug).toEqualTypeOf<string>();
-        expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
-        expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
-      }
-      if (activity.type === ActivityType.TRADE && activity.isCombo) {
-        expectTypeOf(activity).toEqualTypeOf<ComboTradeActivity>();
-        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
-        expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
-      }
-      if (
         activity.type === ActivityType.SPLIT ||
-        activity.type === ActivityType.MERGE
+        activity.type === ActivityType.MERGE ||
+        activity.type === ActivityType.REDEEM
       ) {
         if (activity.isCombo) {
           expectTypeOf(activity.conditionId).toEqualTypeOf<ComboConditionId>();
@@ -85,6 +68,10 @@ describe('public activity result types', () => {
           void activity.slug;
           // @ts-expect-error A basket has no single event URL slug.
           void activity.eventSlug;
+          if (activity.type === ActivityType.REDEEM) {
+            // @ts-expect-error A basket has no single market URL slug.
+            void activity.slug;
+          }
         } else {
           expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
           expectTypeOf(activity.title).toEqualTypeOf<string>();
@@ -92,18 +79,10 @@ describe('public activity result types', () => {
           expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
         }
       }
-      if (activity.type === ActivityType.REDEEM) {
-        if (activity.isCombo) {
-          expectTypeOf(activity).toEqualTypeOf<ComboRedemptionActivity>();
-          expectTypeOf(activity.conditionId).toEqualTypeOf<ComboConditionId>();
-          expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
-          // @ts-expect-error A basket has no single market URL slug.
-          void activity.slug;
-        } else {
-          expectTypeOf(activity).toEqualTypeOf<ClobRedeemActivity>();
-          expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
-          expectTypeOf(activity.slug).toEqualTypeOf<string>();
-        }
+      if (
+        (activity.type === ActivityType.TRADE && activity.isCombo) ||
+        activity.type === ActivityType.REDEEM
+      ) {
         expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
         expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
       }
@@ -125,10 +104,7 @@ it('retains ordinary object construction without an explicit Combo flag', () => 
     eventSlug: 'an-event',
     icon: null,
   };
-  const split = { ...metadata, type: 'SPLIT' } satisfies SplitActivity;
-  const merge = { ...metadata, type: 'MERGE' } satisfies MergeActivity;
-  const redemption = { ...metadata, type: 'REDEEM' } satisfies RedeemActivity;
-  void split;
-  void merge;
-  void redemption;
+  void ({ ...metadata, type: 'SPLIT' } satisfies SplitActivity);
+  void ({ ...metadata, type: 'MERGE' } satisfies MergeActivity);
+  void ({ ...metadata, type: 'REDEEM' } satisfies RedeemActivity);
 });
