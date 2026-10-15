@@ -51,9 +51,9 @@ describe('Events', () => {
       }
     });
 
-    let testContext: TestContext;
-    beforeEach((context) => {
-      testContext = context;
+    let testContext: Pick<TestContext, 'skip'>;
+    beforeEach(({ skip }) => {
+      testContext = { skip };
     });
 
     const protocolCases = [
