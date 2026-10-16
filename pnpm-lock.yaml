@@ -86,8 +86,8 @@ importers:
         specifier: ^3.2.3
         version: 3.2.3
       ky:
-        specifier: ^1.14.3
-        version: 1.14.3
+        specifier: ^2.0.2
+        version: 2.0.2
       ox:
         specifier: ^0.14.16
         version: 0.14.16(typescript@6.0.2)(zod@4.3.6)
@@ -1471,9 +1471,9 @@ packages:
   jsonfile@4.0.0:
     resolution: {integrity: sha512-m6F1R3z8jjlf2imQHS2Qez5sjKWQzbuuhuJ/FKYFRZvPE3PuHcSMVZzfsLhGVOkfd20obL5SWEBew5ShlquNxg==}
 
-  ky@1.14.3:
-    resolution: {integrity: sha512-9zy9lkjac+TR1c2tG+mkNSVlyOpInnWdSMiue4F+kq8TwJSgv6o8jhLRg8Ho6SnZ9wOYUq/yozts9qQCfk7bIw==}
-    engines: {node: '>=18'}
+  ky@2.0.2:
+    resolution: {integrity: sha512-/GmXpo9F9W+f8n4Ivr2iH+7h7wL7jLbLKWkMlpflcCRb6kGjBfTlASEXaZ9qUgNTn4VgS0P2pwxxzQ4EM6Ulgg==}
+    engines: {node: '>=22'}
 
   lightningcss-android-arm64@1.32.0:
     resolution: {integrity: sha512-YK7/ClTt4kAK0vo6w3X+Pnm0D2cf2vPHbhOXdoNti1Ga0al1P4TBZhwjATvjNwLEBCnKvjJc2jQgHXH0NEwlAg==}
@@ -3498,7 +3498,7 @@ snapshots:
     optionalDependencies:
       graceful-fs: 4.2.11
 
-  ky@1.14.3: {}
+  ky@2.0.2: {}
 
   lightningcss-android-arm64@1.32.0:
     optional: true
