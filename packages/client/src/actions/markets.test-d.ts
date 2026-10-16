@@ -6,12 +6,20 @@ import {
 import type { Market } from '@polymarket/bindings/gamma';
 import { describe, expectTypeOf, it } from 'vitest';
 import type { DataActions } from '../decorators';
+import {
+  MarketResolutionStatus,
+  ProtocolVersion,
+  type PublicClient,
+  type ResolutionRequestId,
+} from '../index';
 import type { Paginated } from '../pagination';
 import type {
+  ListMarketsRequest,
   ListPriceHistoryRequest,
   listMarketHolders,
   listPriceHistory,
 } from './markets';
+import { listMarkets } from './markets';
 
 describe('price history request types', () => {
   it('accepts exactly one time selection', () => {
@@ -88,3 +96,46 @@ function listMarketHoldersForMarket(actions: DataActions, market: Market) {
 }
 
 void listMarketHoldersForMarket;
+
+function listMarketsByOracleMetadata(client: PublicClient, market: Market) {
+  expectTypeOf(
+    client.listMarkets({
+      requestIds: ['request-1', 'request-2'],
+      onchainEventIds: ['event-1'],
+      resolutionStatus: MarketResolutionStatus.Active,
+      version: ProtocolVersion.V2,
+    }),
+  ).toEqualTypeOf<Paginated<Market[]>>();
+  expectTypeOf(market.resolution.onchainEventId).toEqualTypeOf<
+    string | null | undefined
+  >();
+  expectTypeOf(market.resolution.requestId).toEqualTypeOf<
+    ResolutionRequestId | null | undefined
+  >();
+  expectTypeOf(market.resolution.resolutionStatus).toEqualTypeOf<
+    MarketResolutionStatus | null | undefined
+  >();
+}
+
+void listMarketsByOracleMetadata;
+
+function listMarketsByMultipleProtocols(client: PublicClient) {
+  for (const version of [
+    ProtocolVersion.V2,
+    [ProtocolVersion.V1, ProtocolVersion.V2],
+  ]) {
+    const request = { version } satisfies ListMarketsRequest;
+    expectTypeOf(client.listMarkets(request)).toEqualTypeOf<
+      Paginated<Market[]>
+    >();
+    expectTypeOf(listMarkets(client, request)).toEqualTypeOf<
+      Paginated<Market[]>
+    >();
+  }
+  // @ts-expect-error Numeric protocol aliases are unsupported.
+  client.listMarkets({ version: 1 });
+  // @ts-expect-error Unknown protocol versions are unsupported.
+  client.listMarkets({ version: [ProtocolVersion.V1, 'v3'] });
+}
+
+void listMarketsByMultipleProtocols;
