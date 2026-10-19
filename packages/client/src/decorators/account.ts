@@ -306,6 +306,9 @@ export type PublicAccountActions = Prettify<{
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
+   * `isCombo` before using market-only metadata; a basket's outcome names its
+   * token side, not a selected leg.
    *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
@@ -535,6 +538,9 @@ export type SecureAccountActions = Prettify<{
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
+   * `isCombo` before using market-only metadata; a basket's outcome names its
+   * token side, not a selected leg.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *
