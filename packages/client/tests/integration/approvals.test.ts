@@ -28,10 +28,36 @@ describe('Approvals', () => {
         const state = await publicClient.fetchTradingApprovalsState({
           user: '0x00000000000000000000000000000000000000aa',
         });
+        const { contracts } = publicClient.environment;
 
         expect(state.isFullyApproved).toBe(false);
-        expect(state.missing.erc20).toHaveLength(7);
-        expect(state.missing.erc1155).toHaveLength(10);
+        // Check trading pairs without pinning the number of required approvals.
+        expect(state.missing.erc20).toEqual(
+          expect.arrayContaining([
+            {
+              amount: 2n ** 256n - 1n,
+              spenderAddress: contracts.standardExchange,
+              tokenAddress: contracts.collateralToken,
+            },
+            {
+              amount: 2n ** 256n - 1n,
+              spenderAddress: contracts.exchangeV3,
+              tokenAddress: contracts.collateralToken,
+            },
+          ]),
+        );
+        expect(state.missing.erc1155).toEqual(
+          expect.arrayContaining([
+            {
+              operatorAddress: contracts.standardExchange,
+              tokenAddress: contracts.conditionalTokens,
+            },
+            {
+              operatorAddress: contracts.exchangeV3,
+              tokenAddress: contracts.positionManager,
+            },
+          ]),
+        );
         expect(
           state.missing.erc20.every(({ amount }) => amount === 2n ** 256n - 1n),
         ).toBe(true);

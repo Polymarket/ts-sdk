@@ -132,6 +132,81 @@ describe('public CLOB price read types', () => {
   });
 });
 
+describe('order heartbeat public types', () => {
+  it('exposes authenticated heartbeat actions and recovery data', () => {
+    const request: import('../index').SendOrderHeartbeatRequest = {
+      heartbeatId: '',
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').SendOrderHeartbeatRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').sendOrderHeartbeat>
+    >().toEqualTypeOf<Promise<import('../index').OrderHeartbeat>>();
+    expectTypeOf<import('../index').SecureClient>().not.toHaveProperty(
+      'sendLegacyOrderHeartbeat',
+    );
+    expectTypeOf<typeof import('./index')>().not.toHaveProperty(
+      'sendLegacyOrderHeartbeat',
+    );
+    expectTypeOf<typeof import('../index')>().not.toHaveProperty(
+      'SendLegacyOrderHeartbeatError',
+    );
+    expectTypeOf<
+      typeof import('@polymarket/bindings/clob')
+    >().not.toHaveProperty('LegacyOrderHeartbeatSchema');
+    expectTypeOf<import('../index').PublicClient>().not.toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+    expectTypeOf<import('../index').SecureClient>().toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+    expectTypeOf<import('../index').SecureClient>()
+      .toHaveProperty('sendOrderHeartbeat')
+      .returns.toEqualTypeOf<Promise<import('../index').OrderHeartbeat>>();
+    expectTypeOf<import('../index').OrderHeartbeatMismatchError>()
+      .toHaveProperty('name')
+      .toEqualTypeOf<'OrderHeartbeatMismatchError'>();
+    expectTypeOf<
+      import('../index').OrderHeartbeatMismatchError
+    >().toMatchTypeOf<import('../index').RequestRejectedError>();
+  });
+});
+
+describe('reward market discovery public types', () => {
+  it('exposes supported discovery filters on the public client', () => {
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('listRewardMarkets')
+      .parameter(1)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('listRewardMarkets')
+      .parameter(0)
+      .toEqualTypeOf<import('../index').ListRewardMarketsRequest | undefined>();
+    expectTypeOf<
+      import('../index').ListRewardMarketsRequest
+    >().not.toHaveProperty('excludeTagSlugs');
+  });
+  it('exposes normalized pagination and the discovery request at the root', () => {
+    const request: import('../index').ListRewardMarketsRequest = {
+      query: 'sports',
+      eventIds: [1, 2],
+      marketId: 12,
+      pageSize: 25,
+      minVolume24hr: 1,
+      maxVolume24hr: 10,
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').ListRewardMarketsRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').listRewardMarkets>
+    >().toEqualTypeOf<
+      import('../index').Paginated<import('../index').RewardMarket[]>
+    >();
+  });
+});
+
 declare const notificationsClient: SecureClient;
 describe('notifications public client types', () => {
   it('narrows tier upgrade payloads through the bound method', async () => {
@@ -166,5 +241,29 @@ describe('total earnings public client types', () => {
         DecimalString | undefined
       >();
     }
+  });
+});
+
+describe('rebate public types', () => {
+  it('accepts per-read controls on the bound public method', () => {
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('fetchCurrentRebates')
+      .parameter(1)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+    expectTypeOf<typeof import('./index').fetchCurrentRebates>()
+      .parameter(2)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+  });
+  it('preserves direct collection results and plain request strings', () => {
+    const request: import('../index').FetchCurrentRebatesRequest = {
+      date: '2026-10-06',
+      makerAddress: '0x0123456789012345678901234567890123456789',
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').FetchCurrentRebatesRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').fetchCurrentRebates>
+    >().toEqualTypeOf<Promise<import('../index').RebatedFee[]>>();
   });
 });

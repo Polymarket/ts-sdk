@@ -37,6 +37,7 @@ import type {
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+import type { RequestOptions } from '../request-options';
 import type { TransactionHandle } from '../types';
 
 export type PublicWalletActions = {
@@ -59,6 +60,7 @@ export type PublicWalletActions = {
    */
   fetchTradingApprovalsState(
     request: FetchTradingApprovalsStateRequest,
+    options?: RequestOptions,
   ): Promise<TradingApprovalsState>;
 };
 
@@ -137,7 +139,9 @@ export type SecureWalletActions = {
    * const state = await client.fetchTradingApprovalsState();
    * ```
    */
-  fetchTradingApprovalsState(): Promise<TradingApprovalsState>;
+  fetchTradingApprovalsState(
+    options?: RequestOptions,
+  ): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -399,8 +403,12 @@ export function walletActions(
 
   return {
     ...actions,
-    fetchTradingApprovalsState: () =>
-      fetchTradingApprovalsState(client, { user: client.account.wallet }),
+    fetchTradingApprovalsState: (options?: RequestOptions) =>
+      fetchTradingApprovalsState(
+        client,
+        { user: client.account.wallet },
+        options,
+      ),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),

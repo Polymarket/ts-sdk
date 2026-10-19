@@ -1,7 +1,7 @@
 import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
 import { FetchApprovalsResponseSchema } from '@polymarket/bindings/data';
 import { WalletType } from '@polymarket/bindings/gamma';
-import { type EvmSignature, type HexString, unwrap } from '@polymarket/types';
+import type { EvmSignature, HexString } from '@polymarket/types';
 import { z } from 'zod';
 import {
   decodeErc20AllowanceResult,
@@ -17,6 +17,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -26,8 +27,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
@@ -357,12 +357,14 @@ export type TradingApprovalsState = {
 };
 
 export type FetchTradingApprovalsStateError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTradingApprovalsStateError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -394,18 +396,18 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
 export async function fetchTradingApprovalsState(
   client: BaseClient,
   request: FetchTradingApprovalsStateRequest,
+  options: RequestOptions = {},
 ): Promise<TradingApprovalsState> {
+  const requestOptions = parseRequestOptions(options);
   const { user } = parseUserInput(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const snapshot = await unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/approvals', {
-        params: toDataSearchParams({ user }),
-      }),
-    ).andThen(validateWith(FetchApprovalsResponseSchema)),
-  );
+  const snapshot = await client.data.get('/v2/approvals', {
+    ...requestOptions,
+    params: toDataSearchParams({ user }),
+    schema: FetchApprovalsResponseSchema,
+  });
   const missing = resolveIndexedTradingApprovals(
     snapshot,
     user,

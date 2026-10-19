@@ -40,6 +40,7 @@ import type {
   PerpsLiquidationDetails,
   PerpsLiquidationMethod,
   PerpsPositionDeleveragedNotification,
+  PerpsPositionSnapshots,
   PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionEvent,
@@ -50,9 +51,11 @@ import type {
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicClient,
   PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecureClient,
   SecureClientOptions,
   SecurePerpsActions,
   TransferPerpsCollateralRequest,
@@ -91,6 +94,29 @@ describe('registration lookup types', () => {
   });
 });
 
+describe('cancellable public Perps read types', () => {
+  it('accepts the operation signal on registration and position snapshots on both public clients', () => {
+    function read(client: PublicClient | SecureClient, signal: AbortSignal) {
+      expectTypeOf(
+        client.fetchPerpsRegistration(
+          { address: '0x1111111111111111111111111111111111111111' },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<boolean>>();
+      expectTypeOf(
+        client.fetchPerpsPositionSnapshots(
+          {
+            address: '0x1111111111111111111111111111111111111111',
+            activeInstrumentIds: [7],
+          },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<PerpsPositionSnapshots>>();
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
 declare const batchLeverageClient: SecurePerpsActions;
 
 describe('batch leverage session contract', () => {
@@ -116,20 +142,46 @@ describe('batch leverage session contract', () => {
 
 describe('session notification recovery', () => {
   it('narrows server recovery metadata from the public session iterator', () => {
-    async function consume(session: PerpsSession) {
+    async function consume(client: SecureClient) {
+      const session = await client.openPerpsSession({
+        includeBuilderFills: true,
+      });
       for await (const event of session) {
         expectTypeOf(event).toEqualTypeOf<PerpsSessionEvent>();
-        if (event.type !== 'resync') continue;
+        if (event.type !== 'resync') {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<EpochMilliseconds | null>();
+          if (event.eventTimestamp !== null) {
+            expectTypeOf(
+              event.eventTimestamp,
+            ).toEqualTypeOf<EpochMilliseconds>();
+          } else {
+            expectTypeOf(event.eventTimestamp).toEqualTypeOf<null>();
+          }
+          continue;
+        }
         expectTypeOf(event.previousSequence).toEqualTypeOf<
           number | undefined
         >();
         if (event.reason === 'server') {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<EpochMilliseconds | null>();
+          if (event.eventTimestamp !== null) {
+            expectTypeOf(
+              event.eventTimestamp,
+            ).toEqualTypeOf<EpochMilliseconds>();
+          } else {
+            expectTypeOf(event.eventTimestamp).toEqualTypeOf<null>();
+          }
           expectTypeOf(event.channel).toEqualTypeOf<'notifications'>();
           expectTypeOf(event.sequence).toEqualTypeOf<number>();
           expectTypeOf(event.timestamp).toEqualTypeOf<EpochMilliseconds>();
           expectTypeOf(event.previousSequence).toEqualTypeOf<undefined>();
           expectTypeOf(event).not.toHaveProperty('payload');
         } else {
+          expectTypeOf(event.eventTimestamp).toEqualTypeOf<undefined>();
           expectTypeOf(event.reason).toEqualTypeOf<
             'reconnect' | 'sequence_gap'
           >();

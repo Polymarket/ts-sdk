@@ -22,6 +22,7 @@ import {
   type WaitForGaslessTransactionError,
 } from './actions/gasless';
 import { createApiKeyAuthTypedDataPayload } from './authentication';
+import { createClientMetadata } from './client-metadata';
 import {
   allActions,
   type PublicActions,
@@ -43,6 +44,7 @@ import {
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type { RateLimitUpdateListener } from './rate-limit';
+import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
@@ -73,11 +75,15 @@ import {
 
 type PublicContext = {
   /** @internal */
+  fetch?: Fetch;
+  /** @internal */
   apiKey?: ApiKeyAuthorization;
   /** @internal */
   environment: EnvironmentConfig;
   /** @internal */
   onRateLimitUpdate?: RateLimitUpdateListener;
+  /** @internal */
+  predictions: ServiceClient;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -142,6 +148,16 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return this.context.environment;
   }
 
+  /**
+   * Service client for prediction requests using the configured endpoint.
+   * Requests return promises with parsed response data.
+   *
+   * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+   */
+  get predictions(): ServiceClient {
+    return this.context.predictions;
+  }
+
   /** @internal */
   get clob(): ServiceClient {
     return this.context.clob;
@@ -201,7 +217,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return Promise.resolve({});
   }
@@ -210,7 +229,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.supportGasless) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return Promise.resolve({});
   }
@@ -289,10 +311,23 @@ const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
     });
 
 type PublicClientConfig = {
+  fetch?: Fetch;
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
+
+// Public and secure clients share one predictions endpoint configuration.
+function createPredictionsService(config: PublicClientConfig): ServiceClient {
+  const metadata = createClientMetadata();
+  return new ServiceClient({
+    fetch: config.fetch,
+    retryMutations: false,
+    headers: config.environment.predictions.headers,
+    root: config.environment.predictions.rest,
+    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
+  });
+}
 
 class BasePublicClient<
   TPublicActions extends ClientActions = ClientActions,
@@ -302,35 +337,46 @@ class BasePublicClient<
     super({
       apiKey: config.apiKey,
       environment: config.environment,
+      fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
+      predictions: createPredictionsService(config),
       data: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       gamma: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       clob: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
       relayer: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rfq: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
-      rpc: new JsonRpcClient({ url: config.environment.rpc }),
+      rpc: new JsonRpcClient({
+        url: config.environment.rpc,
+        fetch: config.fetch,
+      }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
@@ -503,6 +549,7 @@ class BasePublicClient<
       credentials,
       environment: this.environment,
       onRateLimitUpdate: this.context.onRateLimitUpdate,
+      fetch: this.context.fetch,
       signer,
     });
 
@@ -548,37 +595,49 @@ class BaseSecureClient<
       credentials: config.credentials,
       apiKey: config.apiKey,
       environment: config.environment,
+      fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
+      predictions: createPredictionsService(config),
       clob: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
       relayer: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
-      rpc: new JsonRpcClient({ url: config.environment.rpc }),
+      rpc: new JsonRpcClient({
+        url: config.environment.rpc,
+        fetch: config.fetch,
+      }),
       gamma: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
       }),
       data: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
       }),
       rfq: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
       secureClob: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => ({
@@ -588,11 +647,13 @@ class BaseSecureClient<
         root: config.environment.clob.rest,
       }),
       combos: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.combos.collateralReturn.rest,
       }),
       builderGateway: new ServiceClient({
+        fetch: config.fetch,
         headers: config.environment.combos.builderGateway.headers,
         resolveHeaders: async (request) => ({
           ...(await this.#resolveBuilderGatewayHeaders(request)),
@@ -633,6 +694,7 @@ class BaseSecureClient<
           url: config.environment.perps.ws,
         }),
         perpsSession: new PerpsSessionManager({
+          fetch: config.fetch,
           chainId: config.environment.chainId,
           headers: config.environment.perps.headers,
           restUrl: config.environment.perps.rest,
@@ -775,7 +837,7 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate } = this.context;
+    const { apiKey, environment, onRateLimitUpdate, fetch } = this.context;
 
     try {
       await deleteApiKey(this);
@@ -792,6 +854,7 @@ class BaseSecureClient<
       apiKey,
       environment,
       onRateLimitUpdate,
+      fetch,
     });
 
     for (const decorator of this.decorators) {
@@ -807,7 +870,10 @@ class BaseSecureClient<
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request);
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return {};
   }
@@ -889,6 +955,12 @@ export type Client<
 
 export type PublicClientOptions = {
   /**
+   * Fetch-compatible implementation for SDK-owned HTTP requests. Defaults to native fetch.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetch?: Fetch;
+  /**
    * The environment configuration used by the client.
    *
    * @defaultValue `production`
@@ -962,6 +1034,7 @@ export function createPublicClient(
     environment: options.environment ?? production,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
+    fetch: options.fetch,
   }).extend(allActions);
 }
 
@@ -1013,6 +1086,7 @@ export async function createSecureClient(
     environment: options.environment,
     apiKey: options.apiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
+    fetch: options.fetch,
   });
   const wallet = await resolveRequestedWallet(client, options);
 

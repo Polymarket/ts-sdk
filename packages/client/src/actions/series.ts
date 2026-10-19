@@ -4,12 +4,12 @@ import {
   type Series,
   SeriesSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -23,7 +23,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 const ListSeriesRequestSchema = z.object({
@@ -48,12 +48,14 @@ export type ListSeriesRequest = z.input<typeof ListSeriesRequestSchema>;
 export type FetchSeriesRequest = z.input<typeof FetchSeriesRequestSchema>;
 
 export type ListSeriesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListSeriesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -102,7 +104,9 @@ export const ListSeriesError = makeErrorGuard(
 export function listSeries(
   client: BaseClient,
   request: ListSeriesRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Series[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     ListSeriesRequestSchema,
@@ -113,6 +117,8 @@ export function listSeries(
 
     return client.gamma
       .get('/series', {
+        schema: ListSeriesResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             ...params,
@@ -122,8 +128,7 @@ export function listSeries(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListSeriesResponseSchema))
-      .map((series) => {
+      .then((series) => {
         const hasMore = series.length >= decoded.pageSize;
 
         return {
@@ -141,12 +146,14 @@ export function listSeries(
 }
 
 export type FetchSeriesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSeriesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -176,19 +183,19 @@ export const FetchSeriesError = makeErrorGuard(
 export async function fetchSeries(
   client: BaseClient,
   request: FetchSeriesRequest,
+  options: RequestOptions = {},
 ): Promise<Series> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`series/${params.id}`, {
-        params: toSearchParams(
-          {
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(SeriesSchema)),
-  );
+  return client.gamma.get(`series/${params.id}`, {
+    schema: SeriesSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }

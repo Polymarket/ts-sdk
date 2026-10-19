@@ -2,20 +2,19 @@ import {
   FetchTokenReferencesResponseSchema,
   type TokenReference,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { toDataSearchParams } from './params';
 
 const AssetSelectorsSchema = z
@@ -74,12 +73,14 @@ export type FetchTokenReferencesRequest =
 
 export type FetchTokenReferencesError =
   | RateLimitError
+  | RequestAbortedError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTokenReferencesError = makeErrorGuard(
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -115,19 +116,19 @@ export const FetchTokenReferencesError = makeErrorGuard(
 export async function fetchTokenReferences(
   client: BaseClient,
   request: FetchTokenReferencesRequest,
+  options: RequestOptions = {},
 ): Promise<TokenReference[]> {
+  const requestOptions = parseRequestOptions(options);
   const { assetIds, conditionIds } = parseUserInput(
     request,
     FetchTokenReferencesRequestSchema,
   );
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/tokens', {
-        params: toDataSearchParams({
-          tokenId: assetIds,
-          condition: conditionIds,
-        }),
-      }),
-    ).andThen(validateWith(FetchTokenReferencesResponseSchema)),
-  );
+  return client.data.get('/v2/tokens', {
+    schema: FetchTokenReferencesResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({
+      tokenId: assetIds,
+      condition: conditionIds,
+    }),
+  });
 }

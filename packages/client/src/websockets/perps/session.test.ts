@@ -967,6 +967,7 @@ describe('PerpsSession', () => {
                   JSON.stringify({
                     ch: 'builderFills',
                     ts: 1_700_000_000_000,
+                    ets: 1_699_999_999_000,
                     sq: sequence,
                     data: [],
                   }),
@@ -1258,6 +1259,7 @@ describe('PerpsSession', () => {
         const serverResync = waitForNextEvent(session);
         await connection.send({
           ch: 'notifications',
+          ets: 1_699_999_999_000,
           sq: 1050,
           ts: 1_700_000_000_000,
           type: 'resync',
@@ -2509,6 +2511,7 @@ describe('PerpsSession', () => {
         await connection.send({
           ch: 'tpsl::1',
           data: { oid: 123, st: status },
+          ets: 1_699_999_999_000,
           sq: index + 1,
           ts: 1_700_000_000_000,
         });
@@ -2537,12 +2540,14 @@ describe('PerpsSession', () => {
       await connection.send({
         ch: 'tpsl::1',
         data: { oid: 123, st: 'future_status' },
+        ets: 1_699_999_999_000,
         sq: 1,
         ts: 1_700_000_000_000,
       });
       await connection.send({
         ch: 'tpsl::1',
         data: { oid: 123, st: 'armed' },
+        ets: 1_699_999_999_000,
         sq: 2,
         ts: 1_700_000_000_000,
       });
@@ -2573,6 +2578,7 @@ describe('PerpsSession', () => {
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
+        ets: 1_699_999_999_000,
         sq: 1042,
         ts: 1_767_225_600_000,
         data: {
@@ -2643,7 +2649,9 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('emits server resyncs and continues notifications without synthetic gaps', async () => {
+    it.each([
+      0, 1_699_999_999_000,
+    ])('emits server resync horizon %s and continues notifications without synthetic gaps', async (horizon) => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
@@ -2653,7 +2661,7 @@ describe('PerpsSession', () => {
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
-        ets: 1_699_999_999_000,
+        ets: horizon,
         sq: 1050,
         ts: 1_700_000_000_000,
         type: 'resync',
@@ -2663,6 +2671,7 @@ describe('PerpsSession', () => {
         value: {
           channel: 'notifications',
           reason: 'server',
+          eventTimestamp: horizon === 0 ? null : horizon,
           sequence: 1050,
           timestamp: 1_700_000_000_000,
           type: 'resync',
@@ -2738,6 +2747,7 @@ describe('PerpsSession', () => {
         unknownFrame: {
           ch: 'notifications',
           data: { id: NOTIFICATION_ID, type: 'future_notification' },
+          ets: 1_699_999_999_000,
           sq: 1,
           ts: 1_700_000_000_000,
         },
@@ -3609,6 +3619,7 @@ function balanceUpdate(request: { balance: string; sequence: number }) {
       balance: request.balance,
       value: request.balance,
     },
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };
@@ -3635,6 +3646,7 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
       tid,
       ts: 1_700_000_000_000,
     })),
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };
@@ -3652,6 +3664,7 @@ function fundingUpdate(request: { id: number }) {
       sz: '10.00',
       ts: 1_700_000_000_000,
     },
+    ets: 1_699_999_999_000,
     sq: 1,
     ts: 1_700_000_000_000,
   };
@@ -3676,6 +3689,7 @@ function orderUpdate(status: string, clientOrderId: string) {
       tif: 'gtc',
       uts: 1_700_000_000_000,
     },
+    ets: 1_699_999_999_000,
     sq: 1,
     ts: 1_700_000_000_000,
   };
@@ -3696,6 +3710,7 @@ function notificationUpdate(request: { sequence: number; type: string }) {
       size: '10.00',
       type: request.type,
     },
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };

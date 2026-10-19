@@ -10,7 +10,6 @@ import {
   type PerpsTwapAccepted,
   PerpsTwapIdSchema,
 } from '@polymarket/bindings/perps';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
   makeErrorGuard,
@@ -22,7 +21,6 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
 import type { SignPerpsRestCommand } from './trading';
@@ -194,17 +192,14 @@ export async function createPerpsTwap(
       args.c,
     ],
   ] as const satisfies PerpsSignedOp;
-  const accepted = await unwrap(
-    client
-      .post('/v1/trade/twaps', {
-        retry: false,
-        json: {
-          ...signCommand(op, params.expiresAt),
-          op: { type: 'createTwap', args },
-        },
-      })
-      .andThen(validateWith(CreatePerpsTwapResponseSchema)),
-  );
+  const accepted = await client.post('/v1/trade/twaps', {
+    schema: CreatePerpsTwapResponseSchema,
+    retry: false,
+    json: {
+      ...signCommand(op, params.expiresAt),
+      op: { type: 'createTwap', args },
+    },
+  });
   if ('status' in accepted)
     throw new RequestRejectedError(accepted.error, { status: 200 });
   return accepted;
@@ -230,11 +225,9 @@ export const FetchPerpsTwapsError = makeErrorGuard(
 export async function fetchPerpsTwaps(
   client: ServiceClient,
 ): Promise<PerpsTwap[]> {
-  return await unwrap(
-    client
-      .get('/v1/account/twaps')
-      .andThen(validateWith(FetchPerpsTwapsResponseSchema)),
-  );
+  return await client.get('/v1/account/twaps', {
+    schema: FetchPerpsTwapsResponseSchema,
+  });
 }
 
 const TwapIdentityRequestSchema = z.object({
@@ -287,14 +280,11 @@ export async function pausePerpsTwap(
     type: 'controlTwap',
     args: { twid: params.twapId, act: 'pause' },
   };
-  const response = await unwrap(
-    client
-      .patch('/v1/trade/twaps', {
-        retry: false,
-        json: { ...signCommand(op, params.expiresAt), op: body },
-      })
-      .andThen(validateWith(PerpsCommandAckSchema)),
-  );
+  const response = await client.patch('/v1/trade/twaps', {
+    schema: PerpsCommandAckSchema,
+    retry: false,
+    json: { ...signCommand(op, params.expiresAt), op: body },
+  });
   if (response.status === 'err')
     throw new RequestRejectedError(response.error, { status: 200 });
 }
@@ -339,14 +329,11 @@ export async function resumePerpsTwap(
     type: 'controlTwap',
     args: { twid: params.twapId, act: 'resume' },
   };
-  const response = await unwrap(
-    client
-      .patch('/v1/trade/twaps', {
-        retry: false,
-        json: { ...signCommand(op, params.expiresAt), op: body },
-      })
-      .andThen(validateWith(PerpsCommandAckSchema)),
-  );
+  const response = await client.patch('/v1/trade/twaps', {
+    schema: PerpsCommandAckSchema,
+    retry: false,
+    json: { ...signCommand(op, params.expiresAt), op: body },
+  });
   if (response.status === 'err')
     throw new RequestRejectedError(response.error, { status: 200 });
 }
@@ -385,14 +372,11 @@ export async function cancelPerpsTwap(
   const params = parseUserInput(request, TwapIdentityRequestSchema);
   const op = ['cancelTwap', [params.twapId]] as const satisfies PerpsSignedOp;
   const body = { type: 'cancelTwap', args: { twid: params.twapId } };
-  const response = await unwrap(
-    client
-      .del('/v1/trade/twaps', {
-        retry: false,
-        json: { ...signCommand(op, params.expiresAt), op: body },
-      })
-      .andThen(validateWith(PerpsCommandAckSchema)),
-  );
+  const response = await client.del('/v1/trade/twaps', {
+    schema: PerpsCommandAckSchema,
+    retry: false,
+    json: { ...signCommand(op, params.expiresAt), op: body },
+  });
   if (response.status === 'err')
     throw new RequestRejectedError(response.error, { status: 200 });
 }
