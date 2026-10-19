@@ -36,7 +36,7 @@ import {
   type PerpsSessionEvent,
   PerpsSessionUpdateEventSchema,
 } from '@polymarket/bindings/subscriptions';
-import { invariant, setNonBlockingTimeout, unwrap } from '@polymarket/types';
+import { invariant, setNonBlockingTimeout } from '@polymarket/types';
 import { type Pushable, pushable } from 'it-pushable';
 import { z } from 'zod';
 import {
@@ -63,7 +63,7 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import type { Paginated } from '../../pagination';
-import { validateWith } from '../../response';
+import type { Fetch } from '../../request-options';
 import { ServiceClient } from '../../ServiceClient';
 import { PerpsWebSocketHeartbeat } from '../heartbeat';
 import { ReconnectScheduler, WebSocketConnection } from '../lifecycle';
@@ -312,6 +312,8 @@ export type PerpsSessionOptions = {
   builderAttribution?: string | PerpsBuilderTermsInput;
   chainId: number;
   credentials: PerpsCredentials;
+  /** Fetch implementation for session HTTP requests. */
+  fetch?: Fetch;
   headers?: Record<string, string>;
   /**
    * Include this authenticated account's builder receipts in the session iterator.
@@ -423,6 +425,7 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
         ? parseUserInput(options.builderAttribution, EvmAddressSchema)
         : this.#builderAttribution?.builderAddress;
     this.#api = new ServiceClient({
+      fetch: options.fetch,
       headers: options.headers,
       resolveHeaders: async () => this.#authenticatedHeaders(),
       root: options.restUrl,
@@ -463,13 +466,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       this.#builderAddress !== undefined &&
       this.#builderAttribution === undefined
     ) {
-      const status = await unwrap(
-        this.#api
-          .get('/v1/info/builder', {
-            params: new URLSearchParams({ address: this.#builderAddress }),
-          })
-          .andThen(validateWith(PerpsBuilderStatusSchema)),
-      );
+      const status = await this.#api.getWorkflow('/v1/info/builder', {
+        schema: PerpsBuilderStatusSchema,
+        params: new URLSearchParams({ address: this.#builderAddress }),
+      });
       if (!status.registered || !status.enabled || !status.admissionEnabled) {
         throw new UserInputError(
           'Builder attribution is not active for this builder address.',
@@ -611,13 +611,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
             this.#builderAddress = undefined;
           }
         } else {
-          const status = await unwrap(
-            this.#api
-              .get('/v1/info/builder', {
-                params: new URLSearchParams({ address: approval.builder }),
-              })
-              .andThen(validateWith(PerpsBuilderStatusSchema)),
-          );
+          const status = await this.#api.getWorkflow('/v1/info/builder', {
+            schema: PerpsBuilderStatusSchema,
+            params: new URLSearchParams({ address: approval.builder }),
+          });
           this.#builderAddress = approval.builder;
           const feeRate = minPerpsBuilderFeeRate(
             status.maxFeeRate,
@@ -775,11 +772,14 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
   }
 
   /**
-   * Lists Perps fills
+   * Lists Perps fills for the authenticated account, optionally by instrument.
    *
    * @remarks
    * Fills are returned newest first by default; set `sort` to change the
    * time direction. Page cursors are opaque values forwarded to the API.
+   * An `instrumentId` filter is retained on every page, including when resuming
+   * from a cursor. Fill `adl` marks auto-deleveraging; optional
+   * `liquidationDetails.mark` is separate from the accounting fill price.
    *
    * @throws {@link PerpsSessionAccountError}
    * Thrown on failure.
@@ -1409,16 +1409,13 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
     request: PerpsDeleteCommandRequest<T>,
   ): Promise<T> {
     const command = this.#createSignedCommand(request.op, request.expiresAt);
-    return await unwrap(
-      this.#api
-        .del(request.path, {
-          json: {
-            ...command,
-            op: toPerpsCommandBodyOp(request.op),
-          },
-        })
-        .andThen(validateWith(request.responseSchema)),
-    );
+    return await this.#api.del(request.path, {
+      schema: request.responseSchema,
+      json: {
+        ...command,
+        op: toPerpsCommandBodyOp(request.op),
+      },
+    });
   }
 
   /** Create a chase using this session. Reconcile uncertain submissions before trying again.

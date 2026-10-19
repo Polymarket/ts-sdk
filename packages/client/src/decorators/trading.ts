@@ -2,6 +2,7 @@ import type {
   AcceptedOrderResponse,
   CancelOrdersResponse,
   OpenOrder,
+  OrderHeartbeat,
   OrderResponse,
   OrderResponses,
 } from '@polymarket/bindings/clob';
@@ -27,16 +28,44 @@ import {
   placeMarketOrder,
   postOrder,
   postOrders,
+  type SendOrderHeartbeatRequest,
+  sendOrderHeartbeat,
   type WaitForOrderFillSettlementRequest,
   waitForOrderFillSettlement,
 } from '../actions';
 import type { SignedOrder } from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type { OrderSignature, SignedOrder } from '../actions';
 
 export type SecureTradingActions = {
+  /**
+   * Sends one authenticated order heartbeat and returns the next heartbeat ID.
+   * The first accepted send enables timeout cancellation for ALL open orders owned
+   * by this API key, across markets and processes. Only start when you can keep
+   * sending every five seconds. After ten seconds without an accepted send, the
+   * server attempts cancel-all; cancellation timing and success are not guaranteed.
+   * Start with an empty ID, serialize sends per key, and retain every returned ID.
+   * No timer or automatic retry is started. A mismatch does not refresh the deadline;
+   * retry explicitly with OrderHeartbeatMismatchError.heartbeatId. A lost response
+   * may follow an accepted send, so failure does not prove registration is inactive.
+   * There is no disarm operation. Stopping sends or closing the client leaves the
+   * deadline active. On shutdown, stop placing orders and explicitly cancel/verify
+   * orders you intend to remove. Expiry removes the registration; a later accepted
+   * send registers again. This is separate from WebSocket connection keepalive.
+   * @throws {@link SendOrderHeartbeatError} Thrown on failure.
+   * @example
+   * ```ts
+   * const heartbeat = await client.sendOrderHeartbeat();
+   * const next = await client.sendOrderHeartbeat({ heartbeatId: heartbeat.heartbeatId });
+   * ```
+   */
+  sendOrderHeartbeat(
+    request?: SendOrderHeartbeatRequest,
+  ): Promise<OrderHeartbeat>;
+
   /**
    * Creates a signed market order for the authenticated account.
    *
@@ -331,7 +360,10 @@ export type SecureTradingActions = {
    * }
    * ```
    */
-  listOpenOrders(request?: ListOpenOrdersRequest): Paginated<OpenOrder[]>;
+  listOpenOrders(
+    request?: ListOpenOrdersRequest,
+    options?: RequestOptions,
+  ): Paginated<OpenOrder[]>;
   /**
    * Fetches a single order for the authenticated account.
    *
@@ -343,12 +375,16 @@ export type SecureTradingActions = {
    * const order = await client.fetchOrder({ orderId: '123' });
    * ```
    */
-  fetchOrder(request: FetchOrderRequest): Promise<OpenOrder>;
+  fetchOrder(
+    request: FetchOrderRequest,
+    options?: RequestOptions,
+  ): Promise<OpenOrder>;
 };
 
 export function tradingActions(client: BaseSecureClient): SecureTradingActions;
 export function tradingActions(client: BaseSecureClient): SecureTradingActions {
   return {
+    sendOrderHeartbeat: sendOrderHeartbeat.bind(null, client),
     createMarketOrder: createMarketOrder.bind(null, client),
     placeMarketOrder: placeMarketOrder.bind(null, client),
     createLimitOrder: createLimitOrder.bind(null, client),
@@ -381,5 +417,7 @@ export {
   PlaceMarketOrderError,
   PostOrderError,
   PostOrdersError,
+  SendOrderHeartbeatError,
+  type SendOrderHeartbeatRequest,
   WaitForOrderFillSettlementError,
 } from '../actions';

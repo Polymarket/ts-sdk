@@ -97,6 +97,28 @@ export type EventExternalPartnerMappingId = Tagged<
 >;
 export type EpochMilliseconds = Tagged<number, 'EpochMilliseconds'>;
 export type EventId = Tagged<string, 'EventId'>;
+/** Protocol V2 neg-risk event identity (`bytes29`), distinct from an API event ID. */
+export type NegRiskEventId = Tagged<HexString, 'NegRiskEventId'>;
+
+/**
+ * Parses a neg-risk event ID, accepting its native bytes29 or zero-padded bytes32 form.
+ * Requires module 2, at least two real conditions, and zero reserved bits.
+ */
+export const NegRiskEventIdSchema = z
+  .string()
+  .regex(
+    /^0x02[0-9a-fA-F]{56}(?:000000)?$/,
+    'Expected a protocol V2 neg-risk event ID (bytes29 or zero-padded bytes32)',
+  )
+  .refine(
+    (value) => /^0{16}$/.test(value.slice(40, 56)),
+    'Event ID reserved bits must be zero',
+  )
+  .refine(
+    (value) => Number.parseInt(value.slice(36, 40), 16) >= 2,
+    'Event ID must encode at least two real conditions',
+  )
+  .transform((value) => value.slice(0, 60).toLowerCase() as NegRiskEventId);
 export type ImageOptimizationId = Tagged<string, 'ImageOptimizationId'>;
 export type InternalUserId = Tagged<string, 'InternalUserId'>;
 export type IsoCalendarDateString = Tagged<string, 'IsoCalendarDateString'>;

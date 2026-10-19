@@ -92,9 +92,18 @@ export type Resolution = {
   reproposedPrice?: DecimalString;
   /** Final oracle settlement price, omitted until set. */
   price?: DecimalString;
-  /** Transaction for the latest lifecycle event, or `null` when unavailable. */
+  /**
+   * Transaction for the latest lifecycle event, or `null` when unavailable.
+   * On UMA lifecycle rows, this can differ from the initial RequestPrice
+   * transaction whose log index is retained in `logIndex`.
+   */
   transactionHash: TxHash | null;
-  /** Log index for `transactionHash`, or `null` when unavailable. */
+  /**
+   * Initial RequestPrice log index on UMA lifecycle rows, or `null` when
+   * unavailable. It need not belong to `transactionHash`.
+   * Condition-resolution fallback rows instead carry their condition event's
+   * log index and transaction hash.
+   */
   logIndex: number | null;
   /** Latest lifecycle change as an ISO 8601 datetime. */
   lastUpdatedAt: IsoDateTimeString;

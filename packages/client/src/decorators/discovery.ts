@@ -64,6 +64,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type DiscoveryActions = {
   /**
@@ -110,7 +111,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listEvents(request?: ListEventsRequest): Paginated<Event[]>;
+  listEvents(
+    request?: ListEventsRequest,
+    options?: RequestOptions,
+  ): Paginated<Event[]>;
 
   /**
    * Fetches an event.
@@ -133,7 +137,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEvent(request: FetchEventRequest): Promise<Event>;
+  fetchEvent(
+    request: FetchEventRequest,
+    options?: RequestOptions,
+  ): Promise<Event>;
 
   /**
    * Fetches an event's tags.
@@ -148,7 +155,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEventTags(request: FetchEventTagsRequest): Promise<TagReference[]>;
+  fetchEventTags(
+    request: FetchEventTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists markets.
@@ -189,7 +199,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listMarkets(request?: ListMarketsRequest): Paginated<Market[]>;
+  listMarkets(
+    request?: ListMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<Market[]>;
 
   /**
    * Lists markets available for Combos.
@@ -233,7 +246,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  listComboMarkets(request?: ListComboMarketsRequest): Paginated<ComboMarket[]>;
+  listComboMarkets(
+    request?: ListComboMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<ComboMarket[]>;
 
   /**
    * Fetches a market.
@@ -261,7 +277,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarket(request: FetchMarketRequest): Promise<Market>;
+  fetchMarket(
+    request: FetchMarketRequest,
+    options?: RequestOptions,
+  ): Promise<Market>;
 
   /**
    * Fetches a market's tags.
@@ -276,7 +295,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarketTags(request: FetchMarketTagsRequest): Promise<TagReference[]>;
+  fetchMarketTags(
+    request: FetchMarketTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists series.
@@ -311,7 +333,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listSeries(request?: ListSeriesRequest): Paginated<Series[]>;
+  listSeries(
+    request?: ListSeriesRequest,
+    options?: RequestOptions,
+  ): Paginated<Series[]>;
 
   /**
    * Fetches a series.
@@ -326,7 +351,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchSeries(request: FetchSeriesRequest): Promise<Series>;
+  fetchSeries(
+    request: FetchSeriesRequest,
+    options?: RequestOptions,
+  ): Promise<Series>;
 
   /**
    * Lists market clarifications — notes that resolve ambiguity in how a market
@@ -348,6 +376,7 @@ export type DiscoveryActions = {
    */
   listMarketClarifications(
     request?: ListMarketClarificationsRequest,
+    options?: RequestOptions,
   ): Paginated<MarketClarification[]>;
 
   /**
@@ -383,7 +412,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTags(request?: ListTagsRequest): Paginated<Tag[]>;
+  listTags(
+    request?: ListTagsRequest,
+    options?: RequestOptions,
+  ): Paginated<Tag[]>;
 
   /**
    * Fetches a tag by id or slug.
@@ -398,7 +430,7 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchTag(request: FetchTagRequest): Promise<Tag>;
+  fetchTag(request: FetchTagRequest, options?: RequestOptions): Promise<Tag>;
 
   /**
    * Fetches related tag relationships by id or slug.
@@ -413,7 +445,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchRelatedTags(request: FetchRelatedTagsRequest): Promise<RelatedTag[]>;
+  fetchRelatedTags(
+    request: FetchRelatedTagsRequest,
+    options?: RequestOptions,
+  ): Promise<RelatedTag[]>;
 
   /**
    * Fetches resources linked from related tag relationships by id or slug.
@@ -430,6 +465,7 @@ export type DiscoveryActions = {
    */
   fetchRelatedTagResources(
     request: FetchRelatedTagResourcesRequest,
+    options?: RequestOptions,
   ): Promise<Tag[]>;
 
   /**
@@ -464,7 +500,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  search(request: SearchRequest): Paginated<SearchResults>;
+  search(
+    request: SearchRequest,
+    options?: RequestOptions,
+  ): Paginated<SearchResults>;
 
   /**
    * Lists available sports metadata.
@@ -477,7 +516,7 @@ export type DiscoveryActions = {
    * const sports = await client.listSports();
    * ```
    */
-  listSports(): Promise<SportsMetadata[]>;
+  listSports(options?: RequestOptions): Promise<SportsMetadata[]>;
 
   /**
    * Fetches the available market types grouped by sport.
@@ -490,7 +529,9 @@ export type DiscoveryActions = {
    * const marketTypes = await client.fetchSportsMarketTypes();
    * ```
    */
-  fetchSportsMarketTypes(): Promise<SportsMarketTypesResponse>;
+  fetchSportsMarketTypes(
+    options?: RequestOptions,
+  ): Promise<SportsMarketTypesResponse>;
 
   /**
    * Lists teams.
@@ -525,7 +566,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTeams(request?: ListTeamsRequest): Paginated<Team[]>;
+  listTeams(
+    request?: ListTeamsRequest,
+    options?: RequestOptions,
+  ): Paginated<Team[]>;
 
   /**
    * Fetches a public profile by wallet address.
@@ -542,6 +586,7 @@ export type DiscoveryActions = {
    */
   fetchPublicProfile(
     request: FetchPublicProfileRequest,
+    options?: RequestOptions,
   ): Promise<PublicProfile | null>;
 
   /**
@@ -600,7 +645,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listComments(request: ListCommentsRequest): Paginated<Comment[]>;
+  listComments(
+    request: ListCommentsRequest,
+    options?: RequestOptions,
+  ): Paginated<Comment[]>;
 
   /**
    * Fetches a comment thread by comment id.
@@ -616,7 +664,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchCommentsById(request: FetchCommentsByIdRequest): Promise<Comment[]>;
+  fetchCommentsById(
+    request: FetchCommentsByIdRequest,
+    options?: RequestOptions,
+  ): Promise<Comment[]>;
 
   /**
    * Lists comments written by a wallet address.
@@ -668,6 +719,7 @@ export type DiscoveryActions = {
    */
   listCommentsByUserAddress(
     request: ListCommentsByUserAddressRequest,
+    options?: RequestOptions,
   ): Paginated<Comment[]>;
 };
 
