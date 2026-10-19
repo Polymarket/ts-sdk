@@ -5,12 +5,13 @@ import {
   type PerpsBuilderStatus,
   PerpsBuilderStatusSchema,
 } from '@polymarket/bindings/perps';
-import { type EvmSignature, unwrap } from '@polymarket/types';
+import type { EvmSignature } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient, BaseSecureClient } from '../../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TransportError,
@@ -18,7 +19,10 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { validateWith } from '../../response';
+import {
+  parseRequestOptions,
+  type RequestOptions,
+} from '../../request-options';
 import type { TypedDataPayload } from '../../types';
 import { PerpsBuilderFeeRateInputSchema } from '../../websockets/perps/actions/builder-terms';
 import type { PerpsSession } from '../../websockets/perps/session';
@@ -44,6 +48,7 @@ export type FetchPerpsBuilderStatusRequest = {
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type FetchPerpsBuilderStatusError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -54,6 +59,7 @@ export type FetchPerpsBuilderStatusError =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const FetchPerpsBuilderStatusError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -72,13 +78,15 @@ export const FetchPerpsBuilderStatusError = makeErrorGuard(
 export async function fetchPerpsBuilderStatus(
   client: BaseClient,
   request: FetchPerpsBuilderStatusRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsBuilderStatus> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsBuilderStatusRequestSchema);
-  return unwrap(
-    client.perps
-      .get('/v1/info/builder', { params: toSearchParams(params, snakeCase()) })
-      .andThen(validateWith(PerpsBuilderStatusSchema)),
-  );
+  return client.perps.get('/v1/info/builder', {
+    schema: PerpsBuilderStatusSchema,
+    ...requestOptions,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const ResolvedPerpsBuilderFeeSchema = z.strictObject({
@@ -180,13 +188,10 @@ export async function approvePerpsBuilderFee(
     throw SigningError.fromError(error, 'Could not sign builder consent');
   }
 
-  return unwrap(
-    client.perps
-      .post('/v1/account/builder-approvals', {
-        json: createPerpsBuilderFeeApprovalBody(op, signature),
-      })
-      .andThen(validateWith(PerpsBuilderApprovalSchema)),
-  );
+  return client.perps.post('/v1/account/builder-approvals', {
+    schema: PerpsBuilderApprovalSchema,
+    json: createPerpsBuilderFeeApprovalBody(op, signature),
+  });
 }
 
 /** @internal Returns the saved version for the builder plus one, or 1. */

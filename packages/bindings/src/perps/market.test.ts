@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { PerpsMarketDataEventSchema } from '../subscriptions/perps';
 import {
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
@@ -50,9 +51,56 @@ const baseInstrument = {
   quote_asset: 'USD',
   risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
   symbol: 'BTC-PERP',
+  ui_live_time: null,
 };
 
 describe('PerpsInstrumentSchema', () => {
+  it('preserves advisory visibility independently of logo metadata', () => {
+    const visible = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      ui_live_time: 1_786_032_000_000,
+      logo: {
+        light: 'https://assets.example/light.svg',
+        dark: 'https://assets.example/dark.svg',
+      },
+    });
+    expect(visible.uiLiveTime).toBe(1_786_032_000_000);
+    expect(visible.logo).toEqual({
+      light: 'https://assets.example/light.svg',
+      dark: 'https://assets.example/dark.svg',
+    });
+    const hidden = PerpsInstrumentSchema.parse(baseInstrument);
+    expect(hidden.uiLiveTime).toBeNull();
+    expect(hidden.logo).toBeUndefined();
+    expect(
+      PerpsInstrumentSchema.parse({ ...baseInstrument, ui_live_time: 0 })
+        .uiLiveTime,
+    ).toBe(0);
+  });
+
+  it('requires visibility metadata and rejects malformed timestamps or incomplete logo pairs', () => {
+    const { ui_live_time: _visibility, ...missing } = baseInstrument;
+    expect(PerpsInstrumentSchema.safeParse(missing).success).toBe(false);
+    for (const ui_live_time of [
+      -1,
+      1.5,
+      '1786032000000',
+      true,
+      253_402_300_799_001,
+    ]) {
+      expect(
+        PerpsInstrumentSchema.safeParse({ ...baseInstrument, ui_live_time })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      PerpsInstrumentSchema.safeParse({
+        ...baseInstrument,
+        logo: { light: 'light.svg' },
+      }).success,
+    ).toBe(false);
+  });
+
   it('normalizes instrument identifiers without exposing instrument type', () => {
     const instrument = PerpsInstrumentSchema.parse(baseInstrument);
 
@@ -216,5 +264,62 @@ describe('legacy instrument metadata and sequence precision', () => {
         sequence: Number.MAX_SAFE_INTEGER + 1,
       }),
     ).toThrow();
+  });
+});
+
+describe('Perps market event horizons', () => {
+  it.each([
+    { ch: 'trades::1', data: [] },
+    { ch: 'book::1', data: { b: [], a: [] } },
+    { ch: 'bbo::1', data: { iid: 1, bp: '1', bq: '2', ap: '3', aq: '4' } },
+    {
+      ch: 'tickers::all',
+      data: {
+        iid: 1,
+        idx: '1',
+        mark: '1',
+        last: '1',
+        mid: '1',
+        oi: '0',
+        fr: '0',
+        nxf: 1_767_225_600_000,
+      },
+    },
+    {
+      ch: 'statistics::all',
+      data: { iid: 1, vol: '0', open: '1', klines: [] },
+    },
+    { ch: 'klines::1::1m', data: [] },
+  ])('preserves the event horizon independently of send time on $ch', (frame) => {
+    const wire = {
+      ...frame,
+      ts: 1_767_225_600_100,
+      sq: 42,
+      ets: 1_767_225_600_000,
+    };
+    expect(PerpsMarketDataEventSchema.parse(wire)).toMatchObject({
+      timestamp: wire.ts,
+      eventTimestamp: wire.ets,
+      sequence: wire.sq,
+    });
+    expect(
+      PerpsMarketDataEventSchema.parse({ ...wire, ets: 0 }).eventTimestamp,
+    ).toBeNull();
+    const { ets: _horizon, ...missing } = wire;
+    expect(PerpsMarketDataEventSchema.safeParse(missing).success).toBe(false);
+    for (const ets of [
+      null,
+      '0',
+      true,
+      -1,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      expect(
+        PerpsMarketDataEventSchema.safeParse({ ...wire, ets }).success,
+      ).toBe(false);
+    }
   });
 });

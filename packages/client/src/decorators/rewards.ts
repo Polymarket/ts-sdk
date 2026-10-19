@@ -3,6 +3,7 @@ import type {
   MarketReward,
   OrdersScoringResponse,
   RebatedFee,
+  RewardMarket,
   RewardsPercentages,
   TotalUserEarning,
   UserEarning,
@@ -21,10 +22,12 @@ import {
   fetchTotalEarningsForUserForDay,
   type ListCurrentRewardsRequest,
   type ListMarketRewardsRequest,
+  type ListRewardMarketsRequest,
   type ListUserEarningsAndMarketsConfigRequest,
   type ListUserEarningsForDayRequest,
   listCurrentRewards,
   listMarketRewards,
+  listRewardMarkets,
   listUserEarningsAndMarketsConfig,
   listUserEarningsForDay,
 } from '../actions';
@@ -34,6 +37,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type PublicRewardsActions = {
   /**
@@ -48,7 +52,25 @@ export type PublicRewardsActions = {
    */
   fetchCurrentRebates(
     request: FetchCurrentRebatesRequest,
+    options?: RequestOptions,
   ): Promise<RebatedFee[]>;
+
+  /**
+   * Lists active markets with reward configurations and discovery metadata.
+   * Configurations may be empty. Positive ranges are min-exclusive and max-inclusive; zero disables a bound.
+   * Pages default to 100 items (maximum 500). With orderBy, sortDirection defaults to ASC; otherwise order is unspecified.
+   * @throws {@link ListRewardMarketsError} Thrown on failure.
+   * @example
+   * ```ts
+   * for await (const page of client.listRewardMarkets({ query: 'sports' })) {
+   *   console.log(page.items);
+   * }
+   * ```
+   */
+  listRewardMarkets(
+    request?: ListRewardMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<RewardMarket[]>;
 
   /**
    * Lists current active market rewards.
@@ -81,6 +103,7 @@ export type PublicRewardsActions = {
    */
   listCurrentRewards(
     request?: ListCurrentRewardsRequest,
+    options?: RequestOptions,
   ): Paginated<CurrentReward[]>;
   /**
    * Lists reward configurations for a market.
@@ -119,6 +142,7 @@ export type PublicRewardsActions = {
    */
   listMarketRewards(
     request: ListMarketRewardsRequest,
+    options?: RequestOptions,
   ): Paginated<MarketReward[]>;
 };
 
@@ -137,7 +161,10 @@ export type SecureRewardsActions = Prettify<
      * });
      * ```
      */
-    fetchOrderScoring(request: FetchOrderScoringRequest): Promise<boolean>;
+    fetchOrderScoring(
+      request: FetchOrderScoringRequest,
+      options?: RequestOptions,
+    ): Promise<boolean>;
     /**
      * Fetches scoring state for multiple orders.
      *
@@ -153,6 +180,7 @@ export type SecureRewardsActions = Prettify<
      */
     fetchOrdersScoring(
       request: FetchOrdersScoringRequest,
+      options?: RequestOptions,
     ): Promise<OrdersScoringResponse>;
     /**
      * Lists per-market earnings for the authenticated account on a given day.
@@ -189,9 +217,13 @@ export type SecureRewardsActions = Prettify<
      */
     listUserEarningsForDay(
       request: ListUserEarningsForDayRequest,
+      options?: RequestOptions,
     ): Paginated<UserEarning[]>;
     /**
      * Fetches total earnings for the authenticated account on a given day.
+     * Set `sponsored: true` to include sponsored rewards and the native/sponsored
+     * breakdown. Omitted or false returns native rewards only; absent breakdown
+     * fields remain undefined.
      *
      * @throws {@link FetchTotalEarningsForUserForDayError}
      * Thrown on failure.
@@ -205,6 +237,7 @@ export type SecureRewardsActions = Prettify<
      */
     fetchTotalEarningsForUserForDay(
       request: FetchTotalEarningsForUserForDayRequest,
+      options?: RequestOptions,
     ): Promise<TotalUserEarning[]>;
     /**
      * Lists market reward configuration and earnings for the authenticated account on a given day.
@@ -241,6 +274,7 @@ export type SecureRewardsActions = Prettify<
      */
     listUserEarningsAndMarketsConfig(
       request: ListUserEarningsAndMarketsConfigRequest,
+      options?: RequestOptions,
     ): Paginated<UserRewardsEarning[]>;
     /**
      * Fetches reward percentages for the authenticated account.
@@ -253,13 +287,16 @@ export type SecureRewardsActions = Prettify<
      * const percentages = await client.fetchRewardPercentages();
      * ```
      */
-    fetchRewardPercentages(): Promise<RewardsPercentages>;
+    fetchRewardPercentages(
+      options?: RequestOptions,
+    ): Promise<RewardsPercentages>;
   }
 >;
 
 function publicRewardsActions(client: BaseClient): PublicRewardsActions {
   return {
     fetchCurrentRebates: fetchCurrentRebates.bind(null, client),
+    listRewardMarkets: listRewardMarkets.bind(null, client),
     listCurrentRewards: listCurrentRewards.bind(null, client),
     listMarketRewards: listMarketRewards.bind(null, client),
   };
@@ -305,6 +342,8 @@ export {
   FetchTotalEarningsForUserForDayError,
   ListCurrentRewardsError,
   ListMarketRewardsError,
+  ListRewardMarketsError,
+  type ListRewardMarketsRequest,
   ListUserEarningsAndMarketsConfigError,
   ListUserEarningsForDayError,
 } from '../actions';

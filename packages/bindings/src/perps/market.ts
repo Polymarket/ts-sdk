@@ -102,6 +102,14 @@ export const PerpsInstrumentSchema = z
     max_leverage: z.number().int().positive(),
     isolated_only: z.boolean(),
     risk_tiers: z.array(RawPerpsRiskTierSchema),
+    ui_live_time: z
+      .number()
+      .int()
+      .min(0)
+      .max(253_402_300_799_000)
+      .pipe(EpochMillisecondsSchema)
+      .nullable(),
+    logo: z.object({ light: z.string(), dark: z.string() }).optional(),
   })
   .transform((instrument) => ({
     id: instrument.instrument_id,
@@ -127,6 +135,10 @@ export const PerpsInstrumentSchema = z
     maxLeverage: instrument.max_leverage,
     isolatedOnly: instrument.isolated_only,
     riskTiers: instrument.risk_tiers,
+    /** Advisory visibility time; null means hidden. Does not restrict trading. */
+    uiLiveTime: instrument.ui_live_time,
+    /** Immutable logo URLs for light and dark themes; absent until uploaded. */
+    logo: instrument.logo,
   }));
 
 /**

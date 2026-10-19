@@ -467,6 +467,42 @@ export const PerpsOrderUpdateSchema = z
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
+export enum PerpsLiquidationMethod {
+  Market = 'market',
+  Backstop = 'backstop',
+}
+
+/**
+ * Liquidation command context, distinct from the fill's accounting price.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsLiquidationDetailsSchema = z
+  .object({
+    liquidated_user: z.string().optional(),
+    mark: z
+      .string()
+      .regex(/^-?\d+(?:\.\d+)?$/)
+      .pipe(DecimalStringSchema),
+    method: z.enum(PerpsLiquidationMethod),
+  })
+  .transform((details) => ({
+    ...(details.liquidated_user === undefined
+      ? {}
+      : { liquidatedUser: details.liquidated_user }),
+    mark: details.mark,
+    method: details.method,
+  }));
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsLiquidationDetails = z.infer<
+  typeof PerpsLiquidationDetailsSchema
+>;
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export const PerpsAccountFillSchema = z
   .object({
     trade_id: PerpsTradeIdSchema,
@@ -486,6 +522,8 @@ export const PerpsAccountFillSchema = z
     previous_entry_price: DecimalStringSchema,
     pnl: DecimalStringSchema,
     liquidation: z.boolean(),
+    adl: z.boolean(),
+    liquidation_details: PerpsLiquidationDetailsSchema.optional(),
     timestamp: EpochMillisecondsSchema,
     hash: PerpsTxHashSchema,
   })
@@ -513,6 +551,10 @@ export const PerpsAccountFillSchema = z
     previousEntryPrice: fill.previous_entry_price,
     pnl: fill.pnl,
     liquidation: fill.liquidation,
+    /** Whether this fill came from auto-deleveraging. */
+    adl: fill.adl,
+    /** Present for backstop liquidations; ordinary order-book liquidations omit it. */
+    liquidationDetails: fill.liquidation_details,
     timestamp: fill.timestamp,
     hash: fill.hash,
   }));
@@ -551,6 +593,8 @@ export const PerpsAccountFillUpdateSchema = z
     pep: DecimalStringSchema,
     pnl: DecimalStringSchema,
     liq: z.boolean(),
+    adl: z.boolean(),
+    liquidation_details: PerpsLiquidationDetailsSchema.optional(),
     ts: EpochMillisecondsSchema,
     coid: z.string().optional(),
   })
@@ -578,6 +622,10 @@ export const PerpsAccountFillUpdateSchema = z
     previousEntryPrice: fill.pep,
     pnl: fill.pnl,
     liquidation: fill.liq,
+    /** Whether this fill came from auto-deleveraging. */
+    adl: fill.adl,
+    /** Present for backstop liquidations; ordinary order-book liquidations omit it. */
+    liquidationDetails: fill.liquidation_details,
     timestamp: fill.ts,
     clientOrderId: fill.coid,
   }));
