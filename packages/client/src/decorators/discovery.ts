@@ -163,6 +163,12 @@ export type DiscoveryActions = {
    * Legacy multi-outcome markets cannot be represented by the binary
    * {@link Market} model and are omitted from results.
    *
+   * Select one protocol with `version`, or pass both protocol versions in an array.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF markets (v1). Filter v2 markets by `resolutionStatus`, `requestIds`, or
+   * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+   * use the separate `umaResolutionStatus` filter.
+   *
    * @throws {@link ListMarketsError}
    * Thrown on failure.
    *

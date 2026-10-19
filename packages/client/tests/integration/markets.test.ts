@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   PriceHistoryInterval,
+  ProtocolVersion,
   UnexpectedResponseError,
   UserInputError,
 } from '@polymarket/client';
@@ -45,6 +46,43 @@ describe('Markets', () => {
   });
 
   describe('listMarkets', () => {
+    it('retains repeated protocol filters across pages', async ({
+      publicClient,
+    }) => {
+      const version = [ProtocolVersion.V1, ProtocolVersion.V2];
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const pages = publicClient.listMarkets({ version, pageSize: 2 });
+      const first = await pages.firstPage().then(expectNonEmptyPage);
+      const cursor = expectPresent(first.nextCursor);
+      for await (const page of pages.from(cursor)) {
+        expect(page.items.length).toBeLessThanOrEqual(2);
+        break;
+      }
+      const urls = fetchSpy.mock.calls
+        .map(
+          ([input]) =>
+            new URL(input instanceof Request ? input.url : String(input)),
+        )
+        .filter((url) => url.pathname === '/markets/keyset');
+      expect(urls).toHaveLength(2);
+      for (const url of urls) {
+        expect(url.searchParams.getAll('version')).toEqual(version);
+      }
+      expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
+    });
+
+    it('rejects malformed protocol selections before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const version of [1, [], ['v1', 'v2', 'v1'], ['v1', 'v3'], null]) {
+        expect(() =>
+          publicClient.listMarkets({ version: version as never }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it('fetches markets', async ({ publicClient }) => {
       const paginator = publicClient.listMarkets({
         closed: false,
