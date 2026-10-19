@@ -43,6 +43,7 @@ import {
 import { parsePolymarketSlugUrl } from '../polymarket-url';
 import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
+  ClosedFilterSchema,
   PositiveInt32EventIdSchema,
   snakeCase,
   toDataSearchParams,
@@ -59,7 +60,7 @@ export {
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
-  closed: z.boolean().default(false),
+  closed: ClosedFilterSchema.default(false),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
   cyom: z.boolean().optional(),
@@ -161,7 +162,8 @@ export const ListEventsError = makeErrorGuard(
 /**
  * Lists events.
  *
- * Defaults to open events. Pass `closed: true` to list settled events.
+ * Defaults to open events. Pass `closed: true` for closed events or
+ * `closed: 'any'` for either state; no identifier filter is required.
  * Optionally filter by protocol with `version: ProtocolVersion.V1` or
  * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
  * Arrays accept one or two values. Omitting `version` uses the current server

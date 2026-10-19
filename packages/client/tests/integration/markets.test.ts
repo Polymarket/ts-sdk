@@ -46,6 +46,41 @@ describe('Markets', () => {
   });
 
   describe('listMarkets', () => {
+    it('looks up a closed market across closed states', async ({
+      publicClient,
+    }) => {
+      const slug = ['will-donald-trump-win-the-2024-us-presidential-election'];
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const page = await publicClient
+        .listMarkets({ closed: 'any', slug, pageSize: 1 })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      expect(page.items[0].state.closed).toBe(true);
+      const request = fetchSpy.mock.calls[0]?.[0];
+      const url = new URL(
+        request instanceof Request ? request.url : String(request),
+      );
+      expect(url.searchParams.get('closed')).toBe('any');
+      expect(url.searchParams.getAll('slug')).toEqual(slug);
+      const defaultPage = await publicClient
+        .listMarkets({ slug, pageSize: 1 })
+        .firstPage();
+      expect(defaultPage.items).toEqual([]);
+    });
+
+    it('requires identifiers for either closed state before any request', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const filters of [{}, { ids: [] }, { slug: [], tagId: 1 }]) {
+        expect(() =>
+          publicClient.listMarkets({ closed: 'any', ...filters }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it('retains repeated protocol filters across pages', async ({
       publicClient,
     }) => {

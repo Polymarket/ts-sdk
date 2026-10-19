@@ -5,7 +5,7 @@ import {
 } from '@polymarket/bindings/data';
 import type { Market } from '@polymarket/bindings/gamma';
 import { describe, expectTypeOf, it } from 'vitest';
-import type { DataActions } from '../decorators';
+import type { DataActions, DiscoveryActions } from '../decorators';
 import {
   MarketResolutionStatus,
   ProtocolVersion,
@@ -96,6 +96,17 @@ function listMarketHoldersForMarket(actions: DataActions, market: Market) {
 }
 
 void listMarketHoldersForMarket;
+
+function listAcrossClosedStates(actions: DiscoveryActions) {
+  expectTypeOf(actions.listMarkets({ closed: 'any', ids: [1] })).toEqualTypeOf<
+    Paginated<Market[]>
+  >();
+  actions.listEvents({ closed: 'any' });
+  // @ts-expect-error Other boolean filters do not accept the closed sentinel.
+  actions.listMarkets({ closed: 'any', ids: [1], cyom: 'any' });
+}
+
+void listAcrossClosedStates;
 
 function listMarketsByOracleMetadata(client: PublicClient, market: Market) {
   expectTypeOf(
