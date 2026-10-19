@@ -1,5 +1,29 @@
 # @polymarket/client
 
+## 0.13.0
+
+### Minor Changes
+
+- ea1237e: Read indexed trading approvals from the configured data endpoint, with no RPC fallback. Recent changes may lag; setup still checks on chain. Incomplete snapshots raise `UnexpectedResponseError`.
+- 61f140f, d0be2fd, bbbcb20: Add 60-second equity TWAPs, Chainlink/Pyth provider selection, subscription confirmations, and price source metadata. Cached history resets when the source changes.
+- b824569, 95766f8: Add Perps chase and TWAP execution lifecycles.
+- 2eea382, d004008: Add Perps GTD orders and trailing stop losses with activation events.
+- 04af7cc, d918f6a: Add public and authenticated Perps position snapshots and public registration lookup.
+- 1e0b3dd: Expose Perps close-only state, settlement records, display labels, and settlement flags on trades and fills.
+- ab1e3b2: Add `position_deleveraged` notifications. Exhaustive notification handlers must handle this variant; Perps remains experimental.
+- 1a2e9ca, 8d7fccc: Add position acquisition time (`firstEntryAt`, epoch milliseconds) and `PositionSortBy.Price`. Redeemable and closed listings retain their existing ordering.
+- 5976187: Add `expectedSettlementTime` and `settlementTimeBasis` as earliest settlement estimates, not guaranteed deadlines.
+- 0c64cfb: Add quantities to position TP/SL triggers for partial exits; omission still closes the full position.
+- 2111cdf: Add a case-insensitive position `title` filter, preserved across pages and cursor replay (up to 200 Unicode characters).
+
+### Patch Changes
+
+- 98adafb: Add ordered batch Perps leverage updates with per-instrument rejection results.
+- ae8b4e8: Emit server notification resync signals with the catch-up sequence and timestamp. Backfill and deduplicate by notification ID.
+- fcbe83c: Accept current terminal Perps order statuses so valid terminal updates resolve placement.
+- c7b7e1f: Parse HTTP-date `Retry-After` headers into nonnegative whole seconds. Retry policy is unchanged.
+- Update `@polymarket/bindings` to `0.13.0`.
+
 ## 0.12.0
 
 ### Minor Changes

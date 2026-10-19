@@ -21,7 +21,48 @@ const initialState: PerpsInternalTransfersCursorState = {
 };
 
 describe('internal-transfer history continuation', () => {
-  it('retains unread submillisecond transfers across a page boundary', () => {
+  it.each([
+    2000, 2001,
+  ])('advances a complete millisecond page ending at %s', async (lastTimestamp) => {
+    const transfers = [transfer(1, 2001), transfer(2, lastTimestamp)];
+    const first = await toPerpsInternalTransfersPage(
+      transfers,
+      true,
+      { ...initialState, endTimestamp: 2001 },
+      unexpectedBoundaryRead,
+    );
+    const recovered = await toPerpsInternalTransfersPage(
+      transfers,
+      true,
+      cursorState(first),
+      async (bounds) => {
+        expect(bounds).toEqual({ startTimestamp: 2000, endTimestamp: 2001 });
+        return { transfers, hasMore: false };
+      },
+    );
+    const continuation = cursorState(recovered);
+    expect(continuation).toMatchObject({
+      startTimestamp: 0,
+      endTimestamp: 2000,
+    });
+    const last = await toPerpsInternalTransfersPage(
+      [
+        ...transfers.filter((item) => item.createdTimestamp <= 2000),
+        transfer(3, 1999),
+      ],
+      false,
+      continuation,
+      unexpectedBoundaryRead,
+    );
+    expect(
+      [...first.items, ...recovered.items, ...last.items].map(
+        (item) => item.transferId,
+      ),
+    ).toEqual([1, 2, 3]);
+    expect(last.hasMore).toBe(false);
+  });
+
+  it('retains unread submillisecond transfers across a page boundary', async () => {
     // The history query filters nanoseconds, but returned records truncate to
     // milliseconds. A small page exercises the same boundary as the 500-row cap.
     const timestamps = [
@@ -39,7 +80,7 @@ describe('internal-transfer history continuation', () => {
             timestamp >= state.startTimestamp * 1_000_000 &&
             timestamp <= state.endTimestamp * 1_000_000,
         );
-      const page = toPerpsInternalTransfersPage(
+      const page = await toPerpsInternalTransfersPage(
         matching
           .slice(0, 3)
           .map(({ id, timestamp }) =>
@@ -47,6 +88,7 @@ describe('internal-transfer history continuation', () => {
           ),
         matching.length > 3,
         state,
+        unexpectedBoundaryRead,
       );
       ids.push(...page.items.map((item) => item.transferId));
       if (!page.hasMore) break;
@@ -56,55 +98,79 @@ describe('internal-transfer history continuation', () => {
     expect(ends).toEqual([5000, 2001]);
   });
 
-  it('deduplicates the inclusive upper edge of the overlapping millisecond', () => {
-    const first = toPerpsInternalTransfersPage(
+  it('deduplicates the inclusive upper edge of the overlapping millisecond', async () => {
+    const first = await toPerpsInternalTransfersPage(
       [transfer(1, 2001), transfer(2, 2000)],
       true,
       initialState,
+      unexpectedBoundaryRead,
     );
-    const next = toPerpsInternalTransfersPage(
+    const next = await toPerpsInternalTransfersPage(
       [transfer(1, 2001), transfer(2, 2000), transfer(3, 2000)],
       false,
       cursorState(first),
+      unexpectedBoundaryRead,
     );
     expect(next.items.map((item) => item.transferId)).toEqual([3]);
     expect(next.hasMore).toBe(false);
   });
 
-  it('continues within the inclusive start millisecond without widening the range', () => {
+  it('continues within the inclusive start millisecond without widening the range', async () => {
     const state = { ...initialState, startTimestamp: 2000, endTimestamp: 2000 };
-    const first = toPerpsInternalTransfersPage(
+    const first = await toPerpsInternalTransfersPage(
       [transfer(1, 2000)],
       true,
       state,
+      unexpectedBoundaryRead,
     );
     const nextState = cursorState(first);
     expect(nextState).toMatchObject({
       startTimestamp: 2000,
       endTimestamp: 2000,
     });
-    const next = toPerpsInternalTransfersPage(
+    const next = await toPerpsInternalTransfersPage(
       [transfer(1, 2000), transfer(2, 2000)],
       false,
       nextState,
+      unexpectedBoundaryRead,
     );
     expect(next.items.map((item) => item.transferId)).toEqual([2]);
   });
 
-  it('fails rather than skipping a full millisecond that cannot be advanced', () => {
+  it('fails rather than skipping a full millisecond that cannot be advanced', async () => {
     const transfers = [transfer(1, 2000), transfer(2, 2000)];
-    const first = toPerpsInternalTransfersPage(transfers, true, initialState);
-    expect(() =>
-      toPerpsInternalTransfersPage(transfers, true, cursorState(first)),
-    ).toThrow(UnexpectedResponseError);
+    const readBoundary = async () => ({ transfers, hasMore: true });
+    const first = await toPerpsInternalTransfersPage(
+      transfers,
+      true,
+      initialState,
+      readBoundary,
+    );
+    await expect(
+      toPerpsInternalTransfersPage(
+        transfers,
+        true,
+        cursorState(first),
+        readBoundary,
+      ),
+    ).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 
-  it('rejects a missing continuation instead of silently ending history', () => {
-    expect(() => toPerpsInternalTransfersPage([], true, initialState)).toThrow(
-      UnexpectedResponseError,
-    );
+  it('rejects a missing continuation instead of silently ending history', async () => {
+    await expect(
+      toPerpsInternalTransfersPage(
+        [],
+        true,
+        initialState,
+        unexpectedBoundaryRead,
+      ),
+    ).rejects.toBeInstanceOf(UnexpectedResponseError);
   });
 });
+
+async function unexpectedBoundaryRead(): Promise<never> {
+  throw new Error('Ordinary history pages should not need a completeness read');
+}
 
 function cursorState(
   page: Page<PerpsInternalTransfer[]>,

@@ -9,12 +9,22 @@ import {
 
 it('exposes precise public batch results and owner selections', () => {
   const client = createPublicClient();
+  const options = { signal: new AbortController().signal };
+  expectTypeOf(
+    client.fetchPerpsRegistration(
+      { address: '0x1111111111111111111111111111111111111111' },
+      options,
+    ),
+  ).toEqualTypeOf<Promise<boolean>>();
   function read(session: PerpsSession) {
     expectTypeOf(
-      client.fetchPerpsPositionSnapshots({
-        address: '0x1111111111111111111111111111111111111111',
-        activeInstrumentIds: [7],
-      }),
+      client.fetchPerpsPositionSnapshots(
+        {
+          address: '0x1111111111111111111111111111111111111111',
+          activeInstrumentIds: [7],
+        },
+        options,
+      ),
     ).toEqualTypeOf<Promise<PerpsPositionSnapshots>>();
     expectTypeOf(
       session.fetchPositionSnapshots({

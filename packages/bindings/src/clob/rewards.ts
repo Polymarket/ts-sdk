@@ -6,6 +6,8 @@ import {
   DecimalishSchema,
   type DecimalString,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  EventIdSchema,
+  MarketIdSchema,
   type PositionId,
   type TokenId,
 } from '../shared';
@@ -196,3 +198,94 @@ export const PaginatedMarketRewardsSchema = z
 export type PaginatedMarketRewards = z.infer<
   typeof PaginatedMarketRewardsSchema
 >;
+
+/** Fields available for ordering reward market discovery. */
+export enum RewardMarketSort {
+  MarketId = 'market_id',
+  CreatedAt = 'created_at',
+  Volume24Hr = 'volume_24hr',
+  Spread = 'spread',
+  Competitiveness = 'competitiveness',
+  MaxSpread = 'max_spread',
+  MinSize = 'min_size',
+  Question = 'question',
+  OneDayPriceChange = 'one_day_price_change',
+  RatePerDay = 'rate_per_day',
+  Price = 'price',
+  EndDate = 'end_date',
+  StartDate = 'start_date',
+  RewardEndDate = 'reward_end_date',
+}
+
+/** Active market with its reward configurations and discovery metadata. */
+export const RewardMarketSchema = z
+  .object({
+    condition_id: ConditionIdSchema,
+    market_id: MarketIdSchema,
+    market_slug: z.string(),
+    question: z.string(),
+    image: z.string(),
+    market_competitiveness: z.number(),
+    rewards_config: z.array(CurrentRewardConfigSchema),
+    rewards_max_spread: z.number(),
+    rewards_min_size: DecimalishSchema,
+    spread: DecimalishSchema,
+    tokens: z.array(RewardTokenSchema),
+    group_item_title: z.string(),
+    volume_24hr: DecimalishSchema,
+    event_id: EventIdSchema,
+    event_slug: z.string(),
+    created_at: EpochMillisecondsToIsoDateTimeStringSchema,
+    one_day_price_change: DecimalishSchema,
+    end_date: z
+      .literal('')
+      .transform(() => undefined)
+      .or(EpochMillisecondsToIsoDateTimeStringSchema),
+  })
+  .transform(
+    ({
+      condition_id,
+      market_id,
+      market_slug,
+      market_competitiveness,
+      rewards_config,
+      rewards_max_spread,
+      rewards_min_size,
+      group_item_title,
+      volume_24hr,
+      event_id,
+      event_slug,
+      created_at,
+      one_day_price_change,
+      end_date,
+      ...rest
+    }) => ({
+      ...rest,
+      conditionId: condition_id,
+      marketId: market_id,
+      marketSlug: market_slug,
+      marketCompetitiveness: market_competitiveness,
+      rewardsConfig: rewards_config,
+      rewardsMaxSpread: rewards_max_spread,
+      rewardsMinSize: rewards_min_size,
+      groupItemTitle: group_item_title,
+      volume24hr: volume_24hr,
+      eventId: event_id,
+      eventSlug: event_slug,
+      createdAt: created_at,
+      oneDayPriceChange: one_day_price_change,
+      endDate: end_date,
+    }),
+  );
+export type RewardMarket = z.infer<typeof RewardMarketSchema>;
+export const PaginatedRewardMarketsSchema = z
+  .object({
+    limit: z.number().int(),
+    count: z.number().int(),
+    next_cursor: z.string(),
+    data: z.array(RewardMarketSchema),
+  })
+  .transform(({ next_cursor, ...rest }) => ({
+    ...rest,
+    nextCursor: next_cursor,
+  }));

@@ -2,18 +2,30 @@ import {
   approveErc20,
   approveErc1155ForAll,
   type CollateralReturnPlanResponse,
+  type ConvertWorkflow,
+  convert,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   type FetchTradingApprovalsStateRequest,
   fetchTradingApprovalsState,
+  type HorizontalMergeWorkflow,
+  type HorizontalSplitWorkflow,
+  horizontalMerge,
+  horizontalSplit,
   mergePositions,
+  type PrepareConvertRequest,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
   type PrepareErc1155ApprovalForAllRequest,
+  type PrepareHorizontalMergeRequest,
+  type PrepareHorizontalSplitRequest,
   type PrepareMergePositionsRequest,
   type PrepareRedeemPositionsRequest,
   type PrepareSplitPositionRequest,
   planCollateralReturn,
+  prepareConvert,
+  prepareHorizontalMerge,
+  prepareHorizontalSplit,
   redeemPositions,
   setupTradingApprovals,
   splitPosition,
@@ -25,6 +37,7 @@ import type {
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+import type { RequestOptions } from '../request-options';
 import type { TransactionHandle } from '../types';
 
 export type PublicWalletActions = {
@@ -47,10 +60,70 @@ export type PublicWalletActions = {
    */
   fetchTradingApprovalsState(
     request: FetchTradingApprovalsStateRequest,
+    options?: RequestOptions,
   ): Promise<TradingApprovalsState>;
 };
 
 export type SecureWalletActions = {
+  /**
+   * Converts NO into YES for all other conditions.
+   * Derives the event and NO condition index from the market's condition ID.
+   * Includes Other unless converting NO(Other).
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link ConvertError} Thrown on failure.
+   */
+  convert(request: PrepareConvertRequest): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Converts NO into YES for all other conditions.
+   * Derives the event and NO condition index from the market's condition ID.
+   * Includes Other unless converting NO(Other).
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareConvertError} Thrown on failure.
+   */
+  prepareConvert(request: PrepareConvertRequest): Promise<ConvertWorkflow>;
+  /**
+   * Splits pUSD into YES for every condition, including Other.
+   * Uses the event containing the supplied market condition.
+   * Requires pUSD spending approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link HorizontalSplitError} Thrown on failure.
+   */
+  horizontalSplit(
+    request: PrepareHorizontalSplitRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Splits pUSD into YES for every condition, including Other.
+   * Uses the event containing the supplied market condition.
+   * Requires pUSD spending approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareHorizontalSplitError} Thrown on failure.
+   */
+  prepareHorizontalSplit(
+    request: PrepareHorizontalSplitRequest,
+  ): Promise<HorizontalSplitWorkflow>;
+  /**
+   * Merges equal YES amounts from every condition, including Other, into pUSD.
+   * Uses the event containing the supplied market condition.
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link HorizontalMergeError} Thrown on failure.
+   */
+  horizontalMerge(
+    request: PrepareHorizontalMergeRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Merges equal YES amounts from every condition, including Other, into pUSD.
+   * Uses the event containing the supplied market condition.
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareHorizontalMergeError} Thrown on failure.
+   */
+  prepareHorizontalMerge(
+    request: PrepareHorizontalMergeRequest,
+  ): Promise<HorizontalMergeWorkflow>;
+
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
@@ -66,7 +139,9 @@ export type SecureWalletActions = {
    * const state = await client.fetchTradingApprovalsState();
    * ```
    */
-  fetchTradingApprovalsState(): Promise<TradingApprovalsState>;
+  fetchTradingApprovalsState(
+    options?: RequestOptions,
+  ): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -328,12 +403,22 @@ export function walletActions(
 
   return {
     ...actions,
-    fetchTradingApprovalsState: () =>
-      fetchTradingApprovalsState(client, { user: client.account.wallet }),
+    fetchTradingApprovalsState: (options?: RequestOptions) =>
+      fetchTradingApprovalsState(
+        client,
+        { user: client.account.wallet },
+        options,
+      ),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
     transferErc20: transferErc20.bind(null, client),
+    convert: convert.bind(null, client),
+    prepareConvert: prepareConvert.bind(null, client),
+    horizontalSplit: horizontalSplit.bind(null, client),
+    prepareHorizontalSplit: prepareHorizontalSplit.bind(null, client),
+    horizontalMerge: horizontalMerge.bind(null, client),
+    prepareHorizontalMerge: prepareHorizontalMerge.bind(null, client),
     splitPosition: splitPosition.bind(null, client),
     mergePositions: mergePositions.bind(null, client),
     redeemPositions: redeemPositions.bind(null, client),
@@ -350,10 +435,17 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
+  ConvertWorkflow,
   Erc20TradingApproval,
   Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
   FetchTradingApprovalsStateRequest,
+  HorizontalMergeWorkflow,
+  HorizontalSplitWorkflow,
+  NegRiskWorkflow,
+  PrepareConvertRequest,
+  PrepareHorizontalMergeRequest,
+  PrepareHorizontalSplitRequest,
   TradingApprovalRequirements,
   TradingApprovalsState,
 } from '../actions';
@@ -364,10 +456,16 @@ export {
   ApproveErc20Error,
   ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
+  ConvertError,
   ExecuteCollateralReturnPlanError,
   FetchTradingApprovalsStateError,
+  HorizontalMergeError,
+  HorizontalSplitError,
   MergePositionsError,
   PlanCollateralReturnError,
+  PrepareConvertError,
+  PrepareHorizontalMergeError,
+  PrepareHorizontalSplitError,
   RedeemPositionsError,
   SetupTradingApprovalsError,
   SplitPositionError,

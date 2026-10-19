@@ -7,12 +7,12 @@ import {
   type Tag,
   TagSchema,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -26,7 +26,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 const ListTagsRequestSchema = z.object({
@@ -86,12 +86,14 @@ export type FetchRelatedTagResourcesRequest =
   | z.input<typeof RelatedTagResourcesBySlugRequestSchema>;
 
 export type ListTagsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListTagsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -140,7 +142,9 @@ export const ListTagsError = makeErrorGuard(
 export function listTags(
   client: BaseClient,
   request: ListTagsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Tag[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     ListTagsRequestSchema,
@@ -151,6 +155,8 @@ export function listTags(
 
     return client.gamma
       .get('/tags', {
+        schema: ListTagsResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             ...params,
@@ -160,8 +166,7 @@ export function listTags(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(ListTagsResponseSchema))
-      .map((tags) => {
+      .then((tags) => {
         const hasMore = tags.length >= decoded.pageSize;
 
         return {
@@ -179,12 +184,14 @@ export function listTags(
 }
 
 export type FetchTagError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTagError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -214,46 +221,46 @@ export const FetchTagError = makeErrorGuard(
 export async function fetchTag(
   client: BaseClient,
   request: FetchTagRequest,
+  options: RequestOptions = {},
 ): Promise<Tag> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchTagRequestSchema);
 
   if ('id' in params) {
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}`, {
-          params: toSearchParams(
-            {
-              includeTemplate: params.includeTemplate,
-              locale: params.locale,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(TagSchema)),
-    );
+    return client.gamma.get(`tags/${params.id}`, {
+      schema: TagSchema,
+      ...requestOptions,
+      params: toSearchParams(
+        {
+          includeTemplate: params.includeTemplate,
+          locale: params.locale,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}`, {
-        params: toSearchParams(
-          {
-            locale: params.locale,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(TagSchema)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}`, {
+    schema: TagSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+      },
+      snakeCase(),
+    ),
+  });
 }
 
 export type FetchRelatedTagsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchRelatedTagsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -284,41 +291,42 @@ export const FetchRelatedTagsError = makeErrorGuard(
 export async function fetchRelatedTags(
   client: BaseClient,
   request: FetchRelatedTagsRequest,
+  options: RequestOptions = {},
 ): Promise<RelatedTag[]> {
+  const requestOptions = parseRequestOptions(options);
   if ('id' in request) {
     const params = parseUserInput(request, RelatedTagsByIdRequestSchema);
 
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}/related-tags`, {
-          params: toSearchParams(
-            {
-              omitEmpty: params.omitEmpty,
-              status: params.status,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(ListRelatedTagsResponseSchema)),
-    );
+    return client.gamma.get(`tags/${params.id}/related-tags`, {
+      schema: ListRelatedTagsResponseSchema,
+      ...requestOptions,
+      params: toSearchParams(
+        {
+          omitEmpty: params.omitEmpty,
+          status: params.status,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
   const params = parseUserInput(request, RelatedTagsBySlugRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}/related-tags`)
-      .andThen(validateWith(ListRelatedTagsResponseSchema)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}/related-tags`, {
+    ...requestOptions,
+    schema: ListRelatedTagsResponseSchema,
+  });
 }
 
 export type FetchRelatedTagResourcesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchRelatedTagResourcesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -349,27 +357,27 @@ export const FetchRelatedTagResourcesError = makeErrorGuard(
 export async function fetchRelatedTagResources(
   client: BaseClient,
   request: FetchRelatedTagResourcesRequest,
+  options: RequestOptions = {},
 ): Promise<Tag[]> {
+  const requestOptions = parseRequestOptions(options);
   if ('id' in request) {
     const params = parseUserInput(
       request,
       RelatedTagResourcesByIdRequestSchema,
     );
 
-    return unwrap(
-      client.gamma
-        .get(`tags/${params.id}/related-tags/tags`, {
-          params: toSearchParams(
-            {
-              locale: params.locale,
-              omitEmpty: params.omitEmpty,
-              status: params.status,
-            },
-            snakeCase(),
-          ),
-        })
-        .andThen(validateWith(ListRelatedTagResourcesResponseSchema)),
-    );
+    return client.gamma.get(`tags/${params.id}/related-tags/tags`, {
+      schema: ListRelatedTagResourcesResponseSchema,
+      ...requestOptions,
+      params: toSearchParams(
+        {
+          locale: params.locale,
+          omitEmpty: params.omitEmpty,
+          status: params.status,
+        },
+        snakeCase(),
+      ),
+    });
   }
 
   const params = parseUserInput(
@@ -377,18 +385,16 @@ export async function fetchRelatedTagResources(
     RelatedTagResourcesBySlugRequestSchema,
   );
 
-  return unwrap(
-    client.gamma
-      .get(`tags/slug/${params.slug}/related-tags/tags`, {
-        params: toSearchParams(
-          {
-            locale: params.locale,
-            omitEmpty: params.omitEmpty,
-            status: params.status,
-          },
-          snakeCase(),
-        ),
-      })
-      .andThen(validateWith(ListRelatedTagResourcesResponseSchema)),
-  );
+  return client.gamma.get(`tags/slug/${params.slug}/related-tags/tags`, {
+    schema: ListRelatedTagResourcesResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(
+      {
+        locale: params.locale,
+        omitEmpty: params.omitEmpty,
+        status: params.status,
+      },
+      snakeCase(),
+    ),
+  });
 }

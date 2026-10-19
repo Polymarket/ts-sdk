@@ -33,20 +33,24 @@ import {
   OrderBooksSchema,
   PaginatedCurrentRewardsSchema,
   PaginatedMarketRewardsSchema,
+  PaginatedRewardMarketsSchema,
   PriceSchema,
   type Prices,
   PricesSchema,
   ResolveConditionByTokenResponseSchema,
+  type RewardMarket,
+  RewardMarketSort,
   SpreadSchema,
   type Spreads,
   SpreadsSchema,
 } from '@polymarket/bindings/clob';
-import { unwrap } from '@polymarket/types';
+import { SortDirectionSchema } from '@polymarket/bindings/data';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -54,7 +58,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { exchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
@@ -73,12 +77,14 @@ export type FetchMidpointRequest =
     };
 
 export type FetchMidpointError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchMidpointError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -108,15 +114,15 @@ export const FetchMidpointError = makeErrorGuard(
 export async function fetchMidpoint(
   client: BaseClient,
   request: FetchMidpointRequest,
+  options: RequestOptions = {},
 ): Promise<DecimalString> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMidpointRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/midpoint', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(MidpointSchema)),
-  );
+  const response = await client.clob.get('/midpoint', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: MidpointSchema,
+  });
 
   return response.mid;
 }
@@ -139,12 +145,14 @@ export type FetchMidpointsRequest = Array<
 >;
 
 export type FetchMidpointsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchMidpointsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -176,16 +184,16 @@ export const FetchMidpointsError = makeErrorGuard(
 export async function fetchMidpoints(
   client: BaseClient,
   request: FetchMidpointsRequest,
+  options: RequestOptions = {},
 ): Promise<Midpoints> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMidpointsRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('midpoints', {
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(MidpointsSchema)),
-  );
+  return client.clob.postRead('midpoints', {
+    ...requestOptions,
+    json: toTokenRequestPayload(params),
+    schema: MidpointsSchema,
+  });
 }
 
 const FetchTickSizeRequestSchema = exchangeAssetRequestSchema({});
@@ -203,12 +211,14 @@ export type FetchTickSizeRequest =
     };
 
 export type FetchTickSizeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTickSizeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -237,15 +247,15 @@ export const FetchTickSizeError = makeErrorGuard(
 export async function fetchTickSize(
   client: BaseClient,
   request: FetchTickSizeRequest,
+  options: RequestOptions = {},
 ): Promise<TickSizeValue> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchTickSizeRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/tick-size', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchTickSizeResponseSchema)),
-  );
+  const response = await client.clob.get('/tick-size', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: FetchTickSizeResponseSchema,
+  });
 
   return response.minimumTickSize;
 }
@@ -265,12 +275,14 @@ export type FetchNegRiskRequest =
     };
 
 export type FetchNegRiskError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchNegRiskError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -299,15 +311,15 @@ export const FetchNegRiskError = makeErrorGuard(
 export async function fetchNegRisk(
   client: BaseClient,
   request: FetchNegRiskRequest,
+  options: RequestOptions = {},
 ): Promise<boolean> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchNegRiskRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/neg-risk', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchNegRiskResponseSchema)),
-  );
+  const response = await client.clob.get('/neg-risk', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: FetchNegRiskResponseSchema,
+  });
 
   return response.negRisk;
 }
@@ -327,12 +339,14 @@ export type ResolveConditionByTokenRequest =
     };
 
 export type ResolveConditionByTokenError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ResolveConditionByTokenError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -352,13 +366,14 @@ export const ResolveConditionByTokenError = makeErrorGuard(
 export async function resolveConditionByToken(
   client: BaseClient,
   request: ResolveConditionByTokenRequest,
+  options: RequestOptions = {},
 ): Promise<ConditionId> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ResolveConditionByTokenRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/markets-by-token/${params.assetId ?? params.tokenId}`)
-      .andThen(validateWith(ResolveConditionByTokenResponseSchema)),
+  return client.clob.get(
+    `/markets-by-token/${params.assetId ?? params.tokenId}`,
+    { ...requestOptions, schema: ResolveConditionByTokenResponseSchema },
   );
 }
 
@@ -371,12 +386,14 @@ export type FetchMarketInfoRequest = z.input<
 >;
 
 export type FetchMarketInfoError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchMarketInfoError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -396,14 +413,15 @@ export const FetchMarketInfoError = makeErrorGuard(
 export async function fetchMarketInfo(
   client: BaseClient,
   request: FetchMarketInfoRequest,
+  options: RequestOptions = {},
 ): Promise<MarketInfo> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMarketInfoRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/clob-markets/${params.conditionId}`)
-      .andThen(validateWith(FetchMarketInfoResponseSchema)),
-  );
+  return client.clob.get(`/clob-markets/${params.conditionId}`, {
+    ...requestOptions,
+    schema: FetchMarketInfoResponseSchema,
+  });
 }
 
 const FetchBuilderFeeRatesRequestSchema = z.object({
@@ -415,12 +433,14 @@ export type FetchBuilderFeeRatesRequest = z.input<
 >;
 
 export type FetchBuilderFeeRatesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchBuilderFeeRatesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -440,24 +460,26 @@ export const FetchBuilderFeeRatesError = makeErrorGuard(
 export async function fetchBuilderFeeRates(
   client: BaseClient,
   request: FetchBuilderFeeRatesRequest,
+  options: RequestOptions = {},
 ): Promise<BuilderFeeRates> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchBuilderFeeRatesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get(`/fees/builder-fees/${params.builderCode}`)
-      .andThen(validateWith(FetchBuilderFeeRatesResponseSchema))
-      .mapErr((error) => {
-        if (error instanceof RequestRejectedError && error.status === 404) {
-          return new UserInputError(
-            `Unknown builder code: ${params.builderCode}`,
-            { cause: error },
-          );
-        }
+  return client.clob
+    .get(`/fees/builder-fees/${params.builderCode}`, {
+      ...requestOptions,
+      schema: FetchBuilderFeeRatesResponseSchema,
+    })
+    .catch((error) => {
+      if (error instanceof RequestRejectedError && error.status === 404) {
+        throw new UserInputError(
+          `Unknown builder code: ${params.builderCode}`,
+          { cause: error },
+        );
+      }
 
-        return error;
-      }),
-  );
+      throw error;
+    });
 }
 
 const FetchPriceRequestSchema = exchangeAssetRequestSchema({
@@ -479,12 +501,14 @@ export type FetchPriceRequest =
     };
 
 export type FetchPriceError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchPriceError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -515,15 +539,15 @@ export const FetchPriceError = makeErrorGuard(
 export async function fetchPrice(
   client: BaseClient,
   request: FetchPriceRequest,
+  options: RequestOptions = {},
 ): Promise<DecimalString> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPriceRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/price', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(PriceSchema)),
-  );
+  const response = await client.clob.get('/price', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: PriceSchema,
+  });
 
   return response.price;
 }
@@ -548,12 +572,14 @@ export type FetchPricesRequest = Array<
 >;
 
 export type FetchPricesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchPricesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -586,16 +612,16 @@ export const FetchPricesError = makeErrorGuard(
 export async function fetchPrices(
   client: BaseClient,
   request: FetchPricesRequest,
+  options: RequestOptions = {},
 ): Promise<Prices> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPricesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('prices', {
-        json: toTokenWithSideRequestPayload(params),
-      })
-      .andThen(validateWith(PricesSchema)),
-  );
+  return client.clob.postRead('prices', {
+    ...requestOptions,
+    json: toTokenWithSideRequestPayload(params),
+    schema: PricesSchema,
+  });
 }
 
 const FetchOrderBookRequestSchema = exchangeAssetRequestSchema({});
@@ -613,12 +639,14 @@ export type FetchOrderBookRequest =
     };
 
 export type FetchOrderBookError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOrderBookError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -647,16 +675,16 @@ export const FetchOrderBookError = makeErrorGuard(
 export async function fetchOrderBook(
   client: BaseClient,
   request: FetchOrderBookRequest,
+  options: RequestOptions = {},
 ): Promise<OrderBook> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderBookRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get('/book', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(FetchOrderBookResponseSchema)),
-  );
+  return client.clob.get('/book', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: FetchOrderBookResponseSchema,
+  });
 }
 
 const FetchOrderBooksRequestSchema = z
@@ -677,12 +705,14 @@ export type FetchOrderBooksRequest = Array<
 >;
 
 export type FetchOrderBooksError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchOrderBooksError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -713,16 +743,16 @@ export const FetchOrderBooksError = makeErrorGuard(
 export async function fetchOrderBooks(
   client: BaseClient,
   request: FetchOrderBooksRequest,
+  options: RequestOptions = {},
 ): Promise<OrderBook[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderBooksRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('books', {
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(OrderBooksSchema)),
-  );
+  return client.clob.postRead('books', {
+    ...requestOptions,
+    json: toTokenRequestPayload(params),
+    schema: OrderBooksSchema,
+  });
 }
 
 const FetchSpreadRequestSchema = exchangeAssetRequestSchema({});
@@ -740,12 +770,14 @@ export type FetchSpreadRequest =
     };
 
 export type FetchSpreadError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSpreadError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -775,15 +807,15 @@ export const FetchSpreadError = makeErrorGuard(
 export async function fetchSpread(
   client: BaseClient,
   request: FetchSpreadRequest,
+  options: RequestOptions = {},
 ): Promise<DecimalString> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSpreadRequestSchema);
-  const response = await unwrap(
-    client.clob
-      .get('/spread', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(SpreadSchema)),
-  );
+  const response = await client.clob.get('/spread', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: SpreadSchema,
+  });
 
   return response.spread;
 }
@@ -806,12 +838,14 @@ export type FetchSpreadsRequest = Array<
 >;
 
 export type FetchSpreadsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSpreadsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -843,16 +877,16 @@ export const FetchSpreadsError = makeErrorGuard(
 export async function fetchSpreads(
   client: BaseClient,
   request: FetchSpreadsRequest,
+  options: RequestOptions = {},
 ): Promise<Spreads> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSpreadsRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('spreads', {
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(SpreadsSchema)),
-  );
+  return client.clob.postRead('spreads', {
+    ...requestOptions,
+    json: toTokenRequestPayload(params),
+    schema: SpreadsSchema,
+  });
 }
 
 const FetchLastTradePriceRequestSchema = exchangeAssetRequestSchema({});
@@ -870,12 +904,14 @@ export type FetchLastTradePriceRequest =
     };
 
 export type FetchLastTradePriceError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchLastTradePriceError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -907,16 +943,16 @@ export const FetchLastTradePriceError = makeErrorGuard(
 export async function fetchLastTradePrice(
   client: BaseClient,
   request: FetchLastTradePriceRequest,
+  options: RequestOptions = {},
 ): Promise<LastTradePrice | null> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchLastTradePriceRequestSchema);
 
-  return unwrap(
-    client.clob
-      .get('/last-trade-price', {
-        params: toAssetSearchParams(params),
-      })
-      .andThen(validateWith(LastTradePriceSchema)),
-  );
+  return client.clob.get('/last-trade-price', {
+    ...requestOptions,
+    params: toAssetSearchParams(params),
+    schema: LastTradePriceSchema,
+  });
 }
 
 const FetchLastTradePricesRequestSchema = z
@@ -937,12 +973,14 @@ export type FetchLastTradePricesRequest = Array<
 >;
 
 export type FetchLastTradePricesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchLastTradePricesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -973,16 +1011,16 @@ export const FetchLastTradePricesError = makeErrorGuard(
 export async function fetchLastTradePrices(
   client: BaseClient,
   request: FetchLastTradePricesRequest,
+  options: RequestOptions = {},
 ): Promise<LastTradePriceForAsset[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchLastTradePricesRequestSchema);
 
-  return unwrap(
-    client.clob
-      .post('last-trades-prices', {
-        json: toTokenRequestPayload(params),
-      })
-      .andThen(validateWith(LastTradePricesSchema)),
-  );
+  return client.clob.postRead('last-trades-prices', {
+    ...requestOptions,
+    json: toTokenRequestPayload(params),
+    schema: LastTradePricesSchema,
+  });
 }
 
 const ListCurrentRewardsRequestSchema = z
@@ -997,12 +1035,14 @@ export type ListCurrentRewardsRequest = z.input<
 >;
 
 export type ListCurrentRewardsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListCurrentRewardsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -1045,7 +1085,9 @@ export const ListCurrentRewardsError = makeErrorGuard(
 export function listCurrentRewards(
   client: BaseClient,
   request: ListCurrentRewardsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<CurrentReward[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, ...params } = parseUserInput(
     request,
     ListCurrentRewardsRequestSchema,
@@ -1055,6 +1097,7 @@ export function listCurrentRewards(
     (nextCursor) =>
       client.clob
         .get('/rewards/markets/current', {
+          ...requestOptions,
           params: toSearchParams(
             {
               ...params,
@@ -1062,9 +1105,9 @@ export function listCurrentRewards(
             },
             snakeCase(),
           ),
+          schema: PaginatedCurrentRewardsSchema,
         })
-        .andThen(validateWith(PaginatedCurrentRewardsSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -1087,12 +1130,14 @@ export type ListMarketRewardsRequest = z.input<
 >;
 
 export type ListMarketRewardsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListMarketRewardsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -1141,7 +1186,9 @@ export const ListMarketRewardsError = makeErrorGuard(
 export function listMarketRewards(
   client: BaseClient,
   request: ListMarketRewardsRequest,
+  options: RequestOptions = {},
 ): Paginated<MarketReward[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, ...params } = parseUserInput(
     request,
     ListMarketRewardsRequestSchema,
@@ -1151,6 +1198,7 @@ export function listMarketRewards(
     (nextCursor) =>
       client.clob
         .get(`rewards/markets/${params.conditionId}`, {
+          ...requestOptions,
           params: toSearchParams(
             {
               nextCursor,
@@ -1158,9 +1206,9 @@ export function listMarketRewards(
             },
             snakeCase(),
           ),
+          schema: PaginatedMarketRewardsSchema,
         })
-        .andThen(validateWith(PaginatedMarketRewardsSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:
@@ -1199,5 +1247,93 @@ function toAssetSearchParams(
   return toSearchParams(
     { ...rest, tokenId: params.assetId ?? params.tokenId },
     snakeCase(),
+  );
+}
+
+const ListRewardMarketsRequestSchema = z.object({
+  query: z.string().optional(),
+  tagSlugs: z.array(z.string().min(1)).optional(),
+  marketId: z.number().int().positive().optional(),
+  eventIds: z.array(z.number().int().positive()).optional(),
+  eventTitle: z.string().optional(),
+  orderBy: z.enum(RewardMarketSort).optional(),
+  sortDirection: SortDirectionSchema.optional(),
+  minVolume24hr: z.number().nonnegative().optional(),
+  maxVolume24hr: z.number().nonnegative().optional(),
+  minSpread: z.number().nonnegative().optional(),
+  maxSpread: z.number().nonnegative().optional(),
+  minPrice: z.number().nonnegative().optional(),
+  maxPrice: z.number().nonnegative().optional(),
+  pageSize: z.number().int().min(1).max(500).default(100),
+  cursor: PaginationCursorSchema.optional(),
+});
+export type ListRewardMarketsRequest = z.input<
+  typeof ListRewardMarketsRequestSchema
+>;
+export type ListRewardMarketsError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListRewardMarketsError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists active markets with reward configurations and discovery metadata.
+ * Configurations may be empty. Positive range bounds are min-exclusive and max-inclusive; zero disables a bound.
+ * Pages default to 100 items, with a maximum of 500. Without orderBy the order is unspecified; with it sortDirection defaults to ASC.
+ * @throws {@link ListRewardMarketsError} Thrown on failure.
+ * @example
+ * ```ts
+ * for await (const page of listRewardMarkets(client, { query: 'sports' })) {
+ *   console.log(page.items);
+ * }
+ * ```
+ */
+export function listRewardMarkets(
+  client: BaseClient,
+  request: ListRewardMarketsRequest = {},
+  options: RequestOptions = {},
+): Paginated<RewardMarket[]> {
+  const requestOptions = parseRequestOptions(options);
+  const { cursor, ...params } = parseUserInput(
+    request,
+    ListRewardMarketsRequestSchema,
+  );
+  return paginate(
+    (nextCursor) =>
+      client.clob
+        .get('/rewards/markets/multi', {
+          schema: PaginatedRewardMarketsSchema,
+          ...requestOptions,
+          params: toSearchParams(
+            { ...params, nextCursor },
+            snakeCase({
+              query: 'q',
+              tagSlugs: 'tag_slug',
+              minVolume24hr: 'min_volume_24hr',
+              maxVolume24hr: 'max_volume_24hr',
+              eventIds: 'event_id',
+              sortDirection: 'position',
+            }),
+          ),
+        })
+        .then((response) => ({
+          items: response.data,
+          hasMore: response.nextCursor !== END_CURSOR,
+          nextCursor:
+            response.nextCursor === END_CURSOR
+              ? undefined
+              : toPaginationCursor(response.nextCursor),
+        })),
+    cursor,
   );
 }

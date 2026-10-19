@@ -175,6 +175,53 @@ describe('NotificationSchema', () => {
 });
 
 describe('NotificationsResponseSchema', () => {
+  it('retains taker tier upgrades alongside other known notifications', () => {
+    // Contract: fe-notifications/pkg/takertier/notifier.go.
+    const notifications = NotificationsResponseSchema.parse([
+      createNotification(NotificationType.ORDER_FILL, orderPayload),
+      createNotification(11, {
+        previous_tier: 0,
+        tier: 1,
+        rebate_bps: 5,
+        snapshot_date: '2026-10-06',
+      }),
+      createNotification(
+        NotificationType.COMBO_AUTO_REDEEMED,
+        comboAutoRedeemedPayload,
+      ),
+    ]);
+    expect(notifications.map(({ type }) => type)).toEqual([2, 11, 10]);
+    expect(notifications[1]?.payload).toEqual({
+      previousTier: 0,
+      tier: 1,
+      rebateBps: 5,
+      snapshotDate: '2026-10-06',
+    });
+  });
+
+  it.each([
+    { tier: 1.5 },
+    { previous_tier: '0' },
+    { rebate_bps: true },
+    { snapshot_date: '2026-02-30' },
+    { snapshot_date: '2026-10-06T00:00:00Z' },
+  ])('rejects a malformed known tier upgrade: %o', (override) => {
+    const result = NotificationsResponseSchema.safeParse([
+      createNotification(NotificationType.ORDER_FILL, orderPayload),
+      createNotification(11, {
+        previous_tier: 0,
+        tier: 1,
+        rebate_bps: 5,
+        snapshot_date: '2026-10-06',
+        ...override,
+      }),
+    ]);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues.some(({ path }) => path[0] === 1)).toBe(true);
+    }
+  });
+
   it('parses a mixed list covering the remaining notification kinds', () => {
     const notifications = NotificationsResponseSchema.parse([
       createNotification(NotificationType.REWARD_PAYOUT, {
@@ -269,7 +316,7 @@ describe('NotificationsResponseSchema', () => {
   it('omits unknown notification kinds without discarding known kinds', () => {
     const notifications = NotificationsResponseSchema.parse([
       createNotification(NotificationType.ORDER_FILL, orderPayload),
-      createNotification(11, { future: 'payload' }),
+      createNotification(99, { future: 'payload' }),
       createNotification(NotificationType.YIELD_PAYOUT, {
         amount: 3.21,
         proxyWallet,
@@ -306,7 +353,7 @@ describe('NotificationsResponseSchema', () => {
     const result = NotificationsResponseSchema.safeParse([
       null,
       {
-        ...createNotification(11, { future: 'payload' }),
+        ...createNotification(99, { future: 'payload' }),
         type: '11',
       },
     ]);
