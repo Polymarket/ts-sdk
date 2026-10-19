@@ -3,6 +3,7 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
+  EvmAddressSchema,
   type OrderSide,
   OrderSideSchema,
   PaginationCursorSchema,
@@ -37,6 +38,8 @@ import {
   PriceSchema,
   type Prices,
   PricesSchema,
+  type RebatedFee,
+  RebatedFeesResponseSchema,
   ResolveConditionByTokenResponseSchema,
   type RewardMarket,
   RewardMarketSort,
@@ -1336,4 +1339,59 @@ export function listRewardMarkets(
         })),
     cursor,
   );
+}
+
+const FetchCurrentRebatesRequestSchema = z.object({
+  date: z.iso
+    .date()
+    .refine(
+      (value) => !value.startsWith('0000-'),
+      'Expected a calendar date in year 1 or later',
+    ),
+  makerAddress: EvmAddressSchema.refine(
+    (value) => !/^0x0{40}$/i.test(value),
+    'Expected a nonzero maker address',
+  ),
+});
+export type FetchCurrentRebatesRequest = z.input<
+  typeof FetchCurrentRebatesRequestSchema
+>;
+export type FetchCurrentRebatesError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchCurrentRebatesError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches maker fee rebates for a calendar day as a direct collection.
+ * Amounts are decimal strings in USDC units. No authentication is required.
+ * Returns an empty array when the maker has no rebates for the date.
+ * @throws {@link FetchCurrentRebatesError} Thrown on failure.
+ * @example
+ * ```ts
+ * const rebates = await fetchCurrentRebates(client, { date: '2026-10-06', makerAddress });
+ * ```
+ */
+export async function fetchCurrentRebates(
+  client: BaseClient,
+  request: FetchCurrentRebatesRequest,
+  options: RequestOptions = {},
+): Promise<RebatedFee[]> {
+  const requestOptions = parseRequestOptions(options);
+  const params = parseUserInput(request, FetchCurrentRebatesRequestSchema);
+  return client.clob.get('/rebates/current', {
+    schema: RebatedFeesResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
