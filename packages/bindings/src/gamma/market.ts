@@ -90,6 +90,14 @@ export enum ProtocolVersion {
 
 const ProtocolVersionSchema = z.enum(ProtocolVersion);
 
+/** Mechanism used when a market receives a scalar resolution. */
+export enum FallbackResolutionType {
+  None = 'none',
+  Lfmp = 'lfmp',
+  EqualSplit = 'equal_split',
+  Manual = 'manual',
+}
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -169,6 +177,7 @@ export type MarketTrading = {
 };
 
 export type MarketResolution = {
+  fallbackResolutionType?: FallbackResolutionType | null;
   questionId: QuestionId | null;
   negRiskRequestId: ResolutionRequestId | null;
   umaResolutionStatus: UmaResolutionStatus | null;
@@ -238,6 +247,7 @@ export const GammaMarketSchema = z.object({
   slug: z.string().nullish(),
   twitterCardImage: z.string().nullish(),
   resolutionSource: z.string().nullish(),
+  fallbackResolutionType: z.enum(FallbackResolutionType).nullish(),
   endDate: IsoDateTimeStringSchema.nullish(),
   category: z.string().nullish(),
   liquidity: DecimalStringSchema.nullish(),
@@ -504,6 +514,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       feeSchedule: market.feeSchedule,
     },
     resolution: {
+      fallbackResolutionType: market.fallbackResolutionType,
       questionId: market.questionID,
       negRiskRequestId: market.negRiskRequestID,
       umaResolutionStatus: market.umaResolutionStatus,

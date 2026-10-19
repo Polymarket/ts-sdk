@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { EventSchema } from './event';
 import {
   ComboKnownStatus,
+  FallbackResolutionType,
   ListMarketsKeysetResponseSchema,
   ListMarketsResponseSchema,
   MarketSchema,
   ProtocolVersion,
 } from './market';
+import { PublicSearchResponseSchema } from './search';
 
 const rawBinaryMarket = {
   id: '1',
@@ -28,6 +31,46 @@ const rawMultiOutcomeMarket = {
 };
 
 describe('MarketSchema', () => {
+  it.each(
+    Object.values(FallbackResolutionType),
+  )('preserves fallback mode %s across shared market response surfaces', (fallbackResolutionType) => {
+    const raw = { ...rawBinaryMarket, fallbackResolutionType };
+    const event = { id: '2', markets: [raw] };
+    const markets = [
+      MarketSchema.parse(raw),
+      ...ListMarketsResponseSchema.parse([raw]),
+      ...ListMarketsKeysetResponseSchema.parse({ markets: [raw] }).items,
+      ...EventSchema.parse(event).markets,
+      ...(PublicSearchResponseSchema.parse({ events: [event] }).events?.[0]
+        ?.markets ?? []),
+    ];
+    expect(markets).toHaveLength(5);
+    for (const market of markets) {
+      expect(market.resolution.fallbackResolutionType).toBe(
+        fallbackResolutionType,
+      );
+    }
+  });
+
+  it('does not invent a fallback mode for absent or null data', () => {
+    expect(
+      MarketSchema.parse(rawBinaryMarket).resolution.fallbackResolutionType,
+    ).toBeUndefined();
+    expect(
+      MarketSchema.parse({ ...rawBinaryMarket, fallbackResolutionType: null })
+        .resolution.fallbackResolutionType,
+    ).toBeNull();
+  });
+
+  it('rejects a fallback mode outside the response contract', () => {
+    expect(
+      MarketSchema.safeParse({
+        ...rawBinaryMarket,
+        fallbackResolutionType: 'invalid',
+      }).success,
+    ).toBe(false);
+  });
+
   it('normalizes binary outcomes', () => {
     const market = MarketSchema.parse({
       ...rawBinaryMarket,
