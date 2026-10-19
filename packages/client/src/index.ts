@@ -20,6 +20,7 @@ export { ActivityType, TokenModule } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
 export {
   ComboKnownStatus,
+  MarketResolutionStatus,
   ProtocolVersion,
   TeamOrdering,
   WalletType,

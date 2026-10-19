@@ -243,3 +243,27 @@ describe('total earnings public client types', () => {
     }
   });
 });
+
+describe('rebate public types', () => {
+  it('accepts per-read controls on the bound public method', () => {
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('fetchCurrentRebates')
+      .parameter(1)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+    expectTypeOf<typeof import('./index').fetchCurrentRebates>()
+      .parameter(2)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+  });
+  it('preserves direct collection results and plain request strings', () => {
+    const request: import('../index').FetchCurrentRebatesRequest = {
+      date: '2026-10-06',
+      makerAddress: '0x0123456789012345678901234567890123456789',
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').FetchCurrentRebatesRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').fetchCurrentRebates>
+    >().toEqualTypeOf<Promise<import('../index').RebatedFee[]>>();
+  });
+});

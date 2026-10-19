@@ -2,6 +2,7 @@ import type {
   CurrentReward,
   MarketReward,
   OrdersScoringResponse,
+  RebatedFee,
   RewardMarket,
   RewardsPercentages,
   TotalUserEarning,
@@ -10,9 +11,11 @@ import type {
 } from '@polymarket/bindings/clob';
 import type { Prettify } from '@polymarket/types';
 import {
+  type FetchCurrentRebatesRequest,
   type FetchOrderScoringRequest,
   type FetchOrdersScoringRequest,
   type FetchTotalEarningsForUserForDayRequest,
+  fetchCurrentRebates,
   fetchOrderScoring,
   fetchOrdersScoring,
   fetchRewardPercentages,
@@ -37,6 +40,21 @@ import type { Paginated } from '../pagination';
 import type { RequestOptions } from '../request-options';
 
 export type PublicRewardsActions = {
+  /**
+   * Fetches maker fee rebates for a calendar day as a direct collection.
+   * Amounts are decimal strings in USDC units. No authentication is required.
+   * Returns an empty array when the maker has no rebates for the date.
+   * @throws {@link FetchCurrentRebatesError} Thrown on failure.
+   * @example
+   * ```ts
+   * const rebates = await client.fetchCurrentRebates({ date: '2026-10-06', makerAddress });
+   * ```
+   */
+  fetchCurrentRebates(
+    request: FetchCurrentRebatesRequest,
+    options?: RequestOptions,
+  ): Promise<RebatedFee[]>;
+
   /**
    * Lists active markets with reward configurations and discovery metadata.
    * Configurations may be empty. Positive ranges are min-exclusive and max-inclusive; zero disables a bound.
@@ -277,6 +295,7 @@ export type SecureRewardsActions = Prettify<
 
 function publicRewardsActions(client: BaseClient): PublicRewardsActions {
   return {
+    fetchCurrentRebates: fetchCurrentRebates.bind(null, client),
     listRewardMarkets: listRewardMarkets.bind(null, client),
     listCurrentRewards: listCurrentRewards.bind(null, client),
     listMarketRewards: listMarketRewards.bind(null, client),
@@ -315,6 +334,8 @@ export function rewardsActions(
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on PublicRewardsActions / SecureRewardsActions.
 export {
+  FetchCurrentRebatesError,
+  type FetchCurrentRebatesRequest,
   FetchOrderScoringError,
   FetchOrdersScoringError,
   FetchRewardPercentagesError,
