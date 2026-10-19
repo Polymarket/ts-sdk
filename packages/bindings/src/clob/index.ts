@@ -6,6 +6,7 @@ export * from './market-data';
 export * from './neg-risk';
 export * from './notifications';
 export * from './order-book';
+export * from './order-heartbeats';
 export * from './order-response';
 export * from './pagination';
 export * from './rewards';

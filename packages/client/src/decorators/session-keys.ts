@@ -8,6 +8,7 @@ import {
   type SessionKey,
 } from '../actions';
 import type { BaseSecureClient } from '../clients';
+import type { RequestOptions } from '../request-options';
 
 export type SessionKeyActions = {
   /**
@@ -48,7 +49,7 @@ export type SessionKeyActions = {
    * @throws {@link FetchSessionKeysError}
    * Thrown on failure.
    */
-  fetchSessionKeys(): Promise<SessionKey[]>;
+  fetchSessionKeys(options?: RequestOptions): Promise<SessionKey[]>;
 
   /**
    * Revokes a session key authorized for the Deposit Wallet.

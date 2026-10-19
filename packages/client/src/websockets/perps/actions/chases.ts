@@ -10,7 +10,6 @@ import {
   type PerpsDecimalInput,
   PerpsDecimalInputSchema,
 } from '@polymarket/bindings/perps';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import {
   makeErrorGuard,
@@ -22,7 +21,6 @@ import {
   UserInputError,
 } from '../../../errors';
 import { parseUserInput } from '../../../input';
-import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import type { PerpsSignedOp } from '../signing';
 import type { SignPerpsRestCommand } from './trading';
@@ -174,17 +172,14 @@ export async function createPerpsChase(
       args.c,
     ],
   ] as const satisfies PerpsSignedOp;
-  const accepted = await unwrap(
-    client
-      .post('/v1/trade/chases', {
-        retry: false,
-        json: {
-          ...signCommand(op, params.expiresAt),
-          op: { type: 'createChase', args },
-        },
-      })
-      .andThen(validateWith(CreatePerpsChaseResponseSchema)),
-  );
+  const accepted = await client.post('/v1/trade/chases', {
+    schema: CreatePerpsChaseResponseSchema,
+    retry: false,
+    json: {
+      ...signCommand(op, params.expiresAt),
+      op: { type: 'createChase', args },
+    },
+  });
   if ('status' in accepted)
     throw new RequestRejectedError(accepted.error, { status: 200 });
   return accepted;
@@ -210,11 +205,9 @@ export const FetchPerpsChasesError = makeErrorGuard(
 export async function fetchPerpsChases(
   client: ServiceClient,
 ): Promise<PerpsChase[]> {
-  return await unwrap(
-    client
-      .get('/v1/account/chases')
-      .andThen(validateWith(FetchPerpsChasesResponseSchema)),
-  );
+  return await client.get('/v1/account/chases', {
+    schema: FetchPerpsChasesResponseSchema,
+  });
 }
 const CancelPerpsChaseRequestSchema = z.object({
   chaseId: PerpsChaseIdSchema,
@@ -259,17 +252,14 @@ export async function cancelPerpsChase(
 ): Promise<void> {
   const params = parseUserInput(request, CancelPerpsChaseRequestSchema);
   const op = ['cancelChase', [params.chaseId]] as const satisfies PerpsSignedOp;
-  const response = await unwrap(
-    client
-      .del('/v1/trade/chases', {
-        retry: false,
-        json: {
-          ...signCommand(op, params.expiresAt),
-          op: { type: 'cancelChase', args: { chid: params.chaseId } },
-        },
-      })
-      .andThen(validateWith(PerpsCommandAckSchema)),
-  );
+  const response = await client.del('/v1/trade/chases', {
+    schema: PerpsCommandAckSchema,
+    retry: false,
+    json: {
+      ...signCommand(op, params.expiresAt),
+      op: { type: 'cancelChase', args: { chid: params.chaseId } },
+    },
+  });
   if (response.status === 'err')
     throw new RequestRejectedError(response.error, { status: 200 });
 }

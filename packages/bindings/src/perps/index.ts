@@ -5,6 +5,7 @@ export * from './builders';
 export * from './chases';
 export * from './common';
 export * from './funds';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export * from './market';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export * from './notifications';

@@ -1,5 +1,6 @@
 import {
   type DecimalString,
+  type IsoCalendarDateString,
   type OrderSide,
   type PositionId,
   type TokenId,
@@ -9,11 +10,15 @@ import {
 import type {
   LastTradePrice,
   Midpoints,
+  NotificationsResponse,
   Prices,
   Spreads,
+  TotalUserEarning,
 } from '@polymarket/bindings/clob';
 import { describe, expectTypeOf, it } from 'vitest';
+import type { SecureClient } from '../clients';
 import type { DataActions } from '../decorators';
+import { NotificationType } from '../index';
 import type {
   FetchOrderBookRequest,
   fetchLastTradePrice,
@@ -124,5 +129,117 @@ describe('public CLOB price read types', () => {
     expectTypeOf<
       ReturnType<typeof actions.fetchLastTradePrice>
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
+  });
+});
+
+describe('order heartbeat public types', () => {
+  it('exposes authenticated heartbeat actions and recovery data', () => {
+    const request: import('../index').SendOrderHeartbeatRequest = {
+      heartbeatId: '',
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').SendOrderHeartbeatRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').sendOrderHeartbeat>
+    >().toEqualTypeOf<Promise<import('../index').OrderHeartbeat>>();
+    expectTypeOf<import('../index').SecureClient>().not.toHaveProperty(
+      'sendLegacyOrderHeartbeat',
+    );
+    expectTypeOf<typeof import('./index')>().not.toHaveProperty(
+      'sendLegacyOrderHeartbeat',
+    );
+    expectTypeOf<typeof import('../index')>().not.toHaveProperty(
+      'SendLegacyOrderHeartbeatError',
+    );
+    expectTypeOf<
+      typeof import('@polymarket/bindings/clob')
+    >().not.toHaveProperty('LegacyOrderHeartbeatSchema');
+    expectTypeOf<import('../index').PublicClient>().not.toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+    expectTypeOf<import('../index').SecureClient>().toHaveProperty(
+      'sendOrderHeartbeat',
+    );
+    expectTypeOf<import('../index').SecureClient>()
+      .toHaveProperty('sendOrderHeartbeat')
+      .returns.toEqualTypeOf<Promise<import('../index').OrderHeartbeat>>();
+    expectTypeOf<import('../index').OrderHeartbeatMismatchError>()
+      .toHaveProperty('name')
+      .toEqualTypeOf<'OrderHeartbeatMismatchError'>();
+    expectTypeOf<
+      import('../index').OrderHeartbeatMismatchError
+    >().toMatchTypeOf<import('../index').RequestRejectedError>();
+  });
+});
+
+describe('reward market discovery public types', () => {
+  it('exposes supported discovery filters on the public client', () => {
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('listRewardMarkets')
+      .parameter(1)
+      .toEqualTypeOf<import('../index').RequestOptions | undefined>();
+    expectTypeOf<import('../index').PublicClient>()
+      .toHaveProperty('listRewardMarkets')
+      .parameter(0)
+      .toEqualTypeOf<import('../index').ListRewardMarketsRequest | undefined>();
+    expectTypeOf<
+      import('../index').ListRewardMarketsRequest
+    >().not.toHaveProperty('excludeTagSlugs');
+  });
+  it('exposes normalized pagination and the discovery request at the root', () => {
+    const request: import('../index').ListRewardMarketsRequest = {
+      query: 'sports',
+      eventIds: [1, 2],
+      marketId: 12,
+      pageSize: 25,
+      minVolume24hr: 1,
+      maxVolume24hr: 10,
+    };
+    expectTypeOf(request).toMatchTypeOf<
+      import('./index').ListRewardMarketsRequest
+    >();
+    expectTypeOf<
+      ReturnType<typeof import('./index').listRewardMarkets>
+    >().toEqualTypeOf<
+      import('../index').Paginated<import('../index').RewardMarket[]>
+    >();
+  });
+});
+
+declare const notificationsClient: SecureClient;
+describe('notifications public client types', () => {
+  it('narrows tier upgrade payloads through the bound method', async () => {
+    const notifications = notificationsClient.fetchNotifications();
+    expectTypeOf(notifications).toEqualTypeOf<Promise<NotificationsResponse>>();
+    for (const notification of await notifications) {
+      if (notification.type === NotificationType.TAKER_TIER_UPGRADED) {
+        expectTypeOf(notification.payload.previousTier).toEqualTypeOf<number>();
+        expectTypeOf(notification.payload.tier).toEqualTypeOf<number>();
+        expectTypeOf(notification.payload.rebateBps).toEqualTypeOf<number>();
+        expectTypeOf(
+          notification.payload.snapshotDate,
+        ).toEqualTypeOf<IsoCalendarDateString>();
+      }
+    }
+  });
+});
+
+declare const earningsClient: SecureClient;
+describe('total earnings public client types', () => {
+  it('accepts the sponsored option and returns decimal breakdowns', async () => {
+    const earnings = earningsClient.fetchTotalEarningsForUserForDay({
+      date: '2026-10-06',
+      sponsored: true,
+    });
+    expectTypeOf(earnings).toEqualTypeOf<Promise<TotalUserEarning[]>>();
+    for (const earning of await earnings) {
+      expectTypeOf(earning.nativeEarnings).toEqualTypeOf<
+        DecimalString | undefined
+      >();
+      expectTypeOf(earning.sponsoredEarnings).toEqualTypeOf<
+        DecimalString | undefined
+      >();
+    }
   });
 });

@@ -72,8 +72,8 @@ export {
   KnownPriceSource,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';
-
 // Event types — re-exported from bindings for consumer convenience.
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   CustomMarketEvent,
   MarketEvent,

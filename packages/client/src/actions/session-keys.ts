@@ -15,7 +15,6 @@ import {
   delay,
   expectEvmAddress,
   isSameEvmAddress,
-  unwrap,
   ZERO_ADDRESS,
 } from '@polymarket/types';
 import { z } from 'zod';
@@ -25,6 +24,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -34,7 +34,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import type { TransactionOutcome } from '../types';
 import { SignerType } from '../wallet';
 import { completeWith } from '../workflow';
@@ -60,6 +60,7 @@ export type SessionKey = {
 };
 
 export type FetchSessionKeysError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | SigningError
@@ -67,6 +68,7 @@ export type FetchSessionKeysError =
   | UnexpectedResponseError
   | UserInputError;
 export const FetchSessionKeysError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   SigningError,
@@ -91,14 +93,15 @@ export const FetchSessionKeysError = makeErrorGuard(
  */
 export async function fetchSessionKeys(
   client: BaseSecureClient,
+  options: RequestOptions = {},
 ): Promise<SessionKey[]> {
+  const requestOptions = parseRequestOptions(options);
   assertOwnerDepositWallet(client);
 
-  const response = await unwrap(
-    client.secureClob
-      .get('/v1/user/session-signers')
-      .andThen(validateWith(ActiveSessionSignersResponseSchema)),
-  );
+  const response = await client.secureClob.get('/v1/user/session-signers', {
+    ...requestOptions,
+    schema: ActiveSessionSignersResponseSchema,
+  });
 
   if (!isSameEvmAddress(response.wallet, client.account.wallet)) {
     throw new UnexpectedResponseError(
@@ -266,17 +269,17 @@ export async function authorizeSessionKey(
     validUntil: `${validUntil}`,
     walletAddress: client.account.wallet,
   };
-  const response = await unwrap(
-    client.relayer
-      .post('/v1/session-signers/authorizations', {
-        headers: {
-          'Idempotency-Key':
-            parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
-        },
-        json: payload,
-        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
-      })
-      .andThen(validateWith(RelayerAuthorizeSessionSignerResponseSchema)),
+  const response = await client.relayer.post(
+    '/v1/session-signers/authorizations',
+    {
+      headers: {
+        'Idempotency-Key':
+          parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
+      },
+      json: payload,
+      timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
+      schema: RelayerAuthorizeSessionSignerResponseSchema,
+    },
   );
   assertSessionSignerOperationAccepted({
     kind: 'authorization',
@@ -401,17 +404,17 @@ export async function revokeSessionKey(
     signature: signedBatch.signature,
     walletAddress: client.account.wallet,
   };
-  const response = await unwrap(
-    client.relayer
-      .post('/v1/session-signers/revocations', {
-        headers: {
-          'Idempotency-Key':
-            parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
-        },
-        json: payload,
-        timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
-      })
-      .andThen(validateWith(RelayerRevokeSessionSignerResponseSchema)),
+  const response = await client.relayer.post(
+    '/v1/session-signers/revocations',
+    {
+      headers: {
+        'Idempotency-Key':
+          parsedRequest.idempotencyKey ?? globalThis.crypto.randomUUID(),
+      },
+      json: payload,
+      timeout: SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT_MS,
+      schema: RelayerRevokeSessionSignerResponseSchema,
+    },
   );
   assertSessionSignerOperationAccepted({
     kind: 'revocation',

@@ -18,7 +18,6 @@ import {
   invariant,
   isSameEvmAddress,
   type NonEmptyArray,
-  unwrap,
 } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
@@ -33,7 +32,6 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
 import type { TransactionCall, TransactionHandle } from '../types';
 import { completeWith } from '../workflow';
 import {
@@ -87,14 +85,11 @@ export async function planCollateralReturn(
 ): Promise<CollateralReturnPlanResponse> {
   assertCollateralReturnAccount(client);
 
-  return unwrap(
-    client.combos
-      .post('/v1/collateral-return/plan', {
-        json: { wallet: client.account.wallet },
-        timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
-      })
-      .andThen(validateWith(CollateralReturnPlanResponseSchema)),
-  );
+  return client.combos.post('/v1/collateral-return/plan', {
+    json: { wallet: client.account.wallet },
+    timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
+    schema: CollateralReturnPlanResponseSchema,
+  });
 }
 
 const ExecuteCollateralReturnPlanRequestSchema = z.object({
@@ -310,14 +305,11 @@ async function submitCollateralReturnPlan(
   planHash: HexString,
   envelope: CollateralReturnEnvelope,
 ): Promise<TransactionHandle> {
-  const response = await unwrap(
-    client.combos
-      .post('/v1/collateral-return/submit', {
-        json: { envelope, plan_hash: planHash },
-        timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
-      })
-      .andThen(validateWith(RelayerExecuteResponseSchema)),
-  );
+  const response = await client.combos.post('/v1/collateral-return/submit', {
+    json: { envelope, plan_hash: planHash },
+    timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
+    schema: RelayerExecuteResponseSchema,
+  });
 
   return new GaslessTransactionHandle(client, response);
 }

@@ -97,6 +97,28 @@ export type EventExternalPartnerMappingId = Tagged<
 >;
 export type EpochMilliseconds = Tagged<number, 'EpochMilliseconds'>;
 export type EventId = Tagged<string, 'EventId'>;
+/** Protocol V2 neg-risk event identity (`bytes29`), distinct from an API event ID. */
+export type NegRiskEventId = Tagged<HexString, 'NegRiskEventId'>;
+
+/**
+ * Parses a neg-risk event ID, accepting its native bytes29 or zero-padded bytes32 form.
+ * Requires module 2, at least two real conditions, and zero reserved bits.
+ */
+export const NegRiskEventIdSchema = z
+  .string()
+  .regex(
+    /^0x02[0-9a-fA-F]{56}(?:000000)?$/,
+    'Expected a protocol V2 neg-risk event ID (bytes29 or zero-padded bytes32)',
+  )
+  .refine(
+    (value) => /^0{16}$/.test(value.slice(40, 56)),
+    'Event ID reserved bits must be zero',
+  )
+  .refine(
+    (value) => Number.parseInt(value.slice(36, 40), 16) >= 2,
+    'Event ID must encode at least two real conditions',
+  )
+  .transform((value) => value.slice(0, 60).toLowerCase() as NegRiskEventId);
 export type ImageOptimizationId = Tagged<string, 'ImageOptimizationId'>;
 export type InternalUserId = Tagged<string, 'InternalUserId'>;
 export type IsoCalendarDateString = Tagged<string, 'IsoCalendarDateString'>;
@@ -377,13 +399,34 @@ const EpochMillisecondsLikeSchema = z.union([
   z.number().int(),
   z.string().regex(/^\d+$/).transform(Number),
 ]);
+// Timestamps also arrive as Postgres text, such as `2026-10-17 23:30:00+00`:
+// a space separator and an offset without minutes, neither of which is ISO 8601.
+const PostgresDateTimePattern =
+  /^(\d{4}-\d{2}-\d{2})([ T])(\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?)([+-]\d{2})(?::?(\d{2}))?$/;
+const IsoDateTimeWithOffsetSchema = z.iso.datetime({ offset: true });
 const DateLikeStringToIsoDateTimeStringSchema = z
   .string()
-  .transform((value) => {
+  .transform((value, ctx) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       return toIsoDateTimeString(
         new Date(`${value}T00:00:00.000Z`).toISOString(),
       );
+    }
+
+    const match = PostgresDateTimePattern.exec(value);
+    const [, date, separator, time, hours, minutes] = match ?? [];
+
+    if (date && (separator === ' ' || minutes === undefined)) {
+      const rebuilt = `${date}T${time}${hours}:${minutes ?? '00'}`;
+
+      // A well-formed string can still name a day or hour that does not
+      // exist; `Date` would throw or roll it over, so reject it here instead.
+      if (!IsoDateTimeWithOffsetSchema.safeParse(rebuilt).success) {
+        ctx.addIssue({ code: 'custom', message: `Invalid datetime: ${value}` });
+        return z.NEVER;
+      }
+
+      return toIsoDateTimeString(new Date(rebuilt).toISOString());
     }
 
     return toIsoDateTimeString(value);
