@@ -1,4 +1,10 @@
-import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
+import {
+  EvmAddressSchema,
+  type OwnershipChallenge,
+  type OwnershipChallengeRequest,
+  OwnershipChallengeSchema,
+  TokenResponseSchema,
+} from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -98,6 +104,8 @@ type PublicContext = {
   predictions: ServiceClient;
   /** @internal */
   auth: ServiceClient;
+  /** @internal Direct service for credential administration; never uses bearer or platform authentication. */
+  credentialManagement: ServiceClient;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -178,6 +186,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
+  get credentialManagement(): ServiceClient {
+    return this.context.credentialManagement;
+  }
+
+  /** @internal */
   get clob(): ServiceClient {
     return this.context.clob;
   }
@@ -244,6 +257,15 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return Promise.resolve({});
   }
 
+  protected resolveCredentialHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    // Builder-key revocation authenticates as the builder, not as its owner.
+    if (request.path === '/auth/builder-api-key' && request.method === 'DELETE')
+      return this.resolveClobHeaders(request);
+    return Promise.resolve({});
+  }
+
   protected async resolveRelayerHeaders(
     request: ServiceRequest,
   ): Promise<HeadersInit> {
@@ -301,6 +323,23 @@ type PublicClientConfig = {
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
+async function resolveGatewayHeaders(
+  config: PublicClientConfig,
+  request: ServiceRequest,
+  existingHeaders?: HeadersInit,
+): Promise<Headers> {
+  const headers = new Headers(existingHeaders);
+  // Attribution is bound to the session. Refresh/logout need no application key exchange.
+  if (request.path === '/v1/auth/refresh' || request.path === '/v1/auth/logout')
+    return headers;
+  const gateway = await config.apiKey?.authorizeGateway?.({
+    fetch: config.fetch,
+    signal: request.signal,
+  });
+  for (const [key, value] of new Headers(gateway)) headers.set(key, value);
+  return headers;
+}
+
 function createAuthService(config: PublicClientConfig): ServiceClient {
   return new ServiceClient({
     fetch: config.fetch,
@@ -308,7 +347,11 @@ function createAuthService(config: PublicClientConfig): ServiceClient {
     headers: config.environment.predictions.headers,
     retryMutations: false,
     sensitive: true,
-    resolveHeaders: async () => ({ POLYMARKET_CLIENT: createClientMetadata() }),
+    resolveHeaders: async (request) => {
+      const headers = await resolveGatewayHeaders(config, request);
+      headers.set('POLYMARKET_CLIENT', createClientMetadata());
+      return headers;
+    },
   });
 }
 
@@ -327,7 +370,7 @@ function createPredictionsService(
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
     resolveHeaders: async (request) => {
-      const headers = new Headers(await resolveHeaders?.(request));
+      const headers = await resolveGatewayHeaders(config, request, await resolveHeaders?.(request));
       headers.set('POLYMARKET_CLIENT', metadata);
       return headers;
     },
@@ -348,6 +391,15 @@ class BasePublicClient<
         this.resolvePredictionHeaders(request),
       ),
       auth: createAuthService(config),
+      credentialManagement: new ServiceClient({
+        fetch: config.fetch,
+        onRateLimitUpdate: config.onRateLimitUpdate,
+        root: config.environment.clob.rest,
+        headers: config.environment.clob.headers,
+        retryMutations: false,
+        sensitive: true,
+        resolveHeaders: (request) => this.resolveCredentialHeaders(request),
+      }),
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
@@ -470,6 +522,29 @@ class BasePublicClient<
       Prettify<TPublicActions & DecoratorPublicActions<TDecorator>>,
       Prettify<TSecureActions & DecoratorSecureActions<TDecorator>>
     >;
+  }
+
+  /** @internal */
+  assertCredentialMigrationSupported(): void {
+    if (this.context.apiKey?.createChallenge !== undefined)
+      throw new UserInputError(
+        'Migrate L2 credentials on your server with platformApiKey, then restore the returned bearer pair in this client.',
+      );
+  }
+
+  /** @internal */
+  async requestOwnershipChallenge(
+    request: OwnershipChallengeRequest,
+  ): Promise<OwnershipChallenge> {
+    if (this.context.apiKey?.createChallenge !== undefined)
+      return this.context.apiKey.createChallenge(request, {
+        fetch: this.context.fetch,
+      });
+    return this.auth.post('/v1/auth/challenge', {
+      json: request,
+      schema: OwnershipChallengeSchema,
+      retry: false,
+    });
   }
 
   /** Opens a bearer session by signing a server-issued ownership challenge.
@@ -709,6 +784,15 @@ class BaseSecureClient<
         this.resolvePredictionHeaders(request),
       ),
       auth,
+      credentialManagement: new ServiceClient({
+        fetch: config.fetch,
+        onRateLimitUpdate: config.onRateLimitUpdate,
+        root: config.environment.clob.rest,
+        headers: config.environment.clob.headers,
+        retryMutations: false,
+        sensitive: true,
+        resolveHeaders: (request) => this.resolveCredentialHeaders(request),
+      }),
       clob: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.clob.headers,
@@ -760,10 +844,14 @@ class BaseSecureClient<
         fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
-        resolveHeaders: async (request) => ({
-          ...(await this.resolveClobHeaders(request)),
-          ...(await this.#createL2Headers(request)),
-        }),
+        resolveHeaders: async (request) => {
+          const headers = new Headers(await this.resolveClobHeaders(request));
+          for (const [key, value] of new Headers(
+            await this.#createL2Headers(request),
+          ))
+            headers.set(key, value);
+          return headers;
+        },
         root: config.environment.clob.rest,
         authentication,
         retryMutations: false,
@@ -779,10 +867,16 @@ class BaseSecureClient<
       builderGateway: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.combos.builderGateway.headers,
-        resolveHeaders: async (request) => ({
-          ...(await this.#resolveBuilderGatewayHeaders(request)),
-          ...(await this.#createL2Headers(request)),
-        }),
+        resolveHeaders: async (request) => {
+          const headers = new Headers(
+            await this.#resolveBuilderGatewayHeaders(request),
+          );
+          for (const [key, value] of new Headers(
+            await this.#createL2Headers(request),
+          ))
+            headers.set(key, value);
+          return headers;
+        },
         root: config.environment.combos.builderGateway.rest,
         authentication,
         retryMutations: false,
@@ -1054,6 +1148,22 @@ class BaseSecureClient<
         headers.set(key, value);
     }
     return headers;
+  }
+
+  protected override resolveCredentialHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    const { l2Credentials } = this.context;
+    const ownerAuthentication =
+      request.path === '/auth/api-keys' ||
+      (request.path === '/auth/api-key' && request.method === 'DELETE') ||
+      (request.path === '/auth/builder-api-key' && request.method !== 'DELETE');
+    if (!ownerAuthentication) return super.resolveCredentialHeaders(request);
+    if (l2Credentials === undefined)
+      throw new UserInputError(
+        'This credential operation requires a client authenticated with L2 key/secret/passphrase credentials. Bearer-only credential administration is not supported.',
+      );
+    return this.#createL2Headers(request);
   }
 
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {

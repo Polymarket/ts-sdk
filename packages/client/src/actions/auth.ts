@@ -60,7 +60,7 @@ export async function createApiKey(
   client: BaseClient,
   request: ApiKeyAuthRequest,
 ): Promise<ApiKeyCreds> {
-  return client.clob.post('/auth/api-key', {
+  return client.credentialManagement.post('/auth/api-key', {
     headers: toL1Headers(request),
     schema: ApiKeyCredsSchema,
   });
@@ -96,7 +96,7 @@ export async function deriveApiKey(
   client: BaseClient,
   request: ApiKeyAuthRequest,
 ): Promise<ApiKeyCreds> {
-  return client.clob.getWorkflow('/auth/derive-api-key', {
+  return client.credentialManagement.getWorkflow('/auth/derive-api-key', {
     headers: toL1Headers(request),
     schema: ApiKeyCredsSchema,
   });
@@ -162,7 +162,7 @@ export const FetchApiKeysError = makeErrorGuard(
 );
 
 /**
- * Fetches all API keys associated with the authenticated client.
+ * Fetches all API keys associated with a L2-authenticated client.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -180,7 +180,7 @@ export async function fetchApiKeys(
   options: RequestOptions = {},
 ): Promise<ApiKey[]> {
   const requestOptions = parseRequestOptions(options);
-  const response = await client.secureClob.get('/auth/api-keys', {
+  const response = await client.credentialManagement.get('/auth/api-keys', {
     ...requestOptions,
     schema: ApiKeysResponseSchema,
   });
@@ -193,17 +193,19 @@ export type DeleteApiKeyError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const DeleteApiKeyError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
- * Deletes the authenticated API key.
+ * Deletes the L2 API key used to authenticate this client.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -214,11 +216,14 @@ export const DeleteApiKeyError = makeErrorGuard(
  * ```
  *
  * @throws {@link DeleteApiKeyError}
- * Thrown when request signing fails, or the request is rejected, rate limited,
+ * Thrown when required API-key authorization is unavailable, request signing fails,
+ * or the request is rejected, rate limited,
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function deleteApiKey(client: BaseSecureClient): Promise<void> {
-  await client.secureClob.del('/auth/api-key', { schema: z.literal('OK') });
+  await client.credentialManagement.del('/auth/api-key', {
+    schema: z.literal('OK'),
+  });
 }
 
 export type CreateBuilderApiKeyError =
@@ -226,17 +231,19 @@ export type CreateBuilderApiKeyError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const CreateBuilderApiKeyError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
- * Creates a new builder API key for the authenticated client.
+ * Creates a new builder API key using L2 owner authentication.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -247,13 +254,14 @@ export const CreateBuilderApiKeyError = makeErrorGuard(
  * ```
  *
  * @throws {@link CreateBuilderApiKeyError}
- * Thrown when request signing fails, or the request is rejected, rate limited,
+ * Thrown when required API-key authorization is unavailable, request signing fails,
+ * or the request is rejected, rate limited,
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function createBuilderApiKey(
   client: BaseSecureClient,
 ): Promise<BuilderApiKeyCreds> {
-  return client.secureClob.post('/auth/builder-api-key', {
+  return client.credentialManagement.post('/auth/builder-api-key', {
     schema: BuilderApiKeyCredsSchema,
   });
 }
@@ -277,7 +285,7 @@ export const FetchBuilderApiKeysError = makeErrorGuard(
 );
 
 /**
- * Fetches builder API keys associated with the authenticated client.
+ * Fetches builder API keys using L2 owner authentication.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -288,7 +296,8 @@ export const FetchBuilderApiKeysError = makeErrorGuard(
  * ```
  *
  * @throws {@link FetchBuilderApiKeysError}
- * Thrown when request signing fails, or the request is rejected, rate limited,
+ * Thrown when required API-key authorization is unavailable, request signing fails,
+ * or the request is rejected, rate limited,
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function fetchBuilderApiKeys(
@@ -296,7 +305,7 @@ export async function fetchBuilderApiKeys(
   options: RequestOptions = {},
 ): Promise<BuilderApiKey[]> {
   const requestOptions = parseRequestOptions(options);
-  return client.secureClob.get('/auth/builder-api-key', {
+  return client.credentialManagement.get('/auth/builder-api-key', {
     ...requestOptions,
     schema: BuilderApiKeysResponseSchema,
   });
@@ -307,17 +316,20 @@ export type RevokeBuilderApiKeyError =
   | RequestRejectedError
   | SigningError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 export const RevokeBuilderApiKeyError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   SigningError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
- * Revokes a builder API key.
+ * Revokes the builder API key configured for builder signing.
+ * This operation authenticates as the builder and does not require owner credentials.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -328,11 +340,18 @@ export const RevokeBuilderApiKeyError = makeErrorGuard(
  * ```
  *
  * @throws {@link RevokeBuilderApiKeyError}
- * Thrown when request signing fails, or the request is rejected, rate limited,
+ * Thrown when required API-key authorization is unavailable, request signing fails,
+ * or the request is rejected, rate limited,
  * interrupted by transport issues, or returns an unexpected response.
  */
 export async function revokeBuilderApiKey(client: BaseClient): Promise<void> {
-  await client.clob.del('/auth/builder-api-key', { schema: z.literal('OK') });
+  if (!client.hasBuilderApiKey)
+    throw new UserInputError(
+      'Builder-key revocation requires builder signing authorization in the client configuration.',
+    );
+  await client.credentialManagement.del('/auth/builder-api-key', {
+    schema: z.literal('OK'),
+  });
 }
 
 function toL1Headers(auth: ApiKeyAuthRequest): HeadersInit {

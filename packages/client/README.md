@@ -203,3 +203,7 @@ the workflow with its requested signer responses to execute it.
 ## License
 
 MIT
+
+## Authentication and application keys
+
+See [bearer-session migration](../../docs/authentication-migration.md) for saved credentials and refresh, and [Platform API Keys](../../docs/platform-api-keys.md) for server/browser configuration and builder/submission compatibility.

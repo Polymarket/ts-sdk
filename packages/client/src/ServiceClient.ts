@@ -477,6 +477,7 @@ export class ServiceClient {
     readOnly = false,
   ): Promise<unknown> {
     const signal = options.signal;
+    const redactions = new Set<string>();
     try {
       assertNotAborted(signal);
       parseUserInput(
@@ -486,7 +487,13 @@ export class ServiceClient {
       const retries = readOnly
         ? parseRequestOptions(options).retries
         : undefined;
-      const response = await this.#send(method, path, options, retries);
+      const response = await this.#send(
+        method,
+        path,
+        options,
+        retries,
+        redactions,
+      );
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(
         response.headers,
@@ -508,7 +515,10 @@ export class ServiceClient {
           message,
           heartbeatId,
           retryAfter: retryAfterSeconds,
-        } = await withAbort(this.#extractResponseError(response, path), signal);
+        } = await withAbort(
+          this.#extractResponseError(response, path, redactions),
+          signal,
+        );
         if (heartbeatId !== undefined) {
           throw new OrderHeartbeatMismatchError(heartbeatId);
         }
@@ -521,6 +531,30 @@ export class ServiceClient {
       return await this.#consumeResponse(response, options);
     } catch (error) {
       assertNotAborted(signal);
+      if (
+        error instanceof Error &&
+        redactRequestMessage(error.message, redactions) !== error.message
+      ) {
+        const message = redactRequestMessage(error.message, redactions);
+        if (error instanceof RequestRejectedError)
+          throw new RequestRejectedError(message, {
+            status: error.status,
+            code: error.code,
+            retryAfter: error.retryAfter,
+            restriction: error.restriction,
+          });
+        if (error instanceof RateLimitError)
+          throw new RateLimitError(message, {
+            retryAfter: error.retryAfter,
+            rateLimit: error.rateLimit,
+          });
+        if (error instanceof RequestAbortedError)
+          throw new RequestAbortedError(message);
+        if (error instanceof UnexpectedResponseError)
+          throw new UnexpectedResponseError(message);
+        if (error instanceof UserInputError) throw new UserInputError(message);
+        throw new TransportError(message);
+      }
       if (
         error instanceof RequestAbortedError ||
         error instanceof RateLimitError ||
@@ -598,6 +632,7 @@ export class ServiceClient {
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
     retries?: number,
+    redactions = new Set<string>(),
   ): Promise<Response> {
     assertNotAborted(options.signal);
     const client = this.#client;
@@ -619,6 +654,8 @@ export class ServiceClient {
           ),
           ClientCredentialsSchema,
         );
+        for (const value of Object.values(credentials))
+          if (value.length > 0) redactions.add(value);
         authenticationHeaders = await withAbort(
           Promise.resolve(authentication.headers(credentials, request)),
           options.signal,
@@ -635,6 +672,18 @@ export class ServiceClient {
         resolvedHeaders,
         authenticationHeaders,
       );
+
+      for (const name of [
+        'x-api-key',
+        'poly_signature',
+        'poly_passphrase',
+        'poly_builder_signature',
+        'poly_builder_passphrase',
+        'relayer_api_key',
+      ]) {
+        const value = headers.get(name);
+        if (value) redactions.add(value);
+      }
 
       if (request.body !== undefined && !headers.has('content-type')) {
         headers.set('content-type', 'application/json');
@@ -782,6 +831,7 @@ export class ServiceClient {
   async #extractResponseError(
     response: Response,
     path: string,
+    redactions: ReadonlySet<string>,
   ): Promise<{
     message: string;
     code?: string;
@@ -830,8 +880,15 @@ export class ServiceClient {
             ? message
             : undefined;
         return {
-          message: `${message} (${response.url})`,
-          code: code ?? inferredCode,
+          message: redactRequestMessage(
+            `${message} (${response.url})`,
+            redactions,
+          ),
+          code:
+            redactRequestMessage(code ?? inferredCode ?? '', redactions) ===
+            (code ?? inferredCode ?? '')
+              ? (code ?? inferredCode)
+              : undefined,
           retryAfter,
         };
       }
@@ -871,4 +928,14 @@ export class ServiceClient {
       message: `Request to ${response.url} failed with status ${response.status} and unreadable response body`,
     };
   }
+}
+
+function redactRequestMessage(
+  message: string,
+  secrets: ReadonlySet<string>,
+): string {
+  let result = message;
+  for (const secret of [...secrets].sort((a, b) => b.length - a.length))
+    result = result.replaceAll(secret, '[REDACTED]');
+  return result;
 }
