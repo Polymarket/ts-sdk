@@ -192,11 +192,11 @@ function bearerPolicy(policy: {
   };
 }
 
-it('lets a class authenticate with the existing legacy credential shape without bearer conversion', async () => {
+it('lets a class authenticate with the existing L2 credential shape without bearer conversion', async () => {
   const credentials = {
     key: ApiKeySchema.parse('00000000-0000-0000-0000-000000000001'),
-    secret: 'legacy-secret',
-    passphrase: 'legacy-passphrase',
+    secret: 'l2-secret',
+    passphrase: 'l2-passphrase',
   };
   const refreshToken = vi.fn(async () => false);
   const service = new ServiceClient({
@@ -209,7 +209,7 @@ it('lets a class authenticate with the existing legacy credential shape without 
       return Response.json(
         {
           code: 'invalid_credentials',
-          message: 'Legacy credentials rejected.',
+          message: 'L2 credentials rejected.',
         },
         { status: 401 },
       );
@@ -217,7 +217,7 @@ it('lets a class authenticate with the existing legacy credential shape without 
     authentication: {
       credentials: async () => credentials,
       headers: (accepted, request) => {
-        expect(request.path).toBe('/legacy');
+        expect(request.path).toBe('/l2');
         expect(accepted).toEqual(credentials);
         return 'key' in accepted
           ? new Headers({ POLY_API_KEY: accepted.key })
@@ -233,7 +233,7 @@ it('lets a class authenticate with the existing legacy credential shape without 
     },
   });
   // A policy may inspect its response copy without consuming transport's body.
-  await expect(service.get('/legacy')).rejects.toMatchObject({
+  await expect(service.get('/l2')).rejects.toMatchObject({
     status: 401,
     code: 'invalid_credentials',
   });

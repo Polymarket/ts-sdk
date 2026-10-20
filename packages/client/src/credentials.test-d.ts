@@ -14,12 +14,12 @@ it('exports the existing credential alternatives and narrows each complete mecha
     if ('key' in credentials) {
       expectTypeOf(credentials).toEqualTypeOf<ApiKeyCreds>();
       expectTypeOf(credentials.secret).toEqualTypeOf<string>();
-      // @ts-expect-error Narrowed legacy credentials do not expose bearer fields.
+      // @ts-expect-error Narrowed L2 credentials do not expose bearer fields.
       credentials.accessToken;
     } else {
       expectTypeOf(credentials).toEqualTypeOf<BearerCredentials>();
       expectTypeOf(credentials.refreshToken).toEqualTypeOf<string>();
-      // @ts-expect-error Narrowed bearer credentials do not expose legacy fields.
+      // @ts-expect-error Narrowed bearer credentials do not expose L2 fields.
       credentials.key;
     }
   }
@@ -42,11 +42,11 @@ it('exports the existing credential alternatives and narrows each complete mecha
   >();
   // @ts-expect-error Both bearer fields are required.
   const incomplete: ClientCredentials = { accessToken: 'opaque' };
-  // @ts-expect-error All three legacy fields are required.
-  const incompleteLegacy: ClientCredentials = {
+  // @ts-expect-error All three L2 fields are required.
+  const incompleteL2: ClientCredentials = {
     key: ApiKeySchema.parse('saved-key'),
     secret: 'secret',
   };
   void incomplete;
-  void incompleteLegacy;
+  void incompleteL2;
 });
