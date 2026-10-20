@@ -64,6 +64,8 @@ export type ServiceAuthentication = {
 export type ServiceClientConfig = {
   /** Shared authentication callbacks configured by the owning client. @internal */
   authentication?: ServiceAuthentication;
+  /** Never include authentication response details in errors. @internal */
+  sensitive?: true;
   fetch?: Fetch;
   /** Disable automatic replay of mutation requests. @internal */
   retryMutations?: false;
@@ -304,9 +306,10 @@ function parseHttpDate(value: string, now: number): number | undefined {
  */
 export class ServiceClient {
   readonly #client?: KyInstance;
-  readonly #authentication?: ServiceAuthentication;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
+  readonly #authentication?: ServiceAuthentication;
+  readonly #sensitive: boolean;
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
   constructor(config: ServiceClientConfig) {
@@ -328,6 +331,7 @@ export class ServiceClient {
       });
     }
     this.#authentication = config.authentication;
+    this.#sensitive = config.sensitive ?? false;
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
@@ -525,6 +529,8 @@ export class ServiceClient {
         error instanceof TransportError
       )
         throw error;
+      if (this.#sensitive)
+        throw new TransportError('Authentication transport failed.');
       throw TransportError.fromError(error);
     }
   }
@@ -566,7 +572,16 @@ export class ServiceClient {
     }
     assertNotAborted(options.signal);
     if (mode === 'json' && options.schema !== undefined) {
-      const parsed = parseResponse(response.url, options.schema, value);
+      let parsed: unknown;
+      try {
+        parsed = parseResponse(response.url, options.schema, value);
+      } catch (error) {
+        if (this.#sensitive)
+          throw new UnexpectedResponseError(
+            'Authentication response did not match the expected contract.',
+          );
+        throw error;
+      }
       assertNotAborted(options.signal);
       return parsed;
     }
@@ -772,6 +787,19 @@ export class ServiceClient {
     retryAfter?: number;
     heartbeatId?: string;
   }> {
+    if (this.#sensitive) {
+      const body: unknown = await response
+        .clone()
+        .json()
+        .catch(() => undefined);
+      const code = z
+        .object({ code: z.string().regex(/^[a-z][a-z0-9_]*$/) })
+        .safeParse(body);
+      return {
+        message: 'Authentication request rejected.',
+        code: code.success ? code.data.code : undefined,
+      };
+    }
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {

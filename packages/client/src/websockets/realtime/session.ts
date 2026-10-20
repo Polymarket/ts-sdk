@@ -43,6 +43,7 @@ export type PriceSessionEvents = {
   ) => void;
   event: (event: PriceEvent) => void;
   dropped: () => void;
+  failed: (error: Error) => void;
   disconnected: (info: WebSocketCloseInfo) => void;
 };
 /** @internal Operations required by subscription policy, independent of a wire protocol. */
@@ -168,6 +169,7 @@ export class PriceSession {
         this.#subscribed(subscription, confirmation),
       event: (event) => this.#event(event),
       dropped: () => this.#recordDrop(),
+      failed: (error) => this.#fail(error),
       disconnected: (info) => this.#lost(info),
     });
     if (this.#closed || generation !== this.#generation) return;

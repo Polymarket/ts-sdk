@@ -1,19 +1,18 @@
-import { ApiKeySchema, EvmAddressSchema } from '@polymarket/bindings';
+import {
+  type BearerCredentials,
+  EvmAddressSchema,
+  TokenResponseSchema,
+} from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
   expectEvmAddress,
-  expectEvmSignature,
   invariant,
   isSameEvmAddress,
   type Prettify,
 } from '@polymarket/types';
 import { z } from 'zod';
-import {
-  createOrDeriveApiKey,
-  deleteApiKey,
-  fetchApiKeys,
-} from './actions/auth';
+import { deleteApiKey, fetchApiKeys } from './actions/auth';
 import {
   type DeployDepositWalletError,
   deployDepositWallet,
@@ -21,8 +20,15 @@ import {
   isWalletDeployed,
   type WaitForGaslessTransactionError,
 } from './actions/gasless';
-import { createApiKeyAuthTypedDataPayload } from './authentication';
+import {
+  AuthenticationInputSchema,
+  type LoginRequest,
+  login,
+  type MigrateCredentialsRequest,
+  migrateCredentials,
+} from './actions/identity';
 import { createClientMetadata } from './client-metadata';
+import { type ClientCredentials, ClientCredentialsSchema } from './credentials';
 import {
   allActions,
   type PublicActions,
@@ -33,6 +39,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -44,10 +51,16 @@ import {
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type { RateLimitUpdateListener } from './rate-limit';
-import type { Fetch } from './request-options';
+import { walletSigningPath } from './relayer-routes';
+import { assertNotAborted, type Fetch, withAbort } from './request-options';
 import { JsonRpcClient } from './rpc';
-import type { ServiceRequest } from './ServiceClient';
+import type { ServiceAuthentication, ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
+import {
+  AuthSession,
+  accessTokenClaims,
+  type CredentialsChanged,
+} from './session';
 import type { ApiKeyAuthorization, Signer } from './types';
 import type { AccountIdentity } from './wallet';
 import {
@@ -84,6 +97,8 @@ type PublicContext = {
   onRateLimitUpdate?: RateLimitUpdateListener;
   /** @internal */
   predictions: ServiceClient;
+  /** @internal */
+  auth: ServiceClient;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -159,6 +174,11 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
+  get auth(): ServiceClient {
+    return this.context.auth;
+  }
+
+  /** @internal */
   get clob(): ServiceClient {
     return this.context.clob;
   }
@@ -229,10 +249,13 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.supportGasless) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
+      return this.context.apiKey.authorize(
+        { ...request, path: walletSigningPath(request.path) },
+        {
+          fetch: this.context.fetch,
+          signal: request.signal,
+        },
+      );
     }
     return Promise.resolve({});
   }
@@ -242,73 +265,28 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 }
 
-const BeginAuthenticationCredentialsSchema = z.object({
-  key: ApiKeySchema,
-  passphrase: z.string(),
-  secret: z.string(),
-});
+export type { ClientCredentials } from './credentials';
 
 export type BeginAuthenticationRequest = {
-  /**
-   * Wallet address to authenticate as.
-   *
-   * Pass the signer address itself to authenticate as an EOA account.
-   */
   wallet: string;
-
-  /**
-   * Nonce used when creating or deriving fresh credentials.
-   *
-   * Mutually exclusive with `credentials`.
-   *
-   * @defaultValue 0
-   */
+  credentials?: object;
   nonce?: number;
-
-  /**
-   * Existing API credentials to reuse when they remain valid.
-   *
-   * If these credentials are revoked or invalid, authentication falls back to
-   * fresh authentication and the signer may be asked to sign again.
-   */
-  credentials?: ApiKeyCreds;
+  verificationToken?: string;
+  onCredentialsChanged?: CredentialsChanged;
 };
-
-const BeginAuthenticationRequestSchema: z.ZodType<BeginAuthenticationRequest> =
-  z
-    .object({
-      wallet: EvmAddressSchema,
-      credentials: BeginAuthenticationCredentialsSchema.optional(),
-      nonce: z.number().int().nonnegative().optional(),
-    })
-    .superRefine((value, context) => {
-      if (value.credentials !== undefined && value.nonce !== undefined) {
-        context.addIssue({
-          code: 'custom',
-          message: '`credentials` and `nonce` are mutually exclusive.',
-          path: ['nonce'],
-        });
-      }
-    })
-    .transform((value): BeginAuthenticationRequest => {
-      if (value.credentials !== undefined) {
-        return {
-          wallet: value.wallet,
-          credentials: value.credentials,
-        };
-      }
-
-      if (value.nonce !== undefined) {
-        return {
-          wallet: value.wallet,
-          nonce: value.nonce,
-        };
-      }
-
-      return {
-        wallet: value.wallet,
-      };
-    });
+const BeginAuthenticationRequestSchema = AuthenticationInputSchema.extend({
+  wallet: EvmAddressSchema,
+  credentials: ClientCredentialsSchema.optional(),
+  onCredentialsChanged: z
+    .custom<CredentialsChanged>((value) => typeof value === 'function')
+    .optional(),
+}).refine(
+  (value) => value.credentials === undefined || value.nonce === undefined,
+  {
+    path: ['nonce'],
+    message: '`credentials` and `nonce` are mutually exclusive.',
+  },
+);
 
 type PublicClientConfig = {
   fetch?: Fetch;
@@ -317,11 +295,26 @@ type PublicClientConfig = {
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
+function createAuthService(config: PublicClientConfig): ServiceClient {
+  return new ServiceClient({
+    fetch: config.fetch,
+    root: config.environment.predictions.rest,
+    headers: config.environment.predictions.headers,
+    retryMutations: false,
+    sensitive: true,
+    resolveHeaders: async () => ({ POLYMARKET_CLIENT: createClientMetadata() }),
+  });
+}
+
 // Public and secure clients share one predictions endpoint configuration.
-function createPredictionsService(config: PublicClientConfig): ServiceClient {
+function createPredictionsService(
+  config: PublicClientConfig,
+  authentication?: ServiceAuthentication,
+): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
     fetch: config.fetch,
+    authentication,
     retryMutations: false,
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
@@ -340,6 +333,7 @@ class BasePublicClient<
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
       predictions: createPredictionsService(config),
+      auth: createAuthService(config),
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
@@ -464,6 +458,22 @@ class BasePublicClient<
     >;
   }
 
+  /** Opens a bearer session by signing a server-issued ownership challenge.
+   * @throws {@link LoginError} Thrown on authentication failure.
+   */
+  login(request: LoginRequest): Promise<BearerCredentials> {
+    return login(this, request);
+  }
+
+  /** Migrates saved L2 credentials without a new wallet signature.
+   * @throws {@link MigrateCredentialsError} Thrown on migration failure.
+   */
+  migrateCredentials(
+    request: MigrateCredentialsRequest,
+  ): Promise<BearerCredentials> {
+    return migrateCredentials(this, request);
+  }
+
   /**
    * Begins an authentication workflow that produces a {@link SecureClient}.
    *
@@ -485,8 +495,6 @@ class BasePublicClient<
       async function* (
         this: PublicClient<TPublicActions, TSecureActions>,
       ): AuthenticationWorkflow<SecureClient<TPublicActions, TSecureActions>> {
-        const timestamp = Math.floor(Date.now() / 1000);
-        const nonce = params?.nonce ?? 0;
         const signerAddress = expectEvmAddress(yield requestAddress());
         const wallet = expectEvmAddress(params.wallet);
         const identity = resolveAccountIdentity(
@@ -494,56 +502,74 @@ class BasePublicClient<
           signerAddress,
           wallet,
         );
-
-        if (params.credentials !== undefined) {
+        const credentials =
+          params.credentials ??
+          (await this.login({
+            signer,
+            wallet,
+            nonce: params.nonce,
+            verificationToken: params.verificationToken,
+          }));
+        if ('key' in credentials) {
           const client = this.#createSecureClient(
-            params.credentials,
+            credentials,
             identity,
             signer,
           );
-
-          try {
-            const apiKeys = await fetchApiKeys(client);
-            if (apiKeys.includes(params.credentials.key)) {
-              return client;
-            }
-          } catch (error) {
-            if (
-              !(error instanceof RequestRejectedError) ||
-              error.status !== 401
-            ) {
-              throw error;
-            }
-          }
+          // Restoring L2 credentials keeps the original authentication mechanism.
+          const keys = await fetchApiKeys(client);
+          if (!keys.includes(credentials.key))
+            throw new RequestRejectedError(
+              'The saved API key is no longer valid.',
+              { status: 401 },
+            );
+          return client;
         }
-
-        const signature = yield {
-          kind: 'signAuthMessage',
-          payload: createApiKeyAuthTypedDataPayload({
-            address: signerAddress,
-            chainId: this.environment.chainId,
-            nonce,
-            timestamp,
-          }),
-        };
-        const credentials = await createOrDeriveApiKey(this, {
-          address: signerAddress,
-          nonce,
-          signature: expectEvmSignature(signature),
-          timestamp,
-        });
-
-        return this.#createSecureClient(credentials, identity, signer);
+        const claims = accessTokenClaims(credentials.accessToken);
+        if (
+          !isSameEvmAddress(claims.sub, signerAddress) ||
+          claims.wallet === undefined ||
+          !isSameEvmAddress(claims.wallet, wallet)
+        ) {
+          throw new RequestRejectedError(
+            'Session identity does not match the requested signer and wallet.',
+            { status: 401 },
+          );
+        }
+        const client = this.#createSecureClient(
+          credentials,
+          identity,
+          signer,
+          params.onCredentialsChanged,
+        );
+        try {
+          if (
+            params.credentials !== undefined &&
+            'accessToken' in params.credentials
+          ) {
+            // Validate the refresh session as well as the access token: an unexpired
+            // access token alone does not prove that a saved pair can be restored.
+            await client.session.refresh();
+          } else await client.session.ready();
+          client.session.start();
+          return client;
+        } catch (error) {
+          client.session.close();
+          await client.closeSubscriptions();
+          throw error;
+        }
       }.call(this as unknown as PublicClient<TPublicActions, TSecureActions>),
     );
   }
 
   #createSecureClient(
-    credentials: ApiKeyCreds,
+    credentials: ClientCredentials,
     account: AccountIdentity,
     signer: Signer,
+    onCredentialsChanged?: CredentialsChanged,
   ): SecureClient<TPublicActions, TSecureActions> {
     const client = new BaseSecureClient({
+      onCredentialsChanged,
       account: account,
       apiKey: this.context.apiKey,
       credentials,
@@ -561,11 +587,30 @@ class BasePublicClient<
   }
 }
 
+export type EndAuthenticationError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const EndAuthenticationError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 class BaseSecureClient<
   TPublicActions extends ClientActions = ClientActions,
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
+  #endingAuthentication:
+    | Promise<PublicClient<TPublicActions, TSecureActions>>
+    | undefined;
 
   /**
    * @remarks This is the choking point for all requests, so we can ensure that once
@@ -585,31 +630,84 @@ class BaseSecureClient<
   }
 
   constructor(config: SecureClientConfig) {
+    const auth = createAuthService(config);
+    const l2Credentials =
+      'key' in config.credentials ? { ...config.credentials } : undefined;
+    const session =
+      'accessToken' in config.credentials
+        ? new AuthSession({
+            credentials: config.credentials,
+            onCredentialsChanged: config.onCredentialsChanged,
+            refresh: (credentials, signal) =>
+              auth.post('/v1/auth/refresh', {
+                json: { refresh_token: credentials.refreshToken },
+                schema: TokenResponseSchema,
+                signal,
+                retry: false,
+              }),
+          })
+        : undefined;
+    const authentication: ServiceAuthentication | undefined =
+      session === undefined
+        ? undefined
+        : {
+            credentials: (signal) => session.ready(signal),
+            headers: (credentials) =>
+              'accessToken' in credentials
+                ? new Headers({
+                    Authorization: `Bearer ${credentials.accessToken}`,
+                  })
+                : new Headers(),
+            refreshToken: async (credentials, response, signal) => {
+              if (!('accessToken' in credentials)) return false;
+              const failure = await withAbort(
+                response.json().catch(() => undefined),
+                signal,
+              );
+              if (failure?.code !== 'expired_access_token') return false;
+              assertNotAborted(signal);
+              await session.recover(credentials.accessToken, signal);
+              return true;
+            },
+          };
     const realtime = new RealtimeWebSocketManager({
       url: config.environment.realtime.ws,
       headers: config.environment.realtime.headers,
-      credentials: config.credentials,
+      session,
+      credentials: l2Credentials,
     });
     super({
       account: config.account,
-      credentials: config.credentials,
+      l2Credentials,
+      session,
       apiKey: config.apiKey,
       environment: config.environment,
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
-      predictions: createPredictionsService(config),
+      predictions: createPredictionsService(config, authentication),
+      auth,
       clob: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
-        root: config.environment.clob.rest,
+        root:
+          session === undefined
+            ? config.environment.clob.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
       }),
       relayer: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.relayer.headers,
-        root: config.environment.relayer.rest,
+        root:
+          session === undefined
+            ? config.environment.relayer.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
       }),
       rpc: new JsonRpcClient({
@@ -619,17 +717,32 @@ class BaseSecureClient<
       gamma: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.gamma.headers,
-        root: config.environment.gamma.rest,
+        root:
+          session === undefined
+            ? config.environment.gamma.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
       }),
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
-        root: config.environment.data.rest,
+        root:
+          session === undefined
+            ? config.environment.data.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
       }),
       rfq: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.combos.headers,
-        root: config.environment.combos.rest,
+        root:
+          session === undefined
+            ? config.environment.combos.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
@@ -644,13 +757,20 @@ class BaseSecureClient<
           ...(await this.resolveClobHeaders(request)),
           ...(await this.#createL2Headers(request)),
         }),
-        root: config.environment.clob.rest,
+        root:
+          session === undefined
+            ? config.environment.clob.rest
+            : config.environment.predictions.rest,
+        authentication,
+        retryMutations: false,
       }),
       combos: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
         root: config.environment.combos.collateralReturn.rest,
+        authentication,
+        retryMutations: false,
       }),
       builderGateway: new ServiceClient({
         fetch: config.fetch,
@@ -660,6 +780,8 @@ class BaseSecureClient<
           ...(await this.#createL2Headers(request)),
         }),
         root: config.environment.combos.builderGateway.rest,
+        authentication,
+        retryMutations: false,
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -667,14 +789,16 @@ class BaseSecureClient<
           url: config.environment.clob.market.ws,
         }),
         clobUser: new ClobUserWebSocketManager({
-          credentials: config.credentials,
+          session,
+          credentials: l2Credentials,
           headers: config.environment.clob.user.headers,
           url: config.environment.clob.user.ws,
         }),
         rfqQuoter: new RfqQuoterWebSocketManager({
           account: config.account,
           chainId: config.environment.chainId,
-          credentials: config.credentials,
+          session,
+          credentials: l2Credentials,
           exchange: config.environment.contracts.exchangeV3,
           headers: config.environment.combos.headers,
           signer: config.signer,
@@ -708,12 +832,42 @@ class BaseSecureClient<
    * API credentials for the authenticated session.
    *
    * @remarks
+   * Contains the saved key/secret/passphrase for L2 authentication, or the
+   * current accessToken/refreshToken pair for bearer authentication. Migration is explicit.
    * These credentials are sensitive. Store them securely if you want to create
    * another secure client later without requiring a new authentication signature
    * while the credentials remain valid.
    */
-  get credentials(): ApiKeyCreds {
-    return this.context.credentials;
+  get credentials(): ClientCredentials {
+    const { session, l2Credentials } = this.context;
+    if (session !== undefined) return session.credentials;
+    invariant(l2Credentials !== undefined, 'Missing client credentials.');
+    return { ...l2Credentials };
+  }
+
+  /** @internal */
+  get session(): AuthSession {
+    const session = this.context.session;
+    invariant(session !== undefined, 'This client uses L2 authentication.');
+    return session;
+  }
+
+  /** @internal */
+  closeAuthenticationSession(): void {
+    this.context.session?.close();
+  }
+
+  /** @internal Trading payload owner retained independently of bearer credentials. */
+  get clobApiKey(): string {
+    const key =
+      this.context.l2Credentials?.key ??
+      this.context.session?.claims.clob_api_key;
+    if (key === undefined)
+      throw new RequestRejectedError(
+        'This session has no trading credential.',
+        { status: 401 },
+      );
+    return key;
   }
 
   /**
@@ -822,27 +976,46 @@ class BaseSecureClient<
    * Ends authentication for this client and returns a public client.
    *
    * @remarks
-   * This revokes the current authenticated credential and invalidates the
-   * current `SecureClient` instance.
+   * This ends the refresh session and invalidates the
+   * current `SecureClient` instance. Already issued access tokens remain valid until expiry.
+   * Expired credentials are renewed solely for revocation. Concurrent calls share
+   * one logout operation, and local cleanup completes even when revocation fails.
    *
    * @example
    * ```ts
    * const publicClient = await secureClient.endAuthentication();
    * ```
+   * @throws {@link EndAuthenticationError} Thrown if remote logout fails; local cleanup still completes.
    */
-  async endAuthentication(): Promise<
+  endAuthentication(): Promise<PublicClient<TPublicActions, TSecureActions>> {
+    this.#endingAuthentication ??= this.#endAuthentication();
+    return this.#endingAuthentication;
+  }
+
+  async #endAuthentication(): Promise<
     PublicClient<TPublicActions, TSecureActions>
   > {
     // Server-side revocation must not depend on local WebSocket cleanup.
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate, fetch } = this.context;
+    const { apiKey, environment, onRateLimitUpdate, fetch, session, auth } =
+      this.context;
+    if (session !== undefined) this.endAuthenticationLifecycle();
 
     try {
-      await deleteApiKey(this);
+      if (session === undefined) await deleteApiKey(this);
+      else
+        await session.logout((accessToken) =>
+          auth.post('/v1/auth/logout', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            responseType: 'empty',
+            retry: false,
+          }),
+        );
     } finally {
       this.endAuthenticationLifecycle();
+      session?.close();
       await Promise.allSettled([
         closingSubscriptions,
         shuttingDownPerpsSessions,
@@ -877,17 +1050,18 @@ class BaseSecureClient<
     }
     return {};
   }
-
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {
+    const credentials = this.context.l2Credentials;
+    if (credentials === undefined) return {};
     try {
       const timestamp = Math.floor(Date.now() / 1000);
 
       return {
         POLY_ADDRESS: this.account.signer,
-        POLY_API_KEY: this.credentials.key,
-        POLY_PASSPHRASE: this.credentials.passphrase,
+        POLY_API_KEY: credentials.key,
+        POLY_PASSPHRASE: credentials.passphrase,
         POLY_SIGNATURE: await buildHmacSignature(
-          this.credentials.secret,
+          credentials.secret,
           timestamp,
           request.method,
           request.path,
@@ -908,7 +1082,8 @@ type SecureContext = PublicContext & {
   /** @internal */
   account: AccountIdentity;
   /** @internal */
-  credentials: ApiKeyCreds;
+  session?: AuthSession;
+  l2Credentials?: ApiKeyCreds;
   /** @internal */
   signer: Signer;
   /** @internal */
@@ -923,7 +1098,8 @@ type SecureContext = PublicContext & {
 
 type SecureClientConfig = PublicClientConfig & {
   account: AccountIdentity;
-  credentials: ApiKeyCreds;
+  credentials: ClientCredentials;
+  onCredentialsChanged?: CredentialsChanged;
   signer: Signer;
 };
 
@@ -1000,12 +1176,15 @@ export type SecureClientOptions = PublicClientOptions & {
    * Wallet-library adapter used to authenticate and complete wallet operations.
    */
   signer: Signer;
+  verificationToken?: string;
+  /** Called after adoption of a refreshed token pair. Sync/async failures are ignored; handle persistence failures inside the callback. */
+  onCredentialsChanged?: CredentialsChanged;
 } & (
     | {
         /**
          * Existing API credentials to reuse when they remain valid.
          */
-        credentials?: ApiKeyCreds;
+        credentials?: object;
         nonce?: never;
       }
     | {
@@ -1039,6 +1218,7 @@ export function createPublicClient(
 }
 
 export type CreateSecureClientError =
+  | RequestAbortedError
   | CancelledSigningError
   | DeployDepositWalletError
   | IsWalletDeployedError
@@ -1052,6 +1232,7 @@ export type CreateSecureClientError =
   | UserInputError
   | WaitForGaslessTransactionError;
 export const CreateSecureClientError = makeErrorGuard(
+  RequestAbortedError,
   CancelledSigningError,
   RateLimitError,
   RequestRejectedError,
@@ -1096,32 +1277,40 @@ export async function createSecureClient(
         wallet,
         credentials: options.credentials,
         nonce: options.nonce,
+        verificationToken: options.verificationToken,
+        onCredentialsChanged: options.onCredentialsChanged,
       },
       options.signer,
     )
     .then(authenticateWith(options.signer));
 
-  if (secureClient.account.walletType === WalletType.EOA) {
-    return secureClient;
+  try {
+    if (secureClient.account.walletType === WalletType.EOA) {
+      return secureClient;
+    }
+
+    const deployed = await isWalletDeployed(secureClient, {
+      wallet: secureClient.account.wallet,
+      type: secureClient.account.walletType,
+    });
+
+    if (deployed) {
+      return secureClient;
+    }
+
+    if (secureClient.account.walletType === WalletType.DEPOSIT_WALLET) {
+      await deployDefaultDepositWallet(secureClient);
+      return secureClient;
+    }
+
+    throw new UserInputError(
+      `Wallet ${secureClient.account.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
+    );
+  } catch (error) {
+    secureClient.closeAuthenticationSession();
+    await secureClient.closeSubscriptions();
+    throw error;
   }
-
-  const deployed = await isWalletDeployed(secureClient, {
-    wallet: secureClient.account.wallet,
-    type: secureClient.account.walletType,
-  });
-
-  if (deployed) {
-    return secureClient;
-  }
-
-  if (secureClient.account.walletType === WalletType.DEPOSIT_WALLET) {
-    await deployDefaultDepositWallet(secureClient);
-    return secureClient;
-  }
-
-  throw new UserInputError(
-    `Wallet ${secureClient.account.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
-  );
 }
 
 /** Resolves the wallet address to authenticate as. */
