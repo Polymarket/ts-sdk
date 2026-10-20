@@ -48,6 +48,7 @@ export class AuthSession {
   #claims: AccessTokenClaims;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #refreshing: Promise<BearerCredentials> | undefined;
+  #refreshRequest: Promise<BearerCredentials> | undefined;
   #failure: Error | undefined;
   #closed = false;
 
@@ -70,6 +71,8 @@ export class AuthSession {
   }
   async ready(signal?: AbortSignal): Promise<BearerCredentials> {
     this.assertActive();
+    if (this.#refreshing !== undefined)
+      return withAbort(this.#refreshing, signal);
     if (this.#claims.exp * 1000 - Date.now() <= 30_000)
       return withAbort(this.refresh(), signal);
     return this.credentials;
@@ -90,6 +93,10 @@ export class AuthSession {
     signal?: AbortSignal,
   ): Promise<void> {
     this.assertActive();
+    if (this.#refreshing !== undefined) {
+      await withAbort(this.#refreshing, signal);
+      return;
+    }
     if (previousAccessToken !== this.#credentials.accessToken) return;
     await withAbort(this.refresh(), signal);
   }
@@ -97,7 +104,9 @@ export class AuthSession {
     this.assertActive();
     if (this.#refreshing !== undefined) return this.#refreshing;
     clearTimeout(this.#timer);
-    const refreshing = this.#renew()
+    // Install the shared promise before invoking any consumer refresh callback.
+    const refreshing = Promise.resolve()
+      .then(() => this.#renew())
       .catch((cause: unknown) => {
         const error =
           cause instanceof Error
@@ -120,10 +129,17 @@ export class AuthSession {
     for (let attempt = 0; attempt < 3; attempt++) {
       this.assertActive();
       try {
-        next = await this.#options.refresh(
-          this.credentials,
-          this.#abort.signal,
+        const credentials = this.credentials;
+        const request = Promise.resolve().then(() =>
+          this.#options.refresh(credentials, this.#abort.signal),
         );
+        this.#refreshRequest = request;
+        try {
+          next = await request;
+        } finally {
+          if (this.#refreshRequest === request)
+            this.#refreshRequest = undefined;
+        }
         break;
       } catch (error) {
         this.assertActive();
@@ -188,15 +204,12 @@ export class AuthSession {
   async logout(revoke: (accessToken: string) => Promise<void>): Promise<void> {
     let credentials = this.credentials;
     const identity = this.claims;
-    // Stop ordinary renewal and abort its in-flight work before acquiring any
-    // bearer needed solely for revocation. Cached renewal failures do not
-    // prevent revocation with a still-valid access token.
-    this.close();
-    const refresh = async () => {
-      const next = await this.#options.refresh(
-        credentials,
-        new AbortController().signal,
-      );
+    // Close local consumers immediately, but let an already-started rotation
+    // finish so revocation uses its result rather than reusing a consumed token.
+    const pending = this.#refreshRequest;
+    this.#stop(false);
+    let canRefresh = true;
+    const accept = (next: BearerCredentials) => {
       const claims = accessTokenClaims(next.accessToken);
       if (
         claims.exp * 1000 <= Date.now() ||
@@ -208,27 +221,61 @@ export class AuthSession {
         );
       credentials = { ...next };
     };
-    if (identity.exp * 1000 <= Date.now()) await refresh();
+    const refresh = async () => {
+      const next = await this.#options.refresh(
+        credentials,
+        new AbortController().signal,
+      );
+      accept(next);
+    };
     try {
-      await revoke(credentials.accessToken);
-    } catch (error) {
+      if (pending !== undefined) {
+        try {
+          accept(await pending);
+        } catch (error) {
+          // A transport failure has an uncertain server outcome. Do not reuse
+          // that refresh token; a still-valid bearer can still revoke safely.
+          canRefresh = false;
+          if (
+            accessTokenClaims(credentials.accessToken).exp * 1000 <=
+            Date.now()
+          )
+            throw error;
+        }
+      }
       if (
-        !(error instanceof RequestRejectedError) ||
-        error.status !== 401 ||
-        error.code !== 'expired_access_token'
+        canRefresh &&
+        accessTokenClaims(credentials.accessToken).exp * 1000 <= Date.now()
       )
-        throw error;
-      // The token can expire in flight (or the server clock can be ahead).
-      // Replay only this explicit rejection, once, with a fresh bearer.
-      await refresh();
-      await revoke(credentials.accessToken);
+        await refresh();
+      try {
+        await revoke(credentials.accessToken);
+      } catch (error) {
+        if (
+          !(error instanceof RequestRejectedError) ||
+          error.status !== 401 ||
+          error.code !== 'expired_access_token' ||
+          !canRefresh
+        )
+          throw error;
+        // The token can expire in flight (or the server clock can be ahead).
+        // Replay only this explicit rejection, once, with a fresh bearer.
+        await refresh();
+        await revoke(credentials.accessToken);
+      }
+    } finally {
+      this.#abort.abort();
     }
   }
 
   close(): void {
+    this.#stop(true);
+  }
+
+  #stop(abortRefresh: boolean): void {
     this.#closed = true;
     clearTimeout(this.#timer);
-    this.#abort.abort();
+    if (abortRefresh) this.#abort.abort();
     this.#listeners.clear();
     this.#failureListeners.clear();
   }
