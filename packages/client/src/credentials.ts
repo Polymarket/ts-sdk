@@ -35,7 +35,7 @@ function rejectMixedCredentials(
 }
 
 /** Validate normalized saved API-key credentials, including explicit migration input. @internal */
-export const LegacyCredentialsSchema = z.preprocess(
+export const L2CredentialsSchema = z.preprocess(
   rejectMixedCredentials,
   ApiKeyCredentialsInputSchema,
 );
