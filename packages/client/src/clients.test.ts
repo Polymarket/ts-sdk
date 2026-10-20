@@ -32,7 +32,7 @@ import {
 } from './wallet';
 
 const rpcRoot = 'http://localhost:4014';
-const relayerRoot = 'http://localhost:4015';
+const relayerRoot = 'http://localhost:4016';
 const clobRoot = 'http://localhost:4016';
 const server = setupServer();
 const signerAddress = expectEvmAddress(
@@ -41,6 +41,7 @@ const signerAddress = expectEvmAddress(
 
 const environment = forkEnvironmentConfig({
   name: 'test',
+  predictions: { rest: clobRoot },
   clob: { rest: clobRoot },
   relayer: { rest: relayerRoot },
   rpc: rpcRoot,
@@ -454,15 +455,26 @@ describe('secure client gasless wallet setup', () => {
     };
 
     server.use(
-      http.post(`${clobRoot}/auth/api-key`, ({ request }) => {
-        expect(request.headers.get('POLY_NONCE')).toBe('0');
-
+      http.post(`${clobRoot}/v1/auth/challenge`, async ({ request }) => {
+        expect(await request.json()).toMatchObject({
+          signer: signerAddress,
+          wallet: signerAddress,
+          nonce: 0,
+        });
         return HttpResponse.json({
-          apiKey: credentials.key,
-          passphrase: credentials.passphrase,
-          secret: credentials.secret,
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          typedData: {
+            domain: {},
+            types: {},
+            primaryType: 'Auth',
+            message: { nonce: 0 },
+          },
         });
       }),
+      http.post(`${clobRoot}/v1/auth/login`, () =>
+        HttpResponse.json(testTokens(signerAddress)),
+      ),
     );
 
     const client = await createSecureClient({
@@ -604,10 +616,7 @@ describe('secure client gasless wallet setup', () => {
     const failure = new TypeError('gateway dispatch observed');
     const gatewayRequests: Request[] = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      if (
-        input instanceof Request &&
-        input.url.startsWith(environment.predictions.rest)
-      ) {
+      if (input instanceof Request && input.url.endsWith('/cancel-all')) {
         gatewayRequests.push(input);
         throw failure;
       }
@@ -661,6 +670,16 @@ function mockApiKeys() {
       HttpResponse.json({ apiKeys: [credentials.key] }),
     ),
   );
+}
+
+function testTokens(wallet: string) {
+  return {
+    accessToken: `test.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 900, sub: signerAddress, wallet, clob_api_key: credentials.key }))}.test`,
+    refreshToken: 'synthetic-refresh',
+    tokenType: 'Bearer',
+    expiresIn: 900,
+    refreshExpiresIn: 3600,
+  };
 }
 
 function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {

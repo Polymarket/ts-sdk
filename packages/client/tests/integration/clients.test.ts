@@ -150,43 +150,7 @@ describe('clients', () => {
       await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
     });
 
-    it('falls back to fresh authentication when stored credentials have been revoked', async ({
-      depositWalletAddress,
-      depositWalletSigner,
-      environment,
-    }) => {
-      const controlClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        nonce: 1997,
-      });
-      const secureClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        nonce: 1998,
-      });
-      const { credentials } = secureClient;
-      const revokedKey = credentials.key;
-
-      await expect(fetchApiKeys(controlClient)).resolves.toContain(revokedKey);
-
-      await secureClient.endAuthentication();
-
-      const resumedClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        credentials,
-      });
-      const remainingApiKeys = await fetchApiKeys(controlClient);
-
-      expect(resumedClient.credentials.key).not.toBe(revokedKey);
-      expect(remainingApiKeys).toContain(controlClient.credentials.key);
-      expect(remainingApiKeys).toContain(resumedClient.credentials.key);
-      expect(remainingApiKeys).not.toContain(revokedKey);
-    });
+    // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.
   });
 
   describe('SecureClient.endAuthentication', () => {
@@ -207,16 +171,16 @@ describe('clients', () => {
         wallet: depositWalletAddress,
         nonce: 998,
       });
-      const revokedKey = secureClient.credentials.key;
+      const tradingKey = secureClient.clobApiKey;
       const signer = secureClient.account.signer;
 
-      await expect(fetchApiKeys(controlClient)).resolves.toContain(revokedKey);
+      await expect(fetchApiKeys(controlClient)).resolves.toContain(tradingKey);
 
       const publicOnlyClient = await secureClient.endAuthentication();
       const remainingApiKeys = await fetchApiKeys(controlClient);
 
-      expect(remainingApiKeys).toContain(controlClient.credentials.key);
-      expect(remainingApiKeys).not.toContain(revokedKey);
+      // Logout ends the refresh session; it does not delete trading keys.
+      expect(remainingApiKeys).toContain(tradingKey);
       await expect(fetchApiKeys(secureClient)).rejects.toBeInstanceOf(
         InvariantError,
       );

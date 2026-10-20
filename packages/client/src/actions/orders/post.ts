@@ -169,7 +169,7 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       tokenId: order.tokenId,
     },
     orderType: order.orderType,
-    owner: client.credentials.key,
+    owner: client.clobApiKey,
     ...(order.postOnly === true ? { postOnly: true } : {}),
   };
 }

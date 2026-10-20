@@ -298,19 +298,21 @@ export type RfqSignedOrder = {
 
 export type RfqOrderSide = OrderSide | 0 | 1;
 
-export type RfqAuthMessage = {
-  type: 'auth';
-  auth: {
-    apiKey: string;
-    passphrase: string;
-    secret: string;
-  };
-  identity: {
-    signer_address: EvmAddress;
-    maker_address: EvmAddress;
-    signature_type: SignatureType;
-  };
-};
+export type RfqAuthMessage =
+  | { type: 'auth'; auth: { accessToken: string }; identity?: never }
+  | {
+      type: 'auth';
+      auth: {
+        apiKey: string;
+        passphrase: string;
+        secret: string;
+      };
+      identity: {
+        signer_address: EvmAddress;
+        maker_address: EvmAddress;
+        signature_type: SignatureType;
+      };
+    };
 
 export enum RfqKnownInboundType {
   Auth = 'auth',
