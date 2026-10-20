@@ -1,11 +1,19 @@
+import { ApiKeySchema, type BearerCredentials } from '@polymarket/bindings';
 import { expect, it, vi } from 'vitest';
-import { ServiceClient } from './ServiceClient';
+import type { ClientCredentials } from './credentials';
+import { type ServiceAuthentication, ServiceClient } from './ServiceClient';
 
 const root = 'https://mock.invalid';
 
 it('lets the owning class supply authentication and refresh policy', async () => {
-  const original = { accessToken: 'original-opaque-token' };
-  const updated = { accessToken: 'updated-opaque-token' };
+  const original = {
+    accessToken: 'original-opaque-token',
+    refreshToken: 'original-refresh',
+  };
+  const updated = {
+    accessToken: 'updated-opaque-token',
+    refreshToken: 'updated-refresh',
+  };
   let accepted = original;
   const refreshToken = vi.fn(async (previous: string) => {
     expect(previous).toBe(original.accessToken);
@@ -25,7 +33,10 @@ it('lets the owning class supply authentication and refresh policy', async () =>
   const service = new ServiceClient({
     root,
     fetch,
-    authentication: { credentials: async () => accepted, refreshToken },
+    authentication: bearerPolicy({
+      credentials: async () => accepted,
+      refreshToken,
+    }),
   });
   await expect(service.get('/private')).resolves.toBe('accepted');
   expect(refreshToken).toHaveBeenCalledTimes(1);
@@ -43,19 +54,22 @@ it.each([
     root,
     fetch: async () =>
       Response.json({ code: 'expired_access_token' }, { status: 401 }),
-    authentication: {
+    authentication: bearerPolicy({
       credentials: async () => {
         if (stage === 'credentials') {
           entered.resolve();
           await pending.promise;
         }
-        return { accessToken: 'original-opaque-token' };
+        return {
+          accessToken: 'original-opaque-token',
+          refreshToken: 'original-refresh',
+        };
       },
       refreshToken: async () => {
         entered.resolve();
         await pending.promise;
       },
-    },
+    }),
   });
   const request = service.get('/private', { signal: abort.signal });
   const rejected = expect(request).rejects.toMatchObject({
@@ -78,10 +92,13 @@ it.each([
   const service = new ServiceClient({
     root,
     fetch,
-    authentication: {
-      credentials: async () => ({ accessToken: 'opaque' }),
+    authentication: bearerPolicy({
+      credentials: async () => ({
+        accessToken: 'opaque',
+        refreshToken: 'opaque-refresh',
+      }),
       refreshToken,
-    },
+    }),
   });
   await expect(service.get('/private')).rejects.toMatchObject({
     name: 'RequestRejectedError',
@@ -117,14 +134,17 @@ it('snapshots the query and serialized body across authentication recovery', asy
         ? Response.json({ code: 'expired_access_token' }, { status: 401 })
         : Response.json('accepted');
     },
-    authentication: {
-      credentials: async () => ({ accessToken: token }),
+    authentication: bearerPolicy({
+      credentials: async () => ({
+        accessToken: token,
+        refreshToken: 'opaque-refresh',
+      }),
       refreshToken: async () => {
         token = 'updated';
         params.set('original', 'mutated');
         body.original = 'mutated';
       },
-    },
+    }),
   });
   await expect(
     service.get('/private', {
@@ -147,4 +167,162 @@ it('snapshots the query and serialized body across authentication recovery', asy
     expect(request.method).toBe('POST');
     expect(await request.json()).toEqual({ original: 'value' });
   }
+});
+
+function bearerPolicy(policy: {
+  credentials: (signal?: AbortSignal) => Promise<BearerCredentials>;
+  refreshToken: (previous: string, signal?: AbortSignal) => Promise<void>;
+}): ServiceAuthentication {
+  return {
+    credentials: policy.credentials,
+    headers: (credentials) =>
+      'accessToken' in credentials
+        ? new Headers({ Authorization: `Bearer ${credentials.accessToken}` })
+        : new Headers(),
+    refreshToken: async (credentials, response, signal) => {
+      const failure = await response.json();
+      if (
+        !('accessToken' in credentials) ||
+        failure.code !== 'expired_access_token'
+      )
+        return false;
+      await policy.refreshToken(credentials.accessToken, signal);
+      return true;
+    },
+  };
+}
+
+it('lets a class authenticate with the existing legacy credential shape without bearer conversion', async () => {
+  const credentials = {
+    key: ApiKeySchema.parse('00000000-0000-0000-0000-000000000001'),
+    secret: 'legacy-secret',
+    passphrase: 'legacy-passphrase',
+  };
+  const refreshToken = vi.fn(async () => false);
+  const service = new ServiceClient({
+    root,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      expect(request.headers.get('authorization')).toBeNull();
+      expect(request.headers.get('poly_api_key')).toBe(credentials.key);
+      expect(request.headers.has('poly_secret')).toBe(false);
+      return Response.json(
+        {
+          code: 'invalid_credentials',
+          message: 'Legacy credentials rejected.',
+        },
+        { status: 401 },
+      );
+    },
+    authentication: {
+      credentials: async () => credentials,
+      headers: (accepted, request) => {
+        expect(request.path).toBe('/legacy');
+        expect(accepted).toEqual(credentials);
+        return 'key' in accepted
+          ? new Headers({ POLY_API_KEY: accepted.key })
+          : new Headers();
+      },
+      refreshToken: async (previous, response) => {
+        expect(previous).toEqual(credentials);
+        expect(await response.json()).toMatchObject({
+          code: 'invalid_credentials',
+        });
+        return refreshToken();
+      },
+    },
+  });
+  // A policy may inspect its response copy without consuming transport's body.
+  await expect(service.get('/legacy')).rejects.toMatchObject({
+    status: 401,
+    code: 'invalid_credentials',
+  });
+  expect(refreshToken).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  undefined,
+  null,
+  { accessToken: 'opaque' },
+  { accessToken: '', refreshToken: 'opaque-refresh' },
+  { key: '00000000-0000-0000-0000-000000000001', secret: 'secret' },
+  { key: 42, secret: 'secret', passphrase: 'passphrase' },
+  {
+    key: '00000000-0000-0000-0000-000000000001',
+    secret: 'secret',
+    passphrase: 'passphrase',
+    accessToken: 'opaque',
+    refreshToken: 'opaque-refresh',
+  },
+  { accessToken: 'opaque', refreshToken: 'opaque-refresh', key: undefined },
+])('rejects malformed or mixed credentials before callbacks or dispatch: %j', async (input) => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  const headers = vi.fn(() => ({}));
+  const refreshToken = vi.fn(async () => false);
+  const service = new ServiceClient({
+    root,
+    fetch,
+    authentication: {
+      credentials: async () => input as unknown as ClientCredentials,
+      headers,
+      refreshToken,
+    },
+  });
+  await expect(service.get('/private')).rejects.toMatchObject({
+    name: 'UserInputError',
+  });
+  expect(headers).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(refreshToken).not.toHaveBeenCalled();
+});
+
+it('accepts harmless token response metadata without exposing it as credentials', async () => {
+  const headers = vi.fn(() => ({}));
+  const service = new ServiceClient({
+    root,
+    fetch: async () => Response.json('accepted'),
+    authentication: {
+      credentials: async () => ({
+        accessToken: 'opaque',
+        refreshToken: 'opaque-refresh',
+        tokenType: 'Bearer',
+        expiresIn: 900,
+      }),
+      headers,
+      refreshToken: async () => false,
+    },
+  });
+  await service.get('/private');
+  expect(headers.mock.calls[0]).toEqual([
+    { accessToken: 'opaque', refreshToken: 'opaque-refresh' },
+    expect.objectContaining({ path: '/private' }),
+  ]);
+});
+
+it('cancels while a class header callback ignores its signal', async () => {
+  const entered = Promise.withResolvers<void>();
+  const pending = Promise.withResolvers<HeadersInit>();
+  const abort = new AbortController();
+  const service = new ServiceClient({
+    root,
+    authentication: {
+      credentials: async () => ({
+        accessToken: 'opaque',
+        refreshToken: 'opaque-refresh',
+      }),
+      headers: () => {
+        entered.resolve();
+        return pending.promise;
+      },
+      refreshToken: async () => false,
+    },
+  });
+  const request = service.get('/private', { signal: abort.signal });
+  const rejected = expect(request).rejects.toMatchObject({
+    name: 'RequestAbortedError',
+  });
+  await entered.promise;
+  abort.abort();
+  await rejected;
+  pending.resolve({});
 });

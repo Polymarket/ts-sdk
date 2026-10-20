@@ -2,6 +2,7 @@ import { ErrorResponseSchema } from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
 import ky, { type KyInstance } from 'ky';
 import { z } from 'zod';
+import { type ClientCredentials, ClientCredentialsSchema } from './credentials';
 import {
   makeErrorGuard,
   OrderHeartbeatMismatchError,
@@ -47,11 +48,17 @@ export type RequestHeadersResolver = (
 
 /** Authentication policy supplied by the owning client. @internal */
 export type ServiceAuthentication = {
-  credentials: (signal?: AbortSignal) => Promise<{ accessToken: string }>;
+  credentials: (signal?: AbortSignal) => Promise<ClientCredentials>;
+  headers: (
+    credentials: ClientCredentials,
+    request: ServiceRequest,
+  ) => HeadersInit | Promise<HeadersInit>;
+  /** Return true only when the rejected request can be replayed with accepted credentials. */
   refreshToken: (
-    previousAccessToken: string,
+    previousCredentials: ClientCredentials,
+    response: Response,
     signal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
 };
 
 export type ServiceClientConfig = {
@@ -585,10 +592,23 @@ export class ServiceClient {
     }
     const request = this.#createRequest(method, path, options);
     for (let attempt = 0; attempt < 2; attempt++) {
-      const credentials = await withAbort(
+      const suppliedCredentials = await withAbort(
         Promise.resolve(this.#authentication?.credentials(options.signal)),
         options.signal,
       );
+      const credentials =
+        this.#authentication === undefined
+          ? undefined
+          : parseUserInput(suppliedCredentials, ClientCredentialsSchema);
+      const authenticationHeaders =
+        credentials === undefined
+          ? undefined
+          : await withAbort(
+              Promise.resolve(
+                this.#authentication?.headers(credentials, request),
+              ),
+              options.signal,
+            );
       const resolvedHeaders = await withAbort(
         Promise.resolve(this.#resolveHeaders?.(request)),
         options.signal,
@@ -598,10 +618,9 @@ export class ServiceClient {
         this.#headers,
         request.headers,
         resolvedHeaders,
+        authenticationHeaders,
       );
 
-      if (credentials !== undefined)
-        headers.set('Authorization', `Bearer ${credentials.accessToken}`);
       if (request.body !== undefined && !headers.has('content-type')) {
         headers.set('content-type', 'application/json');
       }
@@ -653,21 +672,15 @@ export class ServiceClient {
         attempt === 1
       )
         return response;
-      const failure = await withAbort(
-        response
-          .clone()
-          .json()
-          .catch(() => undefined),
-        options.signal,
-      );
-      if (failure?.code !== 'expired_access_token') return response;
-      await withAbort(
+      const refreshed = await withAbort(
         this.#authentication.refreshToken(
-          credentials.accessToken,
+          credentials,
+          response.clone(),
           options.signal,
         ),
         options.signal,
       );
+      if (!refreshed) return response;
     }
     throw new TransportError('Authentication recovery failed.');
   }
