@@ -11,6 +11,13 @@ export const TokenResponseSchema = BearerCredentialsSchema.extend({
   refreshToken,
 }));
 
+export type OwnershipChallengeRequest = {
+  signer: string;
+  wallet?: string;
+  nonce?: number;
+  verification_token?: string;
+};
+
 export const OwnershipChallengeSchema = z.object({
   challengeId: z.uuid(),
   expiresAt: z.iso.datetime(),
@@ -34,6 +41,8 @@ export const OwnershipChallengeSchema = z.object({
     message: z.record(z.string(), z.unknown()),
   }),
 });
+
+export type OwnershipChallenge = z.infer<typeof OwnershipChallengeSchema>;
 
 // Claims are decoded for lifecycle scheduling and identity continuity only.
 // Authentication and signature verification remain the server's responsibility.

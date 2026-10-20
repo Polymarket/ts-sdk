@@ -1,9 +1,15 @@
 import process from 'node:process';
 import { invariant } from '@polymarket/types';
-
-import { SigningError } from './errors';
+import { z } from 'zod';
+import { DirectApiKeyAuthorizationSchema } from './authorization';
+import { SigningError, UserInputError } from './errors';
 import { buildHmacSignature } from './hmac';
-import type { ApiKeyAuthorization, ApiKeyAuthorizationRequest } from './types';
+import { parseUserInput } from './input';
+import type {
+  ApiKeyAuthorization,
+  ApiKeyAuthorizationOptions,
+  ApiKeyAuthorizationRequest,
+} from './types';
 
 invariant(
   process.release.name === 'node',
@@ -67,5 +73,67 @@ class LocalBuilderApiKey implements ApiKeyAuthorization {
         'Could not sign the builder-authenticated request',
       );
     }
+  }
+}
+
+export type PlatformApiKeyOptions = {
+  /** Retain required builder/submission authorization during migration. This does not change the platform key's server-bound identity. */
+  legacyApiKey?: ApiKeyAuthorization;
+};
+export type PlatformApiKeyError = UserInputError;
+export const PlatformApiKeyError = UserInputError;
+
+/** Configures a server-held application key. Import only from `@polymarket/client/node`.
+ * @example
+ * ```ts
+ * const apiKey = platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!);
+ * ```
+ * @throws {@link PlatformApiKeyError} Thrown for an invalid key.
+ */
+export function platformApiKey(
+  key: string,
+  options: PlatformApiKeyOptions = {},
+): ApiKeyAuthorization {
+  const secret = parseUserInput(
+    key,
+    z
+      .string()
+      .min(1)
+      .regex(/^[\x21-\x7e]+$/),
+  );
+  const parsed = parseUserInput(
+    options,
+    z.object({ legacyApiKey: DirectApiKeyAuthorizationSchema.optional() }),
+  );
+  return new PlatformAuthorization(secret, parsed.legacyApiKey);
+}
+
+class PlatformAuthorization implements ApiKeyAuthorization {
+  readonly #key: string;
+  readonly #directAuthorization: ApiKeyAuthorization | undefined;
+  constructor(
+    key: string,
+    directAuthorization: ApiKeyAuthorization | undefined,
+  ) {
+    this.#key = key;
+    this.#directAuthorization = directAuthorization;
+  }
+  get isBuilderKey(): boolean {
+    return this.#directAuthorization?.isBuilderKey ?? false;
+  }
+  get supportGasless(): boolean {
+    return true;
+  }
+  authorizeGateway(): Promise<Record<string, string>> {
+    return Promise.resolve({ 'X-API-Key': this.#key });
+  }
+  authorize(
+    request: ApiKeyAuthorizationRequest,
+    options?: ApiKeyAuthorizationOptions,
+  ): Promise<HeadersInit> {
+    return (
+      this.#directAuthorization?.authorize(request, options) ??
+      Promise.resolve({})
+    );
   }
 }
