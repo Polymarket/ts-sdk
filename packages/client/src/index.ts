@@ -59,8 +59,14 @@ export { SearchSort } from './actions';
 export type {
   RelayerApiKeyConfig,
   RemoteBuilderSigningConfig,
+  RemotePlatformApiKeyConfig,
 } from './authorization';
-export { relayerApiKey, remoteBuilderSigning } from './authorization';
+export {
+  RemotePlatformApiKeyError,
+  relayerApiKey,
+  remoteBuilderSigning,
+  remotePlatformApiKey,
+} from './authorization';
 export type * from './clients';
 export {
   CreateSecureClientError,
