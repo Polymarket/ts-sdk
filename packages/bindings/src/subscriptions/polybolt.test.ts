@@ -97,7 +97,7 @@ describe('realtime frame normalization', () => {
     });
   });
 
-  // Synthetic upstream #317 frames exercise the wire-to-public boundary.
+  // Synthetic equity frames exercise the wire-to-public boundary.
   it.each([
     'price.equity',
     'price.equity.twap',
