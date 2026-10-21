@@ -105,6 +105,77 @@ describe('bearer socket boundaries', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it.each([
+    'event',
+    'ack',
+    'restart',
+    'none',
+  ] as const)('bounds consecutive CLOB authentication failures and resets after %s', async (recovery) => {
+    const session = new AuthSession({
+      credentials: pair(),
+      refresh: async () => pair(1),
+    });
+    const manager = new ClobUserWebSocketManager({
+      session,
+      url: 'wss://synthetic.invalid/user',
+    });
+    let handle = await manager.subscribe({ topic: 'user' });
+    let connections = 1;
+    async function unavailable() {
+      ControlledSocket.sockets.at(-1)?.disconnect(1013, 'try again later');
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await unavailable();
+      expect(ControlledSocket.sockets).toHaveLength(++connections);
+    }
+    const socket = ControlledSocket.sockets.at(-1);
+    if (recovery === 'event') {
+      socket?.receive({
+        asset_id: 'token-a',
+        event_type: 'order',
+        id: 'order-a',
+        market: `0x${'aa'.repeat(32)}`,
+        original_size: '1',
+        owner: 'owner',
+        price: '0.5',
+        side: 'BUY',
+        size_matched: '0',
+        timestamp: '1',
+        type: 'PLACEMENT',
+      });
+    } else if (recovery === 'ack') {
+      await session.refresh();
+      await vi.advanceTimersByTimeAsync(0);
+    } else if (recovery === 'restart') {
+      await handle.close();
+      handle = await manager.subscribe({ topic: 'user' });
+      expect(ControlledSocket.sockets).toHaveLength(++connections);
+    } else {
+      socket?.receive({ event_type: 'unknown' });
+      socket?.receive({ type: 'auth', success: false });
+    }
+    if (recovery === 'event') {
+      await expect(
+        handle[Symbol.asyncIterator]().next(),
+      ).resolves.toMatchObject({ done: false });
+    }
+    const result = expect(
+      handle[Symbol.asyncIterator]().next(),
+    ).rejects.toMatchObject({ status: 401 });
+    const remaining = recovery === 'none' ? 0 : 2;
+    for (let attempt = 0; attempt < remaining; attempt++) {
+      await unavailable();
+      expect(ControlledSocket.sockets).toHaveLength(++connections);
+    }
+    await unavailable();
+    expect(ControlledSocket.sockets).toHaveLength(connections);
+    await result;
+    await handle.close();
+    session.close();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('Polybolt requires its matching fresh rid and keeps subscriptions alive on non-closing rejection', async () => {
     const original = pair();
     const replacement = pair(1);
