@@ -97,6 +97,7 @@ export class PolyboltConnection implements PriceSessionConnection {
       onError: () => undefined,
       onConnectionLost: (info) => {
         if (generation !== this.#generation) return;
+        this.#generation++;
         this.#authentication?.stop();
         this.#cancel(
           new ConnectionLostError('Realtime connection closed.', info),
@@ -111,12 +112,17 @@ export class PolyboltConnection implements PriceSessionConnection {
 
   async authorize(): Promise<void> {
     if (this.#authentication !== undefined) {
+      const generation = this.#generation;
       const { accessToken } = await this.#authentication.prepare();
+      if (generation !== this.#generation)
+        throw new TransportError('Realtime authentication was cancelled.');
       await this.#request(
         { op: 'auth', auth: { accessToken } },
         PolyboltAckOp.Authed,
         [],
       );
+      if (generation !== this.#generation)
+        throw new TransportError('Realtime authentication was cancelled.');
       this.#authentication.accepted(accessToken);
       return;
     }

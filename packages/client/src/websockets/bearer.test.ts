@@ -275,3 +275,94 @@ it('keeps maker public feeds after rejection and blocks quotes before wallet sig
   session.close();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it.each([
+  'close',
+  'disconnect',
+])('Polybolt ignores an initial ACK invalidated by %s before its continuation', async (stop) => {
+  const session = new AuthSession({
+    credentials: pair(),
+    refresh: async () => pair(1),
+  });
+  const changes = vi.spyOn(session, 'onChange');
+  const connection = new PolyboltConnection({
+    session,
+    url: 'wss://synthetic.invalid/prices',
+  });
+  await connection.open({
+    subscribed: vi.fn(),
+    event: vi.fn(),
+    dropped: vi.fn(),
+    disconnected: vi.fn(),
+    failed: vi.fn(),
+  });
+  ControlledSocket.accept = false;
+  const authorized = connection.authorize();
+  const rejected = expect(authorized).rejects.toMatchObject({
+    name: 'TransportError',
+  });
+  await vi.advanceTimersByTimeAsync(110);
+  const socket = ControlledSocket.sockets[0];
+  socket?.receive({ op: 'authed', rid: socket.frames[0]?.rid });
+  const closing = stop === 'close' ? connection.close() : undefined;
+  if (stop === 'disconnect') socket?.disconnect(1006, 'lost');
+  try {
+    await rejected;
+    await closing;
+    expect(changes).not.toHaveBeenCalled();
+    await connection.close();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    await connection.close();
+    session.close();
+  }
+});
+
+it.each([
+  'shutdown',
+  'disconnect',
+])('RFQ ignores an initial ACK invalidated by %s before its continuation', async (stop) => {
+  const session = new AuthSession({
+    credentials: pair(),
+    refresh: async () => pair(1),
+  });
+  const changes = vi.spyOn(session, 'onChange');
+  const manager = new RfqQuoterWebSocketManager({
+    session,
+    url: 'wss://synthetic.invalid/maker',
+    account: {
+      signer: address,
+      wallet: address,
+      signerType: SignerType.OWNER,
+      walletType: WalletType.EOA,
+    },
+    chainId: 137,
+    exchange: address,
+    signer: {
+      getAddress: async () => address,
+      signTypedData: vi.fn(),
+      signMessage: vi.fn(),
+      sendTransaction: vi.fn(),
+    },
+  });
+  ControlledSocket.accept = false;
+  const connecting = manager.connect();
+  const rejected = expect(connecting).rejects.toMatchObject({
+    name: 'TransportError',
+  });
+  await vi.advanceTimersByTimeAsync(0);
+  const socket = ControlledSocket.sockets[0];
+  socket?.receive({ type: 'auth', success: true });
+  const closing = stop === 'shutdown' ? manager.shutdown() : undefined;
+  if (stop === 'disconnect') socket?.disconnect(1006, 'lost');
+  try {
+    await rejected;
+    await closing;
+    expect(changes).not.toHaveBeenCalled();
+    await manager.shutdown();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    await manager.shutdown();
+    session.close();
+  }
+});

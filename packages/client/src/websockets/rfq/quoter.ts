@@ -260,6 +260,8 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         url: this.#url,
       });
       await auth.promise;
+      if (this.closed || !this.#authenticated)
+        throw new TransportError('RFQ authentication was cancelled.');
       this.#reconnect.resetBackoff();
       if (this.#authToken !== undefined)
         this.#authentication?.accepted(this.#authToken);
@@ -295,6 +297,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   }
 
   async close(): Promise<void> {
+    this.#authenticated = false;
     this.#reconnect.stop();
     this.#authentication?.stop();
     if (this.#closing === undefined) {
@@ -323,6 +326,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   }
 
   async #shutdownWithError(error: Error): Promise<void> {
+    this.#authenticated = false;
     this.#reconnect.stop();
     this.#authentication?.stop();
     this.#failPending(error);
