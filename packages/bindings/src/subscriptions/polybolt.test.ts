@@ -97,6 +97,54 @@ describe('realtime frame normalization', () => {
     });
   });
 
+  // Synthetic upstream #317 frames exercise the wire-to-public boundary.
+  it.each([
+    'price.equity',
+    'price.equity.twap',
+  ])('normalizes %s market status on live and batch payloads without changing history points', (channel) => {
+    const point = {
+      timestamp: 123456,
+      value: 12,
+      full_accuracy_value: '12.000000000000000001',
+    };
+    for (const status of ['open', 'closed', 'unknown', undefined]) {
+      for (const data of [undefined, [], [point]]) {
+        const event = parsePolyboltEvent(
+          PolyboltEnvelopeSchema.parse({
+            v: 1,
+            channel,
+            seq: 1,
+            ts: point.timestamp,
+            snapshot: data !== undefined,
+            payload: {
+              symbol: 'usdjpy',
+              source: 'chainlink',
+              window_seconds: 60,
+              ...(data === undefined ? point : { data }),
+              ...(status === undefined ? {} : { market_status: status }),
+            },
+          }),
+        );
+        expect(event).toBeDefined();
+        expect(event?.payload).toHaveProperty('marketStatus', status);
+        expect(event?.payload).not.toHaveProperty('market_status');
+        if (event?.type === 'subscribe') {
+          expect(event.payload.data).toEqual(
+            data?.map(() => ({
+              timestamp: point.timestamp,
+              value: point.full_accuracy_value,
+            })),
+          );
+        } else {
+          expect(event?.payload).toHaveProperty(
+            'value',
+            point.full_accuracy_value,
+          );
+        }
+      }
+    }
+  });
+
   describe('equity TWAP payload contract', () => {
     const point = {
       timestamp: 123456,

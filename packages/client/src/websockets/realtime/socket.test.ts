@@ -119,6 +119,138 @@ describe('price channel lifecycle', () => {
     return pending;
   }
 
+  it.each([
+    { topic: 'prices.equity', channel: 'price.equity' },
+    { topic: 'prices.equity.twap', channel: 'price.equity.twap' },
+  ] as const)('delivers $topic status and replays it to late joiners', async ({
+    topic,
+    channel,
+  }) => {
+    const first = await subscribe({ topic, symbol: 'usdjpy' });
+    const iterator = first[Symbol.asyncIterator]();
+    const socket = TestWebSocket.connections[0];
+    const point = {
+      timestamp: 123456,
+      value: 12,
+      full_accuracy_value: '12.000000000000000001',
+    };
+    const payload = {
+      symbol: 'usdjpy',
+      source: 'chainlink',
+      window_seconds: 60,
+    };
+    // A reconnect barrier may contain a closing price older than two minutes.
+    let next = iterator.next();
+    socket?.receive({
+      v: 1,
+      channel,
+      seq: 1,
+      ts: point.timestamp,
+      snapshot: true,
+      payload: { ...payload, data: [point], market_status: 'closed' },
+    });
+    expect((await next).value).toMatchObject({
+      type: 'subscribe',
+      payload: { marketStatus: 'closed' },
+    });
+    const second = await subscribe({ topic, symbol: 'usdjpy' });
+    expect((await second[Symbol.asyncIterator]().next()).value).toMatchObject({
+      type: 'subscribe',
+      payload: {
+        marketStatus: 'closed',
+        data: [
+          { timestamp: point.timestamp, value: point.full_accuracy_value },
+        ],
+      },
+    });
+    for (const [index, status] of ['unknown', 'open'].entries()) {
+      const timestamp =
+        point.timestamp + (channel === 'price.equity.twap' ? index + 1 : 0);
+      next = iterator.next();
+      socket?.receive({
+        v: 1,
+        channel,
+        seq: index + 2,
+        ts: timestamp,
+        payload: {
+          ...payload,
+          ...point,
+          timestamp,
+          market_status: status,
+          received_at: 999999,
+          is_carried_forward: true,
+        },
+      });
+      const update = (await next).value;
+      expect(update).toMatchObject({
+        type: 'update',
+        payload: {
+          marketStatus: status,
+          timestamp,
+          value: point.full_accuracy_value,
+        },
+      });
+      if (channel === 'price.equity')
+        expect(update?.payload).toMatchObject({
+          receivedAt: 999999,
+          isCarriedForward: true,
+        });
+      const joined = await subscribe({ topic, symbol: 'usdjpy' });
+      expect((await joined[Symbol.asyncIterator]().next()).value).toMatchObject(
+        {
+          type: 'subscribe',
+          payload: {
+            marketStatus: status,
+            data:
+              channel === 'price.equity.twap'
+                ? [
+                    0,
+                    ...Array.from({ length: index + 1 }, (_, i) => i + 1),
+                  ].map((offset) => ({
+                    timestamp: point.timestamp + offset,
+                    value: point.full_accuracy_value,
+                  }))
+                : [{ timestamp, value: point.full_accuracy_value }],
+          },
+        },
+      );
+    }
+    if (channel === 'price.equity') {
+      next = iterator.next();
+      socket?.receive({
+        v: 1,
+        channel,
+        seq: 4,
+        ts: point.timestamp - 1,
+        payload: {
+          ...payload,
+          ...point,
+          timestamp: point.timestamp - 1,
+          is_carried_forward: true,
+          market_status: 'closed',
+        },
+      });
+      expect((await next).value).toMatchObject({
+        payload: { marketStatus: 'closed', timestamp: point.timestamp - 1 },
+      });
+      const joined = await subscribe({ topic, symbol: 'usdjpy' });
+      expect((await joined[Symbol.asyncIterator]().next()).value).toMatchObject(
+        {
+          type: 'subscribe',
+          payload: {
+            marketStatus: 'closed',
+            data: [
+              { timestamp: point.timestamp, value: point.full_accuracy_value },
+            ],
+          },
+        },
+      );
+    }
+    expect(
+      socket?.operations.filter(({ op }) => op === 'subscribe'),
+    ).toHaveLength(1);
+  });
+
   describe.each([
     undefined,
     PriceProvider.Pyth,

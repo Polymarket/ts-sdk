@@ -440,7 +440,22 @@ function refreshSnapshot(
     previous?.type === 'subscribe' && previous.payload.source === source
       ? previous.payload.data
       : [];
-  if ((history.at(-1)?.timestamp ?? 0) > timestamp) return previous;
+  if ((history.at(-1)?.timestamp ?? 0) > timestamp) {
+    // Equity spot clocks can deliver a status on a price older than history.
+    if (
+      previous?.type === 'subscribe' &&
+      previous.topic === 'prices.equity' &&
+      event.topic === 'prices.equity'
+    )
+      return {
+        ...previous,
+        payload: {
+          ...previous.payload,
+          marketStatus: event.payload.marketStatus,
+        },
+      };
+    return previous;
+  }
   const data = [
     ...history.filter(
       (point) =>
@@ -460,6 +475,20 @@ function refreshSnapshot(
         source,
         data,
         windowSeconds: event.payload.windowSeconds,
+        ...(event.topic === 'prices.equity.twap'
+          ? { marketStatus: event.payload.marketStatus }
+          : {}),
+      },
+    };
+  if (event.topic === 'prices.equity')
+    return {
+      ...event,
+      type: 'subscribe',
+      payload: {
+        symbol,
+        source,
+        data,
+        marketStatus: event.payload.marketStatus,
       },
     };
   return { ...event, type: 'subscribe', payload: { symbol, source, data } };
