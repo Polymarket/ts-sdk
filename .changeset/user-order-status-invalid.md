@@ -3,4 +3,4 @@
 "@polymarket/client": patch
 ---
 
-User websocket channel order events with `status: "INVALID"` (orders the system removes) or a `CANCELED_` status with a reason (eg `CANCELED_MARKET_RESOLVED`) now parse and reach subscribers instead of being dropped.
+User websocket channel order events with `status: "INVALID"`, a `CANCELED_` status with a reason, or a newly introduced status now parse and reach subscribers instead of being dropped. Known status constants are available through `KnownUserOrderStatus`; `UserOrderStatus` is the full status type, including future strings.

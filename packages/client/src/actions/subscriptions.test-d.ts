@@ -14,7 +14,7 @@ import type {
   StandardMarketEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
-import { UserOrderStatus } from '@polymarket/bindings/subscriptions';
+import { KnownUserOrderStatus, type UserOrderStatus } from '@polymarket/client';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
   ConnectionLostError,
@@ -53,23 +53,31 @@ declare const secureClient: SecureClient;
 const ASSET_ID = toTokenId('123');
 
 describe('SecureClient.subscribe user order statuses', () => {
-  it('exposes cancellation reasons as template literals on delivered orders', async () => {
+  it('exports order statuses through the public client entry point', () => {
+    expectTypeOf<UserOrderStatus>().toEqualTypeOf<BindingExports.UserOrderStatus>();
+    expectTypeOf(KnownUserOrderStatus).toEqualTypeOf<
+      typeof BindingExports.KnownUserOrderStatus
+    >();
+  });
+
+  it('exposes known statuses and future strings on delivered orders', async () => {
     const handle = await secureClient.subscribe([{ topic: 'user' }]);
     for await (const event of handle) {
       expectTypeOf(event).toEqualTypeOf<UserEvent>();
       if (event.type === 'order') {
         expectTypeOf(event.payload.status).toEqualTypeOf<
-          UserOrderStatus | `CANCELED_${string}` | null | undefined
+          UserOrderStatus | null | undefined
         >();
         expectTypeOf<'CANCELED_MARKET_RESOLVED'>().toExtend<
           typeof event.payload.status
         >();
-        expectTypeOf(UserOrderStatus.Invalid).toExtend<
+        expectTypeOf(KnownUserOrderStatus.Invalid).toExtend<
           typeof event.payload.status
         >();
-        expectTypeOf<'NOT_A_STATUS'>().not.toExtend<
+        expectTypeOf(KnownUserOrderStatus.CanceledMarketResolved).toExtend<
           typeof event.payload.status
         >();
+        expectTypeOf<'FUTURE_STATUS'>().toExtend<typeof event.payload.status>();
       }
     }
   });

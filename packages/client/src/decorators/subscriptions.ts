@@ -40,8 +40,14 @@ export type {
   PriceSubscription,
   PriceSubscriptionConfirmation,
   SubscriptionHandle,
+  UserOrderStatus,
 } from '../actions';
-export { KnownPriceSource, PriceProvider, SubscribeError } from '../actions';
+export {
+  KnownPriceSource,
+  KnownUserOrderStatus,
+  PriceProvider,
+  SubscribeError,
+} from '../actions';
 
 export type PublicSubscriptionsActions = {
   /**
