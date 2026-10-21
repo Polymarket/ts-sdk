@@ -48,10 +48,6 @@ class LocalBuilderApiKey implements ApiKeyAuthorization {
   }
 
   async authorize(request: ApiKeyAuthorizationRequest): Promise<HeadersInit> {
-    return this.#authorize(request);
-  }
-
-  async #authorize(request: ApiKeyAuthorizationRequest): Promise<HeadersInit> {
     try {
       const timestamp = Math.floor(Date.now() / 1000);
 
