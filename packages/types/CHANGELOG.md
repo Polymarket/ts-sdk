@@ -1,5 +1,12 @@
 # @polymarket/types
 
+## 0.3.0
+
+### Minor Changes
+
+- 8e79e95: Breaking: remove `neverthrow` exports and `unwrap`. Await SDK requests directly;
+  import any remaining `neverthrow` APIs from your own dependency.
+
 ## 0.2.0
 
 ### Minor Changes
