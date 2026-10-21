@@ -118,7 +118,7 @@ class PlatformAuthorization implements ApiKeyAuthorization {
     return this.#directAuthorization?.isBuilderKey ?? false;
   }
   get supportGasless(): boolean {
-    return true;
+    return this.#directAuthorization?.supportGasless ?? false;
   }
   authorizeGateway(): Promise<Record<string, string>> {
     return Promise.resolve({ 'X-API-Key': this.#key });

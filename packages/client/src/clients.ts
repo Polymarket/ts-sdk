@@ -884,6 +884,15 @@ class BaseSecureClient<
     return this.session.credentials;
   }
 
+  /** @internal Wallet submissions can use a platform-attributed bearer session. */
+  get supportsGaslessWallet(): boolean {
+    return (
+      this.supportsGasless ||
+      (this.context.session !== undefined &&
+        this.context.apiKey?.authorizeGateway !== undefined)
+    );
+  }
+
   /** @internal */
   get session(): AuthSession {
     const session = this.context.session;
