@@ -1,4 +1,6 @@
 ---
+'@polymarket/client': minor
+'@polymarket/bindings': minor
 ---
 
 Configure internal service authentication callbacks through the owning client.
