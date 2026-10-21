@@ -9,6 +9,32 @@ import { fetchTag } from '@polymarket/client/actions';
 import { describe, expect, it } from './fixtures';
 
 describe('HTTP request controls', () => {
+  it('reads a public markets page through the production gateway contract', async ({
+    environment,
+  }) => {
+    const inputs: (RequestInfo | URL)[] = [];
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      inputs.push(input);
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch });
+    const params = new URLSearchParams({ limit: '1', closed: 'false' });
+    const result = await client.predictions.get('/v1/markets', {
+      params,
+      timeout: 10_000,
+      retries: 0,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({ markets: expect.any(Array) }),
+    );
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    expect(url.origin).toBe(new URL(environment.predictions.rest).origin);
+    expect(url.pathname).toBe('/v1/markets');
+    expect(url.searchParams.get('limit')).toBe('1');
+    expect(url.searchParams.get('closed')).toBe('false');
+  });
   it('reads the live gateway ping through predictions with custom fetch', async ({
     environment,
   }) => {

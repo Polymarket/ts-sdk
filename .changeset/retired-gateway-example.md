@@ -1,4 +1,4 @@
 ---
 ---
 
-Use the supported gateway ping example and remove the obsolete markets integration test.
+Update the gateway markets example and integration test to the supported endpoint and response contract.

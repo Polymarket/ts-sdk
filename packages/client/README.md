@@ -132,10 +132,13 @@ CORS support landed in [gateway #777](https://github.com/Polymarket/defi-api-gat
 verify that support is deployed before releasing browser clients with this header.
 
 ```ts
-const result = await client.predictions.get<{ status: string }>("/ping", {
+const result = await client.predictions.get("/v1/markets", {
+  params: new URLSearchParams({ limit: "1", closed: "false" }),
   signal,
 });
 ```
+
+The markets response contains a `markets` array and an optional `next_cursor`.
 
 Requests resolve parsed JSON and reject with SDK errors. Pass a `zod@^4` schema
 to validate the response and infer its type, or set `responseType` for `blob`,
