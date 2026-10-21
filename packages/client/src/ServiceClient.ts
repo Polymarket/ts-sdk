@@ -531,29 +531,29 @@ export class ServiceClient {
       return await this.#consumeResponse(response, options);
     } catch (error) {
       assertNotAborted(signal);
-      if (
-        error instanceof Error &&
-        redactRequestMessage(error.message, redactions) !== error.message
-      ) {
+      if (error instanceof Error) {
         const message = redactRequestMessage(error.message, redactions);
-        if (error instanceof RequestRejectedError)
-          throw new RequestRejectedError(message, {
-            status: error.status,
-            code: error.code,
-            retryAfter: error.retryAfter,
-            restriction: error.restriction,
-          });
-        if (error instanceof RateLimitError)
-          throw new RateLimitError(message, {
-            retryAfter: error.retryAfter,
-            rateLimit: error.rateLimit,
-          });
-        if (error instanceof RequestAbortedError)
-          throw new RequestAbortedError(message);
-        if (error instanceof UnexpectedResponseError)
-          throw new UnexpectedResponseError(message);
-        if (error instanceof UserInputError) throw new UserInputError(message);
-        throw new TransportError(message);
+        if (message !== error.message) {
+          if (error instanceof RequestRejectedError)
+            throw new RequestRejectedError(message, {
+              status: error.status,
+              code: error.code,
+              retryAfter: error.retryAfter,
+              restriction: error.restriction,
+            });
+          if (error instanceof RateLimitError)
+            throw new RateLimitError(message, {
+              retryAfter: error.retryAfter,
+              rateLimit: error.rateLimit,
+            });
+          if (error instanceof RequestAbortedError)
+            throw new RequestAbortedError(message);
+          if (error instanceof UnexpectedResponseError)
+            throw new UnexpectedResponseError(message);
+          if (error instanceof UserInputError)
+            throw new UserInputError(message);
+          throw new TransportError(message);
+        }
       }
       if (
         error instanceof RequestAbortedError ||
@@ -879,15 +879,16 @@ export class ServiceClient {
           /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(message)
             ? message
             : undefined;
+        const responseCode = code ?? inferredCode;
         return {
           message: redactRequestMessage(
             `${message} (${response.url})`,
             redactions,
           ),
           code:
-            redactRequestMessage(code ?? inferredCode ?? '', redactions) ===
-            (code ?? inferredCode ?? '')
-              ? (code ?? inferredCode)
+            responseCode !== undefined &&
+            redactRequestMessage(responseCode, redactions) === responseCode
+              ? responseCode
               : undefined,
           retryAfter,
         };
