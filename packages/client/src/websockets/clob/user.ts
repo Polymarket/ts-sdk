@@ -142,6 +142,7 @@ export class ClobUserWebSocketManager
   }
 
   async #shutdown(): Promise<void> {
+    this.#authUnavailable = 0;
     this.#authentication?.stop();
     this.#auth?.reject(new TransportError('User connection closed.'));
     this.#reconnectScheduler.stop();
@@ -193,8 +194,10 @@ export class ClobUserWebSocketManager
   #onConnectionMessage(message: unknown): void {
     const auth = SocketAuthResponseSchema.safeParse(message);
     if (auth.success) {
-      if (auth.data.success) this.#auth?.resolve();
-      else
+      if (auth.data.success) {
+        this.#authUnavailable = 0;
+        this.#auth?.resolve();
+      } else
         this.#auth?.reject(
           new RequestRejectedError('User stream renewal rejected.', {
             status: 401,
@@ -206,6 +209,7 @@ export class ClobUserWebSocketManager
     for (const eventData of events) {
       const parsed = UserEventSchema.safeParse(eventData);
       if (!parsed.success) continue;
+      this.#authUnavailable = 0;
       this.#subscriptions.dispatch(parsed.data);
     }
   }
