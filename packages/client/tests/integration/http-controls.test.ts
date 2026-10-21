@@ -18,21 +18,21 @@ describe('HTTP request controls', () => {
       return globalThis.fetch(input, init);
     }
     const client = createPublicClient({ environment, fetch });
-    const params = new URLSearchParams({ page_size: '1', closed: 'false' });
-    const result = await client.predictions.get('/next/markets', {
+    const params = new URLSearchParams({ limit: '1', closed: 'false' });
+    const result = await client.predictions.get('/v1/markets', {
       params,
       timeout: 10_000,
       retries: 0,
     });
     expect(result).toEqual(
-      expect.objectContaining({ items: expect.any(Array) }),
+      expect.objectContaining({ markets: expect.any(Array) }),
     );
     expect(inputs).toHaveLength(1);
     const input = inputs[0];
     const url = new URL(input instanceof Request ? input.url : String(input));
     expect(url.origin).toBe(new URL(environment.predictions.rest).origin);
-    expect(url.pathname).toBe('/next/markets');
-    expect(url.searchParams.get('page_size')).toBe('1');
+    expect(url.pathname).toBe('/v1/markets');
+    expect(url.searchParams.get('limit')).toBe('1');
     expect(url.searchParams.get('closed')).toBe('false');
   });
   it('reads the live gateway ping through predictions with custom fetch', async ({
