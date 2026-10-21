@@ -96,7 +96,33 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
   ): Promise<HeadersInit> {
     try {
       assertNotAborted(options?.signal);
-      return await this.#fetchBuilderKeyHeaders(request, options);
+      const headers = await resolveJsonHeaders(
+        this.#config.headers,
+        options?.signal,
+      );
+      assertNotAborted(options?.signal);
+      const fetch = options?.fetch ?? globalThis.fetch;
+      const response = await withAbort(
+        fetch(this.#config.url, {
+          body: JSON.stringify({
+            body: request.body,
+            method: request.method,
+            path: request.path,
+          }),
+          credentials: this.#config.credentials,
+          headers,
+          method: 'POST',
+          mode: 'cors',
+          signal: options?.signal,
+        }),
+        options?.signal,
+      );
+      if (!response.ok)
+        throw new Error(
+          `Remote signer rejected request with status ${response.status}`,
+        );
+      const body: unknown = await withAbort(response.json(), options?.signal);
+      return RemoteBuilderSigningResponseSchema.parse(body);
     } catch (error) {
       if (error instanceof RequestAbortedError) throw error;
       throw SigningError.fromError(
@@ -104,52 +130,6 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
         'Could not authorize the builder-authenticated request',
       );
     }
-  }
-
-  async #resolveHeaders(signal?: AbortSignal): Promise<Headers> {
-    const headers = this.#config.headers;
-    const resolvedHeaders =
-      typeof headers === 'function'
-        ? await withAbort(Promise.resolve(headers()), signal)
-        : headers;
-    const requestHeaders = new Headers(resolvedHeaders);
-
-    requestHeaders.set('content-type', 'application/json');
-
-    return requestHeaders;
-  }
-
-  async #fetchBuilderKeyHeaders(
-    request: ApiKeyAuthorizationRequest,
-    options?: ApiKeyAuthorizationOptions,
-  ): Promise<HeadersInit> {
-    const headers = await this.#resolveHeaders(options?.signal);
-    assertNotAborted(options?.signal);
-    const fetch = options?.fetch ?? globalThis.fetch;
-    const response = await withAbort(
-      fetch(this.#config.url, {
-        body: JSON.stringify({
-          body: request.body,
-          method: request.method,
-          path: request.path,
-        }),
-        credentials: this.#config.credentials,
-        headers,
-        method: 'POST',
-        mode: 'cors',
-        signal: options?.signal,
-      }),
-      options?.signal,
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        `Remote signer rejected request with status ${response.status}`,
-      );
-    }
-
-    const body: unknown = await withAbort(response.json(), options?.signal);
-    return RemoteBuilderSigningResponseSchema.parse(body);
   }
 }
 
@@ -178,16 +158,13 @@ class RelayerApiKeyAuthorization implements ApiKeyAuthorization {
 
 /** @internal */
 export const DirectApiKeyAuthorizationSchema = z.custom<ApiKeyAuthorization>(
-  (value) => {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      'authorize' in value &&
-      typeof value.authorize === 'function' &&
-      !('authorizeGateway' in value) &&
-      !('createChallenge' in value)
-    );
-  },
+  (value) =>
+    typeof value === 'object' &&
+    value !== null &&
+    'authorize' in value &&
+    typeof value.authorize === 'function' &&
+    !('authorizeGateway' in value) &&
+    !('createChallenge' in value),
   'Expected a builder or submission authorization adapter',
 );
 
@@ -275,18 +252,15 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
     assertNotAborted(options?.signal);
     let response: Response;
     try {
-      const supplied = this.#config.headers;
-      const headers = new Headers(
-        typeof supplied === 'function'
-          ? await withAbort(Promise.resolve(supplied()), options?.signal)
-          : supplied,
+      const headers = await resolveJsonHeaders(
+        this.#config.headers,
+        options?.signal,
       );
       // A platform key must never be supplied through browser configuration.
       if (headers.has('x-api-key'))
         throw new UserInputError(
           'Keep the Platform API Key on the challenge proxy backend.',
         );
-      headers.set('content-type', 'application/json');
       assertNotAborted(options?.signal);
       const timeout = new AbortController();
       const signal =
@@ -356,4 +330,17 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
       );
     return parsed.data;
   }
+}
+
+async function resolveJsonHeaders(
+  headers: HeadersInit | (() => HeadersInit | Promise<HeadersInit>) | undefined,
+  signal?: AbortSignal,
+): Promise<Headers> {
+  const resolved =
+    typeof headers === 'function'
+      ? await withAbort(Promise.resolve(headers()), signal)
+      : headers;
+  const result = new Headers(resolved);
+  result.set('content-type', 'application/json');
+  return result;
 }
