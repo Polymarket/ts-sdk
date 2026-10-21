@@ -42,6 +42,10 @@ export enum KnownUserOrderStatus {
   Unmatched = 'UNMATCHED',
   Canceled = 'CANCELED',
   CanceledMarketResolved = 'CANCELED_MARKET_RESOLVED',
+  CanceledNotEnoughBalance = 'CANCELED_NOT_ENOUGH_BALANCE',
+  CanceledMarketNotFound = 'CANCELED_MARKET_NOT_FOUND',
+  CanceledExpiredOrder = 'CANCELED_EXPIRED_ORDER',
+  CanceledOrderTimedOut = 'CANCELED_ORDER_TIMED_OUT',
   Invalid = 'INVALID',
 }
 
