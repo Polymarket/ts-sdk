@@ -445,7 +445,8 @@ function refreshSnapshot(
     if (
       previous?.type === 'subscribe' &&
       previous.topic === 'prices.equity' &&
-      event.topic === 'prices.equity'
+      event.topic === 'prices.equity' &&
+      event.payload.marketStatus !== undefined
     )
       return {
         ...previous,

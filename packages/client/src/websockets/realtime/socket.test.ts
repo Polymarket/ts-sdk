@@ -216,26 +216,29 @@ describe('price channel lifecycle', () => {
       );
     }
     if (channel === 'price.equity') {
-      next = iterator.next();
-      socket?.receive({
-        v: 1,
-        channel,
-        seq: 4,
-        ts: point.timestamp - 1,
-        payload: {
-          ...payload,
-          ...point,
-          timestamp: point.timestamp - 1,
-          is_carried_forward: true,
-          market_status: 'closed',
-        },
-      });
-      expect((await next).value).toMatchObject({
-        payload: { marketStatus: 'closed', timestamp: point.timestamp - 1 },
-      });
-      const joined = await subscribe({ topic, symbol: 'usdjpy' });
-      expect((await joined[Symbol.asyncIterator]().next()).value).toMatchObject(
-        {
+      for (const [index, status] of ['closed', undefined].entries()) {
+        next = iterator.next();
+        socket?.receive({
+          v: 1,
+          channel,
+          seq: index + 4,
+          ts: point.timestamp - 1,
+          payload: {
+            ...payload,
+            ...point,
+            timestamp: point.timestamp - 1,
+            is_carried_forward: true,
+            ...(status === undefined ? {} : { market_status: status }),
+          },
+        });
+        expect((await next).value).toMatchObject({
+          payload: { marketStatus: status, timestamp: point.timestamp - 1 },
+        });
+        const joined = await subscribe({ topic, symbol: 'usdjpy' });
+        // An older unstated frame must not clear the last stated status.
+        expect(
+          (await joined[Symbol.asyncIterator]().next()).value,
+        ).toMatchObject({
           type: 'subscribe',
           payload: {
             marketStatus: 'closed',
@@ -243,8 +246,8 @@ describe('price channel lifecycle', () => {
               { timestamp: point.timestamp, value: point.full_accuracy_value },
             ],
           },
-        },
-      );
+        });
+      }
     }
     expect(
       socket?.operations.filter(({ op }) => op === 'subscribe'),
