@@ -40,9 +40,17 @@ export enum UserOrderStatus {
   Delayed = 'DELAYED',
   Unmatched = 'UNMATCHED',
   Canceled = 'CANCELED',
+  Invalid = 'INVALID',
 }
 
-const UserOrderStatusSchema = z.enum(UserOrderStatus);
+export type CanceledWithReasonStatus = 'CANCELED_${string}';
+
+const UserOrderStatusSchema = z.union([
+  z.enum(UserOrderStatus),
+  z.custom<CanceledWithReasonStatus>(
+    (value) => typeof value === 'string' && value.startsWith('CANCELED_'),
+  ),
+]);
 
 const OrderBookLevelSchema = z.object({
   price: DecimalStringSchema,
@@ -592,7 +600,7 @@ export type UserOrderEvent = {
     createdAt: IsoDateTimeString | null | undefined;
     expiresAt: IsoDateTimeString | null | undefined;
     orderType: OrderType | null | undefined;
-    status?: UserOrderStatus | null;
+    status?: UserOrderStatus | CanceledWithReasonStatus | null;
     makerAddress: string | null | undefined;
     timestamp: EpochMilliseconds;
   };
