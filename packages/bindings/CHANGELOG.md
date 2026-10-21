@@ -4,50 +4,21 @@
 
 ### Minor Changes
 
-- 3bc5493: Breaking 0.x change: `SplitActivity`, `MergeActivity` and `RedeemActivity` now
-  include Combo variants with `isCombo: true`, `ComboConditionId`, optional titles
-  and no `slug`/`eventSlug`. For `listActivity` results, add `!activity.isCombo` to
-  the existing SPLIT/MERGE/REDEEM type guard before accessing market URLs.
-  Parsed ordinary rows return `isCombo: false`; ordinary object construction may
-  still omit the flag.
-
-  Combo splits, merges and redemptions accept missing presentation metadata.
-  Trades and redemptions retain basket token `outcome`/`outcomeIndex`: blank labels
-  and index `999` become `undefined`, while zero is preserved. Automatic redemption
-  remains REDEEM; the separate `listComboActivity` models are unchanged.
-
-- c05ca40: Expose optional equity market status on price updates and snapshots, preserving
-  status-only updates and current status for late subscribers.
-- 3fd2412: Normalize native and upstream rejection envelopes internally and expose extensible known rejection codes while preserving transport fallbacks.
-- 8ae8885: Add Router v2 neg-risk workflows using market condition IDs; low-level helpers retain explicit protocol event IDs.
-- ef3d314: Expose optional oracle event/request IDs and market resolution status, and add request-ID, event-ID, resolution-status and protocol-version discovery filters with pagination and backend ID-count limits.
-- 3d93028: Add the authenticated order heartbeat method. ID-mismatch errors expose the current heartbeat ID for caller recovery; callers own scheduling and ID serialization.
-
-  The first accepted send enables API-key-wide timeout cancellation; there is no disarm operation. Each call sends one request, and callers must maintain the heartbeat loop. Cancellation after expiry is best effort. OrderHeartbeatMismatchError now reports its own runtime name while retaining RequestRejectedError inheritance.
-
-- a2ebe7c: Preserve exchange event horizons independently of send time across existing Perps update and recovery streams. Server-originated events expose `eventTimestamp: EpochMilliseconds | null`, normalizing the wire zero sentinel to `null` for an unknown horizon; local synthetic recovery does not invent one. Perps remains experimental.
-- 84e07ef: Add an optional instrument filter to account fill pagination, and retain ADL flags and optional liquidation details in account fill workflows. Perps remains experimental.
-- bdcfad0: Expose nullable UI live time and optional light/dark logos on instruments. Visibility metadata is advisory and does not establish trading eligibility. Perps remains experimental.
-- d79941a: Expose available order margin, fee tier and position ADL index in portfolio reads and existing account session updates. Perps remains experimental.
-- bffb030: Add public current maker rebate reads with calendar date and maker address inputs and decimal-string rebate amounts.
-
-  Normalize an empty maker rebate response to an empty collection.
-
-- 8d0ecfb: Add filtered and sorted reward market discovery through normalized cursor pagination, preserving selection options across continuation.
-
-  Use the supported 24-hour volume query keys, omit the removed tag-exclusion filter, and normalize Postgres datetime strings to ISO 8601.
-
-- 66b441d: Add outcome asset reference lookup with decimal asset and condition selectors, explicit nullable metadata, and direct collection results.
+- c05ca40, f059b22: Add optional equity market status (`open`, `closed`, `unknown`) to spot/TWAP updates and snapshots; omission means not stated, never open. Status describes the provider's instrument. Spot status-only updates may repeat the price timestamp with `isCarriedForward: true`; do not deduplicate by timestamp alone. Older unstated spot frames retain the last stated snapshot status. Snapshots carry status at batch level and may retain an older closing price; TWAP status changes with a new price.
+- 3bc5493: Breaking 0.x: `SplitActivity`, `MergeActivity` and `RedeemActivity` include Combo variants (`isCombo: true`, `ComboConditionId`, optional titles, no `slug`/`eventSlug`). Add `!activity.isCombo` to SPLIT/MERGE/REDEEM guards before accessing market URLs. Parsed ordinary rows use `isCombo: false`; ordinary object construction may omit it. Combo presentation metadata is optional; trade/redemption `outcome` and `outcomeIndex` preserve zero and normalize blank labels/index `999` to `undefined`. Automatic redemption remains REDEEM; `listComboActivity` is unchanged.
+- 3d93028: Add one-shot authenticated order heartbeats with mismatch-ID recovery (`OrderHeartbeatMismatchError` retains `RequestRejectedError` inheritance and its own runtime name). The first accepted send enables API-key-wide timeout cancellation with no disarm operation. Callers own scheduling and ID serialization; cancellation after expiry is best effort.
+- 8ae8885: Add Router v2 neg-risk workflows by market condition ID; low-level helpers retain explicit protocol event IDs.
+- ef3d314: Add optional oracle event/request IDs, market resolution status, and discovery filters for these fields and protocol version, with pagination and backend ID-count limits.
+- 8d0ecfb, bffb030, 66b441d: Add filtered/sorted reward-market cursor pagination (preserving selections, supported 24-hour volume keys, no removed tag-exclusion filter, ISO 8601 dates), current maker rebates by date/address (decimal-string amounts; empty results become `[]`), and direct outcome-asset reference lookup by decimal asset/condition selectors with nullable metadata.
+- a2ebe7c, 84e07ef, bdcfad0, d79941a: Extend experimental Perps with fill instrument filters and ADL/liquidation details, portfolio available order margin/fee tier/position ADL index, and instrument UI live time/logos (advisory, not trading eligibility). Preserve server event horizons as `eventTimestamp: EpochMilliseconds | null` independently of send time; zero becomes `null`, and synthetic recovery invents no horizon.
+- 3fd2412: Normalize native/upstream rejection envelopes and expose extensible known rejection codes, preserving transport fallbacks.
 
 ### Patch Changes
 
-- d54c900: `gameStartTime` on new-market events and market notifications now normalizes space-separated and hour-only-offset datetime strings (such as `2026-10-17 23:30:00+00`) to ISO 8601; values that are already ISO 8601 are unchanged. An empty upstream value is now `null` instead of an empty string, and a string that names an impossible date or time fails validation instead of throwing.
-- 7705d09: Clarify that UMA resolution lifecycle rows retain the initial RequestPrice log index while the transaction hash can identify a later lifecycle event. Do not combine those fields as a log locator. Condition-resolution fallback rows instead carry their condition event's transaction and log metadata.
-- 911574f: Expose the optional native and sponsored earnings breakdown through total user earnings, and support its sponsored query option while preserving the existing default behavior.
-- edf336f: Retain taker tier upgrade notifications alongside existing account notification variants, including the previous tier, current tier, rebate basis points and snapshot date.
-- 24ec298: User websocket channel order events with `status: "INVALID"` (orders the system removes) or a `CANCELED_` status with a reason (eg `CANCELED_MARKET_RESOLVED`) now parse and reach subscribers instead of being dropped.
-- Updated dependencies [8e79e95]
-  - @polymarket/types@0.3.0
+- d54c900, 24ec298: Normalize `gameStartTime` on new-market events/notifications to ISO 8601, empty values to `null`, and impossible dates/times to validation failures. Deliver user order websocket `INVALID` and `CANCELED_*` statuses instead of dropping them.
+- 911574f, edf336f: Add optional native/sponsored earnings breakdowns and sponsored queries without changing defaults; retain taker-tier upgrade notifications (previous/current tier, rebate basis points and snapshot date).
+- 7705d09: UMA lifecycle rows retain the initial RequestPrice log index, while their transaction hash may identify a later event; do not combine them as a log locator. Condition-resolution fallback rows retain their own event transaction/log metadata.
+- Update `@polymarket/types` to `0.3.0` (removed `neverthrow` exports and `unwrap`; await SDK requests directly and import remaining `neverthrow` APIs from your own dependency).
 
 ## 0.13.0
 
