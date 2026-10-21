@@ -27,7 +27,7 @@ export class SocketAuthentication {
     this.#options = options;
   }
 
-  async prepare(): Promise<BearerCredentials> {
+  prepare(): Promise<BearerCredentials> {
     return this.#options.session.ready();
   }
 
