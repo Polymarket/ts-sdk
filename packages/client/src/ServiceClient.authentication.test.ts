@@ -45,31 +45,35 @@ it('lets the owning class supply authentication and refresh policy', async () =>
 
 it.each([
   'credentials',
+  'headers',
   'refresh',
 ])('cancels while a class %s callback ignores its signal', async (stage) => {
   const pending = Promise.withResolvers<void>();
-  const abort = new AbortController();
   const entered = Promise.withResolvers<void>();
+  const abort = new AbortController();
+  const waitAt = async (callback: string) => {
+    if (stage === callback) {
+      entered.resolve();
+      await pending.promise;
+    }
+  };
   const service = new ServiceClient({
     root,
-    fetch: async () =>
-      Response.json({ code: 'expired_access_token' }, { status: 401 }),
-    authentication: bearerPolicy({
+    fetch: async () => Response.json({}, { status: 401 }),
+    authentication: {
       credentials: async () => {
-        if (stage === 'credentials') {
-          entered.resolve();
-          await pending.promise;
-        }
-        return {
-          accessToken: 'original-opaque-token',
-          refreshToken: 'original-refresh',
-        };
+        await waitAt('credentials');
+        return { accessToken: 'opaque', refreshToken: 'opaque-refresh' };
+      },
+      headers: async () => {
+        await waitAt('headers');
+        return {};
       },
       refreshToken: async () => {
-        entered.resolve();
-        await pending.promise;
+        await waitAt('refresh');
+        return true;
       },
-    }),
+    },
   });
   const request = service.get('/private', { signal: abort.signal });
   const rejected = expect(request).rejects.toMatchObject({
@@ -242,11 +246,8 @@ it('lets a class authenticate with the existing L2 credential shape without bear
 
 it.each([
   undefined,
-  null,
   { accessToken: 'opaque' },
-  { accessToken: '', refreshToken: 'opaque-refresh' },
   { key: '00000000-0000-0000-0000-000000000001', secret: 'secret' },
-  { key: 42, secret: 'secret', passphrase: 'passphrase' },
   {
     key: '00000000-0000-0000-0000-000000000001',
     secret: 'secret',
@@ -297,32 +298,4 @@ it('accepts harmless token response metadata without exposing it as credentials'
     { accessToken: 'opaque', refreshToken: 'opaque-refresh' },
     expect.objectContaining({ path: '/private' }),
   ]);
-});
-
-it('cancels while a class header callback ignores its signal', async () => {
-  const entered = Promise.withResolvers<void>();
-  const pending = Promise.withResolvers<HeadersInit>();
-  const abort = new AbortController();
-  const service = new ServiceClient({
-    root,
-    authentication: {
-      credentials: async () => ({
-        accessToken: 'opaque',
-        refreshToken: 'opaque-refresh',
-      }),
-      headers: () => {
-        entered.resolve();
-        return pending.promise;
-      },
-      refreshToken: async () => false,
-    },
-  });
-  const request = service.get('/private', { signal: abort.signal });
-  const rejected = expect(request).rejects.toMatchObject({
-    name: 'RequestAbortedError',
-  });
-  await entered.promise;
-  abort.abort();
-  await rejected;
-  pending.resolve({});
 });

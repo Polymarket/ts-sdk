@@ -591,24 +591,23 @@ export class ServiceClient {
       );
     }
     const request = this.#createRequest(method, path, options);
+    const authentication = this.#authentication;
     for (let attempt = 0; attempt < 2; attempt++) {
-      const suppliedCredentials = await withAbort(
-        Promise.resolve(this.#authentication?.credentials(options.signal)),
-        options.signal,
-      );
-      const credentials =
-        this.#authentication === undefined
-          ? undefined
-          : parseUserInput(suppliedCredentials, ClientCredentialsSchema);
-      const authenticationHeaders =
-        credentials === undefined
-          ? undefined
-          : await withAbort(
-              Promise.resolve(
-                this.#authentication?.headers(credentials, request),
-              ),
-              options.signal,
-            );
+      let credentials: ClientCredentials | undefined;
+      let authenticationHeaders: HeadersInit | undefined;
+      if (authentication !== undefined) {
+        credentials = parseUserInput(
+          await withAbort(
+            authentication.credentials(options.signal),
+            options.signal,
+          ),
+          ClientCredentialsSchema,
+        );
+        authenticationHeaders = await withAbort(
+          Promise.resolve(authentication.headers(credentials, request)),
+          options.signal,
+        );
+      }
       const resolvedHeaders = await withAbort(
         Promise.resolve(this.#resolveHeaders?.(request)),
         options.signal,
@@ -667,13 +666,13 @@ export class ServiceClient {
       );
       if (
         response.status !== 401 ||
-        this.#authentication === undefined ||
+        authentication === undefined ||
         credentials === undefined ||
         attempt === 1
       )
         return response;
       const refreshed = await withAbort(
-        this.#authentication.refreshToken(
+        authentication.refreshToken(
           credentials,
           response.clone(),
           options.signal,
