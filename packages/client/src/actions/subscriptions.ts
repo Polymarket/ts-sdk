@@ -67,9 +67,11 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
   PriceSource,
+  UserOrderStatus,
 } from '@polymarket/bindings/subscriptions';
 export {
   KnownPriceSource,
+  KnownUserOrderStatus,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';
 // Event types — re-exported from bindings for consumer convenience.
