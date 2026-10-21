@@ -647,6 +647,8 @@ class BaseSecureClient<
               }),
           })
         : undefined;
+    const serviceRoot = (direct: string) =>
+      session === undefined ? direct : config.environment.predictions.rest;
     const authentication: ServiceAuthentication | undefined =
       session === undefined
         ? undefined
@@ -691,10 +693,7 @@ class BaseSecureClient<
         fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
-        root:
-          session === undefined
-            ? config.environment.clob.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.clob.rest),
         authentication,
         retryMutations: false,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
@@ -702,10 +701,7 @@ class BaseSecureClient<
       relayer: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.relayer.headers,
-        root:
-          session === undefined
-            ? config.environment.relayer.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.relayer.rest),
         authentication,
         retryMutations: false,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
@@ -717,30 +713,21 @@ class BaseSecureClient<
       gamma: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.gamma.headers,
-        root:
-          session === undefined
-            ? config.environment.gamma.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.gamma.rest),
         authentication,
         retryMutations: false,
       }),
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
-        root:
-          session === undefined
-            ? config.environment.data.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.data.rest),
         authentication,
         retryMutations: false,
       }),
       rfq: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.combos.headers,
-        root:
-          session === undefined
-            ? config.environment.combos.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.combos.rest),
         authentication,
         retryMutations: false,
       }),
@@ -757,10 +744,7 @@ class BaseSecureClient<
           ...(await this.resolveClobHeaders(request)),
           ...(await this.#createL2Headers(request)),
         }),
-        root:
-          session === undefined
-            ? config.environment.clob.rest
-            : config.environment.predictions.rest,
+        root: serviceRoot(config.environment.clob.rest),
         authentication,
         retryMutations: false,
       }),

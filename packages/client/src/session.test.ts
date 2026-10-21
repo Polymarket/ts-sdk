@@ -4,9 +4,9 @@ import { RequestRejectedError, TransportError } from './errors';
 import { AuthSession } from './session';
 
 const sub = '0x0000000000000000000000000000000000000001';
-function tokens(sequence = 0, seconds = 900): BearerCredentials {
+function tokens(sequence = 0, seconds = 900, subject = sub): BearerCredentials {
   return {
-    accessToken: `test.${btoa(JSON.stringify({ sub, client_id: 'synthetic-client', exp: Math.floor(Date.now() / 1000) + seconds, jti: sequence }))}.test`,
+    accessToken: `test.${btoa(JSON.stringify({ sub: subject, client_id: 'synthetic-client', exp: Math.floor(Date.now() / 1000) + seconds, jti: sequence }))}.test`,
     refreshToken: `synthetic-refresh-${sequence}`,
   };
 }
@@ -61,14 +61,15 @@ describe('shared session policy', () => {
     session.close();
   });
 
-  it('bounds transient retries and surfaces terminal failure without a successful callback', async () => {
+  it('bounds transient retries, surfaces terminal failure, and still revokes a valid bearer', async () => {
     vi.useFakeTimers();
+    const original = tokens();
     const changed = vi.fn();
     const refresh = vi.fn(async () => {
       throw new TransportError('unavailable');
     });
     const session = new AuthSession({
-      credentials: tokens(),
+      credentials: original,
       refresh,
       onCredentialsChanged: changed,
     });
@@ -79,13 +80,25 @@ describe('shared session policy', () => {
     expect(refresh).toHaveBeenCalledTimes(3);
     expect(changed).not.toHaveBeenCalled();
     await expect(session.ready()).rejects.toThrow('unavailable');
-    session.close();
+    const revoke = vi.fn(async () => undefined);
+    await session.logout(revoke);
+    expect(revoke).toHaveBeenCalledExactlyOnceWith(original.accessToken);
+    expect(session.credentials).toEqual(original);
+    expect(refresh).toHaveBeenCalledTimes(3);
+    expect(changed).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('rejects changed identity and expired replacements without adoption', async () => {
+  it.each([
+    'identity',
+    'expiry',
+  ])('rejects changed %s without adoption', async (kind) => {
     const original = tokens();
     const changed = vi.fn();
-    const bad = tokens(1, -1);
+    const bad =
+      kind === 'expiry'
+        ? tokens(1, -1)
+        : tokens(1, 900, '0x0000000000000000000000000000000000000002');
     const session = new AuthSession({
       credentials: original,
       refresh: async () => bad,
@@ -99,16 +112,21 @@ describe('shared session policy', () => {
     session.close();
   });
 
-  it('logout wins over a late refresh even if the dependency ignores cancellation', async () => {
+  it('close rejects a started refresh even if the dependency ignores cancellation', async () => {
     const original = tokens();
     const changed = vi.fn();
     const pending = Promise.withResolvers<BearerCredentials>();
+    const started = Promise.withResolvers<void>();
     const session = new AuthSession({
       credentials: original,
-      refresh: () => pending.promise,
+      refresh: () => {
+        started.resolve();
+        return pending.promise;
+      },
       onCredentialsChanged: changed,
     });
     const refreshing = session.refresh();
+    await started.promise;
     session.close();
     pending.resolve(tokens(1));
     await expect(refreshing).rejects.toThrow('closed');
@@ -135,31 +153,6 @@ describe('shared session policy', () => {
     await expect(other).resolves.toEqual(updated);
     session.close();
   });
-});
-
-it('revokes with a still-valid bearer despite a cached transient refresh failure', async () => {
-  vi.useFakeTimers();
-  const original = tokens();
-  const refresh = vi.fn(async () => {
-    throw new TransportError('temporarily unavailable');
-  });
-  const changed = vi.fn();
-  const session = new AuthSession({
-    credentials: original,
-    refresh,
-    onCredentialsChanged: changed,
-  });
-  const failed = expect(session.refresh()).rejects.toThrow(
-    'temporarily unavailable',
-  );
-  await vi.advanceTimersByTimeAsync(750);
-  await failed;
-  const revoke = vi.fn(async () => undefined);
-  await session.logout(revoke);
-  expect(revoke).toHaveBeenCalledExactlyOnceWith(original.accessToken);
-  expect(refresh).toHaveBeenCalledTimes(3);
-  expect(changed).not.toHaveBeenCalled();
-  expect(vi.getTimerCount()).toBe(0);
 });
 
 it.each([
