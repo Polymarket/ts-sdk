@@ -288,6 +288,62 @@ describe('platform API key client workflow', () => {
 });
 
 describe('platform API-key compatibility', () => {
+  it.each([
+    'l2',
+    'bearer',
+  ] as const)('requires submission authorization appropriate to %s wallet requests', async (mechanism) => {
+    const apiKey = platformApiKey(key);
+    expect(apiKey.supportGasless).toBe(false);
+    const walletSigner = signer();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url === `${gateway}/v1/auth/refresh`)
+        return Response.json(tokens());
+      if (request.url === `${environment.clob.rest}/auth/api-keys`) {
+        expect(request.headers.has('x-api-key')).toBe(false);
+        return Response.json({ apiKeys: [l2Credentials.key] });
+      }
+      expect(request.url).toBe(`${gateway}/v1/wallets/transactions`);
+      expect(request.headers.get('authorization')).toBe(
+        `Bearer ${tokens().accessToken}`,
+      );
+      expect(request.headers.get('x-api-key')).toBe(key);
+      expect(request.headers.has('poly_builder_signature')).toBe(false);
+      return Response.json({
+        state: 'STATE_NEW',
+        transactionID: 'synthetic-deployment',
+        transactionHash: null,
+      });
+    });
+    const secure = await createSecureClient({
+      environment,
+      fetch,
+      signer: walletSigner,
+      wallet: signerAddress,
+      apiKey,
+      credentials: mechanism === 'l2' ? l2Credentials : tokens(),
+    });
+    fetch.mockClear();
+    // Direct-only workflows retain their separate submission-key requirement.
+    expect(secure.supportsGasless).toBe(false);
+    expect(secure.supportsGaslessWallet).toBe(mechanism === 'bearer');
+    if (mechanism === 'l2') {
+      await expect(deployDepositWallet(secure)).rejects.toMatchObject({
+        name: 'UserInputError',
+        message: expect.stringContaining('requires submission credentials'),
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    } else {
+      await expect(deployDepositWallet(secure)).resolves.toMatchObject({
+        transactionHash: null,
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    }
+    expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+    secure.closeAuthenticationSession();
+    await secure.closeSubscriptions();
+  });
+
   it('retains builder HMAC headers and avoids forwarding a platform key to direct endpoints', async () => {
     const adapter = platformApiKey(key, {
       legacyApiKey: builderApiKey(l2Credentials),
