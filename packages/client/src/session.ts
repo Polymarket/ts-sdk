@@ -71,9 +71,10 @@ export class AuthSession {
   }
   async ready(signal?: AbortSignal): Promise<BearerCredentials> {
     this.assertActive();
-    if (this.#refreshing !== undefined)
-      return withAbort(this.#refreshing, signal);
-    if (this.#claims.exp * 1000 - Date.now() <= 30_000)
+    if (
+      this.#refreshing !== undefined ||
+      this.#claims.exp * 1000 - Date.now() <= 30_000
+    )
       return withAbort(this.refresh(), signal);
     return this.credentials;
   }
@@ -93,12 +94,11 @@ export class AuthSession {
     signal?: AbortSignal,
   ): Promise<void> {
     this.assertActive();
-    if (this.#refreshing !== undefined) {
-      await withAbort(this.#refreshing, signal);
-      return;
-    }
-    if (previousAccessToken !== this.#credentials.accessToken) return;
-    await withAbort(this.refresh(), signal);
+    if (
+      this.#refreshing !== undefined ||
+      previousAccessToken === this.#credentials.accessToken
+    )
+      await withAbort(this.refresh(), signal);
   }
   refresh(): Promise<BearerCredentials> {
     this.assertActive();
@@ -119,7 +119,7 @@ export class AuthSession {
         throw error;
       })
       .finally(() => {
-        if (this.#refreshing === refreshing) this.#refreshing = undefined;
+        this.#refreshing = undefined;
       });
     this.#refreshing = refreshing;
     return refreshing;
@@ -137,8 +137,7 @@ export class AuthSession {
         try {
           next = await request;
         } finally {
-          if (this.#refreshRequest === request)
-            this.#refreshRequest = undefined;
+          this.#refreshRequest = undefined;
         }
         break;
       } catch (error) {
