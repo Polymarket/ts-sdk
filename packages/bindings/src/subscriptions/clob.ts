@@ -43,7 +43,7 @@ export enum UserOrderStatus {
   Invalid = 'INVALID',
 }
 
-export type CanceledWithReasonStatus = 'CANCELED_${string}';
+export type CanceledWithReasonStatus = `CANCELED_${string}`;
 
 const UserOrderStatusSchema = z.union([
   z.enum(UserOrderStatus),
