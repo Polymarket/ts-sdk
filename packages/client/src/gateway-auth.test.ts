@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { RelayerTransactionType } from '@polymarket/bindings/relayer';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { login, migrateCredentials } from './actions';
 import { fetchExecuteParams, fetchTransaction } from './actions/gasless';
 import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
@@ -67,7 +68,7 @@ describe('gateway public authentication boundary', () => {
         });
       return Response.json(loginTokens);
     });
-    const pair = await createPublicClient({ environment, fetch }).login({
+    const pair = await login(createPublicClient({ environment, fetch }), {
       signer: walletSigner,
       wallet: address,
       verificationToken: 'synthetic-verification',
@@ -123,7 +124,7 @@ describe('gateway public authentication boundary', () => {
     });
     const client = createPublicClient({ environment, fetch });
     await expect(
-      client.migrateCredentials({
+      migrateCredentials(client, {
         signer: address,
         wallet: address,
         credentials: l2Credentials,

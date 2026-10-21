@@ -8,6 +8,14 @@ export * from './collateral-return';
 export * from './comments';
 export * from './events';
 export * from './gasless';
+export {
+  LoginError,
+  type LoginRequest,
+  login,
+  MigrateCredentialsError,
+  type MigrateCredentialsRequest,
+  migrateCredentials,
+} from './identity';
 export * from './leaderboards';
 export * from './market-clarifications';
 export * from './markets';
