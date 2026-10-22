@@ -8,6 +8,7 @@ import {
   expectHexString,
 } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as publicActions from './actions';
 import {
   createApiKey,
   createBuilderApiKey,
@@ -82,6 +83,20 @@ afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it('keeps credential administration helpers out of the public actions entrypoint', () => {
+  for (const name of [
+    'fetchApiKeys',
+    'deleteApiKey',
+    'createBuilderApiKey',
+    'fetchBuilderApiKeys',
+    'FetchApiKeysError',
+    'DeleteApiKeyError',
+    'CreateBuilderApiKeyError',
+    'FetchBuilderApiKeysError',
+  ])
+    expect(publicActions).not.toHaveProperty(name);
 });
 
 describe('platform API key client workflow', () => {

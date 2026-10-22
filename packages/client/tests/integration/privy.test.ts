@@ -7,11 +7,7 @@ import {
   type EvmAddress,
   WalletType,
 } from '@polymarket/client';
-import {
-  cancelOrder,
-  fetchApiKeys,
-  fetchBalanceAllowance,
-} from '@polymarket/client/actions';
+import { cancelOrder, fetchBalanceAllowance } from '@polymarket/client/actions';
 import { type PrivyWalletConfig, signerFrom } from '@polymarket/client/privy';
 import { expectPresent } from '@polymarket/types';
 import { PrivyClient } from '@privy-io/node';
@@ -48,7 +44,9 @@ describe('privy', () => {
       wallet: account.walletAddress,
     });
 
-    await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+    await expect(
+      secureClient.listOpenOrders().firstPage(),
+    ).resolves.toBeDefined();
   });
 
   it.runIf(runMeteredTests)(

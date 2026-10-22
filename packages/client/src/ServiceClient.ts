@@ -552,7 +552,11 @@ export class ServiceClient {
             throw new UnexpectedResponseError(message);
           if (error instanceof UserInputError)
             throw new UserInputError(message);
-          throw new TransportError(message);
+          throw new TransportError(
+            this.#sensitive && !(error instanceof TransportError)
+              ? 'Authentication transport failed.'
+              : message,
+          );
         }
       }
       if (

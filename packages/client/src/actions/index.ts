@@ -1,7 +1,17 @@
 export * from './account';
 export * from './activity';
 export * from './approvals';
-export * from './auth';
+export {
+  type ApiKeyAuthRequest,
+  CreateApiKeyError,
+  CreateOrDeriveApiKeyError,
+  createApiKey,
+  createOrDeriveApiKey,
+  DeriveApiKeyError,
+  deriveApiKey,
+  RevokeBuilderApiKeyError,
+  revokeBuilderApiKey,
+} from './auth';
 export * from './builders';
 export * from './clob';
 export * from './collateral-return';

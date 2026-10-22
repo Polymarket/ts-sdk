@@ -13,7 +13,11 @@ import {
 import { z } from 'zod';
 import { SendOrderHeartbeatError } from './actions/order-heartbeats';
 import { createPublicClient } from './clients';
-import { OrderHeartbeatMismatchError, RequestRejectedError } from './errors';
+import {
+  OrderHeartbeatMismatchError,
+  RequestRejectedError,
+  TransportError,
+} from './errors';
 import { buildHmacSignature } from './hmac';
 import { GatewayKnownErrorCode } from './index';
 import { paginate } from './pagination';
@@ -23,6 +27,42 @@ const root = 'http://localhost:4011';
 const server = setupServer();
 
 describe('ServiceClient', () => {
+  it.each([
+    {
+      kind: 'unknown failure',
+      error: new Error('offline transport failure'),
+      message: 'Authentication transport failed.',
+    },
+    {
+      kind: 'unknown failure containing a credential',
+      error: new Error('offline transport failure: synthetic-secret'),
+      message: 'Authentication transport failed.',
+    },
+    {
+      kind: 'typed failure containing a credential',
+      error: new TransportError('offline transport failure: synthetic-secret'),
+      message: 'offline transport failure: [REDACTED]',
+    },
+  ])('preserves the sensitive error policy for $kind', async ({
+    error,
+    message,
+  }) => {
+    const service = new ServiceClient({
+      root,
+      sensitive: true,
+      headers: { 'x-api-key': 'synthetic-secret' },
+      fetch: async () => {
+        throw error;
+      },
+    });
+    await expect(service.get('/private', { retries: 0 })).rejects.toMatchObject(
+      {
+        name: 'TransportError',
+        message,
+      },
+    );
+  });
+
   it.each([
     'get',
     'postRead',
