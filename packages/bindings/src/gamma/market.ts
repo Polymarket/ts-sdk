@@ -90,6 +90,14 @@ export enum ProtocolVersion {
 
 const ProtocolVersionSchema = z.enum(ProtocolVersion);
 
+/** Mechanism used when a market receives a scalar resolution. */
+export enum FallbackResolutionType {
+  None = 'none',
+  Lfmp = 'lfmp',
+  EqualSplit = 'equal_split',
+  Manual = 'manual',
+}
+
 export enum UmaResolutionStatus {
   Disputed = 'disputed',
   Proposed = 'proposed',
@@ -193,6 +201,7 @@ export type MarketTrading = {
 };
 
 export type MarketResolution = {
+  fallbackResolutionType?: FallbackResolutionType | null;
   /** Parent v2 on-chain event ID, shared by markets in a neg-risk event. */
   onchainEventId?: string | null;
   /** Oracle request ID: a condition ID or the parent event ID. */
@@ -277,6 +286,7 @@ export const GammaMarketSchema = z.object({
   slug: z.string().nullish(),
   twitterCardImage: z.string().nullish(),
   resolutionSource: z.string().nullish(),
+  fallbackResolutionType: z.enum(FallbackResolutionType).nullish(),
   endDate: IsoDateTimeStringSchema.nullish(),
   category: z.string().nullish(),
   liquidity: DecimalStringSchema.nullish(),
@@ -543,6 +553,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       feeSchedule: market.feeSchedule,
     },
     resolution: {
+      fallbackResolutionType: market.fallbackResolutionType,
       onchainEventId: market.onchainEventId ?? null,
       requestId: market.requestId ?? null,
       resolutionStatus: market.resolutionStatus ?? null,
