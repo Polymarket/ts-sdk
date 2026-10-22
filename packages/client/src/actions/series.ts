@@ -35,7 +35,9 @@ const ListSeriesRequestSchema = z.object({
   order: z.string().optional(),
   // Matches the upstream per-request limit cap.
   pageSize: PageSizeSchema.max(50).default(20),
-  recurrence: z.enum(['daily', 'weekly', 'monthly']).optional(),
+  recurrence: z
+    .enum(['daily', 'weekly', 'monthly', 'annual', 'hourly'])
+    .optional(),
   slug: z.array(z.string()).optional(),
 });
 
