@@ -11,6 +11,8 @@ type Tagged<T, Tag extends string> = T & { readonly __tag: Tag };
 export enum CommentParentEntityType {
   Event = 'Event',
   Series = 'Series',
+  /** @experimental This API may change in a breaking way in any release, including patch releases. */
+  PerpsAsset = 'PerpsAsset',
 }
 
 export enum OrderSide {
