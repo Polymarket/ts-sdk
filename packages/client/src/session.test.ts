@@ -287,6 +287,50 @@ it.each([
   expect(revoke).toHaveBeenCalledTimes(expiry > 0 ? 1 : 0);
 });
 
+it.each([
+  { expiry: 900, rejectedRevocation: false },
+  { expiry: -1, rejectedRevocation: false },
+  { expiry: 900, rejectedRevocation: true },
+])('does not replay uncertain rotation during backoff (expiry $expiry, rejected revocation $rejectedRevocation)', async ({
+  expiry,
+  rejectedRevocation,
+}) => {
+  vi.useFakeTimers();
+  const original = tokens(0, expiry);
+  const uncertain = new TransportError('uncertain rotation');
+  const refresh = vi.fn(async () => tokens(1)).mockRejectedValueOnce(uncertain);
+  const changed = vi.fn();
+  const session = new AuthSession({
+    credentials: original,
+    refresh,
+    onCredentialsChanged: changed,
+  });
+  const ordinary = expect(session.refresh()).rejects.toThrow('stopped');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.getTimerCount()).toBe(1); // The first attempt has entered retry backoff.
+  const revoke = vi.fn(async () => {
+    if (rejectedRevocation)
+      throw new RequestRejectedError('expired', {
+        status: 401,
+        code: 'expired_access_token',
+      });
+  });
+  const logout = session.logout(revoke);
+  if (expiry < 0) await expect(logout).rejects.toBe(uncertain);
+  else if (rejectedRevocation)
+    await expect(logout).rejects.toMatchObject({ status: 401 });
+  else await expect(logout).resolves.toBeUndefined();
+  await ordinary;
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  expect(revoke).toHaveBeenCalledTimes(expiry > 0 ? 1 : 0);
+  if (expiry > 0) expect(revoke).toHaveBeenCalledWith(original.accessToken);
+  expect(session.credentials).toEqual(original);
+  expect(changed).not.toHaveBeenCalled();
+  expect(() => session.assertActive()).toThrow('closed');
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 it('closing before a queued refresh starts skips its callback and preserves replacement credentials', async () => {
   const refresh = vi.fn(async () => tokens(1));
   const old = new AuthSession({ credentials: tokens(), refresh });

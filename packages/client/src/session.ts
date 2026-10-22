@@ -134,11 +134,8 @@ export class AuthSession {
           this.#options.refresh(credentials, this.#abort.signal),
         );
         this.#refreshRequest = request;
-        try {
-          next = await request;
-        } finally {
-          this.#refreshRequest = undefined;
-        }
+        // Keep failed attempts available during backoff so logout cannot replay them.
+        next = await request;
         break;
       } catch (error) {
         this.assertActive();
@@ -172,6 +169,7 @@ export class AuthSession {
       );
     this.#credentials = { ...next };
     this.#claims = claims;
+    this.#refreshRequest = undefined;
     this.#schedule();
     for (const listener of this.#listeners) listener(this.credentials);
     // Persistence is advisory. Its failure must not discard adopted credentials,
@@ -203,8 +201,8 @@ export class AuthSession {
   async logout(revoke: (accessToken: string) => Promise<void>): Promise<void> {
     let credentials = this.credentials;
     const identity = this.claims;
-    // Close local consumers immediately, but let an already-started rotation
-    // finish so revocation uses its result rather than reusing a consumed token.
+    // Close consumers immediately, but retain the latest rotation outcome even
+    // during retry backoff so logout cannot reuse a potentially consumed token.
     const pending = this.#refreshRequest;
     this.#stop(false);
     let canRefresh = true;
