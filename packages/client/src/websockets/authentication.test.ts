@@ -68,7 +68,10 @@ describe('acknowledged socket lifecycle', () => {
     session.close();
   });
 
-  it('bounds auth-unavailable retries, retains accepted expiry and cancels pending backoff on cleanup', async () => {
+  it.each([
+    false,
+    true,
+  ])('bounds unavailable retries and cancels backoff (stop early: %s)', async (stopEarly) => {
     vi.useFakeTimers();
     const original = pair(0, 60);
     const session = new AuthSession({
@@ -88,10 +91,13 @@ describe('acknowledged socket lifecycle', () => {
     });
     socket.accepted(original.accessToken);
     await session.refresh();
-    await vi.advanceTimersByTimeAsync(750);
-    expect(authenticate).toHaveBeenCalledTimes(3);
+    if (!stopEarly) await vi.advanceTimersByTimeAsync(750);
+    const attempts = stopEarly ? 1 : 3;
+    expect(authenticate).toHaveBeenCalledTimes(attempts);
     socket.stop();
     session.close();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(authenticate).toHaveBeenCalledTimes(attempts);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -115,31 +121,4 @@ describe('acknowledged socket lifecycle', () => {
     socket.stop();
     session.close();
   });
-});
-
-it('does not send a delayed renewal after cleanup interrupts transient backoff', async () => {
-  vi.useFakeTimers();
-  const session = new AuthSession({
-    credentials: pair(),
-    refresh: async () => pair(1),
-  });
-  const authenticate = vi.fn(async () => {
-    throw new RequestRejectedError('unavailable', {
-      status: 503,
-      code: 'auth_unavailable',
-    });
-  });
-  const socket = new SocketAuthentication({
-    session,
-    authenticate,
-    fail: vi.fn(),
-  });
-  socket.accepted(session.credentials.accessToken);
-  await session.refresh();
-  expect(authenticate).toHaveBeenCalledTimes(1);
-  socket.stop();
-  session.close();
-  await vi.advanceTimersByTimeAsync(1_000);
-  expect(authenticate).toHaveBeenCalledTimes(1);
-  expect(vi.getTimerCount()).toBe(0);
 });

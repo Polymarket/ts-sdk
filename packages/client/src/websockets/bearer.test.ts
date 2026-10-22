@@ -9,9 +9,9 @@ import { PolyboltConnection } from './realtime/socket';
 import { RfqQuoterWebSocketManager } from './rfq/quoter';
 
 const address = expectEvmAddress('0x0000000000000000000000000000000000000001');
-function pair(sequence = 0): BearerCredentials {
+function pair(sequence = 0, seconds = 900): BearerCredentials {
   return {
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, client_id: 'synthetic-client', wallet: address, signature_type: 0, clob_api_key: 'synthetic-key', exp: Math.floor(Date.now() / 1000) + 900, jti: sequence }))}.test`,
+    accessToken: `test.${btoa(JSON.stringify({ sub: address, client_id: 'synthetic-client', wallet: address, signature_type: 0, clob_api_key: 'synthetic-key', exp: Math.floor(Date.now() / 1000) + seconds, jti: sequence }))}.test`,
     refreshToken: `synthetic-refresh-${sequence}`,
   };
 }
@@ -58,6 +58,27 @@ class ControlledSocket extends EventTarget {
     this.dispatchEvent(new CloseEvent('close', { code, reason }));
   }
 }
+function maker(session: AuthSession, signTypedData = vi.fn()) {
+  return new RfqQuoterWebSocketManager({
+    session,
+    url: 'wss://synthetic.invalid/maker',
+    account: {
+      signer: address,
+      wallet: address,
+      signerType: SignerType.OWNER,
+      walletType: WalletType.EOA,
+    },
+    chainId: 137,
+    exchange: address,
+    signer: {
+      getAddress: async () => address,
+      signTypedData,
+      signMessage: vi.fn(),
+      sendTransaction: vi.fn(),
+    },
+  });
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal('WebSocket', ControlledSocket);
@@ -224,24 +245,7 @@ describe('bearer socket boundaries', () => {
       credentials: pair(),
       refresh: async () => pair(1),
     });
-    const manager = new RfqQuoterWebSocketManager({
-      session,
-      url: 'wss://synthetic.invalid/maker',
-      account: {
-        signer: address,
-        wallet: address,
-        signerType: SignerType.OWNER,
-        walletType: WalletType.EOA,
-      },
-      chainId: 137,
-      exchange: address,
-      signer: {
-        getAddress: async () => address,
-        signTypedData: vi.fn(),
-        signMessage: vi.fn(),
-        sendTransaction: vi.fn(),
-      },
-    });
+    const manager = maker(session);
     const rfq = await manager.connect();
     await session.refresh();
     await vi.advanceTimersByTimeAsync(0);
@@ -259,12 +263,7 @@ describe('bearer socket boundaries', () => {
 });
 
 it('keeps the CLOB handle across idle expiry after rejected renewal', async () => {
-  const old = pair();
-  const claims = JSON.parse(atob(old.accessToken.split('.')[1] ?? ''));
-  const expiring = {
-    ...old,
-    accessToken: `test.${btoa(JSON.stringify({ ...claims, exp: Math.floor(Date.now() / 1000) + 60 }))}.test`,
-  };
+  const expiring = pair(0, 60);
   const replacement = pair(1);
   const session = new AuthSession({
     credentials: expiring,
@@ -296,24 +295,7 @@ it('keeps maker public feeds after rejection and blocks quotes before wallet sig
     refresh: async () => pair(1),
   });
   const signTypedData = vi.fn();
-  const manager = new RfqQuoterWebSocketManager({
-    session,
-    url: 'wss://synthetic.invalid/maker',
-    account: {
-      signer: address,
-      wallet: address,
-      signerType: SignerType.OWNER,
-      walletType: WalletType.EOA,
-    },
-    chainId: 137,
-    exchange: address,
-    signer: {
-      getAddress: async () => address,
-      signTypedData,
-      signMessage: vi.fn(),
-      sendTransaction: vi.fn(),
-    },
-  });
+  const manager = maker(session, signTypedData);
   ControlledSocket.accept = false;
   const connecting = manager.connect();
   await vi.advanceTimersByTimeAsync(0);
@@ -398,24 +380,7 @@ it.each([
     refresh: async () => pair(1),
   });
   const changes = vi.spyOn(session, 'onChange');
-  const manager = new RfqQuoterWebSocketManager({
-    session,
-    url: 'wss://synthetic.invalid/maker',
-    account: {
-      signer: address,
-      wallet: address,
-      signerType: SignerType.OWNER,
-      walletType: WalletType.EOA,
-    },
-    chainId: 137,
-    exchange: address,
-    signer: {
-      getAddress: async () => address,
-      signTypedData: vi.fn(),
-      signMessage: vi.fn(),
-      sendTransaction: vi.fn(),
-    },
-  });
+  const manager = maker(session);
   ControlledSocket.accept = false;
   const connecting = manager.connect();
   const rejected = expect(connecting).rejects.toMatchObject({

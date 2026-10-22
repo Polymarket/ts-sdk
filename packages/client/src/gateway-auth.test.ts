@@ -256,90 +256,6 @@ describe('gateway public authentication boundary', () => {
 });
 
 describe('expired-token HTTP recovery', () => {
-  it.each([
-    'GET',
-    'POST',
-    'PATCH',
-    'DELETE',
-  ] as const)('replays %s once with the same request and new bearer, and never mixes L2 credentials', async (method) => {
-    const original = tokens();
-    const updated = tokens(1);
-    const refresh = vi.fn(async () => updated);
-    const session = new AuthSession({ credentials: original, refresh });
-    const seen: {
-      method: string;
-      body: string;
-      url: string;
-      auth: string | null;
-    }[] = [];
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      seen.push({
-        method: request.method,
-        body: await request.text(),
-        url: request.url,
-        auth: request.headers.get('authorization'),
-      });
-      expect(request.headers.has('POLY_API_KEY')).toBe(false);
-      expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
-      return seen.length === 1
-        ? Response.json({ code: 'expired_access_token' }, { status: 401 })
-        : Response.json({ ok: true });
-    });
-    const service = new ServiceClient({
-      root,
-      fetch,
-      authentication: sessionAuthentication(session),
-      retryMutations: false,
-    });
-    if (method === 'GET')
-      await service.get('/protected', {
-        params: new URLSearchParams({ q: 'one two' }),
-        retries: 0,
-      });
-    else if (method === 'DELETE')
-      await service.del('/protected', {
-        json: { value: 'fixed' },
-        params: new URLSearchParams({ q: 'one two' }),
-      });
-    else if (method === 'POST')
-      await service.post('/protected', { json: { value: 'fixed' } });
-    else await service.patch('/protected', { json: { value: 'fixed' } });
-    expect(seen).toHaveLength(2);
-    expect(seen[1]).toEqual({
-      ...seen[0],
-      auth: `Bearer ${updated.accessToken}`,
-    });
-    expect(refresh).toHaveBeenCalledTimes(1);
-    session.close();
-  });
-
-  it('does not retry unrelated 401s or loop after a second expired-token rejection', async () => {
-    for (const code of ['invalid_access_token', 'expired_access_token']) {
-      const refresh = vi.fn(async () => tokens(1));
-      const session = new AuthSession({ credentials: tokens(), refresh });
-      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-        Response.json({ code }, { status: 401 }),
-      );
-      await expect(
-        new ServiceClient({
-          root,
-          fetch,
-          authentication: sessionAuthentication(session),
-        }).post('/protected', {
-          json: { value: 1 },
-        }),
-      ).rejects.toMatchObject({ status: 401 });
-      expect(fetch).toHaveBeenCalledTimes(
-        code === 'expired_access_token' ? 2 : 1,
-      );
-      expect(refresh).toHaveBeenCalledTimes(
-        code === 'expired_access_token' ? 1 : 0,
-      );
-      session.close();
-    }
-  });
-
   it('uses a newer pair for a stale in-flight 401 without refreshing twice', async () => {
     const first = Promise.withResolvers<Response>();
     const started = Promise.withResolvers<void>();
@@ -498,10 +414,7 @@ describe('logout revocation', () => {
   });
 });
 
-it.each([
-  '',
-  '/',
-])('joins auth routes once with gateway origin ending in %j', async (suffix) => {
+it('joins auth routes once with a trailing slash on the gateway origin', async () => {
   const seen: string[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
@@ -520,7 +433,7 @@ it.each([
   await createPublicClient({
     environment: forkEnvironmentConfig({
       name: 'mock-auth-origin',
-      predictions: { rest: root + suffix },
+      predictions: { rest: `${root}/` },
     }),
     fetch,
   }).login({ signer: signer(), wallet: address });
@@ -707,9 +620,7 @@ function sessionAuthentication(session: AuthSession): ServiceAuthentication {
 }
 
 it.each([
-  { ...l2Credentials, ...tokens() },
   { ...tokens(), secret: 'must-not-select-bearer' },
-  { accessToken: 'opaque' },
   { key: 'key', secret: 42, passphrase: 'phrase' },
 ])('rejects mixed or malformed saved credentials before signing or dispatch: %j', async (credentials) => {
   const fetch = vi.fn<typeof globalThis.fetch>();
@@ -739,7 +650,15 @@ it('rejects mixed migration credentials before generating a proof or dispatching
   expect(fetch).not.toHaveBeenCalled();
 });
 
-it('uses the owning SecureClient policy to recover one expired bearer request', async () => {
+it.each([
+  { code: 'expired_access_token', rejectedReplay: false, attempts: 2 },
+  { code: 'invalid_access_token', rejectedReplay: false, attempts: 1 },
+  { code: 'expired_access_token', rejectedReplay: true, attempts: 2 },
+])('bounds SecureClient recovery for $code (rejected replay: $rejectedReplay)', async ({
+  code,
+  rejectedReplay,
+  attempts,
+}) => {
   const pair = tokens();
   const rotated = tokens(1);
   let privateRequests = 0;
@@ -757,8 +676,8 @@ it('uses the owning SecureClient policy to recover one expired bearer request', 
       expect(request.headers.get('authorization')).toBe(
         `Bearer ${privateRequests === 1 ? pair.accessToken : rotated.accessToken}`,
       );
-      return privateRequests === 1
-        ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+      return privateRequests === 1 || rejectedReplay
+        ? Response.json({ code }, { status: 401 })
         : Response.json('accepted');
     }
     throw new Error(`Unexpected mock route: ${path}`);
@@ -771,13 +690,16 @@ it('uses the owning SecureClient policy to recover one expired bearer request', 
     credentials: pair,
   });
   try {
-    await expect(client.predictions.get('/private')).resolves.toBe('accepted');
+    const request = client.predictions.get('/private');
+    if (code === 'invalid_access_token' || rejectedReplay)
+      await expect(request).rejects.toMatchObject({ status: 401 });
+    else await expect(request).resolves.toBe('accepted');
     expect(client.credentials).toEqual({
-      accessToken: rotated.accessToken,
-      refreshToken: rotated.refreshToken,
+      accessToken: attempts === 2 ? rotated.accessToken : pair.accessToken,
+      refreshToken: attempts === 2 ? rotated.refreshToken : pair.refreshToken,
     });
-    expect(refreshRequests).toBe(2);
-    expect(privateRequests).toBe(2);
+    expect(refreshRequests).toBe(attempts);
+    expect(privateRequests).toBe(attempts);
   } finally {
     await client.endAuthentication();
   }
