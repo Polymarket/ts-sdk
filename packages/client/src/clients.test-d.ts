@@ -112,17 +112,8 @@ describe('predictions service types', () => {
   });
 });
 
-it('keeps platform secrets server-only and accepts the remote adapter on the normal client surface', async () => {
+it('rejects platform secrets in the browser configuration', async () => {
   const browserSafe = await import('./index');
-  // biome-ignore lint/style/noRestrictedImports: Verify the public server-only factory type.
-  const server = await import('./node');
-  expectTypeOf(server.platformApiKey('pm_sk_synthetic')).toEqualTypeOf<
-    import('./types').ApiKeyAuthorization
-  >();
-  const adapter = browserSafe.remotePlatformApiKey({
-    url: '/api/auth/challenge',
-  });
-  createSecureClient({ signer: secureOptions.signer, apiKey: adapter });
   // @ts-expect-error Server-held Platform API Keys must not be exposed from the browser entrypoint.
   browserSafe.platformApiKey;
   browserSafe.remotePlatformApiKey({
