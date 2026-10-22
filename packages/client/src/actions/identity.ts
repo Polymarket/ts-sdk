@@ -1,7 +1,4 @@
-import {
-  EvmAddressSchema,
-  TokenResponseSchema,
-} from '@polymarket/bindings';
+import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
 import { z } from 'zod';
 import type { BasePublicClient } from '../clients';
 import {
