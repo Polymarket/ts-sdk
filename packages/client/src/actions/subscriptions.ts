@@ -25,6 +25,7 @@ import type {
   PerpsStatisticEvent,
   PerpsTickerEvent,
   PerpsTradeEvent,
+  PolymarketPriceEvent,
   PriceProvider,
   PriceSource,
   SportsEvent,
@@ -66,6 +67,10 @@ export type {
   EquityPricesEvent,
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
+  PolymarketPriceEvent,
+  PolymarketPriceQuote,
+  PolymarketPriceSnapshotEvent,
+  PolymarketPriceUpdateEvent,
   PriceSource,
 } from '@polymarket/bindings/subscriptions';
 export {
@@ -324,6 +329,7 @@ export type PerpsMarketDataSubscription =
   | PerpsStatisticsSubscription;
 
 export type PublicSubscriptionSpec =
+  | PolymarketPriceSubscription
   | MarketSubscription
   | SportsSubscription
   | CommentsSubscription
@@ -331,6 +337,12 @@ export type PublicSubscriptionSpec =
   | CryptoPricesChainlinkTwapSubscription
   | EquityPricesSubscription
   | PerpsMarketDataSubscription;
+
+/** Public best bid and ask snapshots and changes for explicit outcome assets. */
+export type PolymarketPriceSubscription = {
+  topic: 'prices.polymarket';
+  assetIds: readonly string[];
+};
 
 /** Confirmation of one price subscription, refreshed after every reconnect. */
 export type PriceSubscriptionConfirmation = {
@@ -417,6 +429,7 @@ export type EquityTwapPriceSubscription = {
   ) => void | Promise<void>;
 };
 export type PriceSubscription =
+  | PolymarketPriceSubscription
   | CryptoPriceSubscription
   | CryptoTwapPriceSubscription
   | EquityPriceSubscription
@@ -428,6 +441,7 @@ export type SecureSubscriptionSpec =
 
 // Event unions, aligned with subscription specs.
 export type PublicRealtimeEvent =
+  | PolymarketPriceEvent
   | MarketEvent
   | SportsEvent
   | CommentsEvent
@@ -456,6 +470,7 @@ export type SecureRealtimeTopic = Prettify<SecureRealtimeEvent['topic']>;
 // Relies on `subscribe` declaring `TSubscriptions` with the `const` modifier
 // so that literal topics survive inference from object literals.
 type EventByTopic = {
+  'prices.polymarket': PolymarketPriceEvent;
   'prices.crypto': CryptoPriceEvent;
   'prices.crypto.twap': CryptoTwapPriceEvent;
   'prices.equity': EquityPriceEvent;
@@ -525,6 +540,7 @@ export const SubscribeError = makeErrorGuard(
 );
 
 enum SubscriptionTopic {
+  Polymarket = 'prices.polymarket',
   Market = 'market',
   User = 'user',
   Sports = 'sports',
@@ -568,6 +584,8 @@ const MarketSubscriptionSchema = z.union([
 
 /**
  * Starts one or more realtime subscriptions on this client.
+ * `prices.polymarket` delivers public best bid and ask snapshots and changes
+ * for explicit `assetIds`, including an empty snapshot for a cold asset.
  *
  * The `prices.crypto`, `prices.crypto.twap`, `prices.equity`, and
  * `prices.equity.twap` topics
@@ -623,6 +641,8 @@ export async function subscribe(
   const validatedSubscriptions = subscriptions.map((subscription) => {
     parseUserInput(subscription, SubscriptionTopicSchema);
     switch (subscription.topic) {
+      case 'prices.polymarket':
+        return parsePriceSubscription(subscription);
       case 'prices.crypto':
       case 'prices.crypto.twap':
       case 'prices.equity':
@@ -661,6 +681,8 @@ function subscribeOne(
   spec: SecureSubscriptionSpec,
 ): Promise<SubscriptionHandle<unknown>> {
   switch (spec.topic) {
+    case 'prices.polymarket':
+      return client.webSockets.polymarketPrices.subscribe(spec);
     case 'market':
       return client.webSockets.clobMarket.subscribe(spec);
     case 'sports':

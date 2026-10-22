@@ -4,6 +4,7 @@ import type {
   EquityPricesEvent,
   MarketEvent,
   PerpsMarketDataEvent,
+  PolymarketPriceEvent,
   PriceEvent,
   SportsEvent,
   UserEvent,
@@ -15,6 +16,7 @@ import type {
   EquityPricesSubscription,
   MarketSubscription,
   PerpsMarketDataSubscription,
+  PolymarketPriceSubscription,
   PriceSubscription,
   SportsSubscription,
   SubscriptionHandle,
@@ -66,6 +68,10 @@ export interface WebSocketSubscriptionManager<TSpec, TEvent> {
 
 // Surfaces available on the public client.
 export type PublicWebSocketManagers = {
+  readonly polymarketPrices: WebSocketSubscriptionManager<
+    PolymarketPriceSubscription,
+    PolymarketPriceEvent
+  >;
   readonly clobMarket: WebSocketSubscriptionManager<
     MarketSubscription,
     MarketEvent
