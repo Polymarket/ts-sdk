@@ -372,6 +372,17 @@ export const PerpsInternalTransferDirectionSchema = z.enum(
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsKlineIntervalSchema = z.enum(PerpsKlineInterval);
+/** Equity accepts candle intervals and existing PnL enum members.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsEquityInterval = PerpsKlineInterval | PerpsPnlInterval;
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export const PerpsEquityIntervalSchema = z.union([
+  PerpsKlineIntervalSchema,
+  z.enum(PerpsPnlInterval),
+]);
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
