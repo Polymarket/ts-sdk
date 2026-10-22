@@ -23,6 +23,90 @@ const root = 'http://localhost:4011';
 const server = setupServer();
 
 describe('ServiceClient', () => {
+  it.each([
+    'get',
+    'postRead',
+    'getWorkflow',
+    'post',
+    'patch',
+    'del',
+  ] as const)('applies a per-request timeout to %s without changing other calls', async (method) => {
+    vi.useFakeTimers();
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Response.json({ ok: true });
+    });
+    const client = new ServiceClient({ root, fetch });
+    function request(timeout?: number | false): Promise<unknown> {
+      switch (method) {
+        case 'get':
+          return client.get('/slow', { timeout, retries: 0 });
+        case 'postRead':
+          return client.postRead('/slow', { timeout, retries: 0 });
+        case 'getWorkflow':
+          return client.getWorkflow('/slow', { timeout });
+        case 'post':
+          return client.post('/slow', { timeout });
+        case 'patch':
+          return client.patch('/slow', { timeout });
+        case 'del':
+          return client.del('/slow', { timeout });
+      }
+    }
+    const timedOut = expect(request(20)).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    const disabled = request(false);
+    const longer = request(60_000);
+    const defaultRequest = request();
+    let defaultSettled = false;
+    void defaultRequest.then(
+      () => {
+        defaultSettled = true;
+      },
+      () => {
+        defaultSettled = true;
+      },
+    );
+    const defaultTimeout = expect(defaultRequest).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    await timedOut;
+    expect(defaultSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await defaultTimeout;
+    expect(defaultSettled).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(disabled).resolves.toEqual({ ok: true });
+    await expect(longer).resolves.toEqual({ ok: true });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('keeps cancellation available when the timeout is disabled', async () => {
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const client = new ServiceClient({
+      root,
+      fetch: async () => {
+        started.resolve();
+        return new Promise<Response>(() => {});
+      },
+    });
+    const pending = client.get('/slow', {
+      timeout: false,
+      signal: controller.signal,
+    });
+    await started.promise;
+    controller.abort('disposed');
+    await expect(pending).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: 'disposed',
+    });
+  });
+
   it('signs the exact heartbeat JSON in a single request', async () => {
     const observed: Array<{
       path: string;
@@ -140,6 +224,46 @@ describe('ServiceClient', () => {
   });
 
   describe('per-request read retry budgets', () => {
+    it('gives each retry a fresh timeout and excludes retry waits', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const starts: number[] = [];
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+        starts.push(Date.now());
+        await new Promise((resolve) => setTimeout(resolve, 20_000));
+        if (starts.length === 1) {
+          return new Response(null, {
+            status: 429,
+            headers: { 'retry-after': '1' },
+          });
+        }
+        if (starts.length === 2) throw new TypeError('connection reset');
+        return Response.json({ ok: true });
+      });
+      const result = new ServiceClient({ root, fetch }).get('/read', {
+        retries: 2,
+      });
+      await vi.runAllTimersAsync();
+      await expect(result).resolves.toEqual({ ok: true });
+      expect(starts).toEqual([0, 21_000, 41_600]);
+      expect(Date.now()).toBe(61_600);
+    });
+
+    it('does not retry a timeout even with a remaining read retry budget', async () => {
+      vi.useFakeTimers();
+      const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise(() => {}));
+      const result = expect(
+        new ServiceClient({ root, fetch }).get('/read', { retries: 5 }),
+      ).rejects.toMatchObject({
+        name: 'TransportError',
+        cause: { name: 'TimeoutError' },
+      });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await result;
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
     it.each([
       undefined,
       0,

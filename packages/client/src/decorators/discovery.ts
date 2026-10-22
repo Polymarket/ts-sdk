@@ -70,7 +70,12 @@ export type DiscoveryActions = {
   /**
    * Lists events.
    *
-   * Defaults to open events. Pass `closed: true` to list settled events.
+   * Defaults to open events. Pass `closed: true` for closed events or
+   * `closed: 'any'` for either state; no identifier filter is required.
+   * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+   * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF events (v1).
    *
    * @remarks
    * Cursors continue the exact query they were minted for and are rejected for
@@ -159,9 +164,19 @@ export type DiscoveryActions = {
   /**
    * Lists markets.
    *
+   * Defaults to open markets. Pass `closed: true` for closed markets or
+   * `closed: 'any'` for either state. The latter requires a non-empty `ids`,
+   * `slug`, `clobTokenIds`, `positionIds`, `conditionIds`, or `questionIds` filter.
+   *
    * @remarks
    * Legacy multi-outcome markets cannot be represented by the binary
    * {@link Market} model and are omitted from results.
+   *
+   * Select one protocol with `version`, or pass both protocol versions in an array.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF markets (v1). Filter v2 markets by `resolutionStatus`, `requestIds`, or
+   * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+   * use the separate `umaResolutionStatus` filter.
    *
    * @throws {@link ListMarketsError}
    * Thrown on failure.

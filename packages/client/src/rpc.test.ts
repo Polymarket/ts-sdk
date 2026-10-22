@@ -27,10 +27,94 @@ describe('JsonRpcClient', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.useRealTimers();
   });
 
   afterAll(() => {
     server.close();
+  });
+
+  it.each([
+    'single',
+    'batch',
+    'estimate',
+  ] as const)('uses a 30-second default and explicit timeouts for %s RPC requests', async (mode) => {
+    vi.useFakeTimers();
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const request = { to, data: '0x1234' as const };
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Response.json(
+        mode !== 'batch'
+          ? { jsonrpc: '2.0', id: 1, result: '0xaaaa' }
+          : [
+              { jsonrpc: '2.0', id: 1, result: '0xaaaa' },
+              { jsonrpc: '2.0', id: 2, result: '0xbbbb' },
+            ],
+      );
+    });
+    const client = new JsonRpcClient({ url: root, fetch });
+    function run(timeout?: number | false) {
+      if (mode === 'estimate')
+        return client.ethEstimateGas(request, { timeout });
+      return mode === 'single'
+        ? client.ethCall(request, { timeout })
+        : client.ethCallBatch([request, request], { timeout });
+    }
+    const timedOut = expect(run(20)).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    const disabled = run(false);
+    const longer = run(60_000);
+    const defaultRequest = run();
+    let defaultSettled = false;
+    void defaultRequest.then(
+      () => {
+        defaultSettled = true;
+      },
+      () => {
+        defaultSettled = true;
+      },
+    );
+    const defaultTimeout = expect(defaultRequest).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    await timedOut;
+    expect(defaultSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await defaultTimeout;
+    expect(defaultSettled).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    const expected =
+      mode === 'estimate'
+        ? 0xaaaan
+        : mode === 'single'
+          ? '0xaaaa'
+          : ['0xaaaa', '0xbbbb'];
+    await expect(disabled).resolves.toEqual(expected);
+    await expect(longer).resolves.toEqual(expected);
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('retains a disabled timeout when a rejected batch splits into single calls', async () => {
+    vi.useFakeTimers();
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const request = { to, data: '0x1234' as const };
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const body = await new Request(input).json();
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Array.isArray(body)
+        ? new Response(null, { status: 500 })
+        : Response.json({ jsonrpc: '2.0', id: 1, result: '0xaaaa' });
+    });
+    const client = new JsonRpcClient({ url: root, fetch });
+    const result = client.ethCallBatch([request, request], { timeout: false });
+    await vi.advanceTimersByTimeAsync(60_200);
+    await expect(result).resolves.toEqual(['0xaaaa', '0xaaaa']);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it('performs eth_call requests', async () => {

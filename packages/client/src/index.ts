@@ -21,6 +21,7 @@ export type * from '@polymarket/bindings/gamma';
 export {
   ComboKnownStatus,
   FallbackResolutionType,
+  MarketResolutionStatus,
   ProtocolVersion,
   TeamOrdering,
   WalletType,

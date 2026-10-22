@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { RequestAbortedError } from './errors';
 import { parseUserInput } from './input';
 
+/** @internal */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+
 /**
  * A Fetch-compatible function used for SDK HTTP requests.
  *
@@ -25,6 +28,20 @@ export type RequestOptions = {
    */
   signal?: AbortSignal;
   /**
+   * Timeout in milliseconds for each individual HTTP request attempt until
+   * response headers arrive, or `false` to disable it. Defaults to 30 seconds.
+   * This is not a total deadline for an SDK method. Each underlying request
+   * (including each page) and each permitted retry receives a fresh timeout.
+   * Multiple requests, retries, and retry backoff can make the SDK operation
+   * take longer than this value.
+   * The SDK does not retry timeout errors, even when `retries` is greater than 0.
+   * The timeout excludes header resolution, hooks, retry waits, and response
+   * body download/parsing.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  timeout?: number | false;
+  /**
    * Optional retries after the first attempt. Must be an integer from 0 to 5.
    * Transport failures and rate limits share this budget for each request;
    * every pagination request gets a fresh budget. Set 0 when the caller owns retries.
@@ -47,7 +64,7 @@ export function parseRequestOptions(options: RequestOptions): RequestOptions {
     { retries: options.retries },
     ReadRetryOptionsSchema,
   );
-  return { signal: options.signal, retries };
+  return { signal: options.signal, timeout: options.timeout, retries };
 }
 
 /** @internal */

@@ -14,6 +14,38 @@ const REWARD_PAGE_WINDOW = 10;
 let liquidClobTokenIdPromise: Promise<TokenId> | undefined;
 
 describe('CLOB', () => {
+  describe('fetchCurrentRebates', () => {
+    it('rejects noncalendar dates and a zero maker before sending', async ({
+      publicClient,
+    }) => {
+      await expect(
+        publicClient.fetchCurrentRebates({
+          date: '2023-02-29',
+          makerAddress: `0x${'ab'.repeat(20)}`,
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        publicClient.fetchCurrentRebates({
+          date: '2024-02-29',
+          makerAddress: `0x${'00'.repeat(20)}`,
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+    });
+    it('fetches a direct collection for a maker and calendar day', async ({
+      publicClient,
+    }) => {
+      const fees = await publicClient.fetchCurrentRebates({
+        date: '2026-10-06',
+        makerAddress: `0x${'ab'.repeat(20)}`,
+      });
+      expect(Array.isArray(fees)).toBe(true);
+      for (const fee of fees) {
+        expect(fee.date).toBe('2026-10-06');
+        expect(fee.rebatedFeesUsdc).toEqual(expect.any(String));
+      }
+    });
+  });
+
   describe('listRewardMarkets', () => {
     it('validates page sizes and finite bounds before sending', ({
       publicClient,

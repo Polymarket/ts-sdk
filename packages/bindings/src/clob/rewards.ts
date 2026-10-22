@@ -5,8 +5,11 @@ import {
   ConditionIdSchema,
   DecimalishSchema,
   type DecimalString,
+  DecimalStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
   EventIdSchema,
+  EvmAddressSchema,
+  IsoCalendarDateStringSchema,
   MarketIdSchema,
   type PositionId,
   type TokenId,
@@ -289,3 +292,33 @@ export const PaginatedRewardMarketsSchema = z
     ...rest,
     nextCursor: next_cursor,
   }));
+
+/** Maker fee rebates for a calendar day, in USDC units. */
+export const RebatedFeeSchema = z
+  .object({
+    date: IsoCalendarDateStringSchema,
+    condition_id: ConditionIdSchema,
+    asset_address: EvmAddressSchema,
+    maker_address: EvmAddressSchema,
+    rebated_fees_usdc: DecimalStringSchema,
+  })
+  .transform(
+    ({
+      condition_id,
+      asset_address,
+      maker_address,
+      rebated_fees_usdc,
+      ...rest
+    }) => ({
+      ...rest,
+      conditionId: condition_id,
+      assetAddress: asset_address,
+      makerAddress: maker_address,
+      rebatedFeesUsdc: rebated_fees_usdc,
+    }),
+  );
+export type RebatedFee = z.infer<typeof RebatedFeeSchema>;
+export const RebatedFeesResponseSchema = z
+  .array(RebatedFeeSchema)
+  .nullable()
+  .transform((fees) => fees ?? []);

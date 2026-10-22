@@ -29,7 +29,7 @@ for await (const page of result) {
 
 HTTP request controls are experimental and may change in a breaking way in any
 release, including patch releases. This includes the `fetch` client
-option, per-operation `signal` and `retries`, and `RequestAbortedError`.
+option, per-operation `signal`, `retries`, and `timeout`, and `RequestAbortedError`.
 
 Provide a custom `fetch` for instrumentation or your application's transport.
 Set `retries: 0` on reads when a query library owns retries:
@@ -56,7 +56,20 @@ default to one second when no delay is provided; delays longer than five seconds
 propagate to the caller. Wallet workflow recovery, such as refreshing a nonce,
 approving and resubmitting a transaction, or relay recovery, is unchanged. Retries inside your custom fetch are controlled by your application.
 
-HTTP reads accept an optional final `{ signal, retries }` argument. Aborting rejects with
+HTTP reads accept an optional final `{ signal, retries, timeout }` argument.
+`timeout` is milliseconds until each HTTP attempt receives response headers,
+or `false` to disable the timeout.
+Omitting it uses the 30-second SDK default. Each retry and pagination
+request has its own timeout; this does not bound the whole operation, header
+resolution, hooks, retry waits, or response body download/parsing. Timeout failures
+reject with `TransportError` and are not retried. For example:
+
+```ts
+await client.fetchOrderBook({ assetId }, { signal, retries: 0, timeout: 60_000 });
+const pages = client.listTrades({ pageSize: 100 }, { timeout: false });
+```
+
+Aborting rejects with
 `RequestAbortedError`, whose `cause` is the signal's reason, and stops pending
 requests, response reads, and retry waits. A custom fetch must honor the request's
 signal. Concurrent operations on the same client have independent cancellation.
@@ -119,11 +132,13 @@ CORS support landed in [gateway #777](https://github.com/Polymarket/defi-api-gat
 verify that support is deployed before releasing browser clients with this header.
 
 ```ts
-const markets = await client.predictions.get("/next/markets", {
-  params: new URLSearchParams({ page_size: "1", closed: "false" }),
+const result = await client.predictions.get("/v1/markets", {
+  params: new URLSearchParams({ limit: "1", closed: "false" }),
   signal,
 });
 ```
+
+The markets response contains a `markets` array and an optional `next_cursor`.
 
 Requests resolve parsed JSON and reject with SDK errors. Pass a `zod@^4` schema
 to validate the response and infer its type, or set `responseType` for `blob`,

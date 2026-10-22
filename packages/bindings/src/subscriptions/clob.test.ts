@@ -4,6 +4,39 @@ import { MarketEventSchema, TradeStatus, UserEventSchema } from './clob';
 const CONDITION_ID = `0x${'ab'.repeat(32)}`;
 
 describe('UserEventSchema', () => {
+  const orderCancellation = (status: string) => ({
+    asset_id: '1',
+    event_type: 'order',
+    id: '0x01',
+    market: CONDITION_ID,
+    original_size: '5',
+    owner: 'owner-1',
+    price: '0.5',
+    side: 'BUY',
+    size_matched: '0',
+    status,
+    timestamp: '1710000000000',
+    type: 'CANCELLATION',
+  });
+
+  it.each([
+    'CANCELED',
+    'INVALID',
+    'CANCELED_MARKET_RESOLVED',
+    "CANCELED_order couldn't be fully filled. FOK orders are fully filled or killed.",
+  ])('accepts order cancellations with status %s', (status) => {
+    const result = UserEventSchema.safeParse(orderCancellation(status));
+
+    expect(result.success).toBe(true);
+    expect(result.data?.payload).toMatchObject({ status });
+  });
+
+  it('still rejects an unknown order status', () => {
+    const result = UserEventSchema.safeParse(orderCancellation('NOT_A_STATUS'));
+
+    expect(result.success).toBe(false);
+  });
+
   it('accepts short trade statuses from the user websocket and normalizes them', () => {
     const result = UserEventSchema.safeParse({
       asset_id: '1',
