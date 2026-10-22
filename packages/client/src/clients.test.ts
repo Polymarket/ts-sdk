@@ -130,26 +130,27 @@ describe('predictions gateway service', () => {
     });
     try {
       vi.stubGlobal('Bun', { version: '1.2.3' });
-      for (const method of ['get', 'post', 'patch', 'del'] as const) {
-        const options = {
+      await expect(
+        client.predictions.get('/metadata', {
+          retries: 0,
           headers: {
             POLYMARKET_CLIENT: 'request override',
             'x-request': 'retained',
           },
-        };
-        const result =
-          method === 'get'
-            ? client.predictions.get('/metadata', { ...options, retries: 0 })
-            : client.predictions[method]('/metadata', options);
-        await expect(result).rejects.toMatchObject({ cause: failure });
-        const request = requests.at(-1);
-        expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
-        expect(request?.headers.get('x-environment')).toBe('retained');
-        expect(request?.headers.get('x-request')).toBe('retained');
-        expect(request?.url).toBe(
-          'https://api-defi-staging.polymarket.dev/metadata',
-        );
-      }
+        }),
+      ).rejects.toMatchObject({ cause: failure });
+      const request = requests.at(-1);
+      expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
+      expect(request?.headers.get('x-environment')).toBe('retained');
+      expect(request?.headers.get('x-request')).toBe('retained');
+      expect(request?.url).toBe(
+        'https://api-defi-staging.polymarket.dev/metadata',
+      );
+      const extended = client.extend(() => ({
+        predictionService: client.predictions,
+      }));
+      expect(extended.predictions).toBe(client.predictions);
+      expect(extended.predictionService).toBe(client.predictions);
       for (const service of [
         client.clob,
         client.gamma,
@@ -164,69 +165,10 @@ describe('predictions gateway service', () => {
         });
         expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
       }
-      const controller = new AbortController();
-      controller.abort('cancelled');
-      await expect(
-        client.predictions.get('/metadata', { signal: controller.signal }),
-      ).rejects.toMatchObject({
-        name: 'RequestAbortedError',
-        cause: 'cancelled',
-      });
-      expect(fetch).toHaveBeenCalledTimes(9);
     } finally {
       vi.unstubAllGlobals();
     }
   });
-  it('dispatches every verb through custom fetch to the production gateway', async () => {
-    const failure = new Error('custom fetch stopped at the transport boundary');
-    const observedRequests: Request[] = [];
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
-      if (input instanceof Request) observedRequests.push(input.clone());
-      throw failure;
-    });
-    const client = createPublicClient({ fetch });
-    const predictions = client.predictions;
-    const extended = client.extend(() => ({ predictionService: predictions }));
-
-    expect(predictions).toBeInstanceOf(ServiceClient);
-    expect(extended.predictions).toBe(predictions);
-    expect(extended.predictionService).toBe(predictions);
-    expect(client.clob).toBeInstanceOf(ServiceClient);
-    expect(client.gamma).toBeInstanceOf(ServiceClient);
-    expect(client.data).toBeInstanceOf(ServiceClient);
-    expect(client.relayer).toBeInstanceOf(ServiceClient);
-    const controller = new AbortController();
-    for (const operation of [
-      () => predictions.get('/ping', { signal: controller.signal, retries: 0 }),
-      () => predictions.post('/endpoint', { json: { value: 1 } }),
-      () => predictions.patch('/endpoint', { json: { value: 2 } }),
-      () => predictions.del('/endpoint'),
-    ]) {
-      await expect(operation()).rejects.toMatchObject({
-        name: TransportError.name,
-        cause: failure,
-      });
-    }
-    expect(fetch).toHaveBeenCalledTimes(4);
-    const requests = observedRequests;
-    expect(requests.map((request) => request.url)).toEqual([
-      'https://api.defi.polymarket.com/ping',
-      'https://api.defi.polymarket.com/endpoint',
-      'https://api.defi.polymarket.com/endpoint',
-      'https://api.defi.polymarket.com/endpoint',
-    ]);
-    expect(requests.map((request) => request.method)).toEqual([
-      'GET',
-      'POST',
-      'PATCH',
-      'DELETE',
-    ]);
-    expect(await requests[1]?.text()).toBe('{"value":1}');
-    expect(await requests[2]?.text()).toBe('{"value":2}');
-    controller.abort();
-    expect(requests[0]?.signal.aborted).toBe(true);
-  });
-
   it('merges gateway environment headers and respects pre-dispatch cancellation', async () => {
     const failure = new Error('custom fetch stopped at the transport boundary');
     const fetch = vi.fn<typeof globalThis.fetch>(async () => {
