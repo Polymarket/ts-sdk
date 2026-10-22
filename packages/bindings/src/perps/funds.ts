@@ -24,7 +24,7 @@ import {
 export const PerpsDepositSchema = z
   .object({
     hash: TxHashSchema,
-    log_index: z.number().int().nonnegative().optional(),
+    log_index: z.number().int().nonnegative().nullish(),
     asset: PerpsAssetSchema,
     amount: BaseUnitsSchema,
     status: PerpsDepositStatusSchema,
@@ -37,7 +37,7 @@ export const PerpsDepositSchema = z
   })
   .transform((deposit) => ({
     hash: deposit.hash,
-    logIndex: deposit.log_index,
+    ...(deposit.log_index == null ? {} : { logIndex: deposit.log_index }),
     asset: deposit.asset,
     amount: deposit.amount,
     status: deposit.status,

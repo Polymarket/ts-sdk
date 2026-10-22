@@ -3349,10 +3349,12 @@ describe('PerpsSession', () => {
       expect(requests).toHaveLength(1);
     });
 
-    it('preserves deposit log indexes across overlapping pages and legacy rows', async () => {
+    it.each([
+      1000, 2000,
+    ])('preserves deposit identity through inclusive start %s', async (start) => {
       const hash = `0x${'1'.repeat(64)}`;
       const requests: URLSearchParams[] = [];
-      function deposit(logIndex?: number) {
+      function deposit(logIndex?: number | null) {
         return {
           hash,
           ...(logIndex === undefined ? {} : { log_index: logIndex }),
@@ -3373,22 +3375,30 @@ describe('PerpsSession', () => {
           ({ request }) => {
             requests.push(new URL(request.url).searchParams);
             const indices =
-              requests.length === 1 ? [undefined, 0, 0] : [undefined, 0, 1, 1];
+              requests.length === 1
+                ? [undefined, null, 0, 0]
+                : [undefined, null, 0, 1, 1];
             return HttpResponse.json({
               data: indices.map(deposit),
-              more: requests.length === 1,
+              more: requests.length < 3 || start === 2000,
             });
           },
         ),
       );
-      const pages = createSession().listDeposits({ start: 1000, end: 3000 });
+      const pages = createSession().listDeposits({ start, end: 3000 });
       const first = await pages.firstPage();
+      expect(first.hasMore).toBe(true);
       const second = await pages.from(first.nextCursor).firstPage();
       expect(first.items.map((item) => item.logIndex)).toEqual([undefined, 0]);
+      expect(first.items[0]).not.toHaveProperty('logIndex');
       expect(second.items.map((item) => item.logIndex)).toEqual([1]);
-      expect(second.hasMore).toBe(false);
+      expect(second.hasMore).toBe(true);
+      const third = await pages.from(second.nextCursor).firstPage();
+      expect(third.items).toEqual([]);
+      expect(third.hasMore).toBe(false);
       expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
         '3000',
+        '2000',
         '2000',
       ]);
     });

@@ -1214,7 +1214,10 @@ function toPerpsDescendingAccountPage<T>(request: {
   const hasMore =
     request.responseMore &&
     cursorTimestamp !== undefined &&
-    cursorTimestamp > request.state.startTimestamp;
+    (cursorTimestamp > request.state.startTimestamp ||
+      (request.state.kind === 'perpsDeposits' &&
+        cursorTimestamp === request.state.startTimestamp &&
+        last !== undefined));
 
   if (!hasMore) return { items: request.items, hasMore };
 
