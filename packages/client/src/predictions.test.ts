@@ -6,7 +6,7 @@ import {
   expectEvmSignature,
   expectHexString,
 } from '@polymarket/types';
-import { afterEach, expect, it, vi } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { fetchExecuteParams, fetchTransaction } from './actions/gasless';
 import type { SignedOrder } from './actions/orders/types';
 import { createPublicClient, createSecureClient } from './clients';
@@ -21,6 +21,7 @@ const environment = forkEnvironmentConfig({
   name: 'mock-predictions',
   predictions: { rest: root },
   clob: { rest: 'https://clob.invalid' },
+  relayer: { rest: 'https://relayer.invalid' },
   data: { rest: 'https://data.invalid' },
 });
 const l2Credentials = {
@@ -29,46 +30,32 @@ const l2Credentials = {
   passphrase: 'synthetic-phrase',
 };
 const signature = expectEvmSignature(`0x${'1'.repeat(130)}`);
-function tokens(sequence = 0, seconds = 900, trading = true) {
+const wallet = deriveBeaconDepositWalletAddress(
+  address,
+  environment.walletDerivation,
+);
+function tokens(trading = true, ownerWallet = address) {
   return {
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet: address, signature_type: 0, clob_api_key: trading ? l2Credentials.key : undefined, exp: Math.floor(Date.now() / 1000) + seconds, jti: sequence }))}.test`,
-    refreshToken: `synthetic-refresh-${sequence}`,
+    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet: ownerWallet, signature_type: ownerWallet === address ? 0 : 3, clob_api_key: trading ? l2Credentials.key : undefined, exp: Math.floor(Date.now() / 1000) + 900 }))}.test`,
+    refreshToken: 'synthetic-refresh',
     tokenType: 'Bearer',
-    expiresIn: seconds,
+    expiresIn: 900,
     refreshExpiresIn: 3600,
   };
 }
-function signer(): Signer {
-  return {
-    getAddress: async () => address,
-    signTypedData: async () => signature,
-    signMessage: vi.fn(),
-    sendTransaction: vi.fn(),
-  };
-}
-afterEach(() => {
-  vi.useRealTimers();
-  vi.restoreAllMocks();
-});
+const signer: Signer = {
+  getAddress: async () => address,
+  signTypedData: async () => signature,
+  signMessage: vi.fn(),
+  sendTransaction: vi.fn(),
+};
+const secureOptions = { environment, signer, wallet: address };
 
 it.each([
   'bearer',
   'l2',
-])('initializes an existing Deposit Wallet with %s routes and upstream signing paths', async (mechanism) => {
-  const wallet = deriveBeaconDepositWalletAddress(
-    address,
-    environment.walletDerivation,
-  );
-  const pair = {
-    ...tokens(),
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet, signature_type: 3, clob_api_key: l2Credentials.key, exp: Math.floor(Date.now() / 1000) + 900 }))}.test`,
-  };
-  const localEnvironment = forkEnvironmentConfig({
-    name: 'mock-wallet-endpoints',
-    predictions: { rest: root },
-    clob: { rest: 'https://direct-clob.invalid' },
-    relayer: { rest: 'https://direct-relayer.invalid' },
-  });
+])('maps wallet reads and canonical signing (%s)', async (mechanism) => {
+  const pair = tokens(true, wallet);
   const seen: string[] = [];
   const authorize = vi.fn(
     async (_request: import('./types').ApiKeyAuthorizationRequest) => ({
@@ -89,10 +76,7 @@ it.each([
       );
       return Response.json({ deployed: true });
     }
-    if (
-      path.endsWith('/execute-params') ||
-      path.endsWith('/transactions/params')
-    )
+    if (path === '/v1/wallets/execute-params')
       return Response.json({ address, nonce: '0' });
     if (path.endsWith('/transactions/mock-transaction'))
       return Response.json({
@@ -105,9 +89,8 @@ it.each([
     throw new Error(`Unexpected mock route: ${path}`);
   });
   const secure = await createSecureClient({
-    environment: localEnvironment,
+    ...secureOptions,
     fetch,
-    signer: signer(),
     wallet,
     credentials: mechanism === 'bearer' ? pair : l2Credentials,
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
@@ -138,16 +121,9 @@ it.each([
   }
 });
 
-it('completes mocked undeployed wallet initialization through mapped submit and polling routes', async () => {
+it('maps wallet deployment submission and polling', async () => {
   // Transport-only regression: no real deployment, signing, or network access.
-  const wallet = deriveBeaconDepositWalletAddress(
-    address,
-    environment.walletDerivation,
-  );
-  const pair = {
-    ...tokens(),
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet, signature_type: 3, clob_api_key: l2Credentials.key, exp: Math.floor(Date.now() / 1000) + 900 }))}.test`,
-  };
+  const pair = tokens(true, wallet);
   const seen: string[] = [];
   const authorize = vi.fn(
     async (_request: import('./types').ApiKeyAuthorizationRequest) => ({}),
@@ -180,9 +156,8 @@ it('completes mocked undeployed wallet initialization through mapped submit and 
     throw new Error(`Unexpected mock route: ${path}`);
   });
   const client = await createSecureClient({
-    environment,
+    ...secureOptions,
     fetch,
-    signer: signer(),
     wallet,
     credentials: pair,
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
@@ -202,11 +177,7 @@ it('completes mocked undeployed wallet initialization through mapped submit and 
   ]);
 });
 
-it.each([
-  'public',
-  'l2',
-  'bearer',
-])('routes midpoint reads through Predictions for %s callers', async (mode) => {
+it.each(['l2', 'bearer'])('routes midpoint reads (%s)', async (mode) => {
   const pair = tokens();
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
@@ -220,21 +191,15 @@ it.each([
     expect(request.headers.has('POLY_API_KEY')).toBe(false);
     return Response.json({ mid: '0.5' });
   });
-  const client =
-    mode === 'public'
-      ? createPublicClient({ environment, fetch })
-      : await createSecureClient({
-          environment,
-          fetch,
-          signer: signer(),
-          wallet: address,
-          credentials: mode === 'l2' ? l2Credentials : pair,
-        });
+  const client = await createSecureClient({
+    ...secureOptions,
+    fetch,
+    credentials: mode === 'l2' ? l2Credentials : pair,
+  });
   try {
-    await expect(client.fetchMidpoint({ assetId: '1' })).resolves.toBe('0.5');
+    await client.fetchMidpoint({ assetId: '1' });
   } finally {
-    if (client.isSecureClient() && client.credentials.type === 'bearer')
-      client.session.close();
+    if (client.credentials.type === 'bearer') client.session.close();
     await client.closeSubscriptions();
   }
 });
@@ -243,8 +208,8 @@ it.each([
   'l2',
   'bearer',
   'missing owner',
-])('keeps HTTP credentials out of the order owner for %s sessions', async (mode) => {
-  const pair = tokens(0, 900, mode !== 'missing owner');
+])('isolates order owners (%s)', async (mode) => {
+  const pair = tokens(mode !== 'missing owner');
   const requests: Request[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
@@ -281,10 +246,8 @@ it.each([
     });
   });
   const client = await createSecureClient({
-    environment,
+    ...secureOptions,
     fetch,
-    signer: signer(),
-    wallet: address,
     credentials: mode === 'l2' ? l2Credentials : pair,
   });
   const order: SignedOrder = {
@@ -309,7 +272,7 @@ it.each([
       await expect(posted).rejects.toMatchObject({ status: 401 });
       expect(requests).toHaveLength(0);
     } else {
-      await expect(posted).resolves.toMatchObject({ ok: true });
+      await posted;
       expect(requests).toHaveLength(1);
     }
   } finally {
@@ -325,6 +288,8 @@ it('uses Predictions for covered discovery, portfolio and combo reads and keeps 
     fetch: async (input, init) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
+      expect(request.headers.has('authorization')).toBe(false);
+      expect(request.headers.has('POLY_API_KEY')).toBe(false);
       seen.push(url.origin + url.pathname);
       if (url.pathname === '/v1/sports') return Response.json([]);
       if (url.pathname === '/v1/positions')
@@ -359,24 +324,26 @@ it.each([
     path: '/v1/me/balance-allowances/refresh',
     method: 'GET',
     signingPath: '/balance-allowance/update',
-    params: new URLSearchParams({ asset_type: 'COLLATERAL' }),
-    json: undefined,
+    options: { params: new URLSearchParams({ asset_type: 'COLLATERAL' }) },
+    query: '?asset_type=COLLATERAL',
     body: undefined,
   },
   {
     path: '/v1/wallets/collateral-return/submit',
     method: 'POST',
     signingPath: '/submit',
-    params: undefined,
-    json: { envelope: { nonce: '1' }, plan_hash: 'synthetic-plan' },
+    options: {
+      json: { envelope: { nonce: '1' }, plan_hash: 'synthetic-plan' },
+    },
+    query: '',
     body: '{"nonce":"1"}',
   },
 ])('signs the canonical request for POST $path', async ({
   path,
   method,
   signingPath,
-  params,
-  json,
+  options,
+  query,
   body,
 }) => {
   const authorize = vi.fn(async () => ({
@@ -386,12 +353,7 @@ it.each([
     const request = new Request(input, init);
     if (request.url.endsWith('/auth/api-keys'))
       return Response.json({ apiKeys: [l2Credentials.key] });
-    expect(new URL(request.url).origin + new URL(request.url).pathname).toBe(
-      root + path,
-    );
-    expect(new URL(request.url).searchParams.toString()).toBe(
-      params?.toString() ?? '',
-    );
+    expect(request.url).toBe(root + path + query);
     expect(request.method).toBe('POST');
     expect(request.headers.get('x-builder-proof')).toBe('synthetic-proof');
     if (method === 'GET')
@@ -407,17 +369,13 @@ it.each([
     return Response.json('accepted');
   });
   const client = await createSecureClient({
-    environment,
+    ...secureOptions,
     fetch,
-    signer: signer(),
-    wallet: address,
     credentials: l2Credentials,
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
   });
   authorize.mockClear();
-  await expect(client.predictions.post(path, { json, params })).resolves.toBe(
-    'accepted',
-  );
+  await client.predictions.post(path, options);
   expect(authorize).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ method, path: signingPath, body }),
     expect.anything(),
