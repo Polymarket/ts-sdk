@@ -204,8 +204,8 @@ describe('platform API key client workflow', () => {
     expect(changed).toHaveBeenCalledTimes(1);
     expect(secure.session.claims.client_id).toBe(clientId);
     await secure.predictions.get('/private', { retries: 0 });
-    await secure.secureClob.get('/account', { retries: 0 });
-    await secure.relayer.get('/quota', { retries: 0 });
+    await secure.predictions.get('/v1/me/orders', { retries: 0 });
+    await secure.predictions.get('/v1/wallets/transactions', { retries: 0 });
     await secure.endAuthentication();
     expect(requests.filter((r) => r.url.endsWith('/refresh'))).toHaveLength(1);
     expect(inspect(platformApiKey(key))).not.toContain(key);
@@ -586,8 +586,10 @@ it('preserves Headers-based builder/submission authorization alongside the platf
     wallet: signerAddress,
     apiKey: platformApiKey(key, { legacyApiKey: directAuthorization }),
   });
-  await secure.secureClob.post('/synthetic-order', { json: { signature } });
-  await secure.relayer.post('/synthetic-submit', { json: { signature } });
+  await secure.predictions.post('/v1/orders', { json: { signature } });
+  await secure.predictions.post('/v1/wallets/transactions', {
+    json: { signature },
+  });
   await secure.builderGateway.post('/synthetic-builder', {
     json: { signature },
   });
@@ -658,7 +660,7 @@ it('retains signed order payloads, builder attribution and gasless deployment au
     expect(request.headers.get('poly_builder_api_key')).toBe(l2Credentials.key);
     expect(request.headers.get('poly_builder_signature')).toBeTruthy();
     const body = await request.json();
-    if (request.url === `${gateway}/order`) {
+    if (request.url === `${gateway}/v1/orders`) {
       expect(body).toMatchObject({
         owner: 'synthetic-trading-key',
         order: {
