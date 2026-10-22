@@ -354,7 +354,11 @@ function createPredictionsService(
     root: config.environment.predictions.rest,
     onRateLimitUpdate: config.onRateLimitUpdate,
     resolveHeaders: async (request) => {
-      const headers = await resolveGatewayHeaders(config, request, await resolveHeaders?.(request));
+      const headers = await resolveGatewayHeaders(
+        config,
+        request,
+        await resolveHeaders?.(request),
+      );
       headers.set('POLYMARKET_CLIENT', metadata);
       return headers;
     },
