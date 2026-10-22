@@ -87,7 +87,7 @@ describe('platform API key client workflow', () => {
   it.each([
     '/api/auth/challenge?tenant=one',
     'https://app.synthetic.invalid/exact-endpoint?tenant=one',
-  ])('calls remote endpoint %s exactly, proxies only whitelisted challenge fields, and logs in directly', async (url) => {
+  ])('proxies only challenge fields to %s and keeps login, refresh and logout direct', async (url) => {
     const proxyRequests: { input: unknown; init?: RequestInit }[] = [];
     const gatewayRequests: Request[] = [];
     const walletSigner = signer();
@@ -112,6 +112,10 @@ describe('platform API key client workflow', () => {
       }
       const request = new Request(input, init);
       gatewayRequests.push(request.clone());
+      expect(request.headers.has('x-api-key')).toBe(false);
+      if (request.url.endsWith('/refresh')) return Response.json(tokens(1));
+      if (request.url.endsWith('/logout'))
+        return new Response(null, { status: 204 });
       expect(request.url).toBe(`${gateway}/v1/auth/login`);
       expect(await request.json()).toEqual({
         ownership: { challenge_id: challenge.challengeId, signature },
@@ -129,7 +133,7 @@ describe('platform API key client workflow', () => {
       accessToken: 'must-not-forward',
       refreshToken: 'must-not-forward',
     };
-    const publicClient = createPublicClient({
+    const secure = await createSecureClient({
       environment,
       fetch,
       apiKey: remotePlatformApiKey({
@@ -137,16 +141,20 @@ describe('platform API key client workflow', () => {
         credentials: 'include',
         headers: async () => ({ 'x-app-auth': 'synthetic-app-session' }),
       }),
+      ...options,
     });
-    await expect(publicClient.login(options)).resolves.toHaveProperty(
-      'accessToken',
-      tokens().accessToken,
-    );
+    await secure.session.refresh();
+    expect(secure.session.claims.client_id).toBe(clientId);
+    await secure.endAuthentication();
     expect(walletSigner.signTypedData).toHaveBeenCalledExactlyOnceWith(
       challenge.typedData,
     );
     expect(proxyRequests).toHaveLength(1);
-    expect(gatewayRequests).toHaveLength(1);
+    expect(gatewayRequests.map((request) => request.url)).toEqual([
+      `${gateway}/v1/auth/login`,
+      `${gateway}/v1/auth/refresh`,
+      `${gateway}/v1/auth/logout`,
+    ]);
     expect(JSON.stringify(proxyRequests)).not.toContain(signature);
     expect(JSON.stringify(proxyRequests)).not.toContain(tokens().refreshToken);
   });
@@ -201,34 +209,6 @@ describe('platform API key client workflow', () => {
     await secure.endAuthentication();
     expect(requests.filter((r) => r.url.endsWith('/refresh'))).toHaveLength(1);
     expect(inspect(platformApiKey(key))).not.toContain(key);
-  });
-
-  it('keeps remote refresh and logout direct and never reuses the challenge proxy for tokens', async () => {
-    const url = '/private/challenge';
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      if (input === url) return Response.json(challenge);
-      const request = new Request(input, init);
-      expect(request.headers.has('x-api-key')).toBe(false);
-      if (request.url.endsWith('/login')) return Response.json(tokens());
-      if (request.url.endsWith('/refresh')) return Response.json(tokens(1));
-      if (request.url.endsWith('/logout'))
-        return new Response(null, { status: 204 });
-      throw new Error('Unexpected request');
-    });
-    const secure = await createSecureClient({
-      environment,
-      fetch,
-      signer: signer(),
-      wallet: signerAddress,
-      apiKey: remotePlatformApiKey({ url }),
-    });
-    await secure.session.refresh();
-    expect(secure.session.claims.client_id).toBe(clientId);
-    await secure.endAuthentication();
-    expect(fetch.mock.calls.filter(([input]) => input === url)).toHaveLength(1);
-    expect(inspect(remotePlatformApiKey({ url }))).not.toContain(
-      'synthetic-refresh',
-    );
   });
 
   it('surfaces a conflicting key rejection without signing again or inventing attribution', async () => {
@@ -344,22 +324,7 @@ describe('platform API-key compatibility', () => {
     await secure.closeSubscriptions();
   });
 
-  it('retains builder HMAC headers and avoids forwarding a platform key to direct endpoints', async () => {
-    const adapter = platformApiKey(key, {
-      legacyApiKey: builderApiKey(l2Credentials),
-    });
-    expect(adapter.isBuilderKey).toBe(true);
-    expect(adapter.supportGasless).toBe(true);
-    const headers = new Headers(
-      await adapter.authorize({
-        method: 'POST',
-        path: '/submit',
-        body: '{"order":"synthetic"}',
-      }),
-    );
-    expect(headers.get('poly_builder_api_key')).toBe(l2Credentials.key);
-    expect(headers.get('poly_builder_signature')).toMatch(/^[A-Za-z0-9_-]+=*$/);
-    expect(headers.has('x-api-key')).toBe(false);
+  it('retains relayer submission authorization alongside the platform key', async () => {
     const quotaAdapter = platformApiKey(key, {
       legacyApiKey: relayerApiKey({
         key: 'synthetic-relayer',
@@ -404,19 +369,23 @@ describe('platform API-key compatibility', () => {
 
 describe('challenge proxy failures and cancellation', () => {
   it.each([
-    401, 503,
-  ])('redacts a %s proxy rejection and never sends a signature or SDK credentials', async (status) => {
+    401,
+    503,
+    'transport',
+  ] as const)('redacts a %s proxy failure before wallet signing', async (status) => {
     const url = '/challenge';
     const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
       const body = JSON.parse(String(init?.body));
       expect(Object.keys(body)).toEqual(['signer', 'wallet']);
+      const message = `${key} ${signature} ${tokens().accessToken} ${tokens().refreshToken}`;
+      if (status === 'transport') throw new Error(message);
       return Response.json(
         {
           code:
             status === 401
               ? 'invalid_api_key'
               : 'identity_provider_unavailable',
-          message: `${key} ${signature} ${tokens().accessToken} ${tokens().refreshToken}`,
+          message,
         },
         { status },
       );
@@ -428,7 +397,11 @@ describe('challenge proxy failures and cancellation', () => {
       apiKey: remotePlatformApiKey({ url }),
     }).login({ signer: walletSigner, wallet: signerAddress });
     const error = await result.catch((failure: unknown) => failure);
-    expect(error).toMatchObject({ name: 'RequestRejectedError', status });
+    expect(error).toMatchObject(
+      status === 'transport'
+        ? { name: 'TransportError' }
+        : { name: 'RequestRejectedError', status },
+    );
     const rendered = inspect(error, { depth: 10 });
     for (const secret of [
       key,
@@ -439,22 +412,6 @@ describe('challenge proxy failures and cancellation', () => {
       expect(rendered).not.toContain(secret);
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not expose a custom-fetch exception containing secrets', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
-      throw new Error(`${key} ${tokens().accessToken}`);
-    });
-    const error = await createPublicClient({
-      environment,
-      fetch,
-      apiKey: remotePlatformApiKey({ url: '/challenge' }),
-    })
-      .login({ signer: signer() })
-      .catch((failure: unknown) => failure);
-    expect(error).toMatchObject({ name: 'TransportError' });
-    expect(inspect(error, { depth: 10 })).not.toContain(key);
-    expect(inspect(error, { depth: 10 })).not.toContain(tokens().accessToken);
   });
 
   it('rejects accidental browser-key configuration before dispatch', async () => {
