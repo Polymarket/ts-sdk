@@ -88,7 +88,7 @@ export async function cancelOrder(
 ): Promise<CancelOrdersResponse> {
   const params = parseUserInput(request, CancelOrderRequestSchema);
 
-  return cancel(client, '/order', {
+  return cancel(client, '/v1/orders', {
     orderID: params.orderId,
   });
 }
@@ -136,7 +136,7 @@ export async function cancelOrders(
 ): Promise<CancelOrdersResponse> {
   const params = parseUserInput(request, CancelOrdersRequestSchema);
 
-  return cancel(client, '/orders', params.orderIds);
+  return cancel(client, '/v1/orders/batch', params.orderIds);
 }
 
 function assertDepositWalletOwner(client: BaseSecureClient): void {
@@ -265,7 +265,7 @@ export const CancelAllError = makeErrorGuard(
 export async function cancelAll(
   client: BaseSecureClient,
 ): Promise<CancelOrdersResponse> {
-  return cancel(client, '/cancel-all');
+  return cancel(client, '/v1/orders/all');
 }
 
 export type CancelMarketOrdersRequest =
@@ -322,7 +322,7 @@ export async function cancelMarketOrders(
 ): Promise<CancelOrdersResponse> {
   const params = parseUserInput(request, CancelMarketOrdersRequestSchema);
 
-  return cancel(client, '/cancel-market-orders', {
+  return cancel(client, '/v1/orders/by-market', {
     asset_id: params.assetId ?? params.tokenId,
     market: params.market,
   });
@@ -333,7 +333,7 @@ async function cancel(
   path: string,
   payload?: unknown,
 ): Promise<CancelOrdersResponse> {
-  return client.secureClob
+  return client.predictions
     .del(path, {
       json: payload,
       rateLimitBucket: 'cancel',

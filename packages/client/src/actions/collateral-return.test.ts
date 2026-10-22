@@ -297,9 +297,10 @@ function createClient(options: CreateClientOptions = {}) {
   const collateralReturnService = new ServiceClient({
     root: 'https://collateral-return.test',
     fetch: async (input) => {
+      const request = new Request(input);
+      if (request.method === 'GET') return jsonResponse(executeParamsWire);
       if (
-        new URL(new Request(input).url).pathname ===
-        '/v1/collateral-return/plan'
+        new URL(request.url).pathname === '/v1/wallets/collateral-return/plan'
       ) {
         return jsonResponse(plan);
       }
@@ -309,10 +310,6 @@ function createClient(options: CreateClientOptions = {}) {
     },
   });
   const collateralReturnPost = vi.spyOn(collateralReturnService, 'post');
-  const relayerService = new ServiceClient({
-    root: 'https://relayer.test',
-    fetch: async () => jsonResponse(executeParamsWire),
-  });
   const ethEstimateGas = vi.fn(async () => 500_000n);
   const signTypedData = vi.fn(async () => SIGNATURE);
   const signMessage = vi.fn(async () => SIGNATURE);
@@ -332,9 +329,8 @@ function createClient(options: CreateClientOptions = {}) {
       wallet: WALLET,
       walletType: options.walletType ?? WalletType.DEPOSIT_WALLET,
     },
-    combos: collateralReturnService,
+    predictions: collateralReturnService,
     environment,
-    relayer: relayerService,
     rpc: { ethEstimateGas },
     signer,
     supportsGasless: true,
@@ -350,7 +346,7 @@ function createClient(options: CreateClientOptions = {}) {
 
 function findSubmitPayload(collateralReturnPost: MockInstance): unknown {
   const submitCall = collateralReturnPost.mock.calls.find(
-    ([path]) => path === '/v1/collateral-return/submit',
+    ([path]) => path === '/v1/wallets/collateral-return/submit',
   );
   expect(submitCall).toBeDefined();
 
@@ -359,13 +355,13 @@ function findSubmitPayload(collateralReturnPost: MockInstance): unknown {
 
 function countSubmitCalls(collateralReturnPost: MockInstance): number {
   return collateralReturnPost.mock.calls.filter(
-    ([path]) => path === '/v1/collateral-return/submit',
+    ([path]) => path === '/v1/wallets/collateral-return/submit',
   ).length;
 }
 
 function submitPayloads(collateralReturnPost: MockInstance): unknown[] {
   return collateralReturnPost.mock.calls
-    .filter(([path]) => path === '/v1/collateral-return/submit')
+    .filter(([path]) => path === '/v1/wallets/collateral-return/submit')
     .map(([, options]) => (options as { json?: unknown } | undefined)?.json);
 }
 

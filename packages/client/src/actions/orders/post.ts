@@ -91,8 +91,8 @@ export function postOrder(
     parseUserInput(order, PostOrderInputSchema);
     const payload = createSendOrderPayload(client, order);
 
-    return client.secureClob
-      .post('/order', {
+    return client.predictions
+      .post('/v1/orders', {
         json: payload,
         rateLimitBucket: 'order',
         schema: OrderResponseSchema,
@@ -131,8 +131,8 @@ export function postOrders(
       createSendOrderPayload(client, order),
     );
 
-    return client.secureClob
-      .post('/orders', {
+    return client.predictions
+      .post('/v1/orders/batch', {
         json: payload,
         rateLimitBucket: 'order',
         schema: OrderResponsesSchema,

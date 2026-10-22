@@ -67,8 +67,8 @@ export async function fetchPublicProfile(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPublicProfileRequestSchema);
 
-  return client.gamma
-    .get('/public-profile', {
+  return client.predictions
+    .get('/v1/public-profile', {
       schema: PublicProfileSchema,
       ...requestOptions,
       params: toSearchParams(params, snakeCase()),
