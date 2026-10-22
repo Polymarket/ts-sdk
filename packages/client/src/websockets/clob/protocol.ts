@@ -228,7 +228,7 @@ export function userMatcherFor(
   const markets = new Set(
     (subscription.markets ?? []).map((market) => market.toLowerCase()),
   );
-  return (event) => markets.has(event.payload.market.toLowerCase());
+  return (event) => markets.has(event.payload.conditionId.toLowerCase());
 }
 
 function isAllMarketsUserSubscription(subscription: UserSubscription): boolean {
