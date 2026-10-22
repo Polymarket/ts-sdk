@@ -1,16 +1,13 @@
 import { createHmac } from 'node:crypto';
-import { RelayerTransactionType } from '@polymarket/bindings/relayer';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { login, migrateCredentials } from './actions';
-import { fetchExecuteParams, fetchTransaction } from './actions/gasless';
 import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError } from './errors';
 import { type ServiceAuthentication, ServiceClient } from './ServiceClient';
 import { AuthSession } from './session';
 import type { Signer } from './types';
-import { deriveBeaconDepositWalletAddress } from './wallet';
 
 const address = expectEvmAddress('0x0000000000000000000000000000000000000001');
 const root = 'https://synthetic.invalid';
@@ -74,7 +71,8 @@ describe('gateway public authentication boundary', () => {
       verificationToken: 'synthetic-verification',
     });
     expect(pair).toEqual({
-      accessToken: loginTokens.accessToken,
+      type: 'bearer',
+      key: loginTokens.accessToken,
       refreshToken: loginTokens.refreshToken,
     });
     expect(walletSigner.signTypedData).toHaveBeenCalledExactlyOnceWith(
@@ -167,8 +165,8 @@ describe('gateway public authentication boundary', () => {
       credentials: l2Credentials,
       onCredentialsChanged: changed,
     });
-    expect(client.credentials).toEqual(l2Credentials);
-    expect(client.clobApiKey).toBe(l2Credentials.key);
+    expect(client.credentials).toEqual({ ...l2Credentials, type: 'l2' });
+    expect(client.credentials.key).toBe(l2Credentials.key);
     await client.endAuthentication();
     expect(requests.map((r) => new URL(r.url).pathname)).toEqual([
       '/auth/api-keys',
@@ -206,7 +204,7 @@ describe('gateway public authentication boundary', () => {
         signer: address,
         wallet: address,
         signatureType: 0,
-        clobApiKey: l2Credentials.key,
+        tradingKey: l2Credentials.key,
       });
     });
     const secure = await createSecureClient({
@@ -215,16 +213,18 @@ describe('gateway public authentication boundary', () => {
       signer: signer(),
       wallet: address,
       credentials: {
-        accessToken: restored.accessToken,
+        type: 'bearer',
+        key: restored.accessToken,
         refreshToken: restored.refreshToken,
       },
       onCredentialsChanged: changed,
     });
     expect(secure.credentials).toEqual({
-      accessToken: updated.accessToken,
+      type: 'bearer',
+      key: updated.accessToken,
       refreshToken: updated.refreshToken,
     });
-    expect(changed).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledExactlyOnceWith(secure.credentials);
     const retainedTransport = secure.predictions;
     const publicClient = await secure.endAuthentication();
     expect(publicClient.isPublicClient()).toBe(true);
@@ -440,165 +440,6 @@ it('joins auth routes once with a trailing slash on the gateway origin', async (
   expect(seen).toEqual([`${root}/v1/auth/challenge`, `${root}/v1/auth/login`]);
 });
 
-it.each([
-  'bearer',
-  'l2',
-])('initializes an existing Deposit Wallet with %s routes and upstream signing paths', async (mechanism) => {
-  const wallet = deriveBeaconDepositWalletAddress(
-    address,
-    environment.walletDerivation,
-  );
-  const pair = {
-    ...tokens(),
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet, signature_type: 3, clob_api_key: l2Credentials.key, exp: Math.floor(Date.now() / 1000) + 900 }))}.test`,
-  };
-  const localEnvironment = forkEnvironmentConfig({
-    name: 'mock-wallet-endpoints',
-    predictions: { rest: root },
-    clob: { rest: 'https://direct-clob.invalid' },
-    relayer: { rest: 'https://direct-relayer.invalid' },
-  });
-  const seen: string[] = [];
-  const authorize = vi.fn(
-    async (_request: import('./types').ApiKeyAuthorizationRequest) => ({
-      POLY_BUILDER_API_KEY: 'synthetic-builder',
-    }),
-  );
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-    const request = new Request(input, init);
-    const path = new URL(request.url).pathname;
-    seen.push(request.url);
-    if (path === '/v1/auth/refresh') return Response.json(pair);
-    if (path === '/auth/api-keys')
-      return Response.json({ apiKeys: [l2Credentials.key] });
-    if (path.endsWith('/deployed')) {
-      expect(new URL(request.url).searchParams.get('address')).toBe(wallet);
-      expect(request.headers.get('authorization')).toBe(
-        mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
-      );
-      return Response.json({ deployed: true });
-    }
-    if (
-      path.endsWith('/execute-params') ||
-      path.endsWith('/transactions/params')
-    )
-      return Response.json({ address, nonce: '0' });
-    if (path.endsWith('/transactions/mock-transaction'))
-      return Response.json({
-        state: 'STATE_NEW',
-        transaction_id: 'mock-transaction',
-        transaction_hash: '',
-      });
-    if (path === '/auth/api-key') return Response.json('OK');
-    if (path === '/v1/auth/logout') return new Response(null, { status: 204 });
-    throw new Error(`Unexpected mock route: ${path}`);
-  });
-  const secure = await createSecureClient({
-    environment: localEnvironment,
-    fetch,
-    signer: signer(),
-    wallet,
-    credentials: mechanism === 'bearer' ? pair : l2Credentials,
-    apiKey: { isBuilderKey: true, supportGasless: true, authorize },
-  });
-  try {
-    await fetchExecuteParams(secure, {
-      address,
-      type: RelayerTransactionType.WALLET,
-    });
-    await fetchTransaction(secure, { transactionId: 'mock-transaction' });
-    const relayerRequests = seen
-      .filter((url) => !url.includes('/auth/'))
-      .map((url) => new URL(url).origin + new URL(url).pathname);
-    expect(relayerRequests).toEqual(
-      mechanism === 'bearer'
-        ? [
-            `${root}/v1/wallets/deployed`,
-            `${root}/v1/wallets/execute-params`,
-            `${root}/v1/wallets/transactions/mock-transaction`,
-          ]
-        : [
-            'https://direct-relayer.invalid/deployed',
-            'https://direct-relayer.invalid/v1/account/transactions/params',
-            'https://direct-relayer.invalid/v1/account/transactions/mock-transaction',
-          ],
-    );
-    expect(authorize.mock.calls.map((call) => call[0].path)).toEqual(
-      expect.arrayContaining([
-        '/deployed',
-        '/v1/account/transactions/params',
-        '/v1/account/transactions/mock-transaction',
-      ]),
-    );
-  } finally {
-    await secure.endAuthentication();
-  }
-});
-
-it('completes mocked undeployed wallet initialization through mapped submit and polling routes', async () => {
-  // Transport-only regression: no real deployment, signing, or network access.
-  const wallet = deriveBeaconDepositWalletAddress(
-    address,
-    environment.walletDerivation,
-  );
-  const pair = {
-    ...tokens(),
-    accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet, signature_type: 3, clob_api_key: l2Credentials.key, exp: Math.floor(Date.now() / 1000) + 900 }))}.test`,
-  };
-  const seen: string[] = [];
-  const authorize = vi.fn(
-    async (_request: import('./types').ApiKeyAuthorizationRequest) => ({}),
-  );
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-    const request = new Request(input, init);
-    const path = new URL(request.url).pathname;
-    seen.push(`${request.method} ${path}`);
-    if (path === '/v1/auth/refresh') return Response.json(pair);
-    if (path === '/v1/wallets/deployed')
-      return Response.json({ deployed: false });
-    if (path === '/v1/wallets/transactions') {
-      expect(await request.json()).toMatchObject({
-        type: 'WALLET-CREATE',
-        from: address,
-      });
-      return Response.json({
-        state: 'STATE_NEW',
-        transactionID: 'mock-deployment',
-        transactionHash: null,
-      });
-    }
-    if (path === '/v1/wallets/transactions/mock-deployment')
-      return Response.json({
-        state: 'STATE_CONFIRMED',
-        transaction_id: 'mock-deployment',
-        transaction_hash: `0x${'11'.repeat(32)}`,
-      });
-    if (path === '/v1/auth/logout') return new Response(null, { status: 204 });
-    throw new Error(`Unexpected mock route: ${path}`);
-  });
-  const client = await createSecureClient({
-    environment,
-    fetch,
-    signer: signer(),
-    wallet,
-    credentials: pair,
-    apiKey: { isBuilderKey: true, supportGasless: true, authorize },
-  });
-  await client.endAuthentication();
-  expect(seen).toEqual([
-    'POST /v1/auth/refresh',
-    'GET /v1/wallets/deployed',
-    'POST /v1/wallets/transactions',
-    'GET /v1/wallets/transactions/mock-deployment',
-    'POST /v1/auth/logout',
-  ]);
-  expect(authorize.mock.calls.map((call) => call[0].path)).toEqual([
-    '/deployed',
-    '/submit',
-    '/v1/account/transactions/mock-deployment',
-  ]);
-});
-
 function sessionAuthentication(session: AuthSession): ServiceAuthentication {
   return {
     credentials: (signal) => session.ready(signal),
@@ -622,6 +463,7 @@ function sessionAuthentication(session: AuthSession): ServiceAuthentication {
 it.each([
   { ...tokens(), secret: 'must-not-select-bearer' },
   { key: 'key', secret: 42, passphrase: 'phrase' },
+  { type: 'bearer', key: 'opaque', refreshToken: 'refresh', secret: 'mixed' },
 ])('rejects mixed or malformed saved credentials before signing or dispatch: %j', async (credentials) => {
   const fetch = vi.fn<typeof globalThis.fetch>();
   const walletSigner = signer();
@@ -695,7 +537,8 @@ it.each([
       await expect(request).rejects.toMatchObject({ status: 401 });
     else await expect(request).resolves.toBe('accepted');
     expect(client.credentials).toEqual({
-      accessToken: attempts === 2 ? rotated.accessToken : pair.accessToken,
+      type: 'bearer',
+      key: attempts === 2 ? rotated.accessToken : pair.accessToken,
       refreshToken: attempts === 2 ? rotated.refreshToken : pair.refreshToken,
     });
     expect(refreshRequests).toBe(attempts);

@@ -1,8 +1,4 @@
-import {
-  type BearerCredentials,
-  EvmAddressSchema,
-  TokenResponseSchema,
-} from '@polymarket/bindings';
+import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -28,7 +24,14 @@ import {
   migrateCredentials,
 } from './actions/identity';
 import { createClientMetadata } from './client-metadata';
-import { type ClientCredentials, ClientCredentialsSchema } from './credentials';
+import {
+  type AuthenticatedCredentials,
+  type BearerSessionCredentials,
+  type ClientCredentials,
+  type CredentialsChanged,
+  RestoredCredentialsSchema,
+  savedBearerCredentials,
+} from './credentials';
 import {
   allActions,
   type PublicActions,
@@ -51,16 +54,11 @@ import {
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type { RateLimitUpdateListener } from './rate-limit';
-import { walletSigningPath } from './relayer-routes';
 import { assertNotAborted, type Fetch, withAbort } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { ServiceAuthentication, ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
-import {
-  AuthSession,
-  accessTokenClaims,
-  type CredentialsChanged,
-} from './session';
+import { AuthSession, accessTokenClaims } from './session';
 import type { ApiKeyAuthorization, Signer } from './types';
 import type { AccountIdentity } from './wallet';
 import {
@@ -249,13 +247,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.supportGasless) {
-      return this.context.apiKey.authorize(
-        { ...request, path: walletSigningPath(request.path) },
-        {
-          fetch: this.context.fetch,
-          signal: request.signal,
-        },
-      );
+      return this.context.apiKey.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      });
     }
     return Promise.resolve({});
   }
@@ -276,7 +271,7 @@ export type BeginAuthenticationRequest = {
 };
 const BeginAuthenticationRequestSchema = AuthenticationInputSchema.extend({
   wallet: EvmAddressSchema,
-  credentials: ClientCredentialsSchema.optional(),
+  credentials: RestoredCredentialsSchema.optional(),
   onCredentialsChanged: z
     .custom<CredentialsChanged>((value) => typeof value === 'function')
     .optional(),
@@ -461,7 +456,7 @@ class BasePublicClient<
   /** Opens a bearer session by signing a server-issued ownership challenge.
    * @throws {@link LoginError} Thrown on authentication failure.
    */
-  login(request: LoginRequest): Promise<BearerCredentials> {
+  login(request: LoginRequest): Promise<BearerSessionCredentials> {
     return login(this, request);
   }
 
@@ -470,7 +465,7 @@ class BasePublicClient<
    */
   migrateCredentials(
     request: MigrateCredentialsRequest,
-  ): Promise<BearerCredentials> {
+  ): Promise<BearerSessionCredentials> {
     return migrateCredentials(this, request);
   }
 
@@ -504,12 +499,15 @@ class BasePublicClient<
         );
         const credentials =
           params.credentials ??
-          (await this.login({
-            signer,
-            wallet,
-            nonce: params.nonce,
-            verificationToken: params.verificationToken,
-          }));
+          parseUserInput(
+            await this.login({
+              signer,
+              wallet,
+              nonce: params.nonce,
+              verificationToken: params.verificationToken,
+            }),
+            RestoredCredentialsSchema,
+          );
         if ('key' in credentials) {
           const client = this.#createSecureClient(
             credentials,
@@ -637,7 +635,10 @@ class BaseSecureClient<
       'accessToken' in config.credentials
         ? new AuthSession({
             credentials: config.credentials,
-            onCredentialsChanged: config.onCredentialsChanged,
+            onCredentialsChanged: (credentials) =>
+              config.onCredentialsChanged?.(
+                savedBearerCredentials(credentials),
+              ),
             refresh: (credentials, signal) =>
               auth.post('/v1/auth/refresh', {
                 json: { refresh_token: credentials.refreshToken },
@@ -647,8 +648,6 @@ class BaseSecureClient<
               }),
           })
         : undefined;
-    const serviceRoot = (direct: string) =>
-      session === undefined ? direct : config.environment.predictions.rest;
     const authentication: ServiceAuthentication | undefined =
       session === undefined
         ? undefined
@@ -693,7 +692,7 @@ class BaseSecureClient<
         fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
-        root: serviceRoot(config.environment.clob.rest),
+        root: config.environment.clob.rest,
         authentication,
         retryMutations: false,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
@@ -701,7 +700,7 @@ class BaseSecureClient<
       relayer: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.relayer.headers,
-        root: serviceRoot(config.environment.relayer.rest),
+        root: config.environment.relayer.rest,
         authentication,
         retryMutations: false,
         resolveHeaders: (request) => this.resolveRelayerHeaders(request),
@@ -713,21 +712,21 @@ class BaseSecureClient<
       gamma: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.gamma.headers,
-        root: serviceRoot(config.environment.gamma.rest),
+        root: config.environment.gamma.rest,
         authentication,
         retryMutations: false,
       }),
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
-        root: serviceRoot(config.environment.data.rest),
+        root: config.environment.data.rest,
         authentication,
         retryMutations: false,
       }),
       rfq: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.combos.headers,
-        root: serviceRoot(config.environment.combos.rest),
+        root: config.environment.combos.rest,
         authentication,
         retryMutations: false,
       }),
@@ -744,7 +743,7 @@ class BaseSecureClient<
           ...(await this.resolveClobHeaders(request)),
           ...(await this.#createL2Headers(request)),
         }),
-        root: serviceRoot(config.environment.clob.rest),
+        root: config.environment.clob.rest,
         authentication,
         retryMutations: false,
       }),
@@ -817,16 +816,17 @@ class BaseSecureClient<
    *
    * @remarks
    * Contains the saved key/secret/passphrase for L2 authentication, or the
-   * current accessToken/refreshToken pair for bearer authentication. Migration is explicit.
+   * current access token in `key` and its refresh token for bearer authentication. Narrow by `type`. Migration is explicit.
    * These credentials are sensitive. Store them securely if you want to create
    * another secure client later without requiring a new authentication signature
    * while the credentials remain valid.
    */
-  get credentials(): ClientCredentials {
+  get credentials(): AuthenticatedCredentials {
     const { session, l2Credentials } = this.context;
-    if (session !== undefined) return session.credentials;
+    if (session !== undefined)
+      return savedBearerCredentials(session.credentials);
     invariant(l2Credentials !== undefined, 'Missing client credentials.');
-    return { ...l2Credentials };
+    return { ...l2Credentials, type: 'l2' };
   }
 
   /** @internal */
@@ -839,19 +839,6 @@ class BaseSecureClient<
   /** @internal */
   closeAuthenticationSession(): void {
     this.context.session?.close();
-  }
-
-  /** @internal Trading payload owner retained independently of bearer credentials. */
-  get clobApiKey(): string {
-    const key =
-      this.context.l2Credentials?.key ??
-      this.context.session?.claims.clob_api_key;
-    if (key === undefined)
-      throw new RequestRejectedError(
-        'This session has no trading credential.',
-        { status: 401 },
-      );
-    return key;
   }
 
   /**

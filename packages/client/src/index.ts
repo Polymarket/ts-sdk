@@ -95,6 +95,12 @@ export type {
   MigrateCredentialsRequest,
 } from './actions/identity';
 export { LoginError, MigrateCredentialsError } from './actions/identity';
+export type {
+  AuthenticatedCredentials,
+  BearerSessionCredentials,
+  CredentialsChanged,
+  L2SessionCredentials,
+} from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {
   ServiceClientDeleteOptions,
@@ -110,6 +116,5 @@ export type {
   ServiceClientResponseType,
 } from './ServiceClient';
 export { ServiceClientRequestError } from './ServiceClient';
-export type { CredentialsChanged } from './session';
 export * from './types';
 export { type AccountIdentity, SignerType } from './wallet';

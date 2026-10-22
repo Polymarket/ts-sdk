@@ -46,4 +46,6 @@ Deterministic tests validate these contracts; they do not establish production r
 
 Set `predictions.rest` to the gateway origin, without appending `/v1`: auth actions already include `/v1/auth`. A configured proxy prefix is preserved exactly. Changing only `predictions.rest` does not redirect the other endpoint configurations; configure direct services for the same environment when using L2 credentials or pre-login wallet discovery.
 
-Bearer wallet initialization uses `/v1/wallets/deployed`, `/v1/wallets/execute-params`, `/v1/wallets/transactions`, and `/v1/wallets/transactions/{id}`. L2-authenticated and public direct-service workflows retain their original routes. Builder signing continues to cover the canonical upstream path. General market and trading action paths have a separate gateway mapping migration; these auth changes do not complete that migration.
+Session creation, restoration, refresh, logout and socket authentication are defined here. Business-action routing through Predictions is a separate stack layer; direct endpoint configuration remains available.
+
+Saved client credentials have an explicit `type`: `l2` stores the API key in `key` with `secret` and `passphrase`; `bearer` stores the access token in `key` with `refreshToken`. Login, migration and persistence callbacks return the bearer saved format. Existing wire-format pairs remain accepted when restoring a client. HTTP credentials are never used as the order owner for bearer sessions; order ownership comes from the session trading identity.

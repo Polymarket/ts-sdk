@@ -169,9 +169,20 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       tokenId: order.tokenId,
     },
     orderType: order.orderType,
-    owner: client.clobApiKey,
+    owner: orderOwner(client),
     ...(order.postOnly === true ? { postOnly: true } : {}),
   };
+}
+
+function orderOwner(client: BaseSecureClient): string {
+  const credentials = client.credentials;
+  if (credentials.type === 'l2') return credentials.key;
+  const owner = client.session.claims.clob_api_key;
+  if (!owner || owner === credentials.key)
+    throw new RequestRejectedError('This session has no trading identity.', {
+      status: 401,
+    });
+  return owner;
 }
 
 function isClobSafeSalt(value: string): boolean {

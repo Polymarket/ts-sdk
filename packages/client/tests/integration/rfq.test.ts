@@ -102,8 +102,8 @@ describe('RFQ sessions', () => {
         expect(outboundFrames).toContainEqual(
           expect.objectContaining({
             auth:
-              'accessToken' in credentials
-                ? { accessToken: credentials.accessToken }
+              credentials.type === 'bearer'
+                ? { accessToken: credentials.key }
                 : {
                     apiKey: credentials.key,
                     secret: credentials.secret,
