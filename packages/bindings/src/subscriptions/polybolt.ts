@@ -50,14 +50,6 @@ export enum EquityMarketStatus {
   Unknown = 'unknown',
 }
 
-const EquityMarketStatusPayloadSchema = z
-  .object({
-    market_status: z.enum(EquityMarketStatus).optional(),
-  })
-  .transform(({ market_status }): { marketStatus?: EquityMarketStatus } => ({
-    marketStatus: market_status,
-  }));
-
 export enum PolyboltChannel {
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
@@ -124,33 +116,32 @@ const PricePointSchema = z
     value: full_accuracy_value,
   }));
 
-const PricePayloadSchema = z
-  .object({
-    symbol: z.string(),
-    source: PriceSourceSchema,
-    timestamp: EpochMillisecondsSchema,
-    value: DecimalishSchema,
-    full_accuracy_value: DecimalStringSchema,
-    received_at: EpochMillisecondsSchema.optional(),
-    is_carried_forward: z.boolean().optional(),
-  })
-  .transform(
-    ({
-      symbol,
-      source,
-      timestamp,
-      full_accuracy_value,
-      received_at,
-      is_carried_forward,
-    }) => ({
-      symbol,
-      source,
-      timestamp,
-      value: full_accuracy_value,
-      receivedAt: received_at,
-      isCarriedForward: is_carried_forward,
-    }),
-  );
+const RawPricePayloadSchema = z.object({
+  symbol: z.string(),
+  source: PriceSourceSchema,
+  timestamp: EpochMillisecondsSchema,
+  value: DecimalishSchema,
+  full_accuracy_value: DecimalStringSchema,
+  received_at: EpochMillisecondsSchema.optional(),
+  is_carried_forward: z.boolean().optional(),
+});
+const PricePayloadSchema = RawPricePayloadSchema.transform(
+  ({
+    symbol,
+    source,
+    timestamp,
+    full_accuracy_value,
+    received_at,
+    is_carried_forward,
+  }) => ({
+    symbol,
+    source,
+    timestamp,
+    value: full_accuracy_value,
+    receivedAt: received_at,
+    isCarriedForward: is_carried_forward,
+  }),
+);
 
 const SnapshotPayloadSchema = z.object({
   symbol: z.string(),
@@ -158,44 +149,99 @@ const SnapshotPayloadSchema = z.object({
   data: z.array(PricePointSchema),
 });
 const TwapWindowSchema = z.literal(60);
-const TwapPayloadSchema = z
-  .object({
-    symbol: z.string(),
-    source: PriceSourceSchema,
-    timestamp: EpochMillisecondsSchema,
-    value: DecimalishSchema,
-    full_accuracy_value: DecimalStringSchema,
-    window_seconds: TwapWindowSchema,
-  })
-  .transform(
-    ({ symbol, source, timestamp, full_accuracy_value, window_seconds }) => ({
-      symbol,
-      source,
-      timestamp,
-      value: full_accuracy_value,
-      windowSeconds: window_seconds,
-    }),
-  );
-const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
+const RawTwapPayloadSchema = z.object({
+  symbol: z.string(),
+  source: PriceSourceSchema,
+  timestamp: EpochMillisecondsSchema,
+  value: DecimalishSchema,
+  full_accuracy_value: DecimalStringSchema,
   window_seconds: TwapWindowSchema,
-}).transform(({ symbol, source, data, window_seconds }) => ({
+});
+const TwapPayloadSchema = RawTwapPayloadSchema.transform(
+  ({ symbol, source, timestamp, full_accuracy_value, window_seconds }) => ({
+    symbol,
+    source,
+    timestamp,
+    value: full_accuracy_value,
+    windowSeconds: window_seconds,
+  }),
+);
+const RawTwapSnapshotSchema = SnapshotPayloadSchema.extend({
+  window_seconds: TwapWindowSchema,
+});
+const TwapSnapshotSchema = RawTwapSnapshotSchema.transform(
+  ({ symbol, source, data, window_seconds }) => ({
+    symbol,
+    source,
+    data,
+    windowSeconds: window_seconds,
+  }),
+);
+
+// Keep the public property optional while retaining undefined on omitted status.
+function normalizeEquityMarketStatus(
+  marketStatus: EquityMarketStatus | undefined,
+): { marketStatus?: EquityMarketStatus } {
+  return { marketStatus };
+}
+
+const EquityPricePayloadSchema = RawPricePayloadSchema.extend({
+  market_status: z.enum(EquityMarketStatus).optional(),
+}).transform(
+  ({
+    symbol,
+    source,
+    timestamp,
+    full_accuracy_value,
+    received_at,
+    is_carried_forward,
+    market_status,
+  }) => ({
+    symbol,
+    source,
+    timestamp,
+    value: full_accuracy_value,
+    receivedAt: received_at,
+    isCarriedForward: is_carried_forward,
+    ...normalizeEquityMarketStatus(market_status),
+  }),
+);
+const EquitySnapshotPayloadSchema = SnapshotPayloadSchema.extend({
+  market_status: z.enum(EquityMarketStatus).optional(),
+}).transform(({ symbol, source, data, market_status }) => ({
+  symbol,
+  source,
+  data,
+  ...normalizeEquityMarketStatus(market_status),
+}));
+const EquityTwapPayloadSchema = RawTwapPayloadSchema.extend({
+  market_status: z.enum(EquityMarketStatus).optional(),
+}).transform(
+  ({
+    symbol,
+    source,
+    timestamp,
+    full_accuracy_value,
+    window_seconds,
+    market_status,
+  }) => ({
+    symbol,
+    source,
+    timestamp,
+    value: full_accuracy_value,
+    windowSeconds: window_seconds,
+    ...normalizeEquityMarketStatus(market_status),
+  }),
+);
+const EquityTwapSnapshotSchema = RawTwapSnapshotSchema.extend({
+  market_status: z.enum(EquityMarketStatus).optional(),
+}).transform(({ symbol, source, data, window_seconds, market_status }) => ({
   symbol,
   source,
   data,
   windowSeconds: window_seconds,
+  ...normalizeEquityMarketStatus(market_status),
 }));
-const EquityPricePayloadSchema = PricePayloadSchema.and(
-  EquityMarketStatusPayloadSchema,
-);
-const EquitySnapshotPayloadSchema = SnapshotPayloadSchema.and(
-  EquityMarketStatusPayloadSchema,
-);
-const EquityTwapPayloadSchema = TwapPayloadSchema.and(
-  EquityMarketStatusPayloadSchema,
-);
-const EquityTwapSnapshotSchema = TwapSnapshotSchema.and(
-  EquityMarketStatusPayloadSchema,
-);
 
 const EventMetadataSchema = z.object({
   timestamp: EpochMillisecondsSchema,

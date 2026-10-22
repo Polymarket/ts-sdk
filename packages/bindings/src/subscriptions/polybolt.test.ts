@@ -145,6 +145,69 @@ describe('realtime frame normalization', () => {
     }
   });
 
+  describe.each([
+    'price.crypto',
+    'price.crypto.twap',
+    'price.equity',
+    'price.equity.twap',
+  ])('%s market status boundary', (channel) => {
+    const point = {
+      timestamp: 123456,
+      value: 12,
+      full_accuracy_value: '12.000000000000000001',
+    };
+
+    function parse(extra: object, snapshot: boolean) {
+      return parsePolyboltEvent(
+        PolyboltEnvelopeSchema.parse({
+          v: 1,
+          channel,
+          seq: 1,
+          ts: point.timestamp,
+          snapshot,
+          payload: {
+            symbol: 'example',
+            source: 'chainlink',
+            window_seconds: 60,
+            ...(snapshot ? { data: [point] } : point),
+            ...extra,
+          },
+        }),
+      );
+    }
+
+    it.each([
+      false,
+      true,
+    ])('keeps status equity-only and strips unknown fields (snapshot=%s)', (snapshot) => {
+      const baseline = parse({}, snapshot);
+      expect(baseline).toBeDefined();
+      const event = parse(
+        {
+          market_status: 'closed',
+          marketStatus: 'open',
+          unexpected: true,
+        },
+        snapshot,
+      );
+      expect(event).toEqual(
+        channel.startsWith('price.equity')
+          ? {
+              ...baseline,
+              payload: { ...baseline?.payload, marketStatus: 'closed' },
+            }
+          : baseline,
+      );
+      // The public camel-case field is not a wire alias.
+      expect(parse({ marketStatus: 'open' }, snapshot)).toEqual(baseline);
+      for (const status of ['halted', null, 42, {}]) {
+        expect(parse({ market_status: status }, snapshot)).toEqual(
+          channel.startsWith('price.equity') ? undefined : baseline,
+        );
+      }
+    });
+  });
+
   describe('equity TWAP payload contract', () => {
     const point = {
       timestamp: 123456,
