@@ -1,6 +1,6 @@
 # Bearer session migration
 
-`secureClient.credentials` supports both `{ key, secret, passphrase }` and `{ accessToken, refreshToken }`. Saved L2 credentials keep using HMAC authentication without implicit migration; narrow with `'key' in client.credentials` before reading mechanism-specific fields. New logins and restored bearer pairs use bearer authentication. Applications choose how to persist credentials; treat both tokens as secrets. The SDK does not persist them or log authentication payloads.
+`secureClient.credentials` is discriminated by `type`. L2 credentials have `{ type: 'l2', key, secret, passphrase }`; bearer credentials have `{ type: 'bearer', key, refreshToken }`, where `key` is the current access token. Narrow by `type` before reading mechanism-specific fields. Existing wire-format pairs remain accepted for restoration. Applications own persistence; credentials are never logged by the SDK.
 
 ```ts
 // Before: store the L2 key, secret and passphrase.
@@ -36,7 +36,7 @@ const publicClient = await client.endAuthentication();
 
 Logout sends a usable bearer access token with no body. If tab suspension let it expire, the SDK refreshes solely for revocation; an `expired_access_token` rejection receives one refresh/retry. Other logout failures are not replayed. A still-valid access token can revoke the session despite an earlier refresh failure. Logout-only refresh results are never adopted or sent to credential callbacks. It stops local refresh and socket work even when remote logout fails, and a late refresh cannot revive the client. Already issued access tokens can remain valid until expiry. Logout does not delete CLOB API keys.
 
-Prediction HTTP calls use the configured gateway. Existing direct endpoint configuration and existing builder/relayer adapters remain available during migration. Builder authentication and gasless quota credentials are still distinct from trading signatures; orders continue to require their existing signatures. Existing builder and collateral-return routes retain their configured endpoints where gateway passthrough coverage is unavailable. Perps keeps its own endpoint and lifecycle.
+Identity HTTP calls use the configured Predictions origin. Business-action routing is a separate stack layer. Existing direct endpoint configuration and existing builder/relayer adapters remain available during migration. Builder authentication and gasless quota credentials are still distinct from trading signatures; orders continue to require their existing signatures. Existing builder and collateral-return routes retain their configured endpoints where gateway passthrough coverage is unavailable. Perps keeps its own endpoint and lifecycle.
 
 # Release verification
 
@@ -48,4 +48,4 @@ Set `predictions.rest` to the gateway origin, without appending `/v1`: auth acti
 
 Session creation, restoration, refresh, logout and socket authentication are defined here. Business-action routing through Predictions is a separate stack layer; direct endpoint configuration remains available.
 
-Saved client credentials have an explicit `type`: `l2` stores the API key in `key` with `secret` and `passphrase`; `bearer` stores the access token in `key` with `refreshToken`. Login, migration and persistence callbacks return the bearer saved format. Existing wire-format pairs remain accepted when restoring a client. HTTP credentials are never used as the order owner for bearer sessions; order ownership comes from the session trading identity.
+Login, migration and persistence callbacks return the bearer saved format. HTTP credentials are never used as the order owner for bearer sessions; order ownership comes from the session trading identity.
