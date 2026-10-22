@@ -48,7 +48,7 @@ export type ActivityBase = {
   /** Activity time as Unix epoch milliseconds. */
   timestamp: EpochMilliseconds;
   /** Polygon transaction hash that produced or records this activity. */
-  transactionHash: TxHash;
+  transactionHash: TxHash | undefined;
   /** Display name of the wallet owner at the time returned by the API. */
   name: string | null;
   /** Public pseudonym of the wallet owner at the time returned by the API. */
@@ -75,7 +75,7 @@ type TradeActivityBase = ActivityBase & {
   /** The execution price per share in USD. */
   price: DecimalString;
   /** Human-readable title of the traded market or Combo. */
-  title: string;
+  title: string | undefined;
   /** Icon URL for the traded market or Combo, when available. */
   icon: string | null;
 };
@@ -84,19 +84,19 @@ export type ClobTradeActivity = TradeActivityBase & {
   /** Ordinary market trades are distinct from Combo position trades. */
   isCombo: false;
   /** Condition id of the market traded by the wallet. */
-  conditionId: ConditionId;
+  conditionId: ConditionId | undefined;
   /** Outcome identifier for a CTF token or Polymarket V2 position. */
-  assetId: TokenId | PositionId;
+  assetId: TokenId | PositionId | undefined;
   /** @deprecated Use `assetId`. */
-  tokenId: TokenId | PositionId;
+  tokenId: TokenId | PositionId | undefined;
   /** Display label of the outcome traded by the wallet. */
-  outcome: string;
+  outcome: string | undefined;
   /** Zero-based index of the outcome in the market's outcome list, when known. */
   outcomeIndex?: number;
   /** URL slug of the market traded by the wallet. */
-  slug: string;
+  slug: string | undefined;
   /** URL slug of the event containing the traded market. */
-  eventSlug: string;
+  eventSlug: string | undefined;
 };
 
 export type ComboTradeActivity = TradeActivityBase & {
@@ -123,17 +123,17 @@ export type SplitActivity = ActivityBase &
         /** Ordinary complete-set activity; parsed rows return false. */
         isCombo?: false;
         /** Condition id of the market whose complete set was created. */
-        conditionId: ConditionId;
+        conditionId: ConditionId | undefined;
         /** The collateral amount split into the complete set in USD. */
         amount: DecimalString;
         /** Human-readable title of the market whose complete set was created. */
-        title: string;
+        title: string | undefined;
         /** URL slug of the market whose complete set was created. */
-        slug: string;
+        slug: string | undefined;
         /** Icon URL for the market whose complete set was created, when available. */
         icon: string | null;
         /** URL slug of the event containing the split market. */
-        eventSlug: string;
+        eventSlug: string | undefined;
       }
     | {
         /** Complete-set activity for a Combo basket. */
@@ -158,17 +158,17 @@ export type MergeActivity = ActivityBase &
         /** Ordinary complete-set activity; parsed rows return false. */
         isCombo?: false;
         /** Condition id of the market whose complete set was merged. */
-        conditionId: ConditionId;
+        conditionId: ConditionId | undefined;
         /** The collateral amount received from merging the complete set in USD. */
         amount: DecimalString;
         /** Human-readable title of the market whose complete set was merged. */
-        title: string;
+        title: string | undefined;
         /** URL slug of the market whose complete set was merged. */
-        slug: string;
+        slug: string | undefined;
         /** Icon URL for the market whose complete set was merged, when available. */
         icon: string | null;
         /** URL slug of the event containing the merged market. */
-        eventSlug: string;
+        eventSlug: string | undefined;
       }
     | {
         /** Complete-set activity for a Combo basket. */
@@ -194,17 +194,17 @@ export type ClobRedeemActivity = ActivityBase & {
   /** Index of the redeemed token's outcome, when known. */
   outcomeIndex?: number;
   /** Condition id of the market redeemed by the wallet. */
-  conditionId: ConditionId;
+  conditionId: ConditionId | undefined;
   /** The proceeds redeemed from the resolved market in USD. */
   amount: DecimalString;
   /** Human-readable title of the market redeemed by the wallet. */
-  title: string;
+  title: string | undefined;
   /** URL slug of the market redeemed by the wallet. */
-  slug: string;
+  slug: string | undefined;
   /** Icon URL for the market redeemed by the wallet, when available. */
   icon: string | null;
   /** URL slug of the event containing the redeemed market. */
-  eventSlug: string;
+  eventSlug: string | undefined;
 };
 
 /** A resolved Combo token's proceeds in wallet activity history. */
@@ -231,17 +231,17 @@ export type ConversionActivity = ActivityBase & {
   /** A market conversion or migration activity. */
   type: 'CONVERSION';
   /** Condition id of the market involved in the conversion. */
-  conditionId: ConditionId;
+  conditionId: ConditionId | undefined;
   /** The amount converted or migrated for the market in USD. */
   amount: DecimalString;
   /** Human-readable title of the market involved in the conversion. */
-  title: string;
+  title: string | undefined;
   /** URL slug of the market involved in the conversion. */
-  slug: string;
+  slug: string | undefined;
   /** Icon URL for the market involved in the conversion, when available. */
   icon: string | null;
   /** URL slug of the event containing the converted market. */
-  eventSlug: string;
+  eventSlug: string | undefined;
 };
 
 export type MigrationActivity = ActivityBase & {
@@ -508,7 +508,10 @@ const RawActivitySchema = z
     type: ActivityTypeSchema,
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
-    transaction_hash: TxHashSchema,
+    transaction_hash: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      TxHashSchema.optional(),
+    ),
     price: DecimalishSchema,
     token_id: z.preprocess(
       (value) => (value === '' ? undefined : value),
@@ -637,23 +640,23 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: activity.type,
         isCombo: false,
-        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        conditionId: activity.condition_id,
         amount: activity.usdc_size,
-        title: expectPresent(activity.title, 'title'),
-        slug: expectPresent(activity.slug, 'slug'),
+        title: activity.title,
+        slug: activity.slug,
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+        eventSlug: activity.event_slug,
       };
     case ActivityType.CONVERSION:
       return {
         ...base,
         type: activity.type,
-        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        conditionId: activity.condition_id,
         amount: activity.usdc_size,
-        title: expectPresent(activity.title, 'title'),
-        slug: expectPresent(activity.slug, 'slug'),
+        title: activity.title,
+        slug: activity.slug,
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+        eventSlug: activity.event_slug,
       };
     case ActivityType.MIGRATION:
     case ActivityType.REWARD:
@@ -692,7 +695,7 @@ function normalizeTradeActivity(
     shares: activity.size,
     amount: activity.usdc_size,
     price: activity.price,
-    title: expectPresent(activity.title, 'title'),
+    title: activity.title,
     icon: activity.icon ?? null,
   };
 
@@ -711,18 +714,18 @@ function normalizeTradeActivity(
     };
   }
 
-  const assetId = expectPresent(activity.token_id, 'token_id');
+  const assetId = activity.token_id;
 
   return {
     ...trade,
     isCombo: false,
-    conditionId: expectPresent(activity.condition_id, 'condition_id'),
+    conditionId: activity.condition_id,
     assetId,
     tokenId: assetId,
-    outcome: expectPresent(activity.outcome, 'outcome'),
+    outcome: activity.outcome,
     outcomeIndex: activity.outcome_index,
-    slug: expectPresent(activity.slug, 'slug'),
-    eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+    slug: activity.slug,
+    eventSlug: activity.event_slug,
   };
 }
 
@@ -753,10 +756,10 @@ function normalizeRedeemActivity(
   return {
     ...redemption,
     isCombo: false,
-    title: expectPresent(activity.title, 'title'),
-    conditionId: expectPresent(activity.condition_id, 'condition_id'),
-    slug: expectPresent(activity.slug, 'slug'),
-    eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+    title: activity.title,
+    conditionId: activity.condition_id,
+    slug: activity.slug,
+    eventSlug: activity.event_slug,
   };
 }
 
