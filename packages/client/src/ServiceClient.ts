@@ -618,11 +618,11 @@ export class ServiceClient {
       return undefined;
     }
 
-    if (/^\d+$/.test(value)) {
-      return Number(value);
-    }
+    if (!/^[ \t]*[0-9]+[ \t]*$/.test(value)) return undefined;
 
-    return undefined;
+    // Keep whole-second metadata exact; retry waits have their own smaller cap.
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds) ? seconds : undefined;
   }
 
   async #extractResponseError(

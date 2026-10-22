@@ -341,7 +341,7 @@ describe('ServiceClient', () => {
 
     it.each([
       undefined,
-      '2',
+      ' \t2\t ',
       '6',
       'Thu, 10 Sep 2026 06:02:00 GMT',
     ])('honors the server delay %s or surfaces long waits', async (retryAfter) => {
@@ -369,7 +369,7 @@ describe('ServiceClient', () => {
         });
         expect(vi.getTimerCount()).toBe(0);
       } else {
-        const delay = retryAfter === '2' ? 2000 : 1000;
+        const delay = retryAfter?.trim() === '2' ? 2000 : 1000;
         await vi.advanceTimersByTimeAsync(delay - 1);
         expect(fetch).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1);
@@ -1703,10 +1703,20 @@ describe('ServiceClient', () => {
   it.each([
     { header: '0', retryAfter: 0 },
     { header: '0017', retryAfter: 17 },
-    { header: '1.5', retryAfter: undefined },
+    { header: ' \t17\t ', retryAfter: 17 },
+    { header: '9007199254740991', retryAfter: 9007199254740991 },
+    { header: '9007199254740992', retryAfter: undefined },
+    { header: '9'.repeat(400), retryAfter: undefined },
+    { header: '', retryAfter: undefined },
     { header: '-1', retryAfter: undefined },
+    { header: '-0', retryAfter: undefined },
+    { header: '+1', retryAfter: undefined },
+    { header: '1.5', retryAfter: undefined },
+    { header: '1e2', retryAfter: undefined },
     { header: 'Infinity', retryAfter: undefined },
-    { header: 'invalid', retryAfter: undefined },
+    { header: 'NaN', retryAfter: undefined },
+    { header: '²', retryAfter: undefined },
+    { header: '\u00a017', retryAfter: undefined },
     { header: 'Thu, 10 Sep 2026 06:02:00 GMT', retryAfter: undefined },
   ])('parses Retry-After $header as delay seconds only', async ({
     header,
@@ -1722,7 +1732,10 @@ describe('ServiceClient', () => {
     ).rejects.toMatchObject({ name: 'RateLimitError', retryAfter });
   });
 
-  it('uses the body delay and preserves rejection metadata for an HTTP-date header', async () => {
+  it.each([
+    'Thu, 10 Sep 2026 06:02:00 GMT',
+    '9007199254740992',
+  ])('uses the body delay and preserves rejection metadata for invalid Retry-After %s', async (header) => {
     const fetch = async () =>
       Response.json(
         {
@@ -1732,7 +1745,7 @@ describe('ServiceClient', () => {
         },
         {
           status: 503,
-          headers: { 'retry-after': 'Thu, 10 Sep 2026 06:02:00 GMT' },
+          headers: { 'retry-after': header },
         },
       );
     await expect(

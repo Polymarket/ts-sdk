@@ -56,10 +56,13 @@ default to one second when no delay is provided; delays longer than five seconds
 propagate to the caller. Wallet workflow recovery, such as refreshing a nonce,
 approving and resubmitting a transaction, or relay recovery, is unchanged. Retries inside your custom fetch are controlled by your application.
 
-`Retry-After` headers are interpreted only as non-negative integer delay seconds.
-HTTP-date values are ignored. Rejection errors can fall back to a numeric
-`retry_after_seconds` response-body field; rate-limit waits use the default delay
-when the header is missing or invalid.
+`Retry-After` headers accept only ASCII whole-second values from 0 through
+9,007,199,254,740,991 (2^53 - 1). Both SDKs use this safe-integer limit to keep
+whole-second metadata exact.
+Leading zeros and surrounding ASCII spaces or tabs are allowed. Empty, signed,
+fractional, exponent, non-finite, oversized, and HTTP-date values are ignored.
+Rejection errors retain their numeric `retry_after_seconds` response-body fallback;
+rate-limit waits use the default delay when the header is missing or invalid.
 
 HTTP reads accept an optional final `{ signal, retries, timeout }` argument.
 `timeout` is milliseconds until each HTTP attempt receives response headers,
