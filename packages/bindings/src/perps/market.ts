@@ -153,6 +153,80 @@ export const FetchPerpsInstrumentsResponseSchema = z.array(
   PerpsInstrumentSchema,
 );
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export enum PerpsPricingMode {
+  External = 'external',
+  Hold = 'hold',
+  Internal = 'internal',
+  Frozen = 'frozen',
+  Bounded = 'bounded',
+  RecoveryPending = 'recovery_pending',
+}
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export enum PerpsPricingReason {
+  ExternalAvailable = 'external_available',
+  AllSourcesUnavailable = 'all_sources_unavailable',
+  ActivationDelay = 'activation_delay',
+  MissingOracleConfiguration = 'missing_oracle_configuration',
+  SourceDisagreement = 'source_disagreement',
+  UnknownSourceState = 'unknown_source_state',
+  ExplicitHalt = 'explicit_halt',
+  Disabled = 'disabled',
+  ProcessDisabled = 'process_disabled',
+  ManualFreeze = 'manual_freeze',
+  InsufficientBidDepth = 'insufficient_bid_depth',
+  InsufficientAskDepth = 'insufficient_ask_depth',
+  InvalidBook = 'invalid_book',
+  ImpactSpreadTooWide = 'impact_spread_too_wide',
+  InvalidPrecision = 'invalid_precision',
+  ArithmeticFailure = 'arithmetic_failure',
+  SessionBound = 'session_bound',
+  RecoveryConfirmation = 'recovery_confirmation',
+  MaterialRecoveryGap = 'material_recovery_gap',
+}
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export enum PerpsPricingIndexSource {
+  Unknown = 'unknown',
+  External = 'external',
+  Internal = 'internal',
+}
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export const PerpsPricingStatusSchema = z
+  .object({
+    mode: z.enum(PerpsPricingMode),
+    reason: z.enum(PerpsPricingReason),
+    index_source: z.enum(PerpsPricingIndexSource),
+    anchor_price: DecimalStringSchema.nullable(),
+    anchor_timestamp: EpochMillisecondsSchema.nullable(),
+    index_observed_timestamp: EpochMillisecondsSchema.nullable(),
+    state_changed_timestamp: EpochMillisecondsSchema,
+    session_id: z.number().int().nonnegative().nullable(),
+    config_version: z.number().int().nonnegative().nullable(),
+    no_increase: z.boolean(),
+    at_lower_bound: z.boolean(),
+    at_upper_bound: z.boolean(),
+  })
+  .transform((status) => ({
+    mode: status.mode,
+    reason: status.reason,
+    indexSource: status.index_source,
+    anchorPrice: status.anchor_price,
+    anchorTimestamp: status.anchor_timestamp,
+    indexObservedTimestamp: status.index_observed_timestamp,
+    stateChangedTimestamp: status.state_changed_timestamp,
+    sessionId: status.session_id,
+    configVersion: status.config_version,
+    noIncrease: status.no_increase,
+    atLowerBound: status.at_lower_bound,
+    atUpperBound: status.at_upper_bound,
+  }));
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type PerpsPricingStatus = z.infer<typeof PerpsPricingStatusSchema>;
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -161,6 +235,7 @@ export const PerpsTickerSchema = z
     instrument_id: PerpsInstrumentIdSchema,
     symbol: z.string().min(1),
     index_price: DecimalStringSchema,
+    pricing_status: PerpsPricingStatusSchema.nullish(),
     mark_price: DecimalStringSchema,
     last_price: DecimalStringSchema,
     mid_price: DecimalStringSchema,
@@ -173,6 +248,7 @@ export const PerpsTickerSchema = z
     instrumentId: ticker.instrument_id,
     symbol: ticker.symbol,
     indexPrice: ticker.index_price,
+    pricingStatus: ticker.pricing_status,
     markPrice: ticker.mark_price,
     lastPrice: ticker.last_price,
     midPrice: ticker.mid_price,
@@ -202,6 +278,7 @@ export const PerpsTickerEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     idx: DecimalStringSchema,
+    pricing_status: PerpsPricingStatusSchema.nullish(),
     mark: DecimalStringSchema,
     last: DecimalStringSchema,
     mid: DecimalStringSchema,
@@ -212,6 +289,7 @@ export const PerpsTickerEntrySchema = z
   .transform((ticker) => ({
     instrumentId: ticker.iid,
     indexPrice: ticker.idx,
+    pricingStatus: ticker.pricing_status,
     markPrice: ticker.mark,
     lastPrice: ticker.last,
     midPrice: ticker.mid,
