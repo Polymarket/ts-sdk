@@ -5,44 +5,6 @@ import { type ServiceAuthentication, ServiceClient } from './ServiceClient';
 
 const root = 'https://mock.invalid';
 
-it('lets the owning class supply authentication and refresh policy', async () => {
-  const original = {
-    accessToken: 'original-opaque-token',
-    refreshToken: 'original-refresh',
-  };
-  const updated = {
-    accessToken: 'updated-opaque-token',
-    refreshToken: 'updated-refresh',
-  };
-  let accepted = original;
-  const refreshToken = vi.fn(async (previous: string) => {
-    expect(previous).toBe(original.accessToken);
-    accepted = updated;
-  });
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-    const request = new Request(input, init);
-    if (
-      request.headers.get('authorization') === `Bearer ${original.accessToken}`
-    )
-      return Response.json({ code: 'expired_access_token' }, { status: 401 });
-    expect(request.headers.get('authorization')).toBe(
-      `Bearer ${updated.accessToken}`,
-    );
-    return Response.json('accepted');
-  });
-  const service = new ServiceClient({
-    root,
-    fetch,
-    authentication: bearerPolicy({
-      credentials: async () => accepted,
-      refreshToken,
-    }),
-  });
-  await expect(service.get('/private')).resolves.toBe('accepted');
-  expect(refreshToken).toHaveBeenCalledTimes(1);
-  expect(fetch).toHaveBeenCalledTimes(2);
-});
-
 it.each([
   'credentials',
   'headers',
@@ -143,7 +105,8 @@ it('snapshots the query and serialized body across authentication recovery', asy
         accessToken: token,
         refreshToken: 'opaque-refresh',
       }),
-      refreshToken: async () => {
+      refreshToken: async (previous) => {
+        expect(previous).toBe(token);
         token = 'updated';
         params.set('original', 'mutated');
         body.original = 'mutated';
@@ -163,6 +126,10 @@ it('snapshots the query and serialized body across authentication recovery', asy
     expect(request.headers.get('x-config')).toBe('configured');
     expect(request.headers.get('x-request')).toBe('request');
   }
+  expect(seen.map((request) => request.headers.get('authorization'))).toEqual([
+    'Bearer original',
+    'Bearer updated',
+  ]);
   body.original = 'value';
   await expect(
     service.post('/private', { json: body, retry: false, timeout: false }),
