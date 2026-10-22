@@ -7,6 +7,7 @@ import {
 import {
   type PerpsBuilderApproval,
   type PerpsCredentials,
+  PerpsKlineInterval,
   PerpsKnownInternalTransferType,
   PerpsPnlInterval,
   PerpsSortDirection,
@@ -3349,7 +3350,22 @@ describe('PerpsSession', () => {
       expect(requests).toHaveLength(1);
     });
 
-    it('continues ascending interval account history pages', async () => {
+    it('keeps PnL intervals narrower than equity intervals', () => {
+      const session = createSession();
+      for (const interval of ['1s', '1m', '30m', '6h', '12h']) {
+        expect(() =>
+          session.listPnlHistory({
+            interval: interval as PerpsPnlInterval,
+            start: 0,
+          }),
+        ).toThrow(UserInputError);
+      }
+    });
+
+    it.each([
+      ...Object.values(PerpsKlineInterval),
+      PerpsPnlInterval.OneHour,
+    ])('continues %s equity history after the last sample', async (interval) => {
       const requests: URLSearchParams[] = [];
       server.use(
         http.get(
@@ -3362,7 +3378,7 @@ describe('PerpsSession', () => {
               return HttpResponse.json({
                 data: [
                   [0, '10'],
-                  [3_600_000, '11'],
+                  [3_600_123, '11'],
                 ],
                 more: true,
               });
@@ -3378,7 +3394,7 @@ describe('PerpsSession', () => {
       const session = createSession();
       const pages = session.listEquityHistory({
         end: 10_800_000,
-        interval: PerpsPnlInterval.OneHour,
+        interval,
         start: 0,
       });
 
@@ -3386,12 +3402,12 @@ describe('PerpsSession', () => {
       const second = await pages.from(first.nextCursor).firstPage();
 
       expect(first.items.map((point) => point.timestamp)).toEqual([
-        0, 3_600_000,
+        0, 3_600_123,
       ]);
       expect(second.items.map((point) => point.timestamp)).toEqual([7_200_000]);
       expect(requests.map((params) => params.get('start_timestamp'))).toEqual([
         '0',
-        '7200000',
+        '3600124',
       ]);
     });
   });
