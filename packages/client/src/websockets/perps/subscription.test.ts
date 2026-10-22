@@ -39,7 +39,12 @@ describe('PerpsSubscriptionManager', () => {
     server.close();
   });
 
-  it('adds and removes upstream channels on the shared socket', async () => {
+  it.each([
+    PerpsKlineInterval.OneMinute,
+    PerpsKlineInterval.ThirtyMinutes,
+    PerpsKlineInterval.SixHours,
+    PerpsKlineInterval.TwelveHours,
+  ] as const)('adds and removes %s candle channels on the shared socket', async (interval) => {
     const frames = collectFrames(server, perpsSubscriptions);
 
     const tradesHandle = await manager.subscribe({
@@ -47,7 +52,7 @@ describe('PerpsSubscriptionManager', () => {
       topic: 'perps.trades',
     });
     await manager.subscribe({
-      interval: PerpsKlineInterval.OneMinute,
+      interval,
       instrumentId: 1,
       topic: 'perps.candles',
     });
@@ -55,7 +60,7 @@ describe('PerpsSubscriptionManager', () => {
     await vi.waitFor(() => {
       expect(frames).toEqual([
         { id: expect.any(Number), req: 'sub', chs: ['trades::1'] },
-        { id: expect.any(Number), req: 'sub', chs: ['klines::1::1m'] },
+        { id: expect.any(Number), req: 'sub', chs: [`klines::1::${interval}`] },
       ]);
     });
 

@@ -194,7 +194,12 @@ describe('Perps actions', () => {
     });
   });
 
-  it('continues candle pages from the next interval boundary', async () => {
+  it.each([
+    [PerpsKlineInterval.OneMinute, 60_000],
+    [PerpsKlineInterval.ThirtyMinutes, 1_800_000],
+    [PerpsKlineInterval.SixHours, 21_600_000],
+    [PerpsKlineInterval.TwelveHours, 43_200_000],
+  ] as const)('continues %s candle pages from the next interval boundary', async (interval, duration) => {
     const requests: URLSearchParams[] = [];
     server.use(
       http.get(`${root}/v1/info/klines`, ({ request }) => {
@@ -217,7 +222,7 @@ describe('Perps actions', () => {
     const pages = listPerpsCandles(createClient(), {
       end: 300_000,
       instrumentId: 1,
-      interval: PerpsKlineInterval.OneMinute,
+      interval,
       start: 0,
     });
 
@@ -228,7 +233,7 @@ describe('Perps actions', () => {
     expect(second.items.map((item) => item.timestamp)).toEqual([121_000]);
     expect(requests.map((params) => params.get('start_timestamp'))).toEqual([
       '0',
-      '121000',
+      String(61_000 + duration),
     ]);
     expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
       '300000',

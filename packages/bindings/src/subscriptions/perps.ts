@@ -43,7 +43,7 @@ const TickersChannelSchema = z.string().regex(/^tickers::(all|\d+)$/);
 const StatisticsChannelSchema = z.string().regex(/^statistics::(all|\d+)$/);
 const CandlesChannelSchema = z
   .string()
-  .regex(/^klines::\d+::(1m|5m|15m|1h|4h|1d|1w)$/);
+  .regex(/^klines::\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$/);
 const TpslChannelSchema = z.string().regex(/^tpsl::\d+$/);
 const PerpsSessionChannelSchema = z.enum([
   'balances',
