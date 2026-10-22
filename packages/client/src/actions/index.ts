@@ -9,8 +9,6 @@ export {
   createOrDeriveApiKey,
   DeriveApiKeyError,
   deriveApiKey,
-  RevokeBuilderApiKeyError,
-  revokeBuilderApiKey,
 } from './auth';
 export * from './builders';
 export * from './clob';

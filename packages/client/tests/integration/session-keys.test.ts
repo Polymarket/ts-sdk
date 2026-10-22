@@ -216,13 +216,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
       wallet: secureClientWithDepositWallet.account.wallet,
     });
     expect(sessionClient.account.signerType).toBe(SignerType.SESSION_KEY);
-    await expect(
-      sessionClient.requestComboQuote({
-        amount: 1,
-        direction: OrderSide.BUY,
-        legPositionIds: ['1', '2'],
-      }),
-    ).rejects.toThrow('Combos is not supported with Session Keys');
 
     const tokenId = expectPresent(market.outcomes.yes.tokenId);
     let orderId: string | undefined;

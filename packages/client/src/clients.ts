@@ -258,11 +258,8 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   protected resolveCredentialHeaders(
-    request: ServiceRequest,
+    _request: ServiceRequest,
   ): Promise<HeadersInit> {
-    // Builder-key revocation authenticates as the builder, not as its owner.
-    if (request.path === '/auth/builder-api-key' && request.method === 'DELETE')
-      return this.resolveClobHeaders(request);
     return Promise.resolve({});
   }
 
@@ -868,23 +865,6 @@ class BaseSecureClient<
         authentication,
         retryMutations: false,
       }),
-      builderGateway: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.combos.builderGateway.headers,
-        resolveHeaders: async (request) => {
-          const headers = new Headers(
-            await this.#resolveBuilderGatewayHeaders(request),
-          );
-          for (const [key, value] of new Headers(
-            await this.#createL2Headers(request),
-          ))
-            headers.set(key, value);
-          return headers;
-        },
-        root: config.environment.combos.builderGateway.rest,
-        authentication,
-        retryMutations: false,
-      }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
@@ -989,11 +969,6 @@ class BaseSecureClient<
   /** @internal */
   get combos(): ServiceClient {
     return this.context.combos;
-  }
-
-  /** @internal */
-  get builderGateway(): ServiceClient {
-    return this.context.builderGateway;
   }
 
   /** @internal Shared managers for public and authenticated realtime subscriptions. */
@@ -1136,19 +1111,6 @@ class BaseSecureClient<
     return client as PublicClient<TPublicActions, TSecureActions>;
   }
 
-  // Builder gateway status reads authenticate with account headers only;
-  // builder headers are required on the mutating requests.
-  async #resolveBuilderGatewayHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return {};
-  }
   protected override async resolvePredictionHeaders(
     request: ServiceRequest,
   ): Promise<HeadersInit> {
@@ -1169,8 +1131,7 @@ class BaseSecureClient<
     const { l2Credentials } = this.context;
     const ownerAuthentication =
       request.path === '/auth/api-keys' ||
-      (request.path === '/auth/api-key' && request.method === 'DELETE') ||
-      (request.path === '/auth/builder-api-key' && request.method !== 'DELETE');
+      (request.path === '/auth/api-key' && request.method === 'DELETE');
     if (!ownerAuthentication) return super.resolveCredentialHeaders(request);
     if (l2Credentials === undefined)
       throw new UserInputError(
@@ -1220,7 +1181,6 @@ type SecureContext = PublicContext & {
   /** @internal */
   combos: ServiceClient;
   /** @internal */
-  builderGateway: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };

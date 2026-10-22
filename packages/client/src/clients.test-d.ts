@@ -99,7 +99,6 @@ describe('predictions service types', () => {
     expectTypeOf(publicClient.data).toEqualTypeOf<ServiceClient>();
     expectTypeOf(publicClient.relayer).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(secureClient.builderGateway).toEqualTypeOf<ServiceClient>();
   });
 
   it('exports the service type without its constructor from the root entry point', () => {

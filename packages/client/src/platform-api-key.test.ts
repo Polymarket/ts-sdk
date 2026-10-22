@@ -11,13 +11,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as publicActions from './actions';
 import {
   createApiKey,
-  createBuilderApiKey,
   createOrDeriveApiKey,
   deleteApiKey,
   deriveApiKey,
   fetchApiKeys,
-  fetchBuilderApiKeys,
-  revokeBuilderApiKey,
 } from './actions/auth';
 import { deployDepositWallet } from './actions/gasless';
 import type { SignedOrder } from './actions/orders/types';
@@ -85,8 +82,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps credential administration helpers out of the public actions entrypoint', () => {
+it('keeps removed actions and private credential helpers out of the public entrypoint', () => {
   for (const name of [
+    'revokeBuilderApiKey',
+    'RevokeBuilderApiKeyError',
+    'requestComboQuote',
+    'acceptComboQuote',
+    'fetchRfqStatus',
+    'waitForComboFill',
     'fetchApiKeys',
     'deleteApiKey',
     'createBuilderApiKey',
@@ -593,9 +596,6 @@ it('preserves Headers-based builder/submission authorization alongside the platf
   await secure.predictions.post('/v1/wallets/transactions', {
     json: { signature },
   });
-  await secure.builderGateway.post('/synthetic-builder', {
-    json: { signature },
-  });
   await secure.perps.get('/public', { retries: 0 });
   secure.session.close();
   await secure.closeSubscriptions();
@@ -818,8 +818,7 @@ describe('direct credential administration endpoints', () => {
       if (path === '/auth/api-keys')
         return Response.json({ apiKeys: [owner.key] });
       if (request.method === 'DELETE') return Response.json('OK');
-      if (request.method === 'POST') return Response.json(l2Credentials);
-      return Response.json([l2Credentials.key]);
+      throw new Error('Unexpected credential operation');
     });
     const client = await createSecureClient({
       environment: keyEnvironment,
@@ -830,18 +829,12 @@ describe('direct credential administration endpoints', () => {
       apiKey: platformApiKey(key),
     });
     await expect(fetchApiKeys(client)).resolves.toEqual([owner.key]);
-    await expect(createBuilderApiKey(client)).resolves.toEqual(l2Credentials);
-    await expect(fetchBuilderApiKeys(client)).resolves.toEqual([
-      { key: l2Credentials.key },
-    ]);
     await deleteApiKey(client);
     expect(
       seen.map((request) => [request.method, new URL(request.url).pathname]),
     ).toEqual([
       ['GET', '/auth/api-keys'],
       ['GET', '/auth/api-keys'],
-      ['POST', '/auth/builder-api-key'],
-      ['GET', '/auth/builder-api-key'],
       ['DELETE', '/auth/api-key'],
     ]);
     await client.closeSubscriptions();
@@ -861,12 +854,7 @@ describe('direct credential administration endpoints', () => {
     });
     const before = fetch.mock.calls.length;
     try {
-      for (const operation of [
-        fetchApiKeys,
-        deleteApiKey,
-        createBuilderApiKey,
-        fetchBuilderApiKeys,
-      ])
+      for (const operation of [fetchApiKeys, deleteApiKey])
         await expect(operation(client)).rejects.toMatchObject({
           name: 'UserInputError',
           message: expect.stringContaining('L2 key/secret/passphrase'),
@@ -876,49 +864,6 @@ describe('direct credential administration endpoints', () => {
       client.closeAuthenticationSession();
       await client.closeSubscriptions();
     }
-  });
-
-  it('revokes with builder self-authentication on the direct endpoint and requires a configured signer', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      expect(request.url).toBe(`${direct}/auth/builder-api-key`);
-      expect(request.method).toBe('DELETE');
-      expect(request.headers.has('authorization')).toBe(false);
-      expect(request.headers.has('x-api-key')).toBe(false);
-      expect(request.headers.has('POLY_API_KEY')).toBe(false);
-      expect(request.headers.get('POLY_BUILDER_API_KEY')).toBe(
-        l2Credentials.key,
-      );
-      expect(request.headers.get('POLY_BUILDER_SIGNATURE')).toBe(
-        createHmac('sha256', Buffer.from(l2Credentials.secret, 'base64'))
-          .update(
-            `${request.headers.get('POLY_BUILDER_TIMESTAMP')}DELETE/auth/builder-api-key`,
-          )
-          .digest('base64')
-          .replaceAll('+', '-')
-          .replaceAll('/', '_'),
-      );
-      return Response.json('OK');
-    });
-    await revokeBuilderApiKey(
-      createPublicClient({
-        environment: keyEnvironment,
-        fetch,
-        apiKey: platformApiKey(key, {
-          legacyApiKey: builderApiKey(l2Credentials),
-        }),
-      }),
-    );
-    await expect(
-      revokeBuilderApiKey(
-        createPublicClient({
-          environment: keyEnvironment,
-          fetch,
-          apiKey: platformApiKey(key),
-        }),
-      ),
-    ).rejects.toMatchObject({ name: 'UserInputError' });
-    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 
