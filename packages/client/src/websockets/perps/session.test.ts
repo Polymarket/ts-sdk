@@ -3349,6 +3349,50 @@ describe('PerpsSession', () => {
       expect(requests).toHaveLength(1);
     });
 
+    it('preserves deposit log indexes across overlapping pages and legacy rows', async () => {
+      const hash = `0x${'1'.repeat(64)}`;
+      const requests: URLSearchParams[] = [];
+      function deposit(logIndex?: number) {
+        return {
+          hash,
+          ...(logIndex === undefined ? {} : { log_index: logIndex }),
+          asset: 'USDC',
+          amount: '10',
+          status: 'confirmed',
+          from: `0x${'2'.repeat(40)}`,
+          to: `0x${'3'.repeat(40)}`,
+          confirmations: 3,
+          required_confirmations: 3,
+          created_timestamp: 2000,
+          confirmed_timestamp: 2000,
+        };
+      }
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/deposits`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            const indices =
+              requests.length === 1 ? [undefined, 0, 0] : [undefined, 0, 1, 1];
+            return HttpResponse.json({
+              data: indices.map(deposit),
+              more: requests.length === 1,
+            });
+          },
+        ),
+      );
+      const pages = createSession().listDeposits({ start: 1000, end: 3000 });
+      const first = await pages.firstPage();
+      const second = await pages.from(first.nextCursor).firstPage();
+      expect(first.items.map((item) => item.logIndex)).toEqual([undefined, 0]);
+      expect(second.items.map((item) => item.logIndex)).toEqual([1]);
+      expect(second.hasMore).toBe(false);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+      ]);
+    });
+
     it('continues ascending interval account history pages', async () => {
       const requests: URLSearchParams[] = [];
       server.use(

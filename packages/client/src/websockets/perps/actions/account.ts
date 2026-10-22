@@ -522,11 +522,14 @@ export function listPerpsDeposits(
         params: toPerpsSearchParams(searchParams),
       })
       .then((response): Page<PerpsDeposit[]> => {
-        const items = response.data.filter(
-          (deposit) => !seenKeys.has(deposit.hash),
-        );
+        const items = response.data.filter((deposit) => {
+          const key = perpsDepositKey(deposit);
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        });
         return toPerpsDescendingAccountPage({
-          getKey: (deposit) => deposit.hash,
+          getKey: perpsDepositKey,
           getTimestamp: latestPerpsDepositTimestamp,
           items,
           responseData: response.data,
@@ -1179,6 +1182,12 @@ function toPerpsSearchParams(params: object): URLSearchParams {
     params as Record<string, string | number | boolean | undefined>,
     snakeCase(),
   );
+}
+
+function perpsDepositKey(deposit: PerpsDeposit): string {
+  return deposit.logIndex === undefined
+    ? deposit.hash
+    : `${deposit.hash}:${deposit.logIndex}`;
 }
 
 function latestPerpsDepositTimestamp(deposit: PerpsDeposit): number {
