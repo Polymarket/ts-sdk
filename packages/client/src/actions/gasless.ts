@@ -49,7 +49,6 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { walletRequestPath } from '../relayer-routes';
 import { parseRequestOptions, type RequestOptions } from '../request-options';
 import type {
   TransactionCall,
@@ -147,14 +146,11 @@ export async function fetchExecuteParams(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchExecuteParamsRequestSchema);
 
-  return client.relayer.get(
-    walletRequestPath(client, '/v1/account/transactions/params'),
-    {
-      ...requestOptions,
-      params: toSearchParams(params, { address: 'address', type: 'type' }),
-      schema: RelayerExecuteParamsSchema,
-    },
-  );
+  return client.relayer.get('/v1/account/transactions/params', {
+    ...requestOptions,
+    params: toSearchParams(params, { address: 'address', type: 'type' }),
+    schema: RelayerExecuteParamsSchema,
+  });
 }
 
 const FetchGaslessTransactionRequestSchema = z.object({
@@ -226,7 +222,7 @@ export async function isWalletDeployed(
   }
 
   return client.relayer
-    .get(walletRequestPath(client, '/deployed'), {
+    .get('/deployed', {
       ...requestOptions,
       params: toSearchParams(
         {
@@ -354,10 +350,7 @@ export async function fetchTransaction(
   const params = parseUserInput(request, FetchGaslessTransactionRequestSchema);
 
   return client.relayer.get(
-    walletRequestPath(
-      client,
-      `/v1/account/transactions/${params.transactionId}`,
-    ),
+    `/v1/account/transactions/${params.transactionId}`,
     { ...requestOptions, schema: GaslessTransactionSchema },
   );
 }
@@ -783,13 +776,10 @@ async function executeGasless(
 ): Promise<GaslessTransactionHandle> {
   const payload = parseUserInput(request, RelayerExecuteRequestSchema);
 
-  const response = await client.relayer.post(
-    walletRequestPath(client, '/submit'),
-    {
-      json: payload,
-      schema: RelayerExecuteResponseSchema,
-    },
-  );
+  const response = await client.relayer.post('/submit', {
+    json: payload,
+    schema: RelayerExecuteResponseSchema,
+  });
 
   return new GaslessTransactionHandle(client, response);
 }

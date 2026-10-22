@@ -1,12 +1,15 @@
 import {
-  type BearerCredentials,
   EvmAddressSchema,
   OwnershipChallengeSchema,
   TokenResponseSchema,
 } from '@polymarket/bindings';
 import { z } from 'zod';
 import type { BasePublicClient } from '../clients';
-import { L2CredentialsSchema } from '../credentials';
+import {
+  type BearerSessionCredentials,
+  L2CredentialsSchema,
+  savedBearerCredentials,
+} from '../credentials';
 import {
   CancelledSigningError,
   makeErrorGuard,
@@ -59,7 +62,7 @@ export const LoginError = makeErrorGuard(
 export async function login(
   client: BasePublicClient,
   request: LoginRequest,
-): Promise<BearerCredentials> {
+): Promise<BearerSessionCredentials> {
   const params = parseUserInput(request, AuthenticationInputSchema);
   let address: string;
   try {
@@ -86,11 +89,13 @@ export async function login(
       throw new CancelledSigningError('Ownership signing was cancelled.');
     throw new SigningError('Could not sign ownership challenge.');
   }
-  return client.auth.post('/v1/auth/login', {
-    json: { ownership: { challenge_id: challenge.challengeId, signature } },
-    schema: TokenResponseSchema,
-    retry: false,
-  });
+  return client.auth
+    .post('/v1/auth/login', {
+      json: { ownership: { challenge_id: challenge.challengeId, signature } },
+      schema: TokenResponseSchema,
+      retry: false,
+    })
+    .then(savedBearerCredentials);
 }
 
 export type MigrateCredentialsRequest = {
@@ -130,7 +135,7 @@ export const MigrateCredentialsError = makeErrorGuard(
 export async function migrateCredentials(
   client: BasePublicClient,
   request: MigrateCredentialsRequest,
-): Promise<BearerCredentials> {
+): Promise<BearerSessionCredentials> {
   const params = parseUserInput(request, MigrateCredentialsRequestSchema);
   const timestamp = Math.floor(Date.now() / 1000);
   let signature: string;
@@ -144,17 +149,19 @@ export async function migrateCredentials(
   } catch {
     throw new SigningError('Could not prove L2 credential ownership.');
   }
-  return client.auth.post('/v1/auth/migrate', {
-    json: {
-      signer: params.signer,
-      timestamp: String(timestamp),
-      clob_api_key: params.credentials.key,
-      clob_passphrase: params.credentials.passphrase,
-      clob_signature: signature,
-      wallet: params.wallet,
-      verification_token: params.verificationToken,
-    },
-    schema: TokenResponseSchema,
-    retry: false,
-  });
+  return client.auth
+    .post('/v1/auth/migrate', {
+      json: {
+        signer: params.signer,
+        timestamp: String(timestamp),
+        clob_api_key: params.credentials.key,
+        clob_passphrase: params.credentials.passphrase,
+        clob_signature: signature,
+        wallet: params.wallet,
+        verification_token: params.verificationToken,
+      },
+      schema: TokenResponseSchema,
+      retry: false,
+    })
+    .then(savedBearerCredentials);
 }

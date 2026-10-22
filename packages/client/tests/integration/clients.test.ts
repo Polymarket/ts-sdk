@@ -171,7 +171,10 @@ describe('clients', () => {
         wallet: depositWalletAddress,
         nonce: 998,
       });
-      const tradingKey = secureClient.clobApiKey;
+      const tradingKey =
+        secureClient.credentials.type === 'l2'
+          ? secureClient.credentials.key
+          : secureClient.session.claims.clob_api_key;
       const signer = secureClient.account.signer;
 
       await expect(fetchApiKeys(controlClient)).resolves.toContain(tradingKey);
