@@ -121,8 +121,8 @@ export function listBuilderTrades(
 
   return paginate(
     (nextCursor) =>
-      client.clob
-        .get('/builder/trades', {
+      client.predictions
+        .get('/v1/builders/trades', {
           ...requestOptions,
           params: toSearchParams(
             {

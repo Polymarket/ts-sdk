@@ -144,8 +144,8 @@ export function search(
         maxOffset: MAX_SEARCH_PAGE,
       });
 
-      return client.gamma
-        .get('/public-search', {
+      return client.predictions
+        .get('/v1/public-search', {
           schema: PublicSearchResponseSchema,
           ...requestOptions,
           params: toSearchParams(

@@ -146,7 +146,7 @@ export async function fetchExecuteParams(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchExecuteParamsRequestSchema);
 
-  return client.relayer.get('/v1/account/transactions/params', {
+  return client.predictions.get('/v1/wallets/execute-params', {
     ...requestOptions,
     params: toSearchParams(params, { address: 'address', type: 'type' }),
     schema: RelayerExecuteParamsSchema,
@@ -221,8 +221,8 @@ export async function isWalletDeployed(
     return false;
   }
 
-  return client.relayer
-    .get('/deployed', {
+  return client.predictions
+    .get('/v1/wallets/deployed', {
       ...requestOptions,
       params: toSearchParams(
         {
@@ -349,8 +349,8 @@ export async function fetchTransaction(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchGaslessTransactionRequestSchema);
 
-  return client.relayer.get(
-    `/v1/account/transactions/${params.transactionId}`,
+  return client.predictions.get(
+    `/v1/wallets/transactions/${params.transactionId}`,
     { ...requestOptions, schema: GaslessTransactionSchema },
   );
 }
@@ -776,7 +776,7 @@ async function executeGasless(
 ): Promise<GaslessTransactionHandle> {
   const payload = parseUserInput(request, RelayerExecuteRequestSchema);
 
-  const response = await client.relayer.post('/submit', {
+  const response = await client.predictions.post('/v1/wallets/transactions', {
     json: payload,
     schema: RelayerExecuteResponseSchema,
   });

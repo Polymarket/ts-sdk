@@ -253,7 +253,7 @@ export function listPositions(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/positions', {
+      client.predictions.get('/v1/positions', {
         schema: ListPositionsResponseSchema,
         ...requestOptions,
         // The full original filter set rides along with every cursor: the
@@ -435,7 +435,7 @@ export function listComboPositions(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/positions/combos', {
+      client.predictions.get('/v1/positions/combos', {
         schema: ListComboPositionsResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
@@ -503,7 +503,7 @@ export async function fetchPortfolioValue(
     FetchPortfolioValueRequestSchema,
   );
 
-  return client.data.get('/v2/value', {
+  return client.predictions.get('/v1/portfolio/value', {
     schema: FetchPortfolioValueResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({
@@ -566,7 +566,7 @@ export async function fetchUserStats(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchUserStatsRequestSchema);
 
-  return client.data.get('/v2/user-stats', {
+  return client.predictions.get('/v1/portfolio/stats', {
     schema: FetchUserStatsResponseSchema,
     ...requestOptions,
     params: toDataSearchParams(params),
@@ -627,7 +627,7 @@ export async function fetchUserPnl(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchUserPnlRequestSchema);
 
-  return client.data.get('/v2/user-pnl', {
+  return client.predictions.get('/v1/portfolio/pnl', {
     schema: FetchUserPnlResponseSchema,
     ...requestOptions,
     params: toDataSearchParams(params),
@@ -690,7 +690,7 @@ export async function fetchUserVolume(
     FetchUserVolumeRequestSchema,
   );
 
-  return client.data.get('/v2/user-volume', {
+  return client.predictions.get('/v1/portfolio/volume', {
     schema: FetchUserVolumeResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({ ...params, ...window }),

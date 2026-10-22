@@ -60,7 +60,7 @@ function interceptActivityRequests(): URLSearchParams[] {
   const requests: URLSearchParams[] = [];
 
   server.use(
-    http.get(`${root}/v2/activity`, ({ request }) => {
+    http.get(`${root}/v1/activity`, ({ request }) => {
       requests.push(new URL(request.url).searchParams);
       return HttpResponse.json({
         data: [],
@@ -79,6 +79,6 @@ function interceptActivityRequests(): URLSearchParams[] {
 
 function createClient(): BaseClient {
   return {
-    data: new ServiceClient({ root }),
+    predictions: new ServiceClient({ root }),
   } as unknown as BaseClient;
 }
