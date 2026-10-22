@@ -13,7 +13,7 @@ const address = expectEvmAddress('0x0000000000000000000000000000000000000001');
 const root = 'https://synthetic.invalid';
 const environment = forkEnvironmentConfig({
   name: 'controlled-auth-boundary',
-  predictions: { rest: root },
+  predictions: { rest: `${root}/` },
 });
 const l2Credentials = {
   key: 'synthetic-l2-key',
@@ -58,11 +58,14 @@ describe('gateway public authentication boundary', () => {
       const request = new Request(input, init);
       requests.push(request.clone());
       if (request.url.endsWith('/challenge'))
-        return Response.json({
-          challengeId: '00000000-0000-4000-8000-000000000001',
-          typedData,
-          expiresAt: new Date(Date.now() + 90_000).toISOString(),
-        });
+        return Response.json(
+          {
+            challengeId: '00000000-0000-4000-8000-000000000001',
+            typedData,
+            expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          },
+          { status: 201 },
+        );
       return Response.json(loginTokens);
     });
     const pair = await login(createPublicClient({ environment, fetch }), {
@@ -166,7 +169,6 @@ describe('gateway public authentication boundary', () => {
       onCredentialsChanged: changed,
     });
     expect(client.credentials).toEqual({ ...l2Credentials, type: 'l2' });
-    expect(client.credentials.key).toBe(l2Credentials.key);
     await client.endAuthentication();
     expect(requests.map((r) => new URL(r.url).pathname)).toEqual([
       '/auth/api-keys',
@@ -176,7 +178,7 @@ describe('gateway public authentication boundary', () => {
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
   });
 
-  it('refreshes expired bearer restoration and validates the resulting account before returning', async () => {
+  it('refreshes expired saved credentials before returning and closes retained transports on logout', async () => {
     const restored = tokens(0, -1);
     const updated = tokens(1);
     const changed = vi.fn(async () => undefined);
@@ -197,15 +199,7 @@ describe('gateway public authentication boundary', () => {
         expect(await request.text()).toBe('');
         return new Response(null, { status: 204 });
       }
-      expect(request.headers.get('authorization')).toBe(
-        `Bearer ${updated.accessToken}`,
-      );
-      return Response.json({
-        signer: address,
-        wallet: address,
-        signatureType: 0,
-        tradingKey: l2Credentials.key,
-      });
+      throw new Error(`Unexpected restoration route: ${request.url}`);
     });
     const secure = await createSecureClient({
       environment,
@@ -412,32 +406,6 @@ describe('logout revocation', () => {
     expect(logoutRequests).toBe(failure === 'refresh' ? 0 : 1);
     expect(vi.getTimerCount()).toBe(0);
   });
-});
-
-it('joins auth routes once with a trailing slash on the gateway origin', async () => {
-  const seen: string[] = [];
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-    const request = new Request(input, init);
-    seen.push(request.url);
-    if (request.url.endsWith('/challenge'))
-      return Response.json(
-        {
-          challengeId: '00000000-0000-4000-8000-000000000001',
-          typedData,
-          expiresAt: new Date(Date.now() + 90_000).toISOString(),
-        },
-        { status: 201 },
-      );
-    return Response.json(tokens());
-  });
-  await createPublicClient({
-    environment: forkEnvironmentConfig({
-      name: 'mock-auth-origin',
-      predictions: { rest: `${root}/` },
-    }),
-    fetch,
-  }).login({ signer: signer(), wallet: address });
-  expect(seen).toEqual([`${root}/v1/auth/challenge`, `${root}/v1/auth/login`]);
 });
 
 function sessionAuthentication(session: AuthSession): ServiceAuthentication {
