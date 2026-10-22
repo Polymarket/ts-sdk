@@ -40,6 +40,8 @@ export type {
   PriceSubscription,
   PriceSubscriptionConfirmation,
   SubscriptionHandle,
+  UserAutoRedeemEvent,
+  UserComboAutoRedeemEvent,
 } from '../actions';
 export {
   EquityMarketStatus,

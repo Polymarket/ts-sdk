@@ -244,6 +244,88 @@ describe('ClobUserWebSocketManager', () => {
     });
   });
 
+  it('delivers both redemption kinds with ordinary neighbors in a mixed batch', async () => {
+    const combo = `0x03${'ab'.repeat(30)}`;
+    const connection = captureConnection(server, clobUser);
+    const handle = await manager.subscribe({
+      topic: 'user',
+      markets: [MARKET_A, combo],
+    });
+    const received = (async () => {
+      const events = [];
+      for await (const event of handle) {
+        events.push(event);
+        if (events.length === 3) break;
+      }
+      return events;
+    })();
+    const redemption = {
+      event_type: 'auto_redeem',
+      owner: 'test-owner',
+      proxy_wallet: `0x${'1'.repeat(40)}`,
+      txn_hash: `0x${'2'.repeat(64)}`,
+      condition_id: MARKET_A,
+      amount: '1.25',
+      question: '',
+      image: '',
+      slug: '',
+      neg_risk: false,
+      timestamp: '1700000000000',
+      position_id: '',
+      outcome_index: 0,
+      legs: 0,
+    };
+    await connection.send([
+      { event_type: 'future_event' },
+      { ...redemption, condition_id: MARKET_B },
+      redemption,
+      {
+        ...redemption,
+        event_type: 'combo_auto_redeem',
+        condition_id: combo,
+        position_id: '123',
+        outcome_index: 1,
+        legs: 2,
+      },
+      { ...redemption, amount: false },
+      {
+        event_type: 'order',
+        id: 'order-a',
+        owner: 'test-owner',
+        market: MARKET_A,
+        asset_id: '123',
+        side: 'BUY',
+        original_size: '1',
+        size_matched: '0',
+        price: '0.5',
+        type: 'PLACEMENT',
+        timestamp: '1700000000000',
+      },
+    ]);
+    const events = await received;
+    expect(events.map((event) => event.type)).toEqual([
+      'auto_redeem',
+      'combo_auto_redeem',
+      'order',
+    ]);
+    expect(events[0]?.payload).toMatchObject({
+      wallet: redemption.proxy_wallet,
+      transactionHash: redemption.txn_hash,
+      conditionId: MARKET_A,
+      amount: '1.25',
+      timestamp: 1700000000000,
+      negRisk: false,
+      owner: 'test-owner',
+    });
+    expect(events[1]?.payload).toMatchObject({
+      conditionId: combo,
+      positionId: '123',
+      outcomeIndex: 1,
+      legs: 2,
+      amount: '1.25',
+    });
+  });
+
   it('drops unknown frames without closing the shared socket', async () => {
     await expectDropsUnknownFrame({
       expectedEvent: { topic: 'user', type: 'order' },
