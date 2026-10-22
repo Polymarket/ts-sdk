@@ -104,8 +104,8 @@ export function listTeams(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
-      .get('/teams', {
+    return client.predictions
+      .get('/v1/teams', {
         schema: ListTeamsResponseSchema,
         ...requestOptions,
         params: toSearchParams(
