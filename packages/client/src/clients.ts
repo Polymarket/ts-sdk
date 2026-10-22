@@ -53,6 +53,7 @@ import {
 } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
+import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
 import { assertNotAborted, type Fetch, withAbort } from './request-options';
 import { JsonRpcClient } from './rpc';
@@ -255,6 +256,16 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return Promise.resolve({});
   }
 
+  protected async resolvePredictionHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    const signing = predictionSigningRequest(request);
+    if (signing === undefined) return {};
+    return signing.kind === 'clob'
+      ? this.resolveClobHeaders(signing.request)
+      : this.resolveRelayerHeaders(signing.request);
+  }
+
   protected rememberDecorator(decorator: ClientDecorator): void {
     this.#decorators.push(decorator);
   }
@@ -305,15 +316,21 @@ function createAuthService(config: PublicClientConfig): ServiceClient {
 function createPredictionsService(
   config: PublicClientConfig,
   authentication?: ServiceAuthentication,
+  resolveHeaders?: (request: ServiceRequest) => Promise<HeadersInit>,
 ): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
     fetch: config.fetch,
     authentication,
+    onRateLimitUpdate: config.onRateLimitUpdate,
     retryMutations: false,
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
-    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
+    resolveHeaders: async (request) => {
+      const headers = new Headers(await resolveHeaders?.(request));
+      headers.set('POLYMARKET_CLIENT', metadata);
+      return headers;
+    },
   });
 }
 
@@ -327,7 +344,9 @@ class BasePublicClient<
       environment: config.environment,
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
-      predictions: createPredictionsService(config),
+      predictions: createPredictionsService(config, undefined, (request) =>
+        this.resolvePredictionHeaders(request),
+      ),
       auth: createAuthService(config),
       data: new ServiceClient({
         fetch: config.fetch,
@@ -686,7 +705,9 @@ class BaseSecureClient<
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
-      predictions: createPredictionsService(config, authentication),
+      predictions: createPredictionsService(config, authentication, (request) =>
+        this.resolvePredictionHeaders(request),
+      ),
       auth,
       clob: new ServiceClient({
         fetch: config.fetch,
@@ -1021,6 +1042,20 @@ class BaseSecureClient<
     }
     return {};
   }
+  protected override async resolvePredictionHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    const headers = new Headers(await super.resolvePredictionHeaders(request));
+    const signing = predictionSigningRequest(request);
+    if (signing?.l2) {
+      for (const [key, value] of new Headers(
+        await this.#createL2Headers(signing.request),
+      ))
+        headers.set(key, value);
+    }
+    return headers;
+  }
+
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {
     const credentials = this.context.l2Credentials;
     if (credentials === undefined) return {};

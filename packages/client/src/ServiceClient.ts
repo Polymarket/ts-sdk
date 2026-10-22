@@ -171,6 +171,7 @@ export type ServiceClientPostOptions<T = unknown> =
   ServiceClientMutationOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
+    params?: URLSearchParams;
   };
 
 /** @experimental See {@link ServiceClient}. */

@@ -234,8 +234,8 @@ export function listMarkets(
 
   return paginate(
     (cursor) =>
-      client.gamma
-        .get('/markets/keyset', {
+      client.predictions
+        .get('/v1/markets', {
           schema: ListMarketsKeysetResponseSchema,
           ...requestOptions,
           params: toMarketsSearchParams({
@@ -321,8 +321,8 @@ export function listComboMarkets(
 
   return paginate(
     (cursor) =>
-      client.rfq
-        .get('/v1/rfq/combo-markets', {
+      client.predictions
+        .get('/v1/combos/markets', {
           schema: ListComboMarketsResponseSchema,
           ...requestOptions,
           params: toComboMarketsSearchParams({
@@ -454,7 +454,7 @@ export async function fetchMarketTags(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMarketTagsRequestSchema);
 
-  return client.gamma.get(`markets/${params.id}/tags`, {
+  return client.predictions.get(`/v1/markets/${params.id}/tags`, {
     ...requestOptions,
     schema: FetchMarketTagsResponseSchema,
   });
@@ -548,7 +548,7 @@ export function listMarketHolders(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/holders', {
+      client.predictions.get('/v1/markets/holders', {
         schema: ListMarketHoldersResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({
@@ -746,7 +746,7 @@ export function listPriceHistory(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/prices-history', {
+      client.predictions.get('/v1/pricing/history/aggregated', {
         schema: ListPriceHistoryResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({
@@ -819,7 +819,7 @@ export async function fetchOpenInterest(
     FetchOpenInterestRequestSchema,
   );
 
-  return client.data.get('/v2/oi', {
+  return client.predictions.get('/v1/markets/open-interest', {
     schema: FetchOpenInterestResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({ condition: conditionIds }),
@@ -862,7 +862,7 @@ async function fetchMarketBySlug(
   options: RequestOptions = {},
 ): Promise<Market> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma.get(`markets/slug/${params.slug}`, {
+  return client.predictions.get(`/v1/markets/slug/${params.slug}`, {
     schema: MarketSchema,
     ...requestOptions,
     params: toSearchParams(
@@ -881,7 +881,7 @@ async function fetchMarketById(
   options: RequestOptions = {},
 ): Promise<Market> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma.get(`markets/${params.id}`, {
+  return client.predictions.get(`/v1/markets/${params.id}`, {
     schema: MarketSchema,
     ...requestOptions,
     params: toSearchParams(
