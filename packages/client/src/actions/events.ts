@@ -222,8 +222,8 @@ export function listEvents(
 
   return paginate(
     (cursor) =>
-      client.gamma
-        .get('/events/keyset', {
+      client.predictions
+        .get('/v1/events', {
           schema: ListEventsKeysetResponseSchema,
           ...requestOptions,
           params: toEventsSearchParams({
@@ -307,7 +307,7 @@ export async function fetchEvent(
   const params = parseUserInput(request, FetchEventRequestSchema);
 
   if ('id' in params) {
-    return client.gamma.get(`events/${params.id}`, {
+    return client.predictions.get(`/v1/events/${params.id}`, {
       schema: EventSchema,
       ...requestOptions,
       params: toFetchEventByIdSearchParams(params),
@@ -317,7 +317,7 @@ export async function fetchEvent(
   const slug =
     'url' in params ? parsePolymarketSlugUrl(params.url, 'event') : params.slug;
 
-  return client.gamma.get(`events/slug/${slug}`, {
+  return client.predictions.get(`/v1/events/slug/${slug}`, {
     schema: EventSchema,
     ...requestOptions,
     params: toFetchEventBySlugSearchParams(params),
@@ -366,7 +366,7 @@ export async function fetchEventTags(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchEventTagsRequestSchema);
 
-  return client.gamma.get(`events/${params.id}/tags`, {
+  return client.predictions.get(`/v1/events/${params.id}/tags`, {
     ...requestOptions,
     schema: FetchEventTagsResponseSchema,
   });
@@ -479,7 +479,7 @@ export async function fetchResolutions(
     FetchResolutionsRequestSchema,
   );
 
-  return client.data.get('/v2/resolutions', {
+  return client.predictions.get('/v1/markets/resolutions', {
     schema: FetchResolutionsResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({
@@ -551,7 +551,7 @@ export async function fetchEventLiveVolume(
     FetchEventLiveVolumeRequestSchema,
   );
 
-  return client.data.get('/v2/live-volume', {
+  return client.predictions.get('/v1/events/live-volume', {
     schema: FetchEventLiveVolumeResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({ eventId: eventIds }),

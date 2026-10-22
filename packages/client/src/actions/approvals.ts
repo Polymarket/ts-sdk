@@ -403,7 +403,7 @@ export async function fetchTradingApprovalsState(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const snapshot = await client.data.get('/v2/approvals', {
+  const snapshot = await client.predictions.get('/v1/wallets/approvals', {
     ...requestOptions,
     params: toDataSearchParams({ user }),
     schema: FetchApprovalsResponseSchema,

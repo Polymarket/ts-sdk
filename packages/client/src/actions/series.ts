@@ -115,8 +115,8 @@ export function listSeries(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
-      .get('/series', {
+    return client.predictions
+      .get('/v1/series', {
         schema: ListSeriesResponseSchema,
         ...requestOptions,
         params: toSearchParams(
@@ -188,7 +188,7 @@ export async function fetchSeries(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSeriesRequestSchema);
 
-  return client.gamma.get(`series/${params.id}`, {
+  return client.predictions.get(`/v1/series/${params.id}`, {
     schema: SeriesSchema,
     ...requestOptions,
     params: toSearchParams(
