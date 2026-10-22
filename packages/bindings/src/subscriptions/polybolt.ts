@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import {
+  type ClobAssetId,
+  ClobAssetIdSchema,
+  ConditionIdSchema,
   DecimalishSchema,
   DecimalStringSchema,
   EpochMillisecondsSchema,
+  toDecimalString,
 } from '../shared';
 
 export enum RealtimeKnownErrorCode {
@@ -59,6 +63,7 @@ const EquityMarketStatusPayloadSchema = z
   }));
 
 export enum PolyboltChannel {
+  Polymarket = 'price.polymarket',
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
   Equity = 'price.equity',
@@ -202,6 +207,49 @@ const EventMetadataSchema = z.object({
   seq: z.number().optional(),
   dropped: z.number().optional(),
 });
+/** Best bid and ask for one outcome asset. Empty book sides are null. */
+export const PolymarketPriceQuoteSchema = z
+  .object({
+    market: ConditionIdSchema,
+    asset_id: z
+      .string()
+      .regex(/^[0-9]+$/)
+      .pipe(ClobAssetIdSchema),
+    best_bid: z
+      .string()
+      .transform((value) => (value === '' ? null : toDecimalString(value))),
+    best_ask: z
+      .string()
+      .transform((value) => (value === '' ? null : toDecimalString(value))),
+    hash: z.string(),
+    timestamp: EpochMillisecondsSchema,
+  })
+  .transform(({ market, asset_id, best_bid, best_ask, ...rest }) => ({
+    ...rest,
+    conditionId: market,
+    assetId: asset_id,
+    bestBid: best_bid ?? null,
+    bestAsk: best_ask ?? null,
+  }));
+export type PolymarketPriceQuote = z.infer<typeof PolymarketPriceQuoteSchema>;
+
+type PriceEventMetadata = z.infer<typeof EventMetadataSchema>;
+/** The latest quote on subscription or recovery; data is empty for a cold asset. */
+export type PolymarketPriceSnapshotEvent = PriceEventMetadata & {
+  topic: 'prices.polymarket';
+  type: 'subscribe';
+  payload: { assetId: ClobAssetId; data: PolymarketPriceQuote[] };
+};
+/** A best bid and ask change for one outcome asset. */
+export type PolymarketPriceUpdateEvent = PriceEventMetadata & {
+  topic: 'prices.polymarket';
+  type: 'update';
+  payload: PolymarketPriceQuote;
+};
+export type PolymarketPriceEvent =
+  | PolymarketPriceSnapshotEvent
+  | PolymarketPriceUpdateEvent;
+
 export const CryptoPriceEventSchema = z.union([
   EventMetadataSchema.extend({
     topic: z.literal('prices.crypto'),
@@ -305,6 +353,7 @@ export type EquityTwapPriceSnapshotEvent = Extract<
   { type: 'subscribe' }
 >;
 export type PriceEvent =
+  | PolymarketPriceEvent
   | CryptoPriceEvent
   | CryptoTwapPriceEvent
   | EquityPriceEvent
@@ -313,6 +362,7 @@ export type PriceEvent =
 /** @internal Normalizes validated envelopes, dropping unknown payloads. */
 export function parsePolyboltEvent(
   envelope: PolyboltEnvelope,
+  snapshotAssetId?: string,
 ): PriceEvent | undefined {
   const event = {
     timestamp: envelope.ts,
@@ -322,6 +372,34 @@ export function parsePolyboltEvent(
     payload: envelope.payload,
   };
   switch (envelope.channel) {
+    case PolyboltChannel.Polymarket: {
+      const quote = PolymarketPriceQuoteSchema.safeParse(envelope.payload);
+      if (envelope.snapshot) {
+        const empty =
+          Array.isArray(envelope.payload) && envelope.payload.length === 0;
+        if (!quote.success && !empty) return undefined;
+        const asset = ClobAssetIdSchema.safeParse(
+          quote.data?.assetId ?? snapshotAssetId,
+        );
+        if (!asset.success) return undefined;
+        return {
+          ...event,
+          topic: 'prices.polymarket',
+          type: 'subscribe',
+          payload: {
+            assetId: asset.data,
+            data: quote.success ? [quote.data] : [],
+          },
+        };
+      }
+      if (!quote.success) return undefined;
+      return {
+        ...event,
+        topic: 'prices.polymarket',
+        type: 'update',
+        payload: quote.data,
+      };
+    }
     case PolyboltChannel.Crypto:
       return CryptoPriceEventSchema.safeParse({
         ...event,

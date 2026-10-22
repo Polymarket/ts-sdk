@@ -15,7 +15,9 @@ describe('price subscription input', () => {
       const keys = [undefined, PriceProvider.Pyth, PriceProvider.Chainlink].map(
         (provider) => {
           const parsed = parsePriceSubscription({ ...spec, provider });
-          expect(parsed.provider).toBe(provider);
+          expect('provider' in parsed ? parsed.provider : undefined).toBe(
+            provider,
+          );
           return subscriptionsFor(parsed)[0]?.key;
         },
       );
@@ -122,4 +124,18 @@ describe('PublicClient.subscribe', () => {
     );
     expect(subscribe).not.toHaveBeenCalled();
   });
+});
+
+it.each([
+  { assetIds: [] },
+  { assetIds: [''] },
+  { assetIds: ['invalid'] },
+  { assetIds: ['0x123'] },
+])('rejects invalid public price assets $assetIds before connecting', async ({
+  assetIds,
+}) => {
+  const client = createPublicClient();
+  await expect(
+    client.subscribe([{ topic: 'prices.polymarket', assetIds }]),
+  ).rejects.toBeInstanceOf(UserInputError);
 });
