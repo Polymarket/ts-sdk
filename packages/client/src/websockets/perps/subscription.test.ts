@@ -44,14 +44,15 @@ describe('PerpsSubscriptionManager', () => {
     PerpsKlineInterval.ThirtyMinutes,
     PerpsKlineInterval.SixHours,
     PerpsKlineInterval.TwelveHours,
-  ] as const)('adds and removes %s candle channels on the shared socket', async (interval) => {
+  ] as const)('routes %s candle updates on the shared socket', async (interval) => {
+    const connection = captureConnection(server, perpsSubscriptions);
     const frames = collectFrames(server, perpsSubscriptions);
 
     const tradesHandle = await manager.subscribe({
       instrumentId: 1,
       topic: 'perps.trades',
     });
-    await manager.subscribe({
+    const candlesHandle = await manager.subscribe({
       interval,
       instrumentId: 1,
       topic: 'perps.candles',
@@ -62,6 +63,26 @@ describe('PerpsSubscriptionManager', () => {
         { id: expect.any(Number), req: 'sub', chs: ['trades::1'] },
         { id: expect.any(Number), req: 'sub', chs: [`klines::1::${interval}`] },
       ]);
+    });
+
+    const next = waitForNextEvent(candlesHandle);
+    await connection.send({
+      ch: `klines::1::${interval}`,
+      data: [[0, '1', '2', '0.5', '1.5', '10', 3]],
+      ets: 0,
+      sq: 1,
+      ts: 1_700_000_000_000,
+    });
+    await expect(next).resolves.toMatchObject({
+      done: false,
+      value: {
+        topic: 'perps.candles',
+        payload: {
+          instrumentId: 1,
+          interval,
+          candles: [{ timestamp: 0, close: '1.5', trades: 3 }],
+        },
+      },
     });
 
     frames.length = 0;
