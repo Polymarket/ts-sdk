@@ -229,18 +229,13 @@ it('waits for an explicit refresh even while the current bearer is fresh', async
   const operation = session.refresh();
   expect(session.refresh()).toBe(operation);
   await started.promise;
-  let ready = false;
-  let recovered = false;
-  const consumer = session.ready().then((pair) => {
-    ready = true;
-    return pair;
-  });
-  const late401 = session.recover('already-superseded-token').then(() => {
-    recovered = true;
-  });
+  const ready = vi.fn((pair: BearerCredentials) => pair);
+  const recovered = vi.fn();
+  const consumer = session.ready().then(ready);
+  const late401 = session.recover('already-superseded-token').then(recovered);
   await Promise.resolve();
-  expect(ready).toBe(false);
-  expect(recovered).toBe(false);
+  expect(ready).not.toHaveBeenCalled();
+  expect(recovered).not.toHaveBeenCalled();
   const updated = tokens(1);
   pending.resolve(updated);
   await expect(consumer).resolves.toEqual(updated);
