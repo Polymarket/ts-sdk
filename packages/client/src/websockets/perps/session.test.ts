@@ -3349,6 +3349,60 @@ describe('PerpsSession', () => {
       expect(requests).toHaveLength(1);
     });
 
+    it.each([
+      1000, 2000,
+    ])('preserves deposit identity through inclusive start %s', async (start) => {
+      const hash = `0x${'1'.repeat(64)}`;
+      const requests: URLSearchParams[] = [];
+      function deposit(logIndex?: number | null) {
+        return {
+          hash,
+          ...(logIndex === undefined ? {} : { log_index: logIndex }),
+          asset: 'USDC',
+          amount: '10',
+          status: 'confirmed',
+          from: `0x${'2'.repeat(40)}`,
+          to: `0x${'3'.repeat(40)}`,
+          confirmations: 3,
+          required_confirmations: 3,
+          created_timestamp: 2000,
+          confirmed_timestamp: 2000,
+        };
+      }
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/deposits`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            const indices =
+              requests.length === 1
+                ? [undefined, null, 0, 0]
+                : [undefined, null, 0, 1, 1];
+            return HttpResponse.json({
+              data: indices.map(deposit),
+              more: requests.length < 3 || start === 2000,
+            });
+          },
+        ),
+      );
+      const pages = createSession().listDeposits({ start, end: 3000 });
+      const first = await pages.firstPage();
+      expect(first.hasMore).toBe(true);
+      const second = await pages.from(first.nextCursor).firstPage();
+      expect(first.items.map((item) => item.logIndex)).toEqual([undefined, 0]);
+      expect(first.items[0]).not.toHaveProperty('logIndex');
+      expect(second.items.map((item) => item.logIndex)).toEqual([1]);
+      expect(second.hasMore).toBe(true);
+      const third = await pages.from(second.nextCursor).firstPage();
+      expect(third.items).toEqual([]);
+      expect(third.hasMore).toBe(false);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+        '2000',
+      ]);
+    });
+
     it('continues ascending interval account history pages', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
