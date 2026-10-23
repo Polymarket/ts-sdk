@@ -117,7 +117,7 @@ describe('requestComboQuote', () => {
 
     const result = await requestComboQuote(client, buyRequest);
 
-    expect(gatewayPost).toHaveBeenCalledWith('/v1/builder/rfq/requests', {
+    expect(gatewayPost).toHaveBeenCalledWith('/v1/combos/builder/requests', {
       json: {
         direction: 'BUY',
         leg_position_ids: LEGS,
@@ -145,7 +145,7 @@ describe('requestComboQuote', () => {
       }),
     ).resolves.toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
     expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests',
+      '/v1/combos/builder/requests',
       expect.objectContaining({
         json: expect.objectContaining({ leg_position_ids: LEGS }),
       }),
@@ -164,7 +164,7 @@ describe('requestComboQuote', () => {
     });
 
     expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests',
+      '/v1/combos/builder/requests',
       expect.objectContaining({
         json: expect.objectContaining({
           direction: 'SELL',
@@ -386,7 +386,7 @@ describe('acceptComboQuote', () => {
     });
     expect(signTypedData).toHaveBeenCalledTimes(1);
     expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests/rfq-1/accept',
+      '/v1/combos/builder/requests/rfq-1/accept',
       expect.objectContaining({
         json: {
           quote_id: 'quote-1',
@@ -424,7 +424,7 @@ describe('acceptComboQuote', () => {
 
     expect(acceptor.signTypedData).toHaveBeenCalledTimes(1);
     expect(acceptor.gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests/rfq-1/accept',
+      '/v1/combos/builder/requests/rfq-1/accept',
       {
         json: {
           quote_id: 'quote-1',
@@ -570,11 +570,14 @@ describe('acceptComboQuote', () => {
       status: 'executing',
       takerOrderHash: TAKER_ORDER_HASH,
     });
-    expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1', {
-      retries: 0,
-      signal: undefined,
-      schema: expect.anything(),
-    });
+    expect(gatewayGet).toHaveBeenCalledWith(
+      '/v1/combos/builder/requests/rfq-1',
+      {
+        retries: 0,
+        signal: undefined,
+        schema: expect.anything(),
+      },
+    );
   }, 10_000);
 });
 
@@ -662,7 +665,7 @@ function createClient(options: CreateClientOptions = {}) {
       wallet: SIGNER,
       walletType: WalletType.EOA,
     },
-    builderGateway: gatewayService,
+    predictions: gatewayService,
     environment: production,
     hasBuilderApiKey: options.hasBuilderApiKey ?? true,
     signer,

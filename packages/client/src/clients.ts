@@ -55,6 +55,7 @@ import {
 } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
+import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
 import { protectRequestErrors } from './request-errors';
 import type { Fetch } from './request-options';
@@ -256,8 +257,9 @@ abstract class AbstractClient<TContext extends PublicContext> {
   protected resolveRequestHeaders(
     request: ServiceRequest,
   ): Promise<HeadersInit> {
+    const canonical = predictionSigningRequest(request)?.request ?? request;
     return (
-      this.context.apiKey?.authorize(request, {
+      this.context.apiKey?.authorize(canonical, {
         fetch: this.context.fetch,
         signal: request.signal,
       }) ?? Promise.resolve({})
@@ -743,29 +745,39 @@ class BaseSecureClient<
     const context = request.path.startsWith('/v1/auth/')
       ? super.context
       : this.context;
-    return this.resolveSecureHeaders(
-      request,
-      (request) =>
-        context.apiKey?.authorize(request, {
+    const signing = predictionSigningRequest(request);
+    return this.resolveSecureHeaders(request, async () => {
+      const headers = new Headers(
+        await context.apiKey?.authorize(signing?.request ?? request, {
           fetch: context.fetch,
           signal: request.signal,
-        }) ?? Promise.resolve({}),
-    );
+        }),
+      );
+      if (signing?.l2) {
+        for (const [key, value] of new Headers(
+          await this.#createL2Headers(signing.request),
+        ))
+          headers.set(key, value);
+      }
+      return headers;
+    });
   }
 
   protected async resolveSecureHeaders(
     request: ServiceRequest,
     resolveHeaders?: RequestHeadersResolver,
   ): Promise<HeadersInit> {
-    const headers = new Headers(await resolveHeaders?.(request));
     const session = (
       request.path.startsWith('/v1/auth/') ? super.context : this.context
     ).session;
-    if (session !== undefined) {
-      // Refresh itself must never await the rotation it is completing.
-      const credentials = request.path.startsWith('/v1/auth/')
-        ? session.credentials
-        : await session.ready(request.signal);
+    const credentials =
+      session === undefined
+        ? undefined
+        : request.path.startsWith('/v1/auth/')
+          ? session.credentials
+          : await session.ready(request.signal);
+    const headers = new Headers(await resolveHeaders?.(request));
+    if (credentials !== undefined) {
       headers.set('Authorization', `Bearer ${credentials.accessToken}`);
       if (request.signal !== undefined)
         this.#requestTokens.set(request.signal, credentials.accessToken);
