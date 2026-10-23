@@ -171,6 +171,7 @@ it('maps wallet deployment submission and polling', async () => {
     'POST /v1/auth/logout',
   ]);
   expect(authorize.mock.calls.map((call) => call[0].path)).toEqual([
+    '/v1/auth/refresh',
     '/deployed',
     '/submit',
     '/v1/account/transactions/mock-deployment',
@@ -381,4 +382,88 @@ it.each([
     expect.anything(),
   );
   await client.closeSubscriptions();
+});
+
+it.each([
+  ['POST', '/v1/combos/builder/requests', '/v1/builder/rfq/requests'],
+  [
+    'POST',
+    '/v1/combos/builder/requests/rfq-1/accept',
+    '/v1/builder/rfq/requests/rfq-1/accept',
+  ],
+  [
+    'GET',
+    '/v1/combos/builder/requests/rfq-1',
+    '/v1/builder/rfq/requests/rfq-1',
+  ],
+  ['GET', '/v1/me/session-signers', '/v1/user/session-signers'],
+  [
+    'POST',
+    '/v1/wallets/session-signers/authorizations',
+    '/v1/session-signers/authorizations',
+  ],
+  [
+    'POST',
+    '/v1/wallets/session-signers/revocations',
+    '/v1/session-signers/revocations',
+  ],
+])('dispatches %s %s with canonical user and builder authorization', async (method, path, canonical) => {
+  for (const mechanism of ['l2', 'bearer']) {
+    const pair = tokens();
+    const authorize = vi.fn(
+      async (_request: import('./types').ApiKeyAuthorizationRequest) =>
+        new Headers({ POLY_BUILDER_API_KEY: 'synthetic-builder' }),
+    );
+    const client = await createSecureClient({
+      ...secureOptions,
+      credentials: mechanism === 'l2' ? l2Credentials : pair,
+      apiKey: { isBuilderKey: true, supportGasless: true, authorize },
+      fetch: async (input, init) => {
+        const request = new Request(input, init);
+        if (request.url.endsWith('/auth/api-keys'))
+          return Response.json({ apiKeys: [l2Credentials.key] });
+        if (request.url.endsWith('/v1/auth/refresh'))
+          return Response.json(pair);
+        expect(request.url).toBe(root + path);
+        expect(request.method).toBe(method);
+        expect(request.headers.get('POLY_BUILDER_API_KEY')).toBe(
+          'synthetic-builder',
+        );
+        expect(request.headers.get('authorization')).toBe(
+          mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+        );
+        expect(request.headers.get('POLY_API_KEY')).toBe(
+          mechanism === 'l2' ? l2Credentials.key : null,
+        );
+        if (mechanism === 'l2')
+          expect(request.headers.get('POLY_SIGNATURE')).toBe(
+            await buildHmacSignature(
+              l2Credentials.secret,
+              Number(request.headers.get('POLY_TIMESTAMP')),
+              method,
+              canonical,
+              method === 'POST' ? '{"nonce":"1"}' : undefined,
+            ),
+          );
+        return Response.json(true);
+      },
+    });
+    authorize.mockClear();
+    try {
+      await (method === 'GET'
+        ? client.predictions.get(path)
+        : client.predictions.post(path, { json: { nonce: '1' } }));
+      expect(authorize).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({
+          method,
+          path: canonical,
+          body: method === 'POST' ? '{"nonce":"1"}' : undefined,
+        }),
+        expect.anything(),
+      );
+    } finally {
+      client.closeAuthenticationSession();
+      await client.closeSubscriptions();
+    }
+  }
 });
