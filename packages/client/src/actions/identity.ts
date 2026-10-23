@@ -140,6 +140,7 @@ export async function migrateCredentials(
   const timestamp = Math.floor(Date.now() / 1000);
   let signature: string;
   try {
+    // This canonical migration proof does not dispatch a request to the signed path.
     signature = await buildHmacSignature(
       params.credentials.secret,
       timestamp,

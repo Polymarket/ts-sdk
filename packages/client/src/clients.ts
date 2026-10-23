@@ -9,7 +9,6 @@ import {
 } from '@polymarket/types';
 import { z } from 'zod';
 import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
-import { deleteApiKey, fetchApiKeys } from './actions/auth';
 import {
   type DeployDepositWalletError,
   deployDepositWallet,
@@ -530,13 +529,7 @@ class BasePublicClient<
             identity,
             signer,
           );
-          // Restoring L2 credentials keeps the original authentication mechanism.
-          const keys = await fetchApiKeys(client);
-          if (!keys.includes(credentials.key))
-            throw new RequestRejectedError(
-              'The saved API key is no longer valid.',
-              { status: 401 },
-            );
+          // Supplied L2 credentials are checked locally; protected requests validate them remotely.
           return client;
         }
         const claims = accessTokenClaims(credentials.accessToken);
@@ -1024,9 +1017,11 @@ class BaseSecureClient<
    * Ends authentication for this client and returns a public client.
    *
    * @remarks
-   * This ends the refresh session and invalidates the
-   * current `SecureClient` instance. Already issued access tokens remain valid until expiry.
-   * Expired credentials are renewed solely for revocation. Concurrent calls share
+   * This closes the current `SecureClient` and its local consumers. Bearer
+   * credentials end their refresh session; issued access tokens remain valid until expiry.
+   * With supplied L2 credentials this is local cleanup only and does not revoke
+   * the key. Its remote validity is unchanged; manage the key outside the SDK.
+   * Expired bearer credentials are renewed solely for revocation. Concurrent calls share
    * one logout operation, and local cleanup completes even when revocation fails.
    *
    * @example
@@ -1049,11 +1044,10 @@ class BaseSecureClient<
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
     const { apiKey, environment, onRateLimitUpdate, fetch, session, auth } =
       this.context;
-    if (session !== undefined) this.endAuthenticationLifecycle();
+    this.endAuthenticationLifecycle();
 
     try {
-      if (session === undefined) await deleteApiKey(this);
-      else
+      if (session !== undefined)
         await session.logout((accessToken) =>
           auth.post('/v1/auth/logout', {
             headers: { Authorization: `Bearer ${accessToken}` },
@@ -1298,6 +1292,11 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a new authenticated `SecureClient` instance.
+ *
+ * @remarks
+ * Supplied L2 credentials receive local input checks only; their validity and
+ * ownership are checked by protected requests. Wallet discovery and setup retain
+ * their own network behavior. Ending an L2 client does not revoke its key.
  *
  * @example
  * ```ts

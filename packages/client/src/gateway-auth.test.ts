@@ -134,31 +134,22 @@ describe('gateway public authentication boundary', () => {
     ).resolves.toHaveProperty('refreshToken');
   });
 
-  it('keeps saved L2 credentials and HMAC requests without implicit migration', async () => {
+  it('accepts supplied L2 credentials without remote validation or revocation', async () => {
     const walletSigner = signer();
     const changed = vi.fn();
     const requests: Request[] = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const request = new Request(input, init);
-      requests.push(request.clone());
-      expect(request.url).not.toContain('/v1/auth/');
-      expect(request.headers.has('authorization')).toBe(false);
+      requests.push(request);
+      expect(new URL(request.url).pathname).not.toContain('/auth/');
       expect(request.headers.get('POLY_API_KEY')).toBe(l2Credentials.key);
-      expect(request.headers.get('POLY_PASSPHRASE')).toBe(
-        l2Credentials.passphrase,
+      return Response.json(
+        {
+          code: 'invalid_credentials',
+          message: 'Rejected supplied credentials',
+        },
+        { status: 401 },
       );
-      const timestamp = request.headers.get('POLY_TIMESTAMP');
-      expect(request.headers.get('POLY_SIGNATURE')).toBe(
-        createHmac('sha256', Buffer.from(l2Credentials.secret, 'base64'))
-          .update(
-            `${timestamp}${request.method}${new URL(request.url).pathname}`,
-          )
-          .digest('base64')
-          .replaceAll('+', '-')
-          .replaceAll('/', '_'),
-      );
-      if (request.method === 'DELETE') return Response.json('OK');
-      return Response.json({ apiKeys: [l2Credentials.key] });
     });
     const client = await createSecureClient({
       environment,
@@ -169,13 +160,15 @@ describe('gateway public authentication boundary', () => {
       onCredentialsChanged: changed,
     });
     expect(client.credentials).toEqual({ ...l2Credentials, type: 'l2' });
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(client.listOpenOrders().firstPage()).rejects.toMatchObject({
+      status: 401,
+    });
     await client.endAuthentication();
-    expect(requests.map((r) => new URL(r.url).pathname)).toEqual([
-      '/auth/api-keys',
-      '/auth/api-key',
-    ]);
+    expect(requests).toHaveLength(1);
     expect(changed).not.toHaveBeenCalled();
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+    expect(() => client.credentials).toThrow('closed');
   });
 
   it('refreshes expired saved credentials before returning and closes retained transports on logout', async () => {

@@ -1,8 +1,8 @@
 import { Wallet } from 'ethers-v5';
 import { describe, expect, it } from 'vitest';
-import { createApiKeyAuthTypedDataPayload } from './authentication';
 import { UserInputError } from './errors';
 import { signerFrom } from './ethers-v5';
+import type { TypedDataPayload } from './types';
 import { privateKey } from './viem';
 
 const TEST_PRIVATE_KEY =
@@ -37,20 +37,22 @@ describe('viem', () => {
       ).resolves.toMatch(/^0x[0-9a-f]+$/i);
     });
 
-    it('signs explicit authentication domains consistently across wallet adapters', async () => {
+    it('signs explicit EIP-712 domains consistently across wallet adapters', async () => {
       const signer = privateKey(TEST_PRIVATE_KEY);
-      const payload = createApiKeyAuthTypedDataPayload({
-        address: await signer.getAddress(),
-        chainId: 137,
-        timestamp: 1_739_491_200,
-      });
-
-      const { EIP712Domain, ...types } = payload.types;
-      expect(EIP712Domain).toEqual([
-        { name: 'name', type: 'string' },
-        { name: 'version', type: 'string' },
-        { name: 'chainId', type: 'uint256' },
-      ]);
+      const payload: TypedDataPayload = {
+        domain: { chainId: 137, name: 'Polymarket SDK Test', version: '1' },
+        message: { value: 'hello' },
+        primaryType: 'TestMessage',
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+          ],
+          TestMessage: [{ name: 'value', type: 'string' }],
+        },
+      };
+      const { EIP712Domain: _domain, ...types } = payload.types;
       const signature = await signer.signTypedData(payload);
       await expect(
         signer.signTypedData({

@@ -266,7 +266,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([
       { wallet: legacyWallet, deployed: false },
       { wallet: expectedWallet, deployed: false },
@@ -299,7 +298,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([
       { wallet: legacyWallet, deployed: false },
       { wallet: expectedWallet, deployed: true },
@@ -325,7 +323,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([{ wallet: expectedWallet, deployed: true }]);
 
     const client = await createSecureClient({
@@ -348,7 +345,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     const deployedWallet = mockDeployedWallet(expectedWallet);
 
     const client = await createSecureClient({
@@ -369,8 +365,6 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('keeps an explicit EOA wallet bound to the EOA', async () => {
-    mockApiKeys();
-
     const client = await createSecureClient({
       apiKey,
       credentials,
@@ -439,7 +433,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(safeWallet, true);
 
     const client = await createSecureClient({
@@ -463,7 +456,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(proxyWallet, true);
 
     const client = await createSecureClient({
@@ -487,7 +479,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(safeWallet, false);
 
     await expect(
@@ -513,7 +504,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockUndeployedWallet(legacyWallet);
 
     await expect(
@@ -531,7 +521,6 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('does not shut down terminal managers when closing subscriptions', async () => {
-    mockApiKeys();
     const client = await createSecureClient({
       apiKey,
       credentials,
@@ -551,10 +540,6 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('shuts down terminal managers when ending authentication', async () => {
-    mockApiKeys();
-    server.use(
-      http.delete(`${clobRoot}/auth/api-key`, () => HttpResponse.json('OK')),
-    );
     const failure = new TypeError('gateway dispatch observed');
     const gatewayRequests: Request[] = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
@@ -605,14 +590,6 @@ describe('secure client gasless wallet setup', () => {
     expect(rfqShutdown).toHaveBeenCalledTimes(1);
   });
 });
-
-function mockApiKeys() {
-  server.use(
-    http.get(`${clobRoot}/auth/api-keys`, () =>
-      HttpResponse.json({ apiKeys: [credentials.key] }),
-    ),
-  );
-}
 
 function testTokens(wallet: string) {
   return {

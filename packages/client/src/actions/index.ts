@@ -1,7 +1,6 @@
 export * from './account';
 export * from './activity';
 export * from './approvals';
-export * from './auth';
 export * from './builders';
 export * from './clob';
 export * from './collateral-return';
