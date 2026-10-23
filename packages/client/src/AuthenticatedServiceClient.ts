@@ -253,7 +253,7 @@ function authenticatedFetch(
       const headers = new Headers(original.headers);
       for (const [key, value] of new Headers(resolved)) headers.set(key, value);
       const response = await withAbort(
-        sendAttempt(new Request(original.clone(), { headers }), fetch, timeout),
+        sendAttempt(original, headers, body, fetch, timeout),
         original.signal,
       );
       if (
@@ -276,18 +276,23 @@ function authenticatedFetch(
 // Raw mode shares the plain client's per-attempt timeout and error behavior.
 async function sendAttempt(
   request: Request,
+  headers: Headers,
+  body: string | undefined,
   fetch: Fetch,
   timeout?: number | false,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const client = new ServiceClient({ root: url.origin, fetch });
+  const client = new ServiceClient({
+    root: url.origin,
+    // The body is already serialized and signed. Do not parse or encode it again.
+    fetch: (input, init) => fetch(new Request(input, { ...init, body })),
+  });
   const path = url.pathname + url.search;
   const options = {
-    headers: request.headers,
+    headers,
     signal: request.signal,
     timeout,
     responseType: 'raw' as const,
-    json: request.body === null ? undefined : await request.json(),
   };
   if (request.method === 'GET') return client.get(path, options);
   if (request.method === 'POST') return client.post(path, options);

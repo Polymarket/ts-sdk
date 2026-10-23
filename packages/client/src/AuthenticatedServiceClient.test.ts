@@ -183,3 +183,26 @@ it('applies the HTTP timeout to the replay attempt and removes its timer', async
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('preserves serialized JSON bytes without rounding numbers on dispatch or replay', async () => {
+  const rawJSON: (value: string) => unknown = Reflect.get(JSON, 'rawJSON');
+  const json = { nonce: rawJSON('9007199254740993') };
+  const expected = JSON.stringify(json);
+  const bodies: string[] = [];
+  const service = new AuthenticatedServiceClient({
+    root,
+    resolveHeaders: async (request) => {
+      expect(request.body).toBe(expected);
+      return {};
+    },
+    refreshToken: async () => true,
+    fetch: async (input) => {
+      bodies.push(await new Request(input).text());
+      return bodies.length === 1
+        ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+        : Response.json(true);
+    },
+  });
+  await service.post('/private', { json });
+  expect(bodies).toEqual([expected, expected]);
+});
