@@ -29,12 +29,6 @@ type ServiceClientWorkflowGetOptions<T = unknown> =
     params?: URLSearchParams;
   };
 
-/** POST query controls required by authenticated gateway workflows. */
-export type AuthenticatedServiceClientPostOptions<T = unknown> =
-  ServiceClientPostOptions<T> & {
-    params?: URLSearchParams;
-  };
-
 /** Callback-owned authentication; this transport never stores credentials. */
 export type AuthenticatedServiceClientConfig = {
   fetch?: Fetch;
@@ -114,13 +108,13 @@ export class AuthenticatedServiceClient extends ServiceClient {
    */
   override postRead<T = unknown>(
     path: string,
-    options: AuthenticatedServiceClientPostOptions<T> &
+    options: ServiceClientPostOptions<T> &
       RequestOptions &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
   override postRead(
     path: string,
-    options: AuthenticatedServiceClientPostOptions & RequestOptions,
+    options: ServiceClientPostOptions & RequestOptions,
   ): Promise<unknown> {
     return this.#dispatch('postRead', path, options);
   }
@@ -131,21 +125,20 @@ export class AuthenticatedServiceClient extends ServiceClient {
    */
   override post<T = unknown>(
     path: string,
-    options?: AuthenticatedServiceClientPostOptions<T> &
-      ServiceClientJsonResponseOptions<T>,
+    options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
   override post<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
-    options: AuthenticatedServiceClientPostOptions &
+    options: ServiceClientPostOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
   override post(
     path: string,
-    options: AuthenticatedServiceClientPostOptions,
+    options: ServiceClientPostOptions,
   ): Promise<unknown>;
   override post(
     path: string,
-    options: AuthenticatedServiceClientPostOptions = {},
+    options: ServiceClientPostOptions = {},
   ): Promise<unknown> {
     return this.#dispatch('post', path, options);
   }
@@ -205,7 +198,7 @@ export class AuthenticatedServiceClient extends ServiceClient {
     path: string,
     options:
       | ServiceClientGetOptions
-      | AuthenticatedServiceClientPostOptions
+      | ServiceClientPostOptions
       | ServiceClientPatchOptions
       | ServiceClientDeleteOptions,
   ): Promise<unknown> {
