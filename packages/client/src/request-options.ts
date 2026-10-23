@@ -42,10 +42,9 @@ export type RequestOptions = {
    */
   timeout?: number | false;
   /**
-   * Optional retries after the first attempt. Must be an integer from 0 to 5.
-   * Transport failures and rate limits share this budget for each request;
-   * every pagination request gets a fresh budget. Set 0 when the caller owns retries.
-   * Workflow recovery is unaffected.
+   * Compatibility retry budget, validated as an integer from 0 to 5.
+   * HTTP transport retries are disabled. Authentication recovery and explicit
+   * workflow retry policies are independent of this option.
    *
    * @defaultValue 2
    * @experimental This API may change in a breaking way in any release, including patch releases.

@@ -47,8 +47,6 @@ export type RequestHeadersResolver = (
 
 export type ServiceClientConfig = {
   fetch?: Fetch;
-  /** Disable automatic replay of mutation requests. @internal */
-  retryMutations?: false;
   /** Omit the endpoint root to create an empty client whose requests reject with UserInputError. */
   root?: string;
   headers?: HeadersInit;
@@ -291,21 +289,14 @@ export class ServiceClient {
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
   constructor(config: ServiceClientConfig) {
-    const {
-      root,
-      headers,
-      resolveHeaders,
-      onRateLimitUpdate,
-      fetch,
-      retryMutations,
-    } = config;
+    const { root, headers, resolveHeaders, onRateLimitUpdate, fetch } = config;
     if (root !== undefined) {
       this.#client = ky.create({
         prefixUrl: root,
         timeout: DEFAULT_REQUEST_TIMEOUT_MS,
         throwHttpErrors: false,
+        retry: 0,
         ...(fetch === undefined ? {} : { fetch }),
-        ...(retryMutations === false && { retry: { methods: ['get'] } }),
       });
     }
     this.#headers = headers;
@@ -458,10 +449,8 @@ export class ServiceClient {
         { responseType: options.responseType, schema: options.schema },
         ServiceClientResponseControlsSchema,
       );
-      const retries = readOnly
-        ? parseRequestOptions(options).retries
-        : undefined;
-      const response = await this.#send(method, path, options, retries);
+      if (readOnly) parseRequestOptions(options);
+      const response = await this.#send(method, path, options);
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(
         response.headers,
@@ -561,7 +550,6 @@ export class ServiceClient {
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
-    retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
     const client = this.#client;
@@ -594,34 +582,6 @@ export class ServiceClient {
         searchParams: request.params,
         signal: options.signal,
         ...(options.timeout !== undefined && { timeout: options.timeout }),
-        ...('retry' in options && options.retry === false && { retry: 0 }),
-        ...(retries !== undefined && {
-          // One transport-owned counter covers both network failures and 429s.
-          // A new call (including each page) starts with a fresh counter.
-          retry: { limit: retries, methods: [method.toLowerCase()] },
-          hooks: {
-            afterResponse: [
-              (_request, _options, response, { retryCount }) => {
-                if (
-                  options.responseType === 'raw' ||
-                  response.status !== 429 ||
-                  retryCount >= retries
-                )
-                  return;
-                const delaySeconds = this.#parseRetryAfterHeader(response) ?? 1;
-                // Never retry earlier than the server asks. Leave long waits to callers.
-                if (delaySeconds > 5) return;
-                const rateLimit = parseRateLimitHeaders(
-                  response.headers,
-                  options.rateLimitBucket,
-                );
-                if (rateLimit !== undefined)
-                  this.#notifyRateLimitUpdate(rateLimit);
-                return ky.retry({ delay: delaySeconds * 1000 });
-              },
-            ],
-          },
-        }),
       }),
       options.signal,
     );
