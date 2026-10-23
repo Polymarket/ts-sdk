@@ -103,6 +103,7 @@ export class WebSocketConnection {
   readonly #connectTimeoutMs: number | undefined;
   readonly #closeTimeoutMs: number | undefined;
   #cancelOpen: (() => void) | undefined;
+  #generation = 0;
   #socket: WebSocket | undefined;
   #connecting: Promise<WebSocketConnectionResult> | undefined;
   #watchdog: ReturnType<typeof setInterval> | undefined;
@@ -148,6 +149,7 @@ export class WebSocketConnection {
   }
 
   async close(): Promise<void> {
+    this.#generation++;
     this.#cancelOpen?.();
     const socket = await this.#takeCurrent();
     this.#stopHeartbeat();
@@ -175,7 +177,10 @@ export class WebSocketConnection {
   async #open<TContext>(
     options: WebSocketConnectionOptions<TContext>,
   ): Promise<WebSocket> {
+    const generation = this.#generation;
     const context = await options.prepare?.();
+    if (generation !== this.#generation)
+      throw new TransportError('WebSocket connection was cancelled.');
 
     return new Promise<WebSocket>((resolve, reject) => {
       const socket = createWebSocket(options.url, options.headers);
@@ -209,8 +214,8 @@ export class WebSocketConnection {
       };
 
       socket.addEventListener('open', onOpen, { once: true });
+      this.#cancelOpen = cancel;
       if (this.#connectTimeoutMs !== undefined) {
-        this.#cancelOpen = cancel;
         timer = setNonBlockingTimeout(cancel, this.#connectTimeoutMs);
       }
       socket.addEventListener('error', onOpenError, { once: true });

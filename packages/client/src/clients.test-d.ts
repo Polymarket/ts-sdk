@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
+import type { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import {
   createPublicClient,
   createSecureClient,
@@ -43,7 +44,9 @@ describe('predictions service types', () => {
   it('exposes the same precise Promise service on public and secure clients', () => {
     const schema = z.object({ count: z.string().transform(Number) });
     expectTypeOf(publicClient.predictions).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(secureClient.predictions).toEqualTypeOf<ServiceClient>();
+    expectTypeOf(
+      secureClient.predictions,
+    ).toEqualTypeOf<AuthenticatedServiceClient>();
     expectTypeOf(
       publicClient.predictions.get('/reserved', { schema }),
     ).toEqualTypeOf<Promise<{ count: number }>>();

@@ -262,6 +262,21 @@ function authenticatedFetch(
         request.path.startsWith('/v1/auth/')
       )
         return response;
+      // Permanent authorization failures do not rotate a bearer session.
+      const failure: unknown = await withAbort(
+        response
+          .clone()
+          .json()
+          .catch(() => undefined),
+        original.signal,
+      );
+      if (
+        failure === null ||
+        typeof failure !== 'object' ||
+        !('code' in failure) ||
+        failure.code !== 'expired_access_token'
+      )
+        return response;
       const refreshed = await withAbort(
         config.refreshToken(original.signal),
         original.signal,
