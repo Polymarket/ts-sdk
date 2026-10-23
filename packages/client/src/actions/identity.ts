@@ -1,8 +1,4 @@
-import {
-  EvmAddressSchema,
-  OwnershipChallengeSchema,
-  TokenResponseSchema,
-} from '@polymarket/bindings';
+import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
 import { z } from 'zod';
 import type { BasePublicClient } from '../clients';
 import {
@@ -71,15 +67,11 @@ export async function login(
     throw new SigningError('Could not obtain signer address.');
   }
   const signer = parseUserInput(address, EvmAddressSchema);
-  const challenge = await client.auth.post('/v1/auth/challenge', {
-    json: {
-      signer,
-      wallet: params.wallet,
-      verification_token: params.verificationToken,
-      nonce: params.nonce,
-    },
-    schema: OwnershipChallengeSchema,
-    retry: false,
+  const challenge = await client.requestOwnershipChallenge({
+    signer,
+    wallet: params.wallet,
+    verification_token: params.verificationToken,
+    nonce: params.nonce,
   });
   let signature: string;
   try {
@@ -137,6 +129,7 @@ export async function migrateCredentials(
   request: MigrateCredentialsRequest,
 ): Promise<BearerSessionCredentials> {
   const params = parseUserInput(request, MigrateCredentialsRequestSchema);
+  client.assertCredentialMigrationSupported();
   const timestamp = Math.floor(Date.now() / 1000);
   let signature: string;
   try {

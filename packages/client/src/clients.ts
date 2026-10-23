@@ -1,4 +1,10 @@
-import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
+import {
+  EvmAddressSchema,
+  type OwnershipChallenge,
+  type OwnershipChallengeRequest,
+  OwnershipChallengeSchema,
+  TokenResponseSchema,
+} from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -55,7 +61,7 @@ import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
-import { protectRequestErrors } from './request-errors';
+import { protectRequestErrors, redactRequestError } from './request-errors';
 import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { RequestHeadersResolver, ServiceRequest } from './ServiceClient';
@@ -304,12 +310,33 @@ type PublicClientConfig = {
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
+async function resolveGatewayHeaders(
+  config: PublicClientConfig,
+  request: ServiceRequest,
+  existingHeaders?: HeadersInit,
+): Promise<Headers> {
+  const headers = new Headers(existingHeaders);
+  // Attribution is bound to the session. Refresh/logout need no application key exchange.
+  if (request.path === '/v1/auth/refresh' || request.path === '/v1/auth/logout')
+    return headers;
+  const gateway = await config.apiKey?.authorizeGateway?.({
+    fetch: config.fetch,
+    signal: request.signal,
+  });
+  for (const [key, value] of new Headers(gateway)) headers.set(key, value);
+  return headers;
+}
+
 function createAuthService(config: PublicClientConfig): ServiceClient {
   return new ServiceClient({
     fetch: protectRequestErrors(config.fetch, true),
     root: config.environment.predictions.rest,
     headers: config.environment.predictions.headers,
-    resolveHeaders: async () => ({ POLYMARKET_CLIENT: createClientMetadata() }),
+    resolveHeaders: async (request) => {
+      const headers = await resolveGatewayHeaders(config, request);
+      headers.set('POLYMARKET_CLIENT', createClientMetadata());
+      return headers;
+    },
   });
 }
 
@@ -320,12 +347,16 @@ function createPredictionsService(
 ): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
-    fetch: config.fetch,
+    fetch: protectRequestErrors(config.fetch),
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
     onRateLimitUpdate: config.onRateLimitUpdate,
     resolveHeaders: async (request) => {
-      const headers = new Headers(await resolveHeaders(request));
+      const headers = await resolveGatewayHeaders(
+        config,
+        request,
+        await resolveHeaders?.(request),
+      );
       headers.set('POLYMARKET_CLIENT', metadata);
       return headers;
     },
@@ -346,6 +377,7 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
+
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
@@ -468,6 +500,29 @@ class BasePublicClient<
       Prettify<TPublicActions & DecoratorPublicActions<TDecorator>>,
       Prettify<TSecureActions & DecoratorSecureActions<TDecorator>>
     >;
+  }
+
+  /** @internal */
+  assertCredentialMigrationSupported(): void {
+    if (this.context.apiKey?.createChallenge !== undefined)
+      throw new UserInputError(
+        'Migrate L2 credentials on your server with platformApiKey, then restore the returned bearer pair in this client.',
+      );
+  }
+
+  /** @internal */
+  async requestOwnershipChallenge(
+    request: OwnershipChallengeRequest,
+  ): Promise<OwnershipChallenge> {
+    if (this.context.apiKey?.createChallenge !== undefined)
+      return this.context.apiKey.createChallenge(request, {
+        fetch: this.context.fetch,
+      });
+    return this.auth.post('/v1/auth/challenge', {
+      json: request,
+      schema: OwnershipChallengeSchema,
+      retry: false,
+    });
   }
 
   /** Opens a bearer session by signing a server-issued ownership challenge.
@@ -662,8 +717,15 @@ class BaseSecureClient<
               }),
           })
         : undefined;
+    const ownedSecrets = () =>
+      Object.values(session?.credentials ?? l2Credentials ?? {});
+    const protectedFetch = protectRequestErrors(
+      config.fetch,
+      false,
+      ownedSecrets,
+    );
     predictions = new AuthenticatedServiceClient({
-      fetch: protectRequestErrors(config.fetch),
+      fetch: protectedFetch,
       headers: config.environment.predictions.headers,
       root: config.environment.predictions.rest,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -691,8 +753,9 @@ class BaseSecureClient<
       signer: config.signer,
       predictions,
       auth,
+
       clob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
@@ -703,7 +766,7 @@ class BaseSecureClient<
           ),
       }),
       relayer: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
@@ -717,21 +780,21 @@ class BaseSecureClient<
         fetch: config.fetch,
       }),
       gamma: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       data: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       rfq: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
@@ -743,7 +806,7 @@ class BaseSecureClient<
         root: config.environment.perps.rest,
       }),
       secureClob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => {
@@ -762,7 +825,7 @@ class BaseSecureClient<
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       combos: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) =>
           this.resolveSecureHeaders(request, (request) =>
@@ -772,7 +835,7 @@ class BaseSecureClient<
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       builderGateway: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.combos.builderGateway.headers,
         resolveHeaders: async (request) => {
           const headers = new Headers(
@@ -858,7 +921,7 @@ class BaseSecureClient<
         ))
           headers.set(key, value);
       }
-      return headers;
+      return resolveGatewayHeaders(context, request, headers);
     });
   }
 
@@ -866,22 +929,30 @@ class BaseSecureClient<
     request: ServiceRequest,
     resolveHeaders?: RequestHeadersResolver,
   ): Promise<HeadersInit> {
-    const session = (
-      request.path.startsWith('/v1/auth/') ? super.context : this.context
-    ).session;
-    const credentials =
-      session === undefined
-        ? undefined
-        : request.path.startsWith('/v1/auth/')
-          ? session.credentials
-          : await session.ready(request.signal);
-    const headers = new Headers(await resolveHeaders?.(request));
-    if (credentials !== undefined) {
-      headers.set('Authorization', `Bearer ${credentials.accessToken}`);
-      if (request.signal !== undefined)
-        this.#requestTokens.set(request.signal, credentials.accessToken);
+    const context = request.path.startsWith('/v1/auth/')
+      ? super.context
+      : this.context;
+    const session = context.session;
+    try {
+      const credentials =
+        session === undefined
+          ? undefined
+          : request.path.startsWith('/v1/auth/')
+            ? session.credentials
+            : await session.ready(request.signal);
+      const headers = new Headers(await resolveHeaders?.(request));
+      if (credentials !== undefined) {
+        headers.set('Authorization', `Bearer ${credentials.accessToken}`);
+        if (request.signal !== undefined)
+          this.#requestTokens.set(request.signal, credentials.accessToken);
+      }
+      return headers;
+    } catch (error) {
+      throw redactRequestError(
+        error,
+        Object.values(session?.credentials ?? context.l2Credentials ?? {}),
+      );
     }
-    return headers;
   }
 
   protected async refreshTokens(signal?: AbortSignal): Promise<boolean> {
@@ -909,6 +980,15 @@ class BaseSecureClient<
       return savedBearerCredentials(session.credentials);
     invariant(l2Credentials !== undefined, 'Missing client credentials.');
     return { ...l2Credentials, type: 'l2' };
+  }
+
+  /** @internal Wallet submissions can use a platform-attributed bearer session. */
+  get supportsGaslessWallet(): boolean {
+    return (
+      this.supportsGasless ||
+      (this.context.session !== undefined &&
+        this.context.apiKey?.authorizeGateway !== undefined)
+    );
   }
 
   /** @internal */
@@ -1104,6 +1184,7 @@ class BaseSecureClient<
     }
     return {};
   }
+
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {
     const credentials = this.context.l2Credentials;
     if (credentials === undefined) return {};
