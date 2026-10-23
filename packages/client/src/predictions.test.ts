@@ -1,4 +1,9 @@
-import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
+import {
+  CommentParentEntityType,
+  OrderSide,
+  OrderType,
+  toTokenId,
+} from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import { RelayerTransactionType } from '@polymarket/bindings/relayer';
 import {
@@ -275,7 +280,7 @@ it.each([
   }
 });
 
-it('uses Predictions for covered discovery, portfolio and combo reads and keeps unsupported token reads direct', async () => {
+it('uses Predictions for discovery, portfolio, combo and token reads', async () => {
   const seen: string[] = [];
   const client = createPublicClient({
     environment,
@@ -309,8 +314,100 @@ it('uses Predictions for covered discovery, portfolio and combo reads and keeps 
     `${root}/v1/sports`,
     `${root}/v1/positions`,
     `${root}/v1/combos/markets`,
-    'https://data.invalid/v2/tokens',
+    `${root}/v1/tokens`,
   ]);
+});
+
+it.each([
+  'l2',
+  'bearer',
+])('routes token selectors and opaque comment cursors with canonical authorization (%s)', async (mechanism) => {
+  const pair = tokens();
+  const seen: URL[] = [];
+  const cursor = 'opaque+cursor/&=?';
+  const authorize = vi.fn(
+    async (_request: import('./types').ApiKeyAuthorizationRequest) => ({
+      POLY_BUILDER_API_KEY: 'synthetic-builder',
+    }),
+  );
+  const client = await createSecureClient({
+    ...secureOptions,
+    credentials: mechanism === 'l2' ? l2Credentials : pair,
+    apiKey: { isBuilderKey: true, supportGasless: true, authorize },
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      expect(url.origin).toBe(root);
+      if (url.pathname === '/v1/auth/refresh') return Response.json(pair);
+      seen.push(url);
+      expect(request.headers.get('POLY_BUILDER_API_KEY')).toBe(
+        'synthetic-builder',
+      );
+      expect(request.headers.get('authorization')).toBe(
+        mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+      );
+      expect(request.headers.has('POLY_API_KEY')).toBe(false);
+      return Response.json(
+        url.pathname === '/v1/tokens'
+          ? { data: [] }
+          : {
+              comments: [],
+              next_cursor: url.searchParams.has('after_cursor')
+                ? undefined
+                : cursor,
+            },
+      );
+    },
+  });
+  try {
+    authorize.mockClear();
+    expect(
+      await client.fetchTokenReferences({ assetIds: ['001', '2'] }),
+    ).toEqual([]);
+    const comments = client.listComments({
+      parentEntityId: '123',
+      parentEntityType: CommentParentEntityType.Event,
+      pageSize: 2,
+    });
+    const page = await comments.firstPage();
+    expect(page.items).toEqual([]);
+    expect((await comments.from(page.nextCursor).firstPage()).hasMore).toBe(
+      false,
+    );
+    expect(seen.map((url) => url.pathname)).toEqual([
+      '/v1/tokens',
+      '/v1/comments/keyset',
+      '/v1/comments/keyset',
+    ]);
+    expect(seen.map((url) => Object.fromEntries(url.searchParams))).toEqual([
+      { token_id: '1,2' },
+      {
+        ascending: 'false',
+        limit: '2',
+        order: 'createdAt',
+        parent_entity_id: '123',
+        parent_entity_type: 'Event',
+      },
+      {
+        after_cursor: cursor,
+        ascending: 'false',
+        limit: '2',
+        order: 'createdAt',
+        parent_entity_id: '123',
+        parent_entity_type: 'Event',
+      },
+    ]);
+    expect(
+      authorize.mock.calls.map(([request]) => [request.method, request.path]),
+    ).toEqual([
+      ['GET', '/v2/tokens'],
+      ['GET', '/comments/keyset'],
+      ['GET', '/comments/keyset'],
+    ]);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  }
 });
 
 it.each([

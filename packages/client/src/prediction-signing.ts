@@ -1,15 +1,19 @@
 import type { ServiceRequest, ServiceRequestMethod } from './ServiceClient';
 
+type SigningService = 'clob' | 'relayer' | 'collateral' | 'data' | 'gamma';
+
 type SigningRoute = readonly [
   ServiceRequestMethod,
   string,
   ServiceRequestMethod,
   string,
-  'clob' | 'relayer' | 'collateral',
+  SigningService,
   boolean,
 ];
 // Request bodies stay unchanged; authentication covers the service's canonical method and path.
 const SIGNING_ROUTES: readonly SigningRoute[] = [
+  ['GET', '/v1/tokens', 'GET', '/v2/tokens', 'data', false],
+  ['GET', '/v1/comments/keyset', 'GET', '/comments/keyset', 'gamma', false],
   [
     'POST',
     '/v1/combos/builder/requests',
@@ -245,7 +249,7 @@ const SIGNING_ROUTES: readonly SigningRoute[] = [
 export function predictionSigningRequest(request: ServiceRequest):
   | {
       request: ServiceRequest;
-      kind: 'clob' | 'relayer' | 'collateral';
+      kind: SigningService;
       l2: boolean;
     }
   | undefined {
