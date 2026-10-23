@@ -331,8 +331,8 @@ function fetchCommentsKeysetPage(
   options: RequestOptions = {},
 ): Promise<Page<Comment[]>> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma
-    .get('/comments/keyset', {
+  return client.predictions
+    .get('/v1/comments/keyset', {
       schema: ListCommentsKeysetResponseSchema,
       ...requestOptions,
       params: toSearchParams(
