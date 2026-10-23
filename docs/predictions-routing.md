@@ -4,7 +4,7 @@ Supported discovery, market data, trading, portfolio, wallet and combo actions u
 
 Request signing covers the canonical service method, path and exact body, even when the gateway URL or method differs. Order payload owners are trading identities; bearer credentials never become order owners.
 
-Direct clients remain available for compatibility. Credential administration, cursor-based comment reads, token references retain their configured direct services where no compatible Predictions route is available. Perps and websocket transports keep their independent configuration and lifecycle. There is no automatic fallback after a dispatched request fails.
+Direct clients remain available for compatibility. Cursor-based comment reads and token references retain their configured direct services where no compatible Predictions route is available. Standalone credential administration is no longer provided by the SDK. Perps and websocket transports keep their independent configuration and lifecycle. There is no automatic fallback after a dispatched request fails.
 
 The gateway origin may include an application proxy prefix. Keep direct endpoint configurations consistent with that environment. Offline tests cover routing, authentication, signing, token rotation and cleanup; they do not prove deployment availability or browser network access.
 
