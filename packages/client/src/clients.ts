@@ -8,6 +8,7 @@ import {
   type Prettify,
 } from '@polymarket/types';
 import { z } from 'zod';
+import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import { deleteApiKey, fetchApiKeys } from './actions/auth';
 import {
   type DeployDepositWalletError,
@@ -54,9 +55,10 @@ import {
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type { RateLimitUpdateListener } from './rate-limit';
-import { assertNotAborted, type Fetch, withAbort } from './request-options';
+import { protectRequestErrors } from './request-errors';
+import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
-import type { ServiceAuthentication, ServiceRequest } from './ServiceClient';
+import type { RequestHeadersResolver, ServiceRequest } from './ServiceClient';
 import { ServiceClient } from './ServiceClient';
 import { AuthSession, accessTokenClaims } from './session';
 import type { ApiKeyAuthorization, Signer } from './types';
@@ -255,6 +257,17 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return Promise.resolve({});
   }
 
+  protected resolveRequestHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    return (
+      this.context.apiKey?.authorize(request, {
+        fetch: this.context.fetch,
+        signal: request.signal,
+      }) ?? Promise.resolve({})
+    );
+  }
+
   protected rememberDecorator(decorator: ClientDecorator): void {
     this.#decorators.push(decorator);
   }
@@ -292,28 +305,29 @@ type PublicClientConfig = {
 
 function createAuthService(config: PublicClientConfig): ServiceClient {
   return new ServiceClient({
-    fetch: config.fetch,
+    fetch: protectRequestErrors(config.fetch, true),
     root: config.environment.predictions.rest,
     headers: config.environment.predictions.headers,
-    retryMutations: false,
-    sensitive: true,
     resolveHeaders: async () => ({ POLYMARKET_CLIENT: createClientMetadata() }),
   });
 }
 
-// Public and secure clients share one predictions endpoint configuration.
+// Public requests resolve API-key headers without an authentication lifecycle.
 function createPredictionsService(
   config: PublicClientConfig,
-  authentication?: ServiceAuthentication,
+  resolveHeaders: RequestHeadersResolver,
 ): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
     fetch: config.fetch,
-    authentication,
-    retryMutations: false,
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
-    resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
+    onRateLimitUpdate: config.onRateLimitUpdate,
+    resolveHeaders: async (request) => {
+      const headers = new Headers(await resolveHeaders(request));
+      headers.set('POLYMARKET_CLIENT', metadata);
+      return headers;
+    },
   });
 }
 
@@ -327,7 +341,9 @@ class BasePublicClient<
       environment: config.environment,
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
-      predictions: createPredictionsService(config),
+      predictions: createPredictionsService(config, (request) =>
+        this.resolveRequestHeaders(request),
+      ),
       auth: createAuthService(config),
       data: new ServiceClient({
         fetch: config.fetch,
@@ -606,6 +622,7 @@ class BaseSecureClient<
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
+  readonly #requestTokens = new WeakMap<AbortSignal, string>();
   #endingAuthentication:
     | Promise<PublicClient<TPublicActions, TSecureActions>>
     | undefined;
@@ -617,7 +634,7 @@ class BaseSecureClient<
   protected override get context(): SecureContext {
     invariant(
       !this.#hasEndedAuthentication,
-      'This client has ended authentication and can no longer be used.',
+      'This client has ended authentication and is closed.',
     );
 
     return super.context;
@@ -629,6 +646,8 @@ class BaseSecureClient<
 
   constructor(config: SecureClientConfig) {
     const auth = createAuthService(config);
+    const metadata = createClientMetadata();
+    let predictions: AuthenticatedServiceClient;
     const l2Credentials =
       'key' in config.credentials ? { ...config.credentials } : undefined;
     const session =
@@ -640,7 +659,7 @@ class BaseSecureClient<
                 savedBearerCredentials(credentials),
               ),
             refresh: (credentials, signal) =>
-              auth.post('/v1/auth/refresh', {
+              predictions.post('/v1/auth/refresh', {
                 json: { refresh_token: credentials.refreshToken },
                 schema: TokenResponseSchema,
                 signal,
@@ -648,29 +667,18 @@ class BaseSecureClient<
               }),
           })
         : undefined;
-    const authentication: ServiceAuthentication | undefined =
-      session === undefined
-        ? undefined
-        : {
-            credentials: (signal) => session.ready(signal),
-            headers: (credentials) =>
-              'accessToken' in credentials
-                ? new Headers({
-                    Authorization: `Bearer ${credentials.accessToken}`,
-                  })
-                : new Headers(),
-            refreshToken: async (credentials, response, signal) => {
-              if (!('accessToken' in credentials)) return false;
-              const failure = await withAbort(
-                response.json().catch(() => undefined),
-                signal,
-              );
-              if (failure?.code !== 'expired_access_token') return false;
-              assertNotAborted(signal);
-              await session.recover(credentials.accessToken, signal);
-              return true;
-            },
-          };
+    predictions = new AuthenticatedServiceClient({
+      fetch: protectRequestErrors(config.fetch),
+      headers: config.environment.predictions.headers,
+      root: config.environment.predictions.rest,
+      onRateLimitUpdate: config.onRateLimitUpdate,
+      refreshToken: (signal) => this.refreshTokens(signal),
+      resolveHeaders: async (request) => {
+        const headers = new Headers(await this.resolveRequestHeaders(request));
+        headers.set('POLYMARKET_CLIENT', metadata);
+        return headers;
+      },
+    });
     const realtime = new RealtimeWebSocketManager({
       url: config.environment.realtime.ws,
       headers: config.environment.realtime.headers,
@@ -686,85 +694,105 @@ class BaseSecureClient<
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
       signer: config.signer,
-      predictions: createPredictionsService(config, authentication),
+      predictions,
       auth,
-      clob: new ServiceClient({
-        fetch: config.fetch,
+      clob: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
-        authentication,
-        retryMutations: false,
-        resolveHeaders: (request) => this.resolveClobHeaders(request),
+        refreshToken: (signal) => this.refreshTokens(signal),
+        resolveHeaders: (request) =>
+          this.resolveSecureHeaders(request, (request) =>
+            this.resolveClobHeaders(request),
+          ),
       }),
-      relayer: new ServiceClient({
-        fetch: config.fetch,
+      relayer: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
-        authentication,
-        retryMutations: false,
-        resolveHeaders: (request) => this.resolveRelayerHeaders(request),
+        refreshToken: (signal) => this.refreshTokens(signal),
+        resolveHeaders: (request) =>
+          this.resolveSecureHeaders(request, (request) =>
+            this.resolveRelayerHeaders(request),
+          ),
       }),
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
       }),
-      gamma: new ServiceClient({
-        fetch: config.fetch,
+      gamma: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
+        resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
-      data: new ServiceClient({
-        fetch: config.fetch,
+      data: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
+        resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
-      rfq: new ServiceClient({
-        fetch: config.fetch,
+      rfq: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
+        resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
       }),
-      secureClob: new ServiceClient({
-        fetch: config.fetch,
+      secureClob: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
-        resolveHeaders: async (request) => ({
-          ...(await this.resolveClobHeaders(request)),
-          ...(await this.#createL2Headers(request)),
-        }),
+        resolveHeaders: async (request) => {
+          const headers = new Headers(
+            await this.resolveSecureHeaders(request, (request) =>
+              this.resolveClobHeaders(request),
+            ),
+          );
+          for (const [key, value] of new Headers(
+            await this.#createL2Headers(request),
+          ))
+            headers.set(key, value);
+          return headers;
+        },
         root: config.environment.clob.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
-      combos: new ServiceClient({
-        fetch: config.fetch,
+      combos: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
         headers: config.environment.combos.collateralReturn.headers,
-        resolveHeaders: (request) => this.resolveRelayerHeaders(request),
+        resolveHeaders: (request) =>
+          this.resolveSecureHeaders(request, (request) =>
+            this.resolveRelayerHeaders(request),
+          ),
         root: config.environment.combos.collateralReturn.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
-      builderGateway: new ServiceClient({
-        fetch: config.fetch,
+      builderGateway: new AuthenticatedServiceClient({
+        fetch: protectRequestErrors(config.fetch),
         headers: config.environment.combos.builderGateway.headers,
-        resolveHeaders: async (request) => ({
-          ...(await this.#resolveBuilderGatewayHeaders(request)),
-          ...(await this.#createL2Headers(request)),
-        }),
+        resolveHeaders: async (request) => {
+          const headers = new Headers(
+            await this.resolveSecureHeaders(request, (request) =>
+              this.#resolveBuilderGatewayHeaders(request),
+            ),
+          );
+          for (const [key, value] of new Headers(
+            await this.#createL2Headers(request),
+          ))
+            headers.set(key, value);
+          return headers;
+        },
         root: config.environment.combos.builderGateway.rest,
-        authentication,
-        retryMutations: false,
+        refreshToken: (signal) => this.refreshTokens(signal),
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -809,6 +837,55 @@ class BaseSecureClient<
         }),
       },
     });
+  }
+
+  override get predictions(): AuthenticatedServiceClient {
+    return this.context.predictions;
+  }
+
+  protected override async resolveRequestHeaders(
+    request: ServiceRequest,
+  ): Promise<HeadersInit> {
+    const context = request.path.startsWith('/v1/auth/')
+      ? super.context
+      : this.context;
+    return this.resolveSecureHeaders(
+      request,
+      (request) =>
+        context.apiKey?.authorize(request, {
+          fetch: context.fetch,
+          signal: request.signal,
+        }) ?? Promise.resolve({}),
+    );
+  }
+
+  protected async resolveSecureHeaders(
+    request: ServiceRequest,
+    resolveHeaders?: RequestHeadersResolver,
+  ): Promise<HeadersInit> {
+    const headers = new Headers(await resolveHeaders?.(request));
+    const session = (
+      request.path.startsWith('/v1/auth/') ? super.context : this.context
+    ).session;
+    if (session !== undefined) {
+      // Refresh itself must never await the rotation it is completing.
+      const credentials = request.path.startsWith('/v1/auth/')
+        ? session.credentials
+        : await session.ready(request.signal);
+      headers.set('Authorization', `Bearer ${credentials.accessToken}`);
+      if (request.signal !== undefined)
+        this.#requestTokens.set(request.signal, credentials.accessToken);
+    }
+    return headers;
+  }
+
+  protected async refreshTokens(signal?: AbortSignal): Promise<boolean> {
+    const session = this.context.session;
+    if (session === undefined) return false;
+    const previous =
+      signal === undefined ? undefined : this.#requestTokens.get(signal);
+    await session.recover(previous ?? session.credentials.accessToken, signal);
+    return true;
   }
 
   /**
@@ -1050,6 +1127,7 @@ class BaseSecureClient<
 }
 
 type SecureContext = PublicContext & {
+  predictions: AuthenticatedServiceClient;
   /** @internal */
   account: AccountIdentity;
   /** @internal */

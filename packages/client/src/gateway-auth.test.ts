@@ -1,11 +1,11 @@
 import { createHmac } from 'node:crypto';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import { login, migrateCredentials } from './actions';
 import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError } from './errors';
-import { type ServiceAuthentication, ServiceClient } from './ServiceClient';
 import { AuthSession } from './session';
 import type { Signer } from './types';
 
@@ -262,10 +262,18 @@ describe('expired-token HTTP recovery', () => {
       }
       return Response.json({ ok: true });
     });
-    const pending = new ServiceClient({
+    let sentToken = session.credentials.accessToken;
+    const pending = new AuthenticatedServiceClient({
       root,
       fetch,
-      authentication: sessionAuthentication(session),
+      resolveHeaders: async (request) => {
+        sentToken = (await session.ready(request.signal)).accessToken;
+        return { Authorization: `Bearer ${sentToken}` };
+      },
+      refreshToken: async (signal) => {
+        await session.recover(sentToken, signal);
+        return true;
+      },
     }).post('/protected', { json: { one: 1 } });
     await started.promise;
     await session.refresh();
@@ -408,26 +416,6 @@ describe('logout revocation', () => {
   });
 });
 
-function sessionAuthentication(session: AuthSession): ServiceAuthentication {
-  return {
-    credentials: (signal) => session.ready(signal),
-    headers: (credentials) =>
-      'accessToken' in credentials
-        ? new Headers({ Authorization: `Bearer ${credentials.accessToken}` })
-        : new Headers(),
-    refreshToken: async (credentials, response, signal) => {
-      const failure = await response.json().catch(() => undefined);
-      if (
-        !('accessToken' in credentials) ||
-        failure?.code !== 'expired_access_token'
-      )
-        return false;
-      await session.recover(credentials.accessToken, signal);
-      return true;
-    },
-  };
-}
-
 it.each([
   { ...tokens(), secret: 'must-not-select-bearer' },
   { key: 'key', secret: 42, passphrase: 'phrase' },
@@ -513,5 +501,39 @@ it.each([
     expect(privateRequests).toBe(attempts);
   } finally {
     await client.endAuthentication();
+  }
+});
+
+it.each([
+  'POLY_BUILDER_API_KEY',
+  'RELAYER_API_KEY',
+])('combines bearer and %s headers on gateway requests', async (header) => {
+  const pair = tokens();
+  const client = await createSecureClient({
+    environment,
+    signer: signer(),
+    wallet: address,
+    credentials: pair,
+    apiKey: {
+      isBuilderKey: header === 'POLY_BUILDER_API_KEY',
+      supportGasless: true,
+      authorize: async () =>
+        new Headers({ [header]: 'synthetic-application-key' }),
+    },
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/refresh')) return Response.json(pair);
+      expect(request.headers.get('authorization')).toBe(
+        `Bearer ${pair.accessToken}`,
+      );
+      expect(request.headers.get(header)).toBe('synthetic-application-key');
+      return Response.json(true);
+    },
+  });
+  try {
+    await expect(client.predictions.post('/private')).resolves.toBe(true);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
   }
 });

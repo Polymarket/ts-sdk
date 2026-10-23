@@ -595,7 +595,7 @@ describe('secure client gasless wallet setup', () => {
       expect(request.url).toBe(`${environment.predictions.rest}/cancel-all`);
       expect(request.headers.has('POLY_API_KEY')).toBe(false);
       expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
-      expect(request.headers.has('RELAYER_API_KEY')).toBe(false);
+      expect(request.headers.has('RELAYER_API_KEY')).toBe(true);
     }
     expect(() => client.predictions).toThrow(
       'This client has ended authentication',
