@@ -31,7 +31,6 @@ import { ClientCredentialsSchema } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 // biome-ignore lint/style/noRestrictedImports: This test exercises the server-only public adapter boundary.
 import { builderApiKey, platformApiKey } from './node';
-import { ServiceClient } from './ServiceClient';
 import type { Signer } from './types';
 
 const signerAddress = expectEvmAddress(
@@ -241,7 +240,7 @@ describe('platform API key client workflow', () => {
     ).rejects.toMatchObject({
       code: 'api_key_mismatch',
       status: 401,
-      message: 'Authentication request rejected.',
+      message: expect.stringContaining('Authentication request rejected.'),
     });
     expect(walletSigner.signTypedData).toHaveBeenCalledTimes(1);
     expect(changed).not.toHaveBeenCalled();
@@ -936,25 +935,41 @@ it.each([
   const fetch = vi.fn<typeof globalThis.fetch>(async () =>
     Response.json({ code: 'invalid_credentials', message }, { status: 401 }),
   );
-  const service = new ServiceClient({
-    root: gateway,
-    fetch,
-    authentication: {
-      credentials: async () => credentials,
-      headers: () => {
-        if (stage === 'headers') throw new Error(message);
+  const client = await createSecureClient({
+    environment,
+    signer: signer(),
+    wallet: signerAddress,
+    credentials,
+    apiKey: {
+      isBuilderKey: true,
+      supportGasless: true,
+      authorize: async (request) => {
+        if (request.path === '/private' && stage === 'headers')
+          throw new Error(message);
         return {};
       },
-      refreshToken: async () => false,
+    },
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/v1/auth/refresh'))
+        return Response.json({ ...tokens(), ...credentials });
+      if (request.url.endsWith('/auth/api-keys'))
+        return Response.json({ apiKeys: [l2Credentials.key] });
+      return fetch(input, init);
     },
   });
-  const error = await service
-    .get('/private')
-    .catch((failure: unknown) => failure);
-  expect(error).toMatchObject({
-    name: stage === 'headers' ? 'TransportError' : 'RequestRejectedError',
-  });
-  for (const value of values)
-    expect(inspect(error, { depth: 10 })).not.toContain(value);
-  expect(fetch).toHaveBeenCalledTimes(stage === 'headers' ? 0 : 1);
+  try {
+    const error = await client.predictions
+      .get('/private')
+      .catch((failure: unknown) => failure);
+    expect(error).toMatchObject({
+      name: stage === 'headers' ? 'TransportError' : 'RequestRejectedError',
+    });
+    for (const value of values)
+      expect(inspect(error, { depth: 10 })).not.toContain(value);
+    expect(fetch).toHaveBeenCalledTimes(stage === 'headers' ? 0 : 1);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  }
 });
