@@ -67,8 +67,6 @@ it.each([
     const path = new URL(request.url).pathname;
     seen.push(request.url);
     if (path === '/v1/auth/refresh') return Response.json(pair);
-    if (path === '/auth/api-keys')
-      return Response.json({ apiKeys: [l2Credentials.key] });
     if (path.endsWith('/deployed')) {
       expect(new URL(request.url).searchParams.get('address')).toBe(wallet);
       expect(request.headers.get('authorization')).toBe(
@@ -84,7 +82,6 @@ it.each([
         transaction_id: 'mock-transaction',
         transaction_hash: '',
       });
-    if (path === '/auth/api-key') return Response.json('OK');
     if (path === '/v1/auth/logout') return new Response(null, { status: 204 });
     throw new Error(`Unexpected mock route: ${path}`);
   });
@@ -182,8 +179,6 @@ it.each(['l2', 'bearer'])('routes midpoint reads (%s)', async (mode) => {
   const pair = tokens();
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url.endsWith('/auth/api-keys'))
-      return Response.json({ apiKeys: [l2Credentials.key] });
     if (request.url.endsWith('/refresh')) return Response.json(pair);
     expect(request.url).toBe(`${root}/v1/pricing/midpoint?token_id=1`);
     expect(request.headers.get('authorization')).toBe(
@@ -214,8 +209,6 @@ it.each([
   const requests: Request[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url.endsWith('/auth/api-keys'))
-      return Response.json({ apiKeys: [l2Credentials.key] });
     if (request.url.endsWith('/refresh')) return Response.json(pair);
     requests.push(request);
     expect(request.url).toBe(`${root}/v1/orders`);
@@ -352,8 +345,6 @@ it.each([
   }));
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url.endsWith('/auth/api-keys'))
-      return Response.json({ apiKeys: [l2Credentials.key] });
     expect(request.url).toBe(root + path + query);
     expect(request.method).toBe('POST');
     expect(request.headers.get('x-builder-proof')).toBe('synthetic-proof');
@@ -420,8 +411,6 @@ it.each([
       apiKey: { isBuilderKey: true, supportGasless: true, authorize },
       fetch: async (input, init) => {
         const request = new Request(input, init);
-        if (request.url.endsWith('/auth/api-keys'))
-          return Response.json({ apiKeys: [l2Credentials.key] });
         if (request.url.endsWith('/v1/auth/refresh'))
           return Response.json(pair);
         expect(request.url).toBe(root + path);
