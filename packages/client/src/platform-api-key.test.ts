@@ -9,16 +9,6 @@ import {
 } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as publicActions from './actions';
-import {
-  createApiKey,
-  createBuilderApiKey,
-  createOrDeriveApiKey,
-  deleteApiKey,
-  deriveApiKey,
-  fetchApiKeys,
-  fetchBuilderApiKeys,
-  revokeBuilderApiKey,
-} from './actions/auth';
 import { deployDepositWallet } from './actions/gasless';
 import type { SignedOrder } from './actions/orders/types';
 import {
@@ -84,16 +74,16 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps credential administration helpers out of the public actions entrypoint', () => {
+it('keeps removed credential operations out of the public actions entrypoint', () => {
   for (const name of [
+    'createApiKey',
+    'deriveApiKey',
+    'createOrDeriveApiKey',
     'fetchApiKeys',
     'deleteApiKey',
     'createBuilderApiKey',
     'fetchBuilderApiKeys',
-    'FetchApiKeysError',
-    'DeleteApiKeyError',
-    'CreateBuilderApiKeyError',
-    'FetchBuilderApiKeysError',
+    'revokeBuilderApiKey',
   ])
     expect(publicActions).not.toHaveProperty(name);
 });
@@ -715,212 +705,6 @@ it('retains signed order payloads, builder attribution and gasless deployment au
   await secure.closeSubscriptions();
 });
 
-describe('direct credential administration endpoints', () => {
-  const direct = 'https://direct-credentials.invalid';
-  const keyEnvironment = forkEnvironmentConfig({
-    name: 'mock-key-endpoints',
-    predictions: { rest: gateway },
-    clob: { rest: direct },
-  });
-  const owner = {
-    key: 'synthetic-owner-key',
-    secret: btoa('synthetic-owner-secret'),
-    passphrase: 'synthetic-owner-passphrase',
-  };
-  const l1 = { address: signerAddress, nonce: 7, signature, timestamp: 1_000 };
-
-  it.each([
-    'public',
-    'bearer',
-  ])('uses the direct service for explicit L1 requests on a %s client', async (kind) => {
-    const seen: Request[] = [];
-    let creates = 0;
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      if (request.url === `${gateway}/v1/auth/refresh`)
-        return Response.json(tokens());
-      seen.push(request);
-      expect(new URL(request.url).origin).toBe(direct);
-      expect(request.headers.has('authorization')).toBe(false);
-      expect(request.headers.has('x-api-key')).toBe(false);
-      expect(request.headers.has('POLY_API_KEY')).toBe(false);
-      expect(request.headers.has('POLY_BUILDER_API_KEY')).toBe(false);
-      expect(request.headers.get('POLY_ADDRESS')).toBe(signerAddress);
-      expect(request.headers.get('POLY_NONCE')).toBe('7');
-      expect(request.headers.get('POLY_TIMESTAMP')).toBe('1000');
-      expect(request.headers.get('POLY_SIGNATURE')).toBe(signature);
-      if (request.method === 'POST' && ++creates === 2)
-        return Response.json({ code: 'already_exists' }, { status: 400 });
-      return Response.json({
-        apiKey: owner.key,
-        secret: owner.secret,
-        passphrase: owner.passphrase,
-      });
-    });
-    const options = {
-      environment: keyEnvironment,
-      fetch,
-      apiKey: platformApiKey(key, {
-        legacyApiKey: builderApiKey(l2Credentials),
-      }),
-    };
-    const client =
-      kind === 'bearer'
-        ? await createSecureClient({
-            ...options,
-            signer: signer(),
-            wallet: signerAddress,
-            credentials: tokens(),
-          })
-        : createPublicClient(options);
-    try {
-      await expect(createApiKey(client, l1)).resolves.toEqual(owner);
-      await deriveApiKey(client, l1);
-      await createOrDeriveApiKey(client, l1);
-      expect(
-        seen.map((request) => [request.method, new URL(request.url).pathname]),
-      ).toEqual([
-        ['POST', '/auth/api-key'],
-        ['GET', '/auth/derive-api-key'],
-        ['POST', '/auth/api-key'],
-        ['GET', '/auth/derive-api-key'],
-      ]);
-    } finally {
-      if (client.isSecureClient()) {
-        client.closeAuthenticationSession();
-        await client.closeSubscriptions();
-      }
-    }
-  });
-
-  it('retains owner HMAC for L2 credential operations without platform headers', async () => {
-    const seen: Request[] = [];
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      seen.push(request);
-      expect(new URL(request.url).origin).toBe(direct);
-      expect(request.headers.has('authorization')).toBe(false);
-      expect(request.headers.has('x-api-key')).toBe(false);
-      expect(request.headers.has('POLY_BUILDER_API_KEY')).toBe(false);
-      expect(request.headers.get('POLY_API_KEY')).toBe(owner.key);
-      expect(request.headers.get('POLY_PASSPHRASE')).toBe(owner.passphrase);
-      const path = new URL(request.url).pathname;
-      expect(request.headers.get('POLY_SIGNATURE')).toBe(
-        createHmac('sha256', Buffer.from(owner.secret, 'base64'))
-          .update(
-            `${request.headers.get('POLY_TIMESTAMP')}${request.method}${path}`,
-          )
-          .digest('base64')
-          .replaceAll('+', '-')
-          .replaceAll('/', '_'),
-      );
-      if (path === '/auth/api-keys')
-        return Response.json({ apiKeys: [owner.key] });
-      if (request.method === 'DELETE') return Response.json('OK');
-      if (request.method === 'POST') return Response.json(l2Credentials);
-      return Response.json([l2Credentials.key]);
-    });
-    const client = await createSecureClient({
-      environment: keyEnvironment,
-      fetch,
-      signer: signer(),
-      wallet: signerAddress,
-      credentials: owner,
-      apiKey: platformApiKey(key),
-    });
-    await expect(fetchApiKeys(client)).resolves.toEqual([owner.key]);
-    await expect(createBuilderApiKey(client)).resolves.toEqual(l2Credentials);
-    await expect(fetchBuilderApiKeys(client)).resolves.toEqual([
-      { key: l2Credentials.key },
-    ]);
-    await deleteApiKey(client);
-    expect(
-      seen.map((request) => [request.method, new URL(request.url).pathname]),
-    ).toEqual([
-      ['GET', '/auth/api-keys'],
-      ['GET', '/auth/api-keys'],
-      ['POST', '/auth/builder-api-key'],
-      ['GET', '/auth/builder-api-key'],
-      ['DELETE', '/auth/api-key'],
-    ]);
-    await client.closeSubscriptions();
-  });
-
-  it('rejects unsupported bearer-only owner administration before dispatch', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      Response.json(tokens()),
-    );
-    const client = await createSecureClient({
-      environment: keyEnvironment,
-      fetch,
-      signer: signer(),
-      wallet: signerAddress,
-      credentials: tokens(),
-      apiKey: platformApiKey(key),
-    });
-    const before = fetch.mock.calls.length;
-    try {
-      for (const operation of [
-        fetchApiKeys,
-        deleteApiKey,
-        createBuilderApiKey,
-        fetchBuilderApiKeys,
-      ])
-        await expect(operation(client)).rejects.toMatchObject({
-          name: 'UserInputError',
-          message: expect.stringContaining('L2 key/secret/passphrase'),
-        });
-      expect(fetch).toHaveBeenCalledTimes(before);
-    } finally {
-      client.closeAuthenticationSession();
-      await client.closeSubscriptions();
-    }
-  });
-
-  it('revokes with builder self-authentication on the direct endpoint and requires a configured signer', async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      expect(request.url).toBe(`${direct}/auth/builder-api-key`);
-      expect(request.method).toBe('DELETE');
-      expect(request.headers.has('authorization')).toBe(false);
-      expect(request.headers.has('x-api-key')).toBe(false);
-      expect(request.headers.has('POLY_API_KEY')).toBe(false);
-      expect(request.headers.get('POLY_BUILDER_API_KEY')).toBe(
-        l2Credentials.key,
-      );
-      expect(request.headers.get('POLY_BUILDER_SIGNATURE')).toBe(
-        createHmac('sha256', Buffer.from(l2Credentials.secret, 'base64'))
-          .update(
-            `${request.headers.get('POLY_BUILDER_TIMESTAMP')}DELETE/auth/builder-api-key`,
-          )
-          .digest('base64')
-          .replaceAll('+', '-')
-          .replaceAll('/', '_'),
-      );
-      return Response.json('OK');
-    });
-    await revokeBuilderApiKey(
-      createPublicClient({
-        environment: keyEnvironment,
-        fetch,
-        apiKey: platformApiKey(key, {
-          legacyApiKey: builderApiKey(l2Credentials),
-        }),
-      }),
-    );
-    await expect(
-      revokeBuilderApiKey(
-        createPublicClient({
-          environment: keyEnvironment,
-          fetch,
-          apiKey: platformApiKey(key),
-        }),
-      ),
-    ).rejects.toMatchObject({ name: 'UserInputError' });
-    expect(fetch).toHaveBeenCalledTimes(1);
-  });
-});
-
 it.each([
   ['l2', 'headers'],
   ['bearer', 'headers'],
@@ -953,8 +737,6 @@ it.each([
       const request = new Request(input, init);
       if (request.url.endsWith('/v1/auth/refresh'))
         return Response.json({ ...tokens(), ...credentials });
-      if (request.url.endsWith('/auth/api-keys'))
-        return Response.json({ apiKeys: [l2Credentials.key] });
       return fetch(input, init);
     },
   });
