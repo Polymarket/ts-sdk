@@ -151,7 +151,7 @@ export function listTrades(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/trades', {
+      client.predictions.get('/v1/trades', {
         schema: ListTradesResponseSchema,
         ...requestOptions,
         // The full original filter set rides along with every cursor: the
@@ -272,7 +272,7 @@ export function listActivity(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/activity', {
+      client.predictions.get('/v1/activity', {
         schema: ListActivityResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({
@@ -365,7 +365,7 @@ export function listComboActivity(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/activity/combos', {
+      client.predictions.get('/v1/activity/combos', {
         schema: ListComboActivityResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({ ...params, limit: pageSize, cursor }),

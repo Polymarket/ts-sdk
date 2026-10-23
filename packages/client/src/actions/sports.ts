@@ -53,7 +53,7 @@ export async function listSports(
   options: RequestOptions = {},
 ): Promise<SportsMetadata[]> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma.get('/sports', {
+  return client.predictions.get('/v1/sports', {
     ...requestOptions,
     schema: ListSportsMetadataResponseSchema,
   });
@@ -96,7 +96,7 @@ export async function fetchSportsMarketTypes(
   options: RequestOptions = {},
 ): Promise<SportsMarketTypesResponse> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma.get('/sports/market-types', {
+  return client.predictions.get('/v1/sports/market-types', {
     ...requestOptions,
     schema: SportsMarketTypesResponseSchema,
   });

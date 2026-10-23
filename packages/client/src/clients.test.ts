@@ -603,7 +603,7 @@ function testTokens(wallet: string) {
 
 function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(wallet);
@@ -615,7 +615,7 @@ function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
 
 function mockUndeployedWallet(expectedWallet: EvmAddress) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(expectedWallet);
@@ -630,7 +630,7 @@ function mockDepositWalletDeployments(
   deployments: Array<{ wallet: EvmAddress; deployed: boolean }>,
 ) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
       const address = expectEvmAddress(url.searchParams.get('address') ?? '');
       const deployment = deployments.find(
@@ -651,7 +651,7 @@ function mockDeployDepositWallet() {
   const transactionHash = `0x${'1'.repeat(64)}`;
 
   server.use(
-    http.post(`${relayerRoot}/submit`, () => {
+    http.post(`${relayerRoot}/v1/wallets/transactions`, () => {
       state.called = true;
 
       return HttpResponse.json({
@@ -660,7 +660,7 @@ function mockDeployDepositWallet() {
         transactionID: transactionId,
       });
     }),
-    http.get(`${relayerRoot}/v1/account/transactions/${transactionId}`, () => {
+    http.get(`${relayerRoot}/v1/wallets/transactions/${transactionId}`, () => {
       state.transactionFetches += 1;
 
       return HttpResponse.json({
@@ -679,7 +679,7 @@ function mockDeployedWallet(expectedWallet: EvmAddress) {
   const state = { called: false };
 
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       state.called = true;
       const url = new URL(request.url);
 
