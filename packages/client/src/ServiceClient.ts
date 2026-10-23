@@ -2,7 +2,6 @@ import { ErrorResponseSchema } from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
 import ky, { type KyInstance } from 'ky';
 import { z } from 'zod';
-import { type ClientCredentials, ClientCredentialsSchema } from './credentials';
 import {
   makeErrorGuard,
   OrderHeartbeatMismatchError,
@@ -46,27 +45,8 @@ export type RequestHeadersResolver = (
   request: ServiceRequest,
 ) => Promise<HeadersInit>;
 
-/** Authentication policy supplied by the owning client. @internal */
-export type ServiceAuthentication = {
-  credentials: (signal?: AbortSignal) => Promise<ClientCredentials>;
-  headers: (
-    credentials: ClientCredentials,
-    request: ServiceRequest,
-  ) => HeadersInit | Promise<HeadersInit>;
-  /** Return true only when the rejected request can be replayed with accepted credentials. */
-  refreshToken: (
-    previousCredentials: ClientCredentials,
-    response: Response,
-    signal?: AbortSignal,
-  ) => Promise<boolean>;
-};
-
 export type ServiceClientConfig = {
-  /** Shared authentication callbacks configured by the owning client. @internal */
-  authentication?: ServiceAuthentication;
   fetch?: Fetch;
-  /** Disable automatic replay of mutation requests. @internal */
-  retryMutations?: false;
   /** Omit the endpoint root to create an empty client whose requests reject with UserInputError. */
   root?: string;
   headers?: HeadersInit;
@@ -304,30 +284,21 @@ function parseHttpDate(value: string, now: number): number | undefined {
  */
 export class ServiceClient {
   readonly #client?: KyInstance;
-  readonly #authentication?: ServiceAuthentication;
   readonly #headers?: HeadersInit;
   readonly #resolveHeaders?: RequestHeadersResolver;
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
   constructor(config: ServiceClientConfig) {
-    const {
-      root,
-      headers,
-      resolveHeaders,
-      onRateLimitUpdate,
-      fetch,
-      retryMutations,
-    } = config;
+    const { root, headers, resolveHeaders, onRateLimitUpdate, fetch } = config;
     if (root !== undefined) {
       this.#client = ky.create({
         prefixUrl: root,
         timeout: DEFAULT_REQUEST_TIMEOUT_MS,
         throwHttpErrors: false,
+        retry: 0,
         ...(fetch === undefined ? {} : { fetch }),
-        ...(retryMutations === false && { retry: { methods: ['get'] } }),
       });
     }
-    this.#authentication = config.authentication;
     this.#headers = headers;
     this.#resolveHeaders = resolveHeaders;
     this.#onRateLimitUpdate = onRateLimitUpdate;
@@ -478,10 +449,8 @@ export class ServiceClient {
         { responseType: options.responseType, schema: options.schema },
         ServiceClientResponseControlsSchema,
       );
-      const retries = readOnly
-        ? parseRequestOptions(options).retries
-        : undefined;
-      const response = await this.#send(method, path, options, retries);
+      if (readOnly) parseRequestOptions(options);
+      const response = await this.#send(method, path, options);
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(
         response.headers,
@@ -581,7 +550,6 @@ export class ServiceClient {
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
-    retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
     const client = this.#client;
@@ -591,97 +559,32 @@ export class ServiceClient {
       );
     }
     const request = this.#createRequest(method, path, options);
-    const authentication = this.#authentication;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      let credentials: ClientCredentials | undefined;
-      let authenticationHeaders: HeadersInit | undefined;
-      if (authentication !== undefined) {
-        credentials = parseUserInput(
-          await withAbort(
-            authentication.credentials(options.signal),
-            options.signal,
-          ),
-          ClientCredentialsSchema,
-        );
-        authenticationHeaders = await withAbort(
-          Promise.resolve(authentication.headers(credentials, request)),
-          options.signal,
-        );
-      }
-      const resolvedHeaders = await withAbort(
-        Promise.resolve(this.#resolveHeaders?.(request)),
-        options.signal,
-      );
-      assertNotAborted(options.signal);
-      const headers = this.#mergeHeaders(
-        this.#headers,
-        request.headers,
-        resolvedHeaders,
-        authenticationHeaders,
-      );
+    const resolvedHeaders = await withAbort(
+      Promise.resolve(this.#resolveHeaders?.(request)),
+      options.signal,
+    );
+    assertNotAborted(options.signal);
+    const headers = this.#mergeHeaders(
+      this.#headers,
+      request.headers,
+      resolvedHeaders,
+    );
 
-      if (request.body !== undefined && !headers.has('content-type')) {
-        headers.set('content-type', 'application/json');
-      }
-
-      const response = await withAbort(
-        client(this.#normalizePath(path), {
-          body: request.body,
-          headers,
-          method,
-          searchParams: request.params,
-          signal: options.signal,
-          ...(options.timeout !== undefined && { timeout: options.timeout }),
-          ...('retry' in options && options.retry === false && { retry: 0 }),
-          ...(retries !== undefined && {
-            // One transport-owned counter covers both network failures and 429s.
-            // A new call (including each page) starts with a fresh counter.
-            retry: { limit: retries, methods: [method.toLowerCase()] },
-            hooks: {
-              afterResponse: [
-                (_request, _options, response, { retryCount }) => {
-                  if (
-                    options.responseType === 'raw' ||
-                    response.status !== 429 ||
-                    retryCount >= retries
-                  )
-                    return;
-                  const delaySeconds =
-                    this.#parseRetryAfterHeader(response) ?? 1;
-                  // Never retry earlier than the server asks. Leave long waits to callers.
-                  if (delaySeconds > 5) return;
-                  const rateLimit = parseRateLimitHeaders(
-                    response.headers,
-                    options.rateLimitBucket,
-                  );
-                  if (rateLimit !== undefined)
-                    this.#notifyRateLimitUpdate(rateLimit);
-                  return ky.retry({ delay: delaySeconds * 1000 });
-                },
-              ],
-            },
-          }),
-        }),
-        options.signal,
-      );
-      if (
-        response.status !== 401 ||
-        authentication === undefined ||
-        credentials === undefined ||
-        attempt === 1
-      )
-        return response;
-      const refreshed = await withAbort(
-        authentication.refreshToken(
-          credentials,
-          response.clone(),
-          options.signal,
-        ),
-        options.signal,
-      );
-      if (!refreshed) return response;
+    if (request.body !== undefined && !headers.has('content-type')) {
+      headers.set('content-type', 'application/json');
     }
-    throw new TransportError('Authentication recovery failed.');
+
+    return withAbort(
+      client(this.#normalizePath(path), {
+        body: request.body,
+        headers,
+        method,
+        searchParams: request.params,
+        signal: options.signal,
+        ...(options.timeout !== undefined && { timeout: options.timeout }),
+      }),
+      options.signal,
+    );
   }
 
   #createRequest(
@@ -699,10 +602,7 @@ export class ServiceClient {
       headers: options.headers,
       json: 'json' in options ? options.json : undefined,
       method,
-      params:
-        'params' in options && options.params !== undefined
-          ? new URLSearchParams(options.params)
-          : undefined,
+      params: 'params' in options ? options.params : undefined,
       path,
     };
   }

@@ -3,6 +3,6 @@
 '@polymarket/bindings': minor
 ---
 
-Configure internal service authentication callbacks through the owning client.
+Add a separate callback-only AuthenticatedServiceClient. Restore ServiceClient to plain HTTP behavior and disable automatic transport retries.
 
-Accept saved API-key credentials or a complete bearer pair, with class-supplied headers and recovery policy. Reject mixed authentication mechanisms without implicit migration.
+Owning clients resolve all authentication headers and accept refresh results; the transport stores no credentials and permits one bounded replay. Shared credential schemas still reject mixed authentication mechanisms without implicit migration.

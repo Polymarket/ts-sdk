@@ -16,7 +16,6 @@ import { createPublicClient } from './clients';
 import { OrderHeartbeatMismatchError, RequestRejectedError } from './errors';
 import { buildHmacSignature } from './hmac';
 import { GatewayKnownErrorCode } from './index';
-import { paginate } from './pagination';
 import { ServiceClient, type ServiceRequest } from './ServiceClient';
 
 const root = 'http://localhost:4011';
@@ -223,32 +222,39 @@ describe('ServiceClient', () => {
     );
   });
 
-  describe('per-request read retry budgets', () => {
-    it('gives each retry a fresh timeout and excludes retry waits', async () => {
-      vi.useFakeTimers();
-      vi.setSystemTime(0);
-      const starts: number[] = [];
+  describe('disabled transport retries', () => {
+    it.each([
+      ['get', 429],
+      ['post', 'network'],
+      ['patch', 503],
+      ['del', 'network'],
+    ] as const)('sends one %s attempt for %s failures', async (method, failure) => {
       const fetch = vi.fn<typeof globalThis.fetch>(async () => {
-        starts.push(Date.now());
-        await new Promise((resolve) => setTimeout(resolve, 20_000));
-        if (starts.length === 1) {
-          return new Response(null, {
-            status: 429,
-            headers: { 'retry-after': '1' },
-          });
-        }
-        if (starts.length === 2) throw new TypeError('connection reset');
-        return Response.json({ ok: true });
+        if (failure === 'network') throw new TypeError('connection lost');
+        return new Response(null, {
+          status: failure,
+          headers: { 'retry-after': '0' },
+        });
       });
-      const result = new ServiceClient({ root, fetch }).get('/read', {
-        retries: 2,
+      const client = new ServiceClient({ root, fetch });
+      const result =
+        method === 'get'
+          ? client.get('/once')
+          : method === 'post'
+            ? client.post('/once')
+            : method === 'patch'
+              ? client.patch('/once')
+              : client.del('/once');
+      await expect(result).rejects.toMatchObject({
+        name:
+          failure === 'network'
+            ? 'TransportError'
+            : failure === 429
+              ? 'RateLimitError'
+              : 'RequestRejectedError',
       });
-      await vi.runAllTimersAsync();
-      await expect(result).resolves.toEqual({ ok: true });
-      expect(starts).toEqual([0, 21_000, 41_600]);
-      expect(Date.now()).toBe(61_600);
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
-
     it('does not retry a timeout even with a remaining read retry budget', async () => {
       vi.useFakeTimers();
       const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise(() => {}));
@@ -263,63 +269,6 @@ describe('ServiceClient', () => {
       expect(fetch).toHaveBeenCalledTimes(1);
       expect(vi.getTimerCount()).toBe(0);
     });
-
-    it.each([
-      undefined,
-      0,
-      1,
-      2,
-      3,
-      4,
-      5,
-    ])('shares retries=%s across alternating transport failures and rate limits', async (retries) => {
-      vi.useFakeTimers();
-      let attempts = 0;
-      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
-        attempts++;
-        if (attempts % 2 === 1) throw new TypeError('connection reset');
-        return new Response(null, {
-          status: 429,
-          headers: { 'retry-after': '0' },
-        });
-      });
-      const client = new ServiceClient({ root, fetch });
-      const result = client
-        .get('/read', { retries, timeout: false })
-        .catch((error: unknown) => error);
-      await vi.runAllTimersAsync();
-      expect(attempts).toBe(1 + (retries ?? 2));
-      expect(await result).toMatchObject({
-        name: attempts % 2 === 1 ? 'TransportError' : 'RateLimitError',
-      });
-    });
-
-    it.each([
-      'get',
-      'postRead',
-    ] as const)('recovers through one shared budget for %s reads', async (method) => {
-      vi.useFakeTimers();
-      const fetch = vi
-        .fn<typeof globalThis.fetch>()
-        .mockResolvedValueOnce(
-          new Response(null, { status: 429, headers: { 'retry-after': '0' } }),
-        )
-        .mockRejectedValueOnce(new TypeError('connection reset'))
-        .mockResolvedValueOnce(Response.json({ count: '42' }));
-      const client = new ServiceClient({ root, fetch });
-      const options = {
-        retries: 2,
-        schema: z.object({ count: z.string().transform(Number) }),
-      };
-      const result =
-        method === 'get'
-          ? client.get('/read', options)
-          : client.postRead('/read', options);
-      await vi.runAllTimersAsync();
-      expect(await result).toEqual({ count: 42 });
-      expect(fetch).toHaveBeenCalledTimes(3);
-    });
-
     it.each([
       -1,
       6,
@@ -338,167 +287,6 @@ describe('ServiceClient', () => {
       ).rejects.toMatchObject({ name: 'UserInputError' });
       expect(fetch).not.toHaveBeenCalled();
       expect(resolveHeaders).not.toHaveBeenCalled();
-    });
-
-    it.each([
-      undefined,
-      '2',
-      '6',
-    ])('honors the server delay %s or surfaces long waits', async (retryAfter) => {
-      vi.useFakeTimers();
-      const fetch = vi
-        .fn<typeof globalThis.fetch>()
-        .mockResolvedValueOnce(
-          new Response(null, {
-            status: 429,
-            headers:
-              retryAfter === undefined ? {} : { 'retry-after': retryAfter },
-          }),
-        )
-        .mockResolvedValueOnce(Response.json('served'));
-      const client = new ServiceClient({ root, fetch });
-      const result = client
-        .get('/read', { timeout: false })
-        .catch((error: unknown) => error);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fetch).toHaveBeenCalledTimes(1);
-      if (retryAfter === '6') {
-        expect(await result).toMatchObject({
-          name: 'RateLimitError',
-          retryAfter: 6,
-        });
-        expect(vi.getTimerCount()).toBe(0);
-      } else {
-        const delay = Number(retryAfter ?? '1') * 1000;
-        await vi.advanceTimersByTimeAsync(delay - 1);
-        expect(fetch).toHaveBeenCalledTimes(1);
-        await vi.advanceTimersByTimeAsync(1);
-        expect(await result).toBe('served');
-        expect(fetch).toHaveBeenCalledTimes(2);
-      }
-    });
-
-    it('cancels a rate-limit wait without spending another attempt', async () => {
-      vi.useFakeTimers();
-      const controller = new AbortController();
-      const fetch = vi.fn<typeof globalThis.fetch>(
-        async () => new Response(null, { status: 429 }),
-      );
-      const client = new ServiceClient({ root, fetch });
-      const result = client
-        .get('/read', { signal: controller.signal, timeout: false })
-        .catch((error: unknown) => error);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(vi.getTimerCount()).toBe(1);
-      controller.abort('query replaced');
-      expect(await result).toMatchObject({
-        name: 'RequestAbortedError',
-        cause: 'query replaced',
-      });
-      await vi.runAllTimersAsync();
-      expect(fetch).toHaveBeenCalledTimes(1);
-      expect(vi.getTimerCount()).toBe(0);
-    });
-
-    it('gives concurrent requests independent budgets', async () => {
-      vi.useFakeTimers();
-      const attempts = new Map<string, number>();
-      const client = new ServiceClient({
-        root,
-        fetch: async (input) => {
-          const path = new URL(new Request(input).url).pathname;
-          attempts.set(path, (attempts.get(path) ?? 0) + 1);
-          return new Response(null, {
-            status: 429,
-            headers: { 'retry-after': '0' },
-          });
-        },
-      });
-      const results = Promise.all([
-        client.get('/once', { retries: 0 }).catch((error: unknown) => error),
-        client.get('/retry', { retries: 2 }).catch((error: unknown) => error),
-      ]);
-      await vi.runAllTimersAsync();
-      expect(await results).toEqual([
-        expect.objectContaining({ name: 'RateLimitError' }),
-        expect.objectContaining({ name: 'RateLimitError' }),
-      ]);
-      expect(Object.fromEntries(attempts)).toEqual({ '/once': 1, '/retry': 3 });
-    });
-
-    it('starts a fresh budget for each pagination request and continuation', async () => {
-      vi.useFakeTimers();
-      let attempts = 0;
-      const client = new ServiceClient({
-        root,
-        fetch: async (input) => {
-          attempts++;
-          if (attempts % 2 === 1) throw new TypeError('connection reset');
-          const cursor = new URL(new Request(input).url).searchParams.get(
-            'cursor',
-          );
-          return Response.json(
-            cursor === null
-              ? { items: ['first'], hasMore: true, nextCursor: 'next-page' }
-              : { items: ['second'], hasMore: false },
-          );
-        },
-      });
-      const pages = paginate((cursor) =>
-        client.get('/page', {
-          params: new URLSearchParams(cursor === undefined ? {} : { cursor }),
-          schema: z.object({
-            items: z.array(z.string()),
-            hasMore: z.boolean(),
-            nextCursor: PaginationCursorSchema.optional(),
-          }),
-          retries: 1,
-        }),
-      );
-      const first = pages.firstPage();
-      await vi.runAllTimersAsync();
-      const firstPage = await first;
-      expect(firstPage.items).toEqual(['first']);
-      const continuation = (async () => {
-        const items: string[] = [];
-        for await (const page of pages.from(firstPage.nextCursor))
-          items.push(...page.items);
-        return items;
-      })();
-      await vi.runAllTimersAsync();
-      expect(await continuation).toEqual(['second']);
-      expect(attempts).toBe(4);
-    });
-  });
-  describe('workflow GET retry policy', () => {
-    it('surfaces rate limits without replaying a GET command', async () => {
-      const fetch = vi.fn<typeof globalThis.fetch>(
-        async () =>
-          new Response(null, { status: 429, headers: { 'retry-after': '0' } }),
-      );
-      const client = new ServiceClient({ root, fetch });
-      await expect(
-        client.getWorkflow('/balance-allowance/update', {
-          responseType: 'empty',
-        }),
-      ).rejects.toMatchObject({ name: 'RateLimitError', retryAfter: 0 });
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('retains existing transport recovery for workflow GETs', async () => {
-      vi.useFakeTimers();
-      const fetch = vi
-        .fn<typeof globalThis.fetch>()
-        .mockRejectedValueOnce(new TypeError('connection reset'))
-        .mockRejectedValueOnce(new TypeError('connection reset'))
-        .mockResolvedValueOnce(Response.json({ ok: true }));
-      const client = new ServiceClient({ root, fetch });
-      const result = client.getWorkflow('/workflow', {
-        schema: z.object({ ok: z.boolean() }),
-      });
-      await vi.runAllTimersAsync();
-      expect(await result).toEqual({ ok: true });
-      expect(fetch).toHaveBeenCalledTimes(3);
     });
   });
   describe('gateway error and retry policy', () => {
@@ -552,25 +340,6 @@ describe('ServiceClient', () => {
         name: 'TransportError',
         cause: failure,
       });
-      expect(fetch).toHaveBeenCalledTimes(1);
-    });
-
-    it('retains safe GET transport retries and explicit retry opt-out', async () => {
-      vi.useFakeTimers();
-      const fetch = vi.fn<typeof globalThis.fetch>(async () => {
-        throw new TypeError('connection dropped');
-      });
-      const client = createPublicClient({ fetch });
-      const result = client.predictions
-        .get('/ping')
-        .catch((error: unknown) => error);
-      await vi.advanceTimersByTimeAsync(1_000);
-      expect(await result).toMatchObject({ name: 'TransportError' });
-      expect(fetch).toHaveBeenCalledTimes(3);
-      fetch.mockClear();
-      await expect(
-        client.predictions.get('/ping', { retries: 0 }),
-      ).rejects.toMatchObject({ name: 'TransportError' });
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 
@@ -891,42 +660,6 @@ describe('ServiceClient', () => {
       await Promise.resolve();
       expect(fetch).toHaveBeenCalledOnce();
       expect(transform).not.toHaveBeenCalled();
-    });
-
-    it('cancels a transport retry backoff without any subsequent dispatch', async () => {
-      vi.useFakeTimers();
-      const controller = new AbortController();
-      const reason = new Error('retry no longer wanted');
-      let requestSignal: AbortSignal | null | undefined;
-      const fetch = vi.fn(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
-          requestSignal =
-            input instanceof Request ? input.signal : init?.signal;
-          throw new TypeError('connection reset');
-        },
-      );
-      const client = new ServiceClient({ root, fetch });
-      const pending = client.get('/backoff', {
-        signal: controller.signal,
-        timeout: false,
-      });
-      const rejection = expect(pending).rejects.toMatchObject({
-        name: 'RequestAbortedError',
-        cause: reason,
-      });
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fetch).toHaveBeenCalledOnce();
-      // With request timeout disabled, the pending timer is the retry backoff.
-      expect(vi.getTimerCount()).toBe(1);
-      await vi.advanceTimersByTimeAsync(100);
-      expect(fetch).toHaveBeenCalledOnce();
-      controller.abort(reason);
-      await rejection;
-      expect(requestSignal?.aborted).toBe(true);
-      expect(requestSignal?.reason).toBe(reason);
-      await vi.advanceTimersByTimeAsync(10_000);
-      expect(fetch).toHaveBeenCalledOnce();
-      expect(vi.getTimerCount()).toBe(0);
     });
 
     it('isolates cancellation between concurrent body consumers on one client', async () => {
@@ -1293,7 +1026,7 @@ describe('ServiceClient', () => {
 
   it.each([
     [0, 1],
-    [undefined, 3],
+    [undefined, 1],
   ])('uses retries=%s for transport failures (%i attempts)', async (retries, attempts) => {
     let requests = 0;
     server.use(
@@ -2097,5 +1830,3 @@ describe('ServiceClient', () => {
     });
   });
 });
-
-import { PaginationCursorSchema } from '@polymarket/bindings';
