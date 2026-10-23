@@ -61,7 +61,7 @@ import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
-import { protectRequestErrors } from './request-errors';
+import { protectRequestErrors, redactRequestError } from './request-errors';
 import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { RequestHeadersResolver, ServiceRequest } from './ServiceClient';
@@ -363,7 +363,7 @@ function createPredictionsService(
 ): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
-    fetch: config.fetch,
+    fetch: protectRequestErrors(config.fetch),
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
     onRateLimitUpdate: config.onRateLimitUpdate,
@@ -394,7 +394,7 @@ class BasePublicClient<
       ),
       auth: createAuthService(config),
       credentialManagement: new ServiceClient({
-        fetch: config.fetch,
+        fetch: protectRequestErrors(config.fetch, true),
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         headers: config.environment.clob.headers,
@@ -739,8 +739,15 @@ class BaseSecureClient<
               }),
           })
         : undefined;
+    const ownedSecrets = () =>
+      Object.values(session?.credentials ?? l2Credentials ?? {});
+    const protectedFetch = protectRequestErrors(
+      config.fetch,
+      false,
+      ownedSecrets,
+    );
     predictions = new AuthenticatedServiceClient({
-      fetch: protectRequestErrors(config.fetch),
+      fetch: protectedFetch,
       headers: config.environment.predictions.headers,
       root: config.environment.predictions.rest,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -769,14 +776,14 @@ class BaseSecureClient<
       predictions,
       auth,
       credentialManagement: new ServiceClient({
-        fetch: config.fetch,
+        fetch: protectRequestErrors(config.fetch, true, ownedSecrets),
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         headers: config.environment.clob.headers,
         resolveHeaders: (request) => this.resolveCredentialHeaders(request),
       }),
       clob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
@@ -787,7 +794,7 @@ class BaseSecureClient<
           ),
       }),
       relayer: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.relayer.headers,
         root: config.environment.relayer.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
@@ -801,21 +808,21 @@ class BaseSecureClient<
         fetch: config.fetch,
       }),
       gamma: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       data: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.data.headers,
         root: config.environment.data.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       rfq: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.combos.headers,
         root: config.environment.combos.rest,
@@ -827,7 +834,7 @@ class BaseSecureClient<
         root: config.environment.perps.rest,
       }),
       secureClob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: async (request) => {
@@ -846,7 +853,7 @@ class BaseSecureClient<
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       combos: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.combos.collateralReturn.headers,
         resolveHeaders: (request) =>
           this.resolveSecureHeaders(request, (request) =>
@@ -856,7 +863,7 @@ class BaseSecureClient<
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       builderGateway: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.combos.builderGateway.headers,
         resolveHeaders: async (request) => {
           const headers = new Headers(
@@ -942,7 +949,7 @@ class BaseSecureClient<
         ))
           headers.set(key, value);
       }
-      return headers;
+      return resolveGatewayHeaders(context, request, headers);
     });
   }
 
@@ -950,22 +957,30 @@ class BaseSecureClient<
     request: ServiceRequest,
     resolveHeaders?: RequestHeadersResolver,
   ): Promise<HeadersInit> {
-    const session = (
-      request.path.startsWith('/v1/auth/') ? super.context : this.context
-    ).session;
-    const credentials =
-      session === undefined
-        ? undefined
-        : request.path.startsWith('/v1/auth/')
-          ? session.credentials
-          : await session.ready(request.signal);
-    const headers = new Headers(await resolveHeaders?.(request));
-    if (credentials !== undefined) {
-      headers.set('Authorization', `Bearer ${credentials.accessToken}`);
-      if (request.signal !== undefined)
-        this.#requestTokens.set(request.signal, credentials.accessToken);
+    const context = request.path.startsWith('/v1/auth/')
+      ? super.context
+      : this.context;
+    const session = context.session;
+    try {
+      const credentials =
+        session === undefined
+          ? undefined
+          : request.path.startsWith('/v1/auth/')
+            ? session.credentials
+            : await session.ready(request.signal);
+      const headers = new Headers(await resolveHeaders?.(request));
+      if (credentials !== undefined) {
+        headers.set('Authorization', `Bearer ${credentials.accessToken}`);
+        if (request.signal !== undefined)
+          this.#requestTokens.set(request.signal, credentials.accessToken);
+      }
+      return headers;
+    } catch (error) {
+      throw redactRequestError(
+        error,
+        Object.values(session?.credentials ?? context.l2Credentials ?? {}),
+      );
     }
-    return headers;
   }
 
   protected async refreshTokens(signal?: AbortSignal): Promise<boolean> {
