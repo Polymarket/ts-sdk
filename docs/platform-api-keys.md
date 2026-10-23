@@ -122,8 +122,8 @@ Deterministic tests verify the SDK contract and module boundaries. Deployed key 
 
 ## Credential administration
 
-Trading credential administration uses the configured direct `clob.rest` endpoint, not the gateway. `createApiKey` and `deriveApiKey` take an explicit L1-signed request. Listing/deleting owner credentials and creating/listing builder credentials require a client restored with L2 key/secret/passphrase credentials; bearer-only clients reject these operations locally with `UserInputError`. No implicit derivation or migration occurs. The gateway has no bearer credential-administration routes.
+Standalone trading-key and builder-key creation, derivation and management actions are no longer exposed. Supply externally managed L2 credentials or use gateway bearer login. L2 restoration checks input locally, without verifying the key's remote validity or ownership. Ending an L2 client closes local consumers and does not revoke its key. Manage those keys outside the SDK; explicit L2-to-bearer migration remains available through the gateway.
 
-`revokeBuilderApiKey` instead uses the configured builder signing adapter, including `legacyApiKey` when wrapped by a platform adapter. It requires no owner HMAC credentials. Platform keys and bearer tokens are not attached to direct credential-administration requests. Configure `clob.rest` for the same environment as your credentials; overriding `predictions.rest` alone does not change it.
+Configuring existing builder and relayer keys for request headers remains supported.
 
 Client credentials are discriminated by `type`: use `credentials.key` for the current bearer access token or L2 API-key identifier. The session trading identity supplies order payload ownership independently. Supported actions use Predictions; direct compatibility clients do not receive platform-key headers.
