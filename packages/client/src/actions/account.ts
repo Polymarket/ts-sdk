@@ -639,10 +639,12 @@ export async function updateBalanceAllowance(
     snakeCase(),
   );
 
-  await client.predictions.post('/v1/me/balance-allowances/refresh', {
-    responseType: 'empty',
-    params: searchParams,
-  });
+  await client.predictions.post(
+    `/v1/me/balance-allowances/refresh?${searchParams}`,
+    {
+      responseType: 'empty',
+    },
+  );
 
   return fetchBalanceAllowance(client, params);
 }
