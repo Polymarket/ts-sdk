@@ -53,6 +53,7 @@ export type * from '@polymarket/bindings/relayer';
 export type {
   AuthenticatedServiceClient,
   AuthenticatedServiceClientConfig,
+  AuthenticatedServiceClientPostOptions,
 } from './AuthenticatedServiceClient';
 export * from './abis';
 export { SearchSort } from './actions';

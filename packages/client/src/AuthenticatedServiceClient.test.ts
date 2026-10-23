@@ -1,7 +1,8 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 
 const root = 'https://offline.invalid/prefix';
+afterEach(() => vi.useRealTimers());
 
 it('re-resolves combined headers once and preserves the exact request on replay', async () => {
   const params = new URLSearchParams({ original: 'value' });
@@ -53,14 +54,14 @@ it.each([
   const refreshToken = vi.fn(async () => accepted);
   const fetch = vi.fn(async () =>
     Response.json(
-      { code: 'invalid_token', message: 'rejected' },
+      { code: 'expired_access_token', message: 'rejected' },
       { status: 401 },
     ),
   );
   const service = new AuthenticatedServiceClient({ root, fetch, refreshToken });
   await expect(service.get('/private')).rejects.toMatchObject({
     status: 401,
-    code: 'invalid_token',
+    code: 'expired_access_token',
   });
   expect(refreshToken).toHaveBeenCalledTimes(1);
   expect(fetch).toHaveBeenCalledTimes(accepted ? 2 : 1);
@@ -79,7 +80,9 @@ it.each([
       await stalled.promise;
     }
   };
-  const fetch = vi.fn(async () => Response.json({}, { status: 401 }));
+  const fetch = vi.fn(async () =>
+    Response.json({ code: 'expired_access_token' }, { status: 401 }),
+  );
   const service = new AuthenticatedServiceClient({
     root,
     fetch,
@@ -104,9 +107,14 @@ it.each([
 });
 
 it('does not recursively recover a refresh request through the same transport', async () => {
-  const fetch = vi.fn(async () =>
+  const fetch = vi.fn(async (input: RequestInfo | URL) =>
     Response.json(
-      { code: 'invalid_refresh_token', message: 'Refresh rejected' },
+      {
+        code: new Request(input).url.endsWith('/v1/auth/refresh')
+          ? 'invalid_refresh_token'
+          : 'expired_access_token',
+        message: 'Refresh rejected',
+      },
       { status: 401 },
     ),
   );
@@ -123,4 +131,55 @@ it('does not recursively recover a refresh request through the same transport', 
   });
   expect(refreshToken).toHaveBeenCalledTimes(1);
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it('excludes header and refresh waits from the per-attempt HTTP timeout', async () => {
+  vi.useFakeTimers();
+  const headers = Promise.withResolvers<HeadersInit>();
+  const refreshed = Promise.withResolvers<boolean>();
+  const fetch = vi.fn(async () =>
+    fetch.mock.calls.length === 1
+      ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+      : Response.json('accepted'),
+  );
+  const service = new AuthenticatedServiceClient({
+    root,
+    fetch,
+    resolveHeaders: () => headers.promise,
+    refreshToken: () => refreshed.promise,
+  });
+  const pending = service.get('/private', { timeout: 50 });
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(fetch).not.toHaveBeenCalled();
+  headers.resolve({});
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(fetch).toHaveBeenCalledTimes(1);
+  refreshed.resolve(true);
+  await expect(pending).resolves.toBe('accepted');
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('applies the HTTP timeout to the replay attempt and removes its timer', async () => {
+  vi.useFakeTimers();
+  const fetch = vi.fn(async () =>
+    fetch.mock.calls.length === 1
+      ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+      : new Promise<Response>(() => {}),
+  );
+  const service = new AuthenticatedServiceClient({
+    root,
+    fetch,
+    refreshToken: async () => true,
+  });
+  const rejected = expect(
+    service.get('/private', { timeout: 50 }),
+  ).rejects.toMatchObject({
+    name: 'TransportError',
+    cause: { name: 'TimeoutError' },
+  });
+  await vi.advanceTimersByTimeAsync(50);
+  await rejected;
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(vi.getTimerCount()).toBe(0);
 });
