@@ -99,8 +99,6 @@ type PublicContext = {
   predictions: ServiceClient;
   /** @internal */
   auth: ServiceClient;
-  /** @internal Direct service for credential administration; never uses bearer or platform authentication. */
-  credentialManagement: ServiceClient;
   /** @internal */
   clob: ServiceClient;
   /** @internal */
@@ -181,11 +179,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get credentialManagement(): ServiceClient {
-    return this.context.credentialManagement;
-  }
-
-  /** @internal */
   get clob(): ServiceClient {
     return this.context.clob;
   }
@@ -249,15 +242,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
         signal: request.signal,
       });
     }
-    return Promise.resolve({});
-  }
-
-  protected resolveCredentialHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    // Builder-key revocation authenticates as the builder, not as its owner.
-    if (request.path === '/auth/builder-api-key' && request.method === 'DELETE')
-      return this.resolveClobHeaders(request);
     return Promise.resolve({});
   }
 
@@ -379,13 +363,7 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
-      credentialManagement: new ServiceClient({
-        fetch: protectRequestErrors(config.fetch, true),
-        onRateLimitUpdate: config.onRateLimitUpdate,
-        root: config.environment.clob.rest,
-        headers: config.environment.clob.headers,
-        resolveHeaders: (request) => this.resolveCredentialHeaders(request),
-      }),
+
       data: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.data.headers,
@@ -673,13 +651,7 @@ class BaseSecureClient<
       signer: config.signer,
       predictions,
       auth,
-      credentialManagement: new ServiceClient({
-        fetch: protectRequestErrors(config.fetch, true, ownedSecrets),
-        onRateLimitUpdate: config.onRateLimitUpdate,
-        root: config.environment.clob.rest,
-        headers: config.environment.clob.headers,
-        resolveHeaders: (request) => this.resolveCredentialHeaders(request),
-      }),
+
       clob: new AuthenticatedServiceClient({
         fetch: protectedFetch,
         headers: config.environment.clob.headers,
@@ -1108,21 +1080,6 @@ class BaseSecureClient<
       });
     }
     return {};
-  }
-  protected override resolveCredentialHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    const { l2Credentials } = this.context;
-    const ownerAuthentication =
-      request.path === '/auth/api-keys' ||
-      (request.path === '/auth/api-key' && request.method === 'DELETE') ||
-      (request.path === '/auth/builder-api-key' && request.method !== 'DELETE');
-    if (!ownerAuthentication) return super.resolveCredentialHeaders(request);
-    if (l2Credentials === undefined)
-      throw new UserInputError(
-        'This credential operation requires a client authenticated with L2 key/secret/passphrase credentials. Bearer-only credential administration is not supported.',
-      );
-    return this.#createL2Headers(request);
   }
 
   async #createL2Headers(request: ServiceRequest): Promise<HeadersInit> {

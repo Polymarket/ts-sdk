@@ -1,7 +1,5 @@
 ---
-"@polymarket/client": minor
+"@polymarket/client": patch
 ---
 
-Remove the public `fetchApiKeys`, `deleteApiKey`, `createBuilderApiKey` and `fetchBuilderApiKeys` actions and their error exports. Saved L2 sessions retain internal credential validation and logout revocation.
-
-Preserve generic messages for unexpected sensitive transport failures, including failures that contain a credential requiring redaction.
+Keep authentication transport diagnostics generic for untyped failures and redact credential values while preserving safe typed errors.
