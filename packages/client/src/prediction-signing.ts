@@ -11,6 +11,55 @@ type SigningRoute = readonly [
 // Request bodies stay unchanged; authentication covers the service's canonical method and path.
 const SIGNING_ROUTES: readonly SigningRoute[] = [
   [
+    'POST',
+    '/v1/combos/builder/requests',
+    'POST',
+    '/v1/builder/rfq/requests',
+    'clob',
+    true,
+  ],
+  [
+    'POST',
+    '/v1/combos/builder/requests/{rfq_id}/accept',
+    'POST',
+    '/v1/builder/rfq/requests/{rfq_id}/accept',
+    'clob',
+    true,
+  ],
+  [
+    'GET',
+    '/v1/combos/builder/requests/{rfq_id}',
+    'GET',
+    '/v1/builder/rfq/requests/{rfq_id}',
+    'clob',
+    true,
+  ],
+  [
+    'GET',
+    '/v1/me/session-signers',
+    'GET',
+    '/v1/user/session-signers',
+    'clob',
+    true,
+  ],
+  [
+    'POST',
+    '/v1/wallets/session-signers/authorizations',
+    'POST',
+    '/v1/session-signers/authorizations',
+    'relayer',
+    true,
+  ],
+  [
+    'POST',
+    '/v1/wallets/session-signers/revocations',
+    'POST',
+    '/v1/session-signers/revocations',
+    'relayer',
+    true,
+  ],
+
+  [
     'GET',
     '/v1/me/trading-status',
     'GET',
