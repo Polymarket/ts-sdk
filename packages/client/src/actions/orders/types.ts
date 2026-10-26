@@ -28,6 +28,14 @@ export type PrepareMarketBuyOrderRequest =
       /**
        * Desired USD notional to buy, before market and builder taker fees.
        * Fees are paid on top unless `maxSpend` limits the all-in spend.
+       *
+       * The signed spend divided by the signed share count equals the order
+       * price exactly. Spend is in whole cents and shares use the market's
+       * share precision, so at a given price the spend moves in fixed steps.
+       * The SDK signs the largest step within this amount, so part of it may
+       * go unspent. Throws UserInputError, naming the smallest amount that
+       * works, if no step fits or the steps fall below the 1 USD minimum for a
+       * marketable BUY.
        */
       amount: number | string;
       /**
@@ -37,8 +45,7 @@ export type PrepareMarketBuyOrderRequest =
       maxSpend?: number | string;
       /**
        * Highest acceptable execution price per share; the order only fills at
-       * this price or better. Throws UserInputError if amount precision cannot
-       * preserve this bound after refreshing market metadata once.
+       * this price or better. The signed order encodes exactly this price.
        */
       maxPrice?: number | string;
       /** Optional builder attribution code. */
@@ -55,6 +62,14 @@ export type PrepareMarketBuyOrderRequest =
       /**
        * Desired USD notional to buy, before market and builder taker fees.
        * Fees are paid on top unless `maxSpend` limits the all-in spend.
+       *
+       * The signed spend divided by the signed share count equals the order
+       * price exactly. Spend is in whole cents and shares use the market's
+       * share precision, so at a given price the spend moves in fixed steps.
+       * The SDK signs the largest step within this amount, so part of it may
+       * go unspent. Throws UserInputError, naming the smallest amount that
+       * works, if no step fits or the steps fall below the 1 USD minimum for a
+       * marketable BUY.
        */
       amount: number | string;
       /**
@@ -64,8 +79,7 @@ export type PrepareMarketBuyOrderRequest =
       maxSpend?: number | string;
       /**
        * Highest acceptable execution price per share; the order only fills at
-       * this price or better. Throws UserInputError if amount precision cannot
-       * preserve this bound after refreshing market metadata once.
+       * this price or better. The signed order encodes exactly this price.
        */
       maxPrice?: number | string;
       /** Optional builder attribution code. */
