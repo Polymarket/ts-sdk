@@ -206,3 +206,44 @@ it('preserves serialized JSON bytes without rounding numbers on dispatch or repl
   await service.post('/private', { json });
   expect(bodies).toEqual([expected, expected]);
 });
+
+it.each([
+  'get',
+  'postRead',
+] as const)('preserves opt-in read retries for %s', async (method) => {
+  const fetch = vi
+    .fn(async () => Response.json('accepted'))
+    .mockRejectedValueOnce(new TypeError('Network request failed'));
+  const service = new AuthenticatedServiceClient({
+    root,
+    fetch,
+    refreshToken: async () => false,
+  });
+  const options =
+    method === 'postRead' ? { retries: 1, json: ['1'] } : { retries: 1 };
+  await expect(service[method]('/batch', options)).resolves.toBe('accepted');
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it.each([
+  'get',
+  'postRead',
+] as const)('does not spend the %s read retry budget on HTTP timeouts', async (method) => {
+  vi.useFakeTimers();
+  const fetch = vi.fn(async () => new Promise<Response>(() => {}));
+  const service = new AuthenticatedServiceClient({
+    root,
+    fetch,
+    refreshToken: async () => false,
+  });
+  const options = { retries: 1, timeout: 50 };
+  const rejected = expect(
+    service[method]('/batch', options),
+  ).rejects.toMatchObject({
+    name: 'TransportError',
+    cause: { name: 'TimeoutError' },
+  });
+  await vi.advanceTimersByTimeAsync(1_000);
+  await rejected;
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
