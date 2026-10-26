@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { TagIdSchema } from '../shared';
-import { EventSchema } from './event';
+import { type Event, GammaEventSchema, normalizeEvent } from './event';
+import {
+  GammaMarketSchema,
+  hasBinaryOutcomes,
+  normalizeMarket,
+  type SearchMarket,
+} from './market';
 import { ProfileSchema } from './profile';
 
 export const SearchTagSchema = z
@@ -20,12 +26,36 @@ export const SearchPaginationSchema = z.object({
   totalResults: z.number().int().nullish(),
 });
 
-export const PublicSearchResponseSchema = z.object({
-  events: z.array(EventSchema).nullish(),
-  tags: z.array(SearchTagSchema).nullish(),
-  profiles: z.array(ProfileSchema).nullish(),
-  pagination: SearchPaginationSchema.nullish(),
-});
+/** Search events contain market summaries whose identifiers may be omitted. */
+export type SearchEvent = Omit<Event, 'markets'> & { markets: SearchMarket[] };
+
+const SearchMarketSchema = GammaMarketSchema.extend({
+  id: GammaMarketSchema.shape.id.optional(),
+}).transform((market) =>
+  hasBinaryOutcomes(market) ? normalizeMarket(market) : null,
+);
+
+export const SearchEventSchema = GammaEventSchema.omit({ markets: true })
+  .extend({ markets: z.array(SearchMarketSchema).nullish() })
+  .transform(
+    ({ markets, ...event }): SearchEvent => ({
+      ...normalizeEvent(event),
+      markets: markets?.filter((market) => market !== null) ?? [],
+    }),
+  );
+
+export const PublicSearchResponseSchema = z
+  .object({
+    events: z.array(SearchEventSchema).nullish(),
+    tags: z.array(SearchTagSchema).nullish(),
+    profiles: z.array(ProfileSchema).nullish(),
+    hasMore: z.boolean().optional(),
+    pagination: SearchPaginationSchema.nullish(),
+  })
+  .transform(({ hasMore, pagination, ...response }) => ({
+    ...response,
+    pagination: hasMore === undefined ? pagination : { ...pagination, hasMore },
+  }));
 
 export type SearchTag = z.infer<typeof SearchTagSchema>;
 export type SearchPagination = z.infer<typeof SearchPaginationSchema>;

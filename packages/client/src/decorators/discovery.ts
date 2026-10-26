@@ -481,6 +481,7 @@ export type DiscoveryActions = {
 
   /**
    * Runs a public full-text search.
+   * Search market summaries may omit their `id`, including optimized results.
    *
    * `keepClosedMarkets` is an hour window for including recently closed markets
    * when searching active events.
