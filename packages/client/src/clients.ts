@@ -322,7 +322,6 @@ function createPredictionsService(config: PublicClientConfig): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
     fetch: config.fetch,
-    retryMutations: false,
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
     resolveHeaders: async () => ({ POLYMARKET_CLIENT: metadata }),
