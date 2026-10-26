@@ -194,7 +194,6 @@ export async function createPerpsTwap(
   ] as const satisfies PerpsSignedOp;
   const accepted = await client.post('/v1/trade/twaps', {
     schema: CreatePerpsTwapResponseSchema,
-    retry: false,
     json: {
       ...signCommand(op, params.expiresAt),
       op: { type: 'createTwap', args },
@@ -282,7 +281,6 @@ export async function pausePerpsTwap(
   };
   const response = await client.patch('/v1/trade/twaps', {
     schema: PerpsCommandAckSchema,
-    retry: false,
     json: { ...signCommand(op, params.expiresAt), op: body },
   });
   if (response.status === 'err')
@@ -331,7 +329,6 @@ export async function resumePerpsTwap(
   };
   const response = await client.patch('/v1/trade/twaps', {
     schema: PerpsCommandAckSchema,
-    retry: false,
     json: { ...signCommand(op, params.expiresAt), op: body },
   });
   if (response.status === 'err')
@@ -374,7 +371,6 @@ export async function cancelPerpsTwap(
   const body = { type: 'cancelTwap', args: { twid: params.twapId } };
   const response = await client.del('/v1/trade/twaps', {
     schema: PerpsCommandAckSchema,
-    retry: false,
     json: { ...signCommand(op, params.expiresAt), op: body },
   });
   if (response.status === 'err')

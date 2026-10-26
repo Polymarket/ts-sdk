@@ -136,7 +136,6 @@ describe('ServiceClient', () => {
     });
     await client.post('/v1/heartbeats', {
       json: { heartbeat_id: 'current-id' },
-      retry: false,
     });
     expect(observed[0]).toEqual({
       path: '/v1/heartbeats',
@@ -172,7 +171,6 @@ describe('ServiceClient', () => {
     const result = await client
       .post('/v1/heartbeats', {
         json: { heartbeat_id: 'stale-id' },
-        retry: false,
       })
       .catch((error: unknown) => error);
     expect(result).toBeInstanceOf(OrderHeartbeatMismatchError);
@@ -197,7 +195,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root: serviceRoot });
     const result = await client
-      .post('/v1/heartbeats', { retry: false })
+      .post('/v1/heartbeats')
       .catch((error: unknown) => error);
     expect(result).toBeInstanceOf(RequestRejectedError);
     expect(result).not.toBeInstanceOf(OrderHeartbeatMismatchError);
@@ -255,6 +253,33 @@ describe('ServiceClient', () => {
       });
       expect(fetch).toHaveBeenCalledTimes(1);
     });
+
+    it.each([
+      'get',
+      'postRead',
+    ] as const)('recovers %s reads through an opt-in retry budget', async (method) => {
+      vi.useFakeTimers();
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValueOnce(
+          new Response(null, { status: 429, headers: { 'retry-after': '0' } }),
+        )
+        .mockRejectedValueOnce(new TypeError('connection reset'))
+        .mockResolvedValueOnce(Response.json({ count: '42' }));
+      const client = new ServiceClient({ root, fetch });
+      const options = {
+        retries: 2,
+        schema: z.object({ count: z.string().transform(Number) }),
+      };
+      const result =
+        method === 'get'
+          ? client.get('/read', options)
+          : client.postRead('/read', options);
+      await vi.runAllTimersAsync();
+      expect(await result).toEqual({ count: 42 });
+      expect(fetch).toHaveBeenCalledTimes(3);
+    });
+
     it('does not retry a timeout even with a remaining read retry budget', async () => {
       vi.useFakeTimers();
       const fetch = vi.fn<typeof globalThis.fetch>(() => new Promise(() => {}));
@@ -1149,9 +1174,9 @@ describe('ServiceClient', () => {
       }),
     );
     const client = new ServiceClient({ root });
-    await expect(
-      client.del('/single-attempt', { retry: false }),
-    ).rejects.toMatchObject({ name: 'TransportError' });
+    await expect(client.del('/single-attempt')).rejects.toMatchObject({
+      name: 'TransportError',
+    });
     expect(requests).toBe(1);
   });
 

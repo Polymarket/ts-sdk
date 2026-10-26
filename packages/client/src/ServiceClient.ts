@@ -124,12 +124,6 @@ export type ServiceClientRequestOptions<T = unknown> =
     timeout?: ServiceClientTimeout;
   };
 
-type ServiceClientMutationOptions<T = unknown> =
-  ServiceClientRequestOptions<T> & {
-    /** Disable transport retries for commands whose outcome may be uncertain. */
-    retry?: false;
-  };
-
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientGetOptions<T = unknown> =
   ServiceClientRequestOptions<T> &
@@ -146,21 +140,21 @@ type ServiceClientWorkflowGetOptions<T = unknown> =
 
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientPostOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientPatchOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientDeleteOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
     params?: URLSearchParams;
@@ -449,8 +443,10 @@ export class ServiceClient {
         { responseType: options.responseType, schema: options.schema },
         ServiceClientResponseControlsSchema,
       );
-      if (readOnly) parseRequestOptions(options);
-      const response = await this.#send(method, path, options);
+      const retries = readOnly
+        ? parseRequestOptions(options).retries
+        : undefined;
+      const response = await this.#send(method, path, options, retries);
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(
         response.headers,
@@ -550,6 +546,7 @@ export class ServiceClient {
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions,
+    retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
     const client = this.#client;
@@ -582,6 +579,35 @@ export class ServiceClient {
         searchParams: request.params,
         signal: options.signal,
         ...(options.timeout !== undefined && { timeout: options.timeout }),
+        ...(retries !== undefined &&
+          retries > 0 && {
+            // One transport-owned counter covers both network failures and 429s.
+            // A new call (including each page) starts with a fresh counter.
+            retry: { limit: retries, methods: [method.toLowerCase()] },
+            hooks: {
+              afterResponse: [
+                (_request, _options, response, { retryCount }) => {
+                  if (
+                    options.responseType === 'raw' ||
+                    response.status !== 429 ||
+                    retryCount >= retries
+                  )
+                    return;
+                  const delaySeconds =
+                    this.#parseRetryAfterHeader(response) ?? 1;
+                  // Never retry earlier than the server asks. Leave long waits to callers.
+                  if (delaySeconds > 5) return;
+                  const rateLimit = parseRateLimitHeaders(
+                    response.headers,
+                    options.rateLimitBucket,
+                  );
+                  if (rateLimit !== undefined)
+                    this.#notifyRateLimitUpdate(rateLimit);
+                  return ky.retry({ delay: delaySeconds * 1000 });
+                },
+              ],
+            },
+          }),
       }),
       options.signal,
     );

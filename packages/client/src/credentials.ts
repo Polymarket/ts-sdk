@@ -10,41 +10,22 @@ import { z } from 'zod';
 export type ClientCredentials = ApiKeyCreds | BearerCredentials;
 
 // ApiKeyCredsSchema parses the wire field `apiKey`; saved credentials use `key`.
-const ApiKeyCredentialsInputSchema: z.ZodType<ApiKeyCreds> = z.object({
+const ApiKeyCredentialsInputSchema: z.ZodType<ApiKeyCreds> = z.strictObject({
   key: ApiKeySchema,
   secret: z.string(),
   passphrase: z.string(),
 });
 
-function rejectMixedCredentials(
-  value: unknown,
-  context: z.RefinementCtx,
-): unknown {
-  if (
-    value !== null &&
-    typeof value === 'object' &&
-    ('key' in value || 'secret' in value || 'passphrase' in value) &&
-    ('accessToken' in value || 'refreshToken' in value)
-  ) {
-    context.addIssue({
-      code: 'custom',
-      message: 'Credentials must contain one authentication mechanism.',
-    });
-  }
-  return value;
-}
+const BearerCredentialsInputSchema = BearerCredentialsSchema.strict();
 
 /** Validate normalized saved API-key credentials, including explicit migration input. @internal */
-export const L2CredentialsSchema = z.preprocess(
-  rejectMixedCredentials,
-  ApiKeyCredentialsInputSchema,
-);
+export const L2CredentialsSchema = ApiKeyCredentialsInputSchema;
 
-/** Validate one complete mechanism without silently selecting mixed credentials. @internal */
-export const ClientCredentialsSchema = z.preprocess(
-  rejectMixedCredentials,
-  z.union([ApiKeyCredentialsInputSchema, BearerCredentialsSchema]),
-);
+/** Validate one complete mechanism; mixed or unknown fields match neither. @internal */
+export const ClientCredentialsSchema = z.union([
+  ApiKeyCredentialsInputSchema,
+  BearerCredentialsInputSchema,
+]);
 
 /** Saved bearer credentials; the access token is used only for HTTP authentication. */
 export type BearerSessionCredentials = {

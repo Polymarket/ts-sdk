@@ -99,8 +99,8 @@ export const FetchTokenReferencesError = makeErrorGuard(
  * Returns a direct collection. Unknown selectors contribute no rows; asset
  * lookups retain request order and condition groups retain server order.
  * Overlapping condition selectors can repeat assets. Settlement metadata and
- * outcome labels can lag by up to a minute. Rate-limit errors expose retry
- * timing for callers.
+ * outcome labels can lag by up to a minute. Set `retries` to retry transient
+ * failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
