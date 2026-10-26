@@ -732,7 +732,9 @@ export const ListPerpsTradesError = PerpsPublicReadError;
  * Lists recent Perps trades for an instrument with SDK-owned pagination.
  *
  * @remarks
- * Defaults to the past 24 hours when `start` is omitted.
+ * Defaults to the past 24 hours when `start` is omitted. Server continuation
+ * retains the original time range and response order, including trades sharing
+ * a millisecond. Older responses without a server cursor use timestamp pagination.
  *
  * @throws {@link ListPerpsTradesError}
  * Thrown on failure.
@@ -763,6 +765,7 @@ export function listPerpsTrades(
         ...requestOptions,
         params: toSearchParams(
           {
+            cursor: state.serverCursor,
             endTimestamp: state.endTimestamp,
             instrumentId: state.instrumentId,
             startTimestamp: state.startTimestamp,
@@ -771,6 +774,32 @@ export function listPerpsTrades(
         ),
       })
       .then((response) => {
+        if (response.cursor !== undefined || state.serverCursor !== undefined) {
+          const hasMore = response.more;
+          if (
+            hasMore &&
+            (response.cursor === undefined ||
+              response.cursor === state.serverCursor)
+          ) {
+            throw new UnexpectedResponseError(
+              'Perps trade continuation did not advance.',
+            );
+          }
+          return {
+            items: response.data.filter(
+              (trade) => !seenTradeIds.has(trade.tradeId),
+            ),
+            hasMore,
+            nextCursor: hasMore
+              ? encodeCursorState({
+                  ...state,
+                  seenTradeIds: [],
+                  serverCursor: response.cursor,
+                })
+              : undefined,
+          };
+        }
+
         const items = response.data.filter(
           (trade) => !seenTradeIds.has(trade.tradeId),
         );
@@ -864,6 +893,7 @@ const PerpsFundingCursorStateSchema = z.object({
 
 const PerpsTradesCursorStateSchema = z.object({
   kind: z.literal('perpsTrades'),
+  serverCursor: z.string().min(1).optional(),
   instrumentId: PerpsInstrumentIdSchema,
   startTimestamp: TimestampInputSchema,
   endTimestamp: TimestampInputSchema,

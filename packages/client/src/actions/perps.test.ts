@@ -273,6 +273,83 @@ describe('Perps actions', () => {
     ]);
   });
 
+  it('uses opaque trade cursors across many trades in one millisecond and saved continuation', async () => {
+    const requests: URLSearchParams[] = [];
+    const client = createPublicClient({
+      fetch: async (input) => {
+        const params = new URL(
+          input instanceof Request ? input.url : String(input),
+        ).searchParams;
+        requests.push(params);
+        const cursor = params.get('cursor');
+        const offset =
+          cursor === null ? 0 : Number(cursor.slice('opaque-'.length));
+        const count = offset < 200 ? 100 : offset === 200 ? 1 : 0;
+        return Response.json({
+          data: Array.from({ length: count }, (_, index) =>
+            trade(301 - offset - index, 1000),
+          ),
+          more: count > 0,
+          ...(count > 0 ? { cursor: `opaque-${offset + count}` } : {}),
+        });
+      },
+    });
+    const first = await client
+      .listPerpsTrades({ instrumentId: 1, start: 1000, end: 2000 })
+      .firstPage();
+    expect(first.hasMore).toBe(true);
+    const items = [...first.items];
+    for await (const page of client.listPerpsTrades({
+      cursor: first.nextCursor,
+    }))
+      items.push(...page.items);
+    expect(items).toHaveLength(201);
+    expect(new Set(items.map((item) => item.tradeId)).size).toBe(201);
+    expect(items.map((item) => item.tradeId)).toEqual(
+      Array.from({ length: 201 }, (_, index) => 301 - index),
+    );
+    expect(requests.map((params) => params.get('cursor'))).toEqual([
+      null,
+      'opaque-100',
+      'opaque-200',
+      'opaque-201',
+    ]);
+    for (const params of requests) {
+      expect(params.get('instrument_id')).toBe('1');
+      expect(params.get('start_timestamp')).toBe('1000');
+      expect(params.get('end_timestamp')).toBe('2000');
+    }
+  });
+
+  it.each([
+    'missing',
+    'repeated',
+  ])('rejects %s server continuation instead of skipping a timestamp', async (mode) => {
+    let requests = 0;
+    const client = createPublicClient({
+      fetch: async () => {
+        requests++;
+        return Response.json({
+          data: [trade(requests, 1000)],
+          more: true,
+          ...(requests === 1 || mode === 'repeated'
+            ? { cursor: 'opaque-next' }
+            : {}),
+        });
+      },
+    });
+    const pages = client.listPerpsTrades({
+      instrumentId: 1,
+      start: 0,
+      end: 2000,
+    });
+    const first = await pages.firstPage();
+    await expect(pages.from(first.nextCursor).firstPage()).rejects.toThrow(
+      'Perps trade continuation did not advance',
+    );
+    expect(requests).toBe(2);
+  });
+
   it('overlaps and dedupes trade pages with shared timestamps', async () => {
     const requests: URLSearchParams[] = [];
     server.use(
