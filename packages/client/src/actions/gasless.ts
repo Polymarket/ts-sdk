@@ -303,9 +303,9 @@ export const DeployDepositWalletError = makeErrorGuard(
 export async function deployDepositWallet(
   client: BaseSecureClient,
 ): Promise<TransactionHandle> {
-  if (!client.supportsGaslessWallet)
+  if (!client.supportsGasless)
     throw new UserInputError(
-      'Deposit Wallet deployment requires submission credentials or a platform-attributed bearer session.',
+      'Deposit Wallet deployment requires a bearer session or submission credentials.',
     );
 
   return executeGasless(client, {
@@ -418,9 +418,9 @@ export async function prepareGaslessTransaction(
     PrepareGaslessTransactionRequestSchema,
   );
 
-  if (!client.supportsGaslessWallet)
+  if (!client.supportsGasless)
     throw new UserInputError(
-      'Gasless transactions require submission credentials or a platform-attributed bearer session.',
+      'Gasless transactions require a bearer session or submission credentials.',
     );
   invariant(
     client.account.walletType === WalletType.GNOSIS_SAFE ||

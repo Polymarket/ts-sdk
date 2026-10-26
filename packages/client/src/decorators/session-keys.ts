@@ -56,7 +56,7 @@ export type SessionKeyActions = {
    *
    * Returns once the session key is removed from the active-key registry and can
    * no longer be used. The on-chain transaction may still be pending.
-   * Requires API-key authentication that supports gasless transactions.
+   * Requires a bearer session or submission credentials.
    *
    * @example
    * ```ts

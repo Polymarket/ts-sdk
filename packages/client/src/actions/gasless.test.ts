@@ -86,7 +86,7 @@ function createClient(options: CreateClientOptions = {}) {
     environment,
     predictions: relayerService,
     signer,
-    supportsGaslessWallet: true,
+    supportsGasless: true,
   } as unknown as BaseSecureClient;
 
   return { client, relayerPost };

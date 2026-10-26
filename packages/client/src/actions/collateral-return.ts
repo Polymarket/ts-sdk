@@ -144,7 +144,7 @@ export async function prepareCollateralReturnExecution(
 
   invariant(
     client.supportsGasless,
-    'Collateral return execution requires a Relayer API Key or Builder API Key in the client configuration.',
+    'Collateral return execution requires a bearer session or submission credentials.',
   );
   assertCollateralReturnAccount(client);
 

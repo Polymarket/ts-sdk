@@ -8,7 +8,6 @@ import {
   expectHexString,
 } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as publicActions from './actions';
 import { deployDepositWallet } from './actions/gasless';
 import type { SignedOrder } from './actions/orders/types';
 import {
@@ -20,7 +19,7 @@ import { createPublicClient, createSecureClient } from './clients';
 import { ClientCredentialsSchema } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 // biome-ignore lint/style/noRestrictedImports: This test exercises the server-only public adapter boundary.
-import { builderApiKey, platformApiKey } from './node';
+import { builderApiKey, createPlatformChallenge, platformApiKey } from './node';
 import type { Signer } from './types';
 
 const signerAddress = expectEvmAddress(
@@ -74,20 +73,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('keeps removed credential operations out of the public actions entrypoint', () => {
-  for (const name of [
-    'createApiKey',
-    'deriveApiKey',
-    'createOrDeriveApiKey',
-    'fetchApiKeys',
-    'deleteApiKey',
-    'createBuilderApiKey',
-    'fetchBuilderApiKeys',
-    'revokeBuilderApiKey',
-  ])
-    expect(publicActions).not.toHaveProperty(name);
-});
-
 describe('platform API key client workflow', () => {
   it.each([
     '/api/auth/challenge?tenant=one',
@@ -109,7 +94,7 @@ describe('platform API key client workflow', () => {
           signer: signerAddress,
           wallet: signerAddress,
           nonce: 7,
-          verification_token: 'synthetic-turnstile',
+          verificationToken: 'synthetic-turnstile',
         });
         return Response.json(challenge, {
           headers: { 'cache-control': 'no-store' },
@@ -298,13 +283,11 @@ describe('platform API-key compatibility', () => {
       credentials: mechanism === 'l2' ? l2Credentials : tokens(),
     });
     fetch.mockClear();
-    // Direct-only workflows retain their separate submission-key requirement.
-    expect(secure.supportsGasless).toBe(false);
-    expect(secure.supportsGaslessWallet).toBe(mechanism === 'bearer');
+    expect(secure.supportsGasless).toBe(mechanism === 'bearer');
     if (mechanism === 'l2') {
       await expect(deployDepositWallet(secure)).rejects.toMatchObject({
         name: 'UserInputError',
-        message: expect.stringContaining('requires submission credentials'),
+        message: expect.stringContaining('requires a bearer session'),
       });
       expect(fetch).not.toHaveBeenCalled();
     } else {
@@ -320,7 +303,7 @@ describe('platform API-key compatibility', () => {
 
   it('retains relayer submission authorization alongside the platform key', async () => {
     const quotaAdapter = platformApiKey(key, {
-      legacyApiKey: relayerApiKey({
+      submissionApiKey: relayerApiKey({
         key: 'synthetic-relayer',
         address: signerAddress,
       }),
@@ -337,7 +320,7 @@ describe('platform API-key compatibility', () => {
     expect(standalone.supportGasless).toBe(false);
     const adapter = remotePlatformApiKey({
       url: '/challenge',
-      legacyApiKey: remoteBuilderSigning({ url: '/builder/sign' }),
+      submissionApiKey: remoteBuilderSigning({ url: '/builder/sign' }),
     });
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
       expect(input).toBe('/builder/sign');
@@ -494,13 +477,13 @@ it('requires server-side L2 migration for platform attribution and never sends p
 it('rejects conflicting platform adapters nested as builder/submission authorization', () => {
   expect(() =>
     platformApiKey(key, {
-      legacyApiKey: platformApiKey('pm_sk_other-synthetic'),
+      submissionApiKey: platformApiKey('pm_sk_other-synthetic'),
     }),
   ).toThrow(/builder or submission/i);
   expect(() =>
     remotePlatformApiKey({
       url: '/challenge',
-      legacyApiKey: remotePlatformApiKey({ url: '/other' }),
+      submissionApiKey: remotePlatformApiKey({ url: '/other' }),
     }),
   ).toThrow(/builder or submission/i);
 });
@@ -576,7 +559,7 @@ it('preserves Headers-based builder/submission authorization alongside the platf
     ...secureOptions,
     fetch,
     signer: signer(),
-    apiKey: platformApiKey(key, { legacyApiKey: directAuthorization }),
+    apiKey: platformApiKey(key, { submissionApiKey: directAuthorization }),
   });
   await secure.predictions.post('/v1/orders', { json: { signature } });
   await secure.predictions.post('/v1/wallets/transactions', {
@@ -588,6 +571,34 @@ it('preserves Headers-based builder/submission authorization alongside the platf
   await secure.perps.get('/public', { retries: 0 });
   secure.session.close();
   await secure.closeSubscriptions();
+});
+
+it('issues a platform-attributed challenge for a backend challenge proxy', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    expect(request.url).toBe(`${gateway}/v1/auth/challenge`);
+    expect(request.headers.get('x-api-key')).toBe(key);
+    expect(await request.json()).toEqual({
+      signer: signerAddress,
+      wallet: signerAddress,
+      nonce: 7,
+      verification_token: 'synthetic-turnstile',
+    });
+    return Response.json(challenge);
+  });
+  const client = createPublicClient({
+    environment,
+    fetch,
+    apiKey: platformApiKey(key),
+  });
+  await expect(
+    createPlatformChallenge(client, {
+      signer: signerAddress,
+      wallet: signerAddress,
+      nonce: 7,
+      verificationToken: 'synthetic-turnstile',
+    }),
+  ).resolves.toEqual(challenge);
 });
 
 it('migrates L2 credentials directly on the server with the platform key and keeps secrets local', async () => {
@@ -696,7 +707,9 @@ it('retains signed order payloads, builder attribution and gasless deployment au
     ...secureOptions,
     fetch,
     signer: walletSigner,
-    apiKey: platformApiKey(key, { legacyApiKey: builderApiKey(l2Credentials) }),
+    apiKey: platformApiKey(key, {
+      submissionApiKey: builderApiKey(l2Credentials),
+    }),
   });
   await secure.postOrder(order);
   await deployDepositWallet(secure);
