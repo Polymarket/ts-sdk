@@ -138,7 +138,10 @@ describe('predictions gateway service', () => {
             'x-request': 'retained',
           },
         }),
-      ).rejects.toMatchObject({ cause: failure });
+      ).rejects.toMatchObject({
+        name: TransportError.name,
+        message: failure.message,
+      });
       const request = requests.at(-1);
       expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
       expect(request?.headers.get('x-environment')).toBe('retained');
@@ -199,7 +202,10 @@ describe('predictions gateway service', () => {
         retries: 0,
         headers: { 'x-request': 'request' },
       }),
-    ).rejects.toMatchObject({ cause: failure });
+    ).rejects.toMatchObject({
+      name: TransportError.name,
+      message: failure.message,
+    });
     const request = fetch.mock.calls[0]?.[0] as Request;
     expect(request.url).toBe('https://api-defi-staging.polymarket.dev/ping');
     expect(request.headers.get('x-base')).toBe('base');
@@ -595,7 +601,10 @@ describe('secure client gasless wallet setup', () => {
     expect(publicClient.predictions).toBeInstanceOf(ServiceClient);
     await expect(
       publicClient.predictions.del('/cancel-all'),
-    ).rejects.toMatchObject({ name: TransportError.name, cause: failure });
+    ).rejects.toMatchObject({
+      name: TransportError.name,
+      message: failure.message,
+    });
     expect(gatewayRequests).toHaveLength(2);
     for (const request of gatewayRequests) {
       expect(request.headers.get('POLYMARKET_CLIENT')).toBe(
