@@ -298,6 +298,8 @@ describe('Perps actions', () => {
       .listPerpsTrades({ instrumentId: 1, start: 1000, end: 2000 })
       .firstPage();
     expect(first.hasMore).toBe(true);
+    if (first.nextCursor === undefined)
+      throw new Error('Expected saved trade continuation');
     const items = [...first.items];
     for await (const page of client.listPerpsTrades({
       cursor: first.nextCursor,
