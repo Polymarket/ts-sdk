@@ -68,7 +68,6 @@ export {
   createSecureClient,
   SetupGaslessWalletError,
 } from './clients';
-export type { ClientCredentials } from './credentials';
 export * from './decorators';
 export * from './environments';
 export * from './errors';
