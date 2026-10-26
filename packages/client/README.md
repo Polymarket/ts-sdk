@@ -32,7 +32,8 @@ release, including patch releases. This includes the `fetch` client
 option, per-operation `signal`, `retries`, and `timeout`, and `RequestAbortedError`.
 
 Provide a custom `fetch` for instrumentation or your application's transport.
-Set `retries: 0` on reads when a query library owns retries:
+The SDK does not retry HTTP requests by default, so a query library can own
+retries. Pass `retries` on a read to let the SDK retry it instead:
 
 ```ts
 import { createPublicClient } from '@polymarket/client';
@@ -43,12 +44,14 @@ const client = createPublicClient({
 
 useQuery({
   queryKey: ['order-book', assetId],
-  queryFn: ({ signal }) => client.fetchOrderBook({ assetId }, { signal, retries: 0 }),
+  queryFn: ({ signal }) => client.fetchOrderBook({ assetId }, { signal }),
 });
+
+const book = await client.fetchOrderBook({ assetId }, { retries: 2 });
 ```
 
 Without a custom fetch, the SDK uses native fetch. Eligible data reads accept
-`retries`, an integer from 0 through 5, defaulting to 2. Zero means one attempt;
+`retries`, an integer from 0 through 5, defaulting to 0. Zero means one attempt;
 two means at most three attempts. Transport failures and rate limits share one
 budget per request, and each pagination request gets a fresh budget. Invalid
 values reject with `UserInputError` before sending a request. Rate-limit waits
@@ -59,13 +62,13 @@ approving and resubmitting a transaction, or relay recovery, is unchanged. Retri
 HTTP reads accept an optional final `{ signal, retries, timeout }` argument.
 `timeout` is milliseconds until each HTTP attempt receives response headers,
 or `false` to disable the timeout.
-Omitting it uses the 30-second SDK default. Each retry and pagination
+Omitting it uses the 30-second SDK default. Each enabled retry and pagination
 request has its own timeout; this does not bound the whole operation, header
 resolution, hooks, retry waits, or response body download/parsing. Timeout failures
 reject with `TransportError` and are not retried. For example:
 
 ```ts
-await client.fetchOrderBook({ assetId }, { signal, retries: 0, timeout: 60_000 });
+await client.fetchOrderBook({ assetId }, { signal, retries: 2, timeout: 60_000 });
 const pages = client.listTrades({ pageSize: 100 }, { timeout: false });
 ```
 
@@ -86,7 +89,7 @@ useInfiniteQuery({
   queryKey: ['positions', user],
   initialPageParam: undefined as PaginationCursor | undefined,
   queryFn: ({ pageParam, signal }) =>
-    client.listPositions({ user, cursor: pageParam }, { signal, retries: 0 }).firstPage(),
+    client.listPositions({ user, cursor: pageParam }, { signal }).firstPage(),
   getNextPageParam: (page) =>
     page.hasMore && !page.limitReached ? page.nextCursor : undefined,
 });

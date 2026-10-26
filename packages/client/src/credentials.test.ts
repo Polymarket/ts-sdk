@@ -8,12 +8,11 @@ it('validates saved credentials without selecting a mechanism from mixed or inco
     secret: 'secret',
     passphrase: 'passphrase',
   };
-  expect(ClientCredentialsSchema.parse({ ...bearer, expiresIn: 900 })).toEqual(
-    bearer,
-  );
+  expect(ClientCredentialsSchema.parse(bearer)).toEqual(bearer);
   expect(ClientCredentialsSchema.parse(l2)).toEqual(l2);
   for (const untrusted of [
     { ...bearer, ...l2 },
+    { ...bearer, expiresIn: 900 },
     { accessToken: 'access' },
     { key: l2.key, secret: 'secret' },
   ])

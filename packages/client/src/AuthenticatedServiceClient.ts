@@ -1,3 +1,4 @@
+import { never } from '@polymarket/types';
 import { TransportError } from './errors';
 import type { RateLimitUpdateListener } from './rate-limit';
 import type { RequestOptions } from './request-options';
@@ -269,7 +270,7 @@ function authenticatedFetch(
       if (!refreshed) return response;
       await response.body?.cancel();
     }
-    throw new Error('Authentication recovery failed.');
+    never('Authentication replay is bounded to two attempts.');
   };
 }
 
