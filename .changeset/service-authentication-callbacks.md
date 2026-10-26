@@ -3,7 +3,7 @@
 '@polymarket/bindings': minor
 ---
 
-Add a separate callback-only AuthenticatedServiceClient. Restore ServiceClient to plain HTTP behavior.
+Add a separate callback-only AuthenticatedServiceClient.
 
 **Breaking:** reads no longer retry by default. `retries` now defaults to 0 instead of 2. To keep the previous behavior, pass `{ retries: 2 }` to each read. Mutations are never retried.
 
