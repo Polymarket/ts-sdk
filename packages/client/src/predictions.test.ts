@@ -553,3 +553,39 @@ it.each([
     }
   }
 });
+
+it.each([
+  'l2',
+  'bearer',
+] as const)('preserves routed heartbeat mismatch recovery with %s authentication', async (mechanism) => {
+  const pair = tokens();
+  let heartbeats = 0;
+  const client = await createSecureClient({
+    ...secureOptions,
+    credentials: mechanism === 'l2' ? l2Credentials : saved(pair),
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/v1/auth/refresh')) return Response.json(pair);
+      expect(request.url).toBe(`${root}/v1/trading/heartbeats`);
+      expect(await request.json()).toEqual({ heartbeat_id: 'stale-id' });
+      heartbeats++;
+      return Response.json(
+        { error_msg: 'Invalid Heartbeat ID', heartbeat_id: 'expected-id' },
+        { status: 400 },
+      );
+    },
+  });
+  try {
+    await expect(
+      client.sendOrderHeartbeat({ heartbeatId: 'stale-id' }),
+    ).rejects.toMatchObject({
+      name: 'OrderHeartbeatMismatchError',
+      heartbeatId: 'expected-id',
+      status: 400,
+    });
+    expect(heartbeats).toBe(1);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  }
+});
