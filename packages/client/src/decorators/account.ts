@@ -315,7 +315,7 @@ export type PublicAccountActions = Prettify<{
    * serves the most recent three years; `window: 'full'` requests the complete
    * history. Window bounds accept Unix epoch seconds or `Date` values. Results
    * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
-   * transient rate limits are retried by default.
+   * `retries` opts into retrying transient failures.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.
@@ -549,7 +549,7 @@ export type SecureAccountActions = Prettify<{
    * serves the most recent three years; `window: 'full'` requests the complete
    * history. Window bounds accept Unix epoch seconds or `Date` values. Results
    * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
-   * transient rate limits are retried by default.
+   * `retries` opts into retrying transient failures.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.
