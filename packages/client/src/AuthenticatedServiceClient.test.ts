@@ -219,9 +219,11 @@ it.each([
     fetch,
     refreshToken: async () => false,
   });
-  const options =
-    method === 'postRead' ? { retries: 1, json: ['1'] } : { retries: 1 };
-  await expect(service[method]('/batch', options)).resolves.toBe('accepted');
+  const pending =
+    method === 'postRead'
+      ? service.postRead('/batch', { retries: 1, json: ['1'] })
+      : service.get('/batch', { retries: 1 });
+  await expect(pending).resolves.toBe('accepted');
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 
@@ -237,9 +239,11 @@ it.each([
     refreshToken: async () => false,
   });
   const options = { retries: 1, timeout: 50 };
-  const rejected = expect(
-    service[method]('/batch', options),
-  ).rejects.toMatchObject({
+  const pending =
+    method === 'postRead'
+      ? service.postRead('/batch', options)
+      : service.get('/batch', options);
+  const rejected = expect(pending).rejects.toMatchObject({
     name: 'TransportError',
     cause: { name: 'TimeoutError' },
   });
