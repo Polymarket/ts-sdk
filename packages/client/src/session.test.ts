@@ -1,6 +1,6 @@
 import type { BearerCredentials } from '@polymarket/bindings';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { RequestRejectedError, TransportError } from './errors';
+import { RateLimitError, RequestRejectedError, TransportError } from './errors';
 import { AuthSession } from './session';
 
 const sub = '0x0000000000000000000000000000000000000001';
@@ -331,14 +331,36 @@ it.each([
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it('closing before a queued refresh starts skips its callback and preserves replacement credentials', async () => {
+it('closing before a queued refresh starts skips its callback and never persists credentials', async () => {
   const refresh = vi.fn(async () => tokens(1));
-  const old = new AuthSession({ credentials: tokens(), refresh });
+  const changed = vi.fn();
+  const old = new AuthSession({
+    credentials: tokens(),
+    refresh,
+    onCredentialsChanged: changed,
+  });
   const ordinary = expect(old.refresh()).rejects.toThrow('closed');
   old.close();
-  const replacement = new AuthSession({ credentials: tokens(2), refresh });
   await ordinary;
   expect(refresh).not.toHaveBeenCalled();
-  expect(replacement.credentials).toEqual(tokens(2));
-  replacement.close();
+  expect(changed).not.toHaveBeenCalled();
+});
+
+it('refreshes once for revocation after a definite refresh rejection', async () => {
+  const original = tokens(0, -1);
+  const rotated = tokens(1);
+  const limited = new RateLimitError('rate limited', { retryAfter: 6 });
+  const refresh = vi.fn(async () => rotated).mockRejectedValueOnce(limited);
+  const changed = vi.fn();
+  const session = new AuthSession({
+    credentials: original,
+    refresh,
+    onCredentialsChanged: changed,
+  });
+  await expect(session.refresh()).rejects.toBe(limited);
+  const revoke = vi.fn(async () => undefined);
+  await session.logout(revoke);
+  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(revoke).toHaveBeenCalledExactlyOnceWith(rotated.accessToken);
+  expect(changed).not.toHaveBeenCalled();
 });

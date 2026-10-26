@@ -119,7 +119,7 @@ export class AuthSession {
         throw error;
       })
       .finally(() => {
-        this.#refreshing = undefined;
+        if (this.#refreshing === refreshing) this.#refreshing = undefined;
       });
     this.#refreshing = refreshing;
     return refreshing;
@@ -206,7 +206,9 @@ export class AuthSession {
     const pending = this.#refreshRequest;
     this.#stop(false);
     let canRefresh = true;
+    let rotated = false;
     const accept = (next: BearerCredentials) => {
+      rotated = true;
       const claims = accessTokenClaims(next.accessToken);
       if (
         claims.exp * 1000 <= Date.now() ||
@@ -230,14 +232,21 @@ export class AuthSession {
         try {
           accept(await pending);
         } catch (error) {
-          // A transport failure has an uncertain server outcome. Do not reuse
-          // that refresh token; a still-valid bearer can still revoke safely.
-          canRefresh = false;
-          if (
-            accessTokenClaims(credentials.accessToken).exp * 1000 <=
-            Date.now()
-          )
-            throw error;
+          // A rate limit or 4xx rejection left the refresh token unused. Any other
+          // outcome may have consumed it; a still-valid bearer can still revoke safely.
+          const unused =
+            error instanceof RateLimitError ||
+            (error instanceof RequestRejectedError &&
+              error.status < 500 &&
+              !rotated);
+          if (!unused) {
+            canRefresh = false;
+            if (
+              accessTokenClaims(credentials.accessToken).exp * 1000 <=
+              Date.now()
+            )
+              throw error;
+          }
         }
       }
       if (
