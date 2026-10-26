@@ -43,6 +43,7 @@ export type {
   UserOrderStatus,
 } from '../actions';
 export {
+  EquityMarketStatus,
   KnownPriceSource,
   KnownUserOrderStatus,
   PriceProvider,

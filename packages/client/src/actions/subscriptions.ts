@@ -70,6 +70,7 @@ export type {
   UserOrderStatus,
 } from '@polymarket/bindings/subscriptions';
 export {
+  EquityMarketStatus,
   KnownPriceSource,
   KnownUserOrderStatus,
   PriceProvider,
