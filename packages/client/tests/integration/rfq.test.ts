@@ -103,7 +103,7 @@ describe('RFQ sessions', () => {
           expect.objectContaining({
             auth:
               credentials.type === 'bearer'
-                ? { accessToken: credentials.key }
+                ? { accessToken: credentials.accessToken }
                 : {
                     apiKey: credentials.key,
                     secret: credentials.secret,

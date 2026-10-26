@@ -92,7 +92,7 @@ export class SocketAuthentication {
               error instanceof TransportError ||
               (error instanceof RequestRejectedError &&
                 error.code === 'auth_unavailable');
-            if (!transient || attempt === 2) return; // Keep the accepted deadline on rejection.
+            if (!transient || attempt === 2) break; // Keep the accepted deadline on rejection.
             await new Promise<void>((resolve) => {
               this.#cancelRetry = resolve;
               this.#retry = setNonBlockingTimeout(resolve, 250 * 2 ** attempt);

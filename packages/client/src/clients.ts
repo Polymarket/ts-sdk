@@ -30,6 +30,7 @@ import {
   type ClientCredentials,
   type CredentialsChanged,
   RestoredCredentialsSchema,
+  type SavedCredentials,
   savedBearerCredentials,
 } from './credentials';
 import {
@@ -275,10 +276,23 @@ abstract class AbstractClient<TContext extends PublicContext> {
 export type { ClientCredentials } from './credentials';
 
 export type BeginAuthenticationRequest = {
+  /** Wallet address to use as the account wallet. */
   wallet: string;
-  credentials?: object;
+  /**
+   * Credentials saved from `client.credentials`, or L2 credentials saved by an
+   * earlier SDK version. Restores the client without a new signature.
+   */
+  credentials?: SavedCredentials;
+  /**
+   * Selects which derived L2 credential set the authentication signature
+   * also covers. The same nonce selects the same set.
+   *
+   * @defaultValue 0
+   */
   nonce?: number;
+  /** Bot-protection verification token for browser sign-in, when one is required. */
   verificationToken?: string;
+  /** Called after a refreshed bearer token pair is adopted. */
   onCredentialsChanged?: CredentialsChanged;
 };
 const BeginAuthenticationRequestSchema = AuthenticationInputSchema.extend({
@@ -656,7 +670,6 @@ class BaseSecureClient<
                 json: { refresh_token: credentials.refreshToken },
                 schema: TokenResponseSchema,
                 signal,
-                retry: false,
               }),
           })
         : undefined;
@@ -885,8 +898,9 @@ class BaseSecureClient<
    * API credentials for the authenticated session.
    *
    * @remarks
-   * Contains the saved key/secret/passphrase for L2 authentication, or the
-   * current access token in `key` and its refresh token for bearer authentication. Narrow by `type`. Migration is explicit.
+   * Contains the access and refresh tokens for bearer authentication
+   * (`type: 'bearer'`), or the key, secret and passphrase for L2 authentication
+   * (`type: 'l2'`). Narrow by `type`. Migration is explicit.
    * These credentials are sensitive. Store them securely if you want to create
    * another secure client later without requiring a new authentication signature
    * while the credentials remain valid.
@@ -1019,9 +1033,8 @@ class BaseSecureClient<
    * @remarks
    * This closes the current `SecureClient` and its local consumers. Bearer
    * credentials end their refresh session; issued access tokens remain valid until expiry.
-   * With supplied L2 credentials this is local cleanup only and does not revoke
-   * the key. Its remote validity is unchanged; manage the key outside the SDK.
-   * Expired bearer credentials are renewed solely for revocation. Concurrent calls share
+   * Expired bearer credentials are renewed solely for revocation. With L2
+   * credentials no request is sent: the key is not revoked and stays valid. Concurrent calls share
    * one logout operation, and local cleanup completes even when revocation fails.
    *
    * @example
@@ -1052,7 +1065,6 @@ class BaseSecureClient<
           auth.post('/v1/auth/logout', {
             headers: { Authorization: `Bearer ${accessToken}` },
             responseType: 'empty',
-            retry: false,
           }),
         );
     } finally {
@@ -1219,21 +1231,25 @@ export type SecureClientOptions = PublicClientOptions & {
    * Wallet-library adapter used to authenticate and complete wallet operations.
    */
   signer: Signer;
+  /** Bot-protection verification token for browser sign-in, when one is required. */
   verificationToken?: string;
   /** Called after adoption of a refreshed token pair. Sync/async failures are ignored; handle persistence failures inside the callback. */
   onCredentialsChanged?: CredentialsChanged;
 } & (
     | {
         /**
-         * Existing API credentials to reuse when they remain valid.
+         * Credentials saved from `client.credentials`, or L2 credentials saved
+         * by an earlier SDK version. Restores the client without a new
+         * signature. A rejected bearer session does not fall back to signing.
          */
-        credentials?: object;
+        credentials?: SavedCredentials;
         nonce?: never;
       }
     | {
         credentials?: never;
         /**
-         * Nonce used when creating or deriving fresh credentials.
+         * Selects which derived L2 credential set the authentication signature
+         * also covers. The same nonce selects the same set.
          *
          * @defaultValue 0
          */

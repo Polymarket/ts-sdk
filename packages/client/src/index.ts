@@ -100,6 +100,7 @@ export type {
   BearerSessionCredentials,
   CredentialsChanged,
   L2SessionCredentials,
+  SavedCredentials,
 } from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {

@@ -1,9 +1,11 @@
 import { createHmac } from 'node:crypto';
+import type { BearerCredentials } from '@polymarket/bindings';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import { login, migrateCredentials } from './actions';
 import { createPublicClient, createSecureClient } from './clients';
+import type { SavedCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError } from './errors';
 import { AuthSession } from './session';
@@ -34,6 +36,13 @@ function tokens(sequence = 0, seconds = 900) {
     tokenType: 'Bearer',
     expiresIn: seconds,
     refreshExpiresIn: 3600,
+  };
+}
+function saved(pair: BearerCredentials): SavedCredentials {
+  return {
+    type: 'bearer',
+    accessToken: pair.accessToken,
+    refreshToken: pair.refreshToken,
   };
 }
 function signer(): Signer {
@@ -75,7 +84,7 @@ describe('gateway public authentication boundary', () => {
     });
     expect(pair).toEqual({
       type: 'bearer',
-      key: loginTokens.accessToken,
+      accessToken: loginTokens.accessToken,
       refreshToken: loginTokens.refreshToken,
     });
     expect(walletSigner.signTypedData).toHaveBeenCalledExactlyOnceWith(
@@ -201,14 +210,14 @@ describe('gateway public authentication boundary', () => {
       wallet: address,
       credentials: {
         type: 'bearer',
-        key: restored.accessToken,
+        accessToken: restored.accessToken,
         refreshToken: restored.refreshToken,
       },
       onCredentialsChanged: changed,
     });
     expect(secure.credentials).toEqual({
       type: 'bearer',
-      key: updated.accessToken,
+      accessToken: updated.accessToken,
       refreshToken: updated.refreshToken,
     });
     expect(changed).toHaveBeenCalledExactlyOnceWith(secure.credentials);
@@ -233,7 +242,7 @@ describe('gateway public authentication boundary', () => {
         fetch,
         signer: signer(),
         wallet: address,
-        credentials: tokens(0, -1),
+        credentials: saved(tokens(0, -1)),
         onCredentialsChanged: changed,
       }),
     ).rejects.toBeInstanceOf(RequestRejectedError);
@@ -412,7 +421,12 @@ describe('logout revocation', () => {
 it.each([
   { ...tokens(), secret: 'must-not-select-bearer' },
   { key: 'key', secret: 42, passphrase: 'phrase' },
-  { type: 'bearer', key: 'opaque', refreshToken: 'refresh', secret: 'mixed' },
+  {
+    type: 'bearer',
+    accessToken: 'opaque',
+    refreshToken: 'refresh',
+    secret: 'mixed',
+  },
 ])('rejects mixed or malformed saved credentials before signing or dispatch: %j', async (credentials) => {
   const fetch = vi.fn<typeof globalThis.fetch>();
   const walletSigner = signer();
@@ -422,7 +436,7 @@ it.each([
       fetch,
       signer: walletSigner,
       wallet: address,
-      credentials,
+      credentials: credentials as SavedCredentials,
     }),
   ).rejects.toMatchObject({ name: 'UserInputError' });
   expect(fetch).not.toHaveBeenCalled();
@@ -478,7 +492,7 @@ it.each([
     fetch,
     signer: signer(),
     wallet: address,
-    credentials: pair,
+    credentials: saved(pair),
   });
   try {
     const request = client.predictions.get('/private');
@@ -487,7 +501,7 @@ it.each([
     else await expect(request).resolves.toBe('accepted');
     expect(client.credentials).toEqual({
       type: 'bearer',
-      key: attempts === 2 ? rotated.accessToken : pair.accessToken,
+      accessToken: attempts === 2 ? rotated.accessToken : pair.accessToken,
       refreshToken: attempts === 2 ? rotated.refreshToken : pair.refreshToken,
     });
     expect(refreshRequests).toBe(attempts);
@@ -506,7 +520,7 @@ it.each([
     environment,
     signer: signer(),
     wallet: address,
-    credentials: pair,
+    credentials: saved(pair),
     apiKey: {
       isBuilderKey: header === 'POLY_BUILDER_API_KEY',
       supportGasless: true,

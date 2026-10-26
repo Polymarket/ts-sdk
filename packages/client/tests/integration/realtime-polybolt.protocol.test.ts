@@ -39,7 +39,7 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
       const credentials = secureClientWithDepositWallet.credentials;
       const auth =
         credentials.type === 'bearer'
-          ? { accessToken: credentials.key }
+          ? { accessToken: credentials.accessToken }
           : {
               apiKey: credentials.key,
               secret: credentials.secret,

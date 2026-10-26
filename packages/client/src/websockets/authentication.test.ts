@@ -42,6 +42,36 @@ describe('acknowledged socket lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('sends a newer pair queued while a rejected renewal was pending', async () => {
+    vi.useFakeTimers();
+    const original = pair(0, 60);
+    let sequence = 0;
+    const session = new AuthSession({
+      credentials: original,
+      refresh: async () => pair(++sequence),
+    });
+    const first = Promise.withResolvers<void>();
+    const authenticate = vi.fn(async () => {
+      if (authenticate.mock.calls.length === 1) await first.promise;
+    });
+    const socket = new SocketAuthentication({
+      session,
+      authenticate,
+      fail: vi.fn(),
+    });
+    socket.accepted(original.accessToken);
+    await session.refresh();
+    await session.refresh();
+    first.reject(new RequestRejectedError('invalid renewal', { status: 401 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(authenticate).toHaveBeenLastCalledWith(
+      session.credentials.accessToken,
+    );
+    expect(authenticate).toHaveBeenCalledTimes(2);
+    socket.stop();
+    session.close();
+  });
+
   it('adopts acknowledged renewal without changing subscriptions and renews again when a newer pair arrives during ack', async () => {
     vi.useFakeTimers();
     const original = pair(0, 60);

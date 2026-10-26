@@ -27,10 +27,10 @@ export const ClientCredentialsSchema = z.union([
   BearerCredentialsInputSchema,
 ]);
 
-/** Saved bearer credentials; the access token is used only for HTTP authentication. */
+/** Saved bearer credentials. Both tokens are secrets. */
 export type BearerSessionCredentials = {
   type: 'bearer';
-  key: string;
+  accessToken: string;
   refreshToken: string;
 };
 /** Saved L2 credentials, including the key used to identify trading orders. */
@@ -39,40 +39,44 @@ export type L2SessionCredentials = ApiKeyCreds & { type: 'l2' };
 export type AuthenticatedCredentials =
   | BearerSessionCredentials
   | L2SessionCredentials;
+/** Credentials accepted when restoring a secure client: a value saved from `client.credentials`, or L2 credentials saved by an earlier SDK version without `type`. */
+export type SavedCredentials =
+  | BearerSessionCredentials
+  | { type?: 'l2'; key: string; secret: string; passphrase: string };
 export type CredentialsChanged = (
   credentials: BearerSessionCredentials,
 ) => void | Promise<void>;
 
-const SavedCredentialsSchema = z.discriminatedUnion('type', [
+/** Validate credentials saved from `client.credentials`, or L2 credentials saved before they carried a `type`. @internal */
+export const RestoredCredentialsSchema = z.union([
   z
-    .object({
+    .strictObject({
       type: z.literal('bearer'),
-      key: z.string().min(1),
+      accessToken: z.string().min(1),
       refreshToken: z.string().min(1),
     })
-    .strict(),
+    .transform(
+      ({ accessToken, refreshToken }): BearerCredentials => ({
+        accessToken,
+        refreshToken,
+      }),
+    ),
   z
-    .object({
+    .strictObject({
       type: z.literal('l2'),
       key: ApiKeySchema,
       secret: z.string(),
       passphrase: z.string(),
     })
-    .strict(),
+    .transform(
+      ({ key, secret, passphrase }): ApiKeyCreds => ({
+        key,
+        secret,
+        passphrase,
+      }),
+    ),
+  ApiKeyCredentialsInputSchema,
 ]);
-
-/** Normalize saved credentials while continuing to accept wire-format restoration input. @internal */
-export const RestoredCredentialsSchema = z.preprocess((value) => {
-  if (value === null || typeof value !== 'object' || !('type' in value))
-    return value;
-  const saved = SavedCredentialsSchema.safeParse(value);
-  if (!saved.success) return undefined;
-  if (saved.data.type === 'l2') {
-    const { type: _type, ...credentials } = saved.data;
-    return credentials;
-  }
-  return { accessToken: saved.data.key, refreshToken: saved.data.refreshToken };
-}, ClientCredentialsSchema);
 
 /** @internal */
 export function savedBearerCredentials(
@@ -80,7 +84,7 @@ export function savedBearerCredentials(
 ): BearerSessionCredentials {
   return {
     type: 'bearer',
-    key: credentials.accessToken,
+    accessToken: credentials.accessToken,
     refreshToken: credentials.refreshToken,
   };
 }

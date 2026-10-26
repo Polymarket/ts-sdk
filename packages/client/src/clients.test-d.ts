@@ -11,10 +11,12 @@ import {
 } from './clients';
 import { ServiceClient as RootServiceClient } from './index';
 import type { ServiceClient } from './ServiceClient';
+import type { Signer } from './types';
 
 declare const publicClient: PublicClient;
 declare const secureClient: SecureClient;
 declare const secureOptions: SecureClientOptions;
+declare const signer: Signer;
 
 it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.listTrades(
@@ -38,6 +40,32 @@ it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.predictions.post('/mutation', { retries: 5 });
   // @ts-expect-error Mutation options cannot opt into optional read retries.
   publicClient.predictions.del('/mutation', { retries: 5 });
+});
+
+it('accepts only saved bearer or L2 credentials when restoring', () => {
+  createSecureClient({
+    signer,
+    credentials: { type: 'bearer', accessToken: 'a', refreshToken: 'r' },
+  });
+  createSecureClient({
+    signer,
+    credentials: { key: 'k', secret: 's', passphrase: 'p' },
+  });
+  createSecureClient({
+    signer,
+    // @ts-expect-error Arbitrary objects are not credentials.
+    credentials: {},
+  });
+  createSecureClient({
+    signer,
+    // @ts-expect-error Bearer credentials carry the access token by name.
+    credentials: { type: 'bearer', key: 'a', refreshToken: 'r' },
+  });
+  const credentials = secureClient.credentials;
+  // @ts-expect-error Narrow by `type` before reading mechanism-specific fields.
+  credentials.accessToken;
+  if (credentials.type === 'bearer')
+    expectTypeOf(credentials.accessToken).toEqualTypeOf<string>();
 });
 
 describe('predictions service types', () => {

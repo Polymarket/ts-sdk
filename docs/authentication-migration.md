@@ -1,12 +1,12 @@
 # Bearer session migration
 
-`secureClient.credentials` is discriminated by `type`. L2 credentials have `{ type: 'l2', key, secret, passphrase }`; bearer credentials have `{ type: 'bearer', key, refreshToken }`, where `key` is the current access token. Narrow by `type` before reading mechanism-specific fields. Existing wire-format pairs remain accepted for restoration. Applications own persistence; credentials are never logged by the SDK.
+`secureClient.credentials` is discriminated by `type`. L2 credentials have `{ type: 'l2', key, secret, passphrase }`; bearer credentials have `{ type: 'bearer', accessToken, refreshToken }`. Narrow by `type` before reading mechanism-specific fields. Restoration accepts either saved shape, or L2 credentials saved by an earlier SDK version as `{ key, secret, passphrase }`. Applications own persistence; credentials are never logged by the SDK.
 
 ```ts
 // Before: store the L2 key, secret and passphrase.
 const saved = await loadCredentials();
 
-// After: the same creation call accepts a saved L2 credential object or bearer pair.
+// After: the same creation call accepts saved L2 or bearer credentials.
 const client = await createSecureClient({
   signer,
   credentials: saved,
@@ -36,7 +36,7 @@ Sockets receive only the access token. Each connection keeps its own acknowledge
 const publicClient = await client.endAuthentication();
 ```
 
-Logout sends a usable bearer access token with no body. If tab suspension let it expire, the SDK refreshes solely for revocation; an `expired_access_token` rejection receives one refresh/retry. Other logout failures are not replayed. A still-valid access token can revoke the session despite an earlier refresh failure. Logout-only refresh results are never adopted or sent to credential callbacks. It stops local refresh and socket work even when remote logout fails, and a late refresh cannot revive the client. Already issued access tokens can remain valid until expiry. For L2 credentials, `endAuthentication()` performs local cleanup only and sends no revocation request. Its remote validity is unchanged; manage or revoke the key outside the SDK.
+Logout sends a usable bearer access token with no body. If tab suspension let it expire, the SDK refreshes solely for revocation; an `expired_access_token` rejection receives one refresh/retry. Other logout failures are not replayed. A still-valid access token can revoke the session despite an earlier refresh failure. Logout-only refresh results are never adopted or sent to credential callbacks. It stops local refresh and socket work even when remote logout fails, and a late refresh cannot revive the client. Already issued access tokens can remain valid until expiry. For L2 credentials, `endAuthentication()` sends no request and returns a public client. The key is not revoked and stays valid.
 
 Identity HTTP calls use the configured Predictions origin. Business-action routing is a separate stack layer. Existing direct endpoint configuration and existing builder/relayer adapters remain available during migration. Builder authentication and gasless quota credentials are still distinct from trading signatures; orders continue to require their existing signatures. Existing builder and collateral-return routes retain their configured endpoints where gateway passthrough coverage is unavailable. Perps keeps its own endpoint and lifecycle.
 

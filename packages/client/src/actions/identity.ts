@@ -79,7 +79,6 @@ export async function login(
       nonce: params.nonce,
     },
     schema: OwnershipChallengeSchema,
-    retry: false,
   });
   let signature: string;
   try {
@@ -93,7 +92,6 @@ export async function login(
     .post('/v1/auth/login', {
       json: { ownership: { challenge_id: challenge.challengeId, signature } },
       schema: TokenResponseSchema,
-      retry: false,
     })
     .then(savedBearerCredentials);
 }
@@ -162,7 +160,6 @@ export async function migrateCredentials(
         verification_token: params.verificationToken,
       },
       schema: TokenResponseSchema,
-      retry: false,
     })
     .then(savedBearerCredentials);
 }
