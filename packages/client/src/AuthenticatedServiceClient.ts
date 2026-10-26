@@ -214,8 +214,14 @@ export class AuthenticatedServiceClient extends ServiceClient {
     const controls = { ...options, timeout: false as const };
     if (method === 'get' || method === 'getWorkflow')
       return client.get(path, controls);
-    if (method === 'post' || method === 'postRead')
-      return client.post(path, controls);
+    if (method === 'postRead')
+      return client.postRead(
+        path,
+        controls as ServiceClientPostOptions &
+          RequestOptions &
+          ServiceClientJsonResponseOptions,
+      );
+    if (method === 'post') return client.post(path, controls);
     if (method === 'patch') return client.patch(path, controls);
     return client.del(path, controls);
   }
@@ -310,9 +316,17 @@ async function sendAttempt(
     timeout,
     responseType: 'raw' as const,
   };
-  if (request.method === 'GET') return client.get(path, options);
-  if (request.method === 'POST') return client.post(path, options);
-  if (request.method === 'PATCH') return client.patch(path, options);
-  if (request.method === 'DELETE') return client.del(path, options);
-  throw new TransportError('Unsupported authenticated request method.');
+  try {
+    if (request.method === 'GET') return await client.get(path, options);
+    if (request.method === 'POST') return await client.post(path, options);
+    if (request.method === 'PATCH') return await client.patch(path, options);
+    if (request.method === 'DELETE') return await client.del(path, options);
+    throw new TransportError('Unsupported authenticated request method.');
+  } catch (error) {
+    // Preserve the original attempt failure for the outer transport's retry
+    // policy, including its exclusion of HTTP timeouts. It owns the public error.
+    if (error instanceof TransportError && error.cause instanceof Error)
+      throw error.cause;
+    throw error;
+  }
 }
