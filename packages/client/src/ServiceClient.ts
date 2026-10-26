@@ -707,7 +707,8 @@ export class ServiceClient {
         .catch(() => undefined);
       if (
         response.status === 400 &&
-        this.#normalizePath(path) === 'v1/heartbeats'
+        (this.#normalizePath(path) === 'v1/heartbeats' ||
+          this.#normalizePath(path) === 'v1/trading/heartbeats')
       ) {
         const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(body);
         if (parsed.success) {
