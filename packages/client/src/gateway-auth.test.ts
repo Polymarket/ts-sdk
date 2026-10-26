@@ -1,4 +1,5 @@
 import { createHmac } from 'node:crypto';
+import { inspect } from 'node:util';
 import type { BearerCredentials } from '@polymarket/bindings';
 import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -7,7 +8,7 @@ import { login, migrateCredentials } from './actions';
 import { createPublicClient, createSecureClient } from './clients';
 import type { SavedCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
-import { RequestRejectedError } from './errors';
+import { RequestRejectedError, TransportError } from './errors';
 import { AuthSession } from './session';
 import type { Signer } from './types';
 
@@ -542,5 +543,49 @@ it.each([
   } finally {
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
+  }
+});
+
+it.each([
+  'transport',
+  'rejected',
+] as const)('drops secret causes while preserving the public %s failure', async (kind) => {
+  const credentials = l2Credentials;
+  const failure =
+    kind === 'transport'
+      ? new TransportError('Request failed', {
+          cause: new Error(credentials.secret),
+        })
+      : new RequestRejectedError('Request rejected', {
+          status: 403,
+          code: 'permission_denied',
+          retryAfter: 2,
+          cause: new Error(credentials.secret),
+        });
+  const client = await createSecureClient({
+    environment,
+    signer: signer(),
+    wallet: address,
+    credentials,
+    fetch: async () => {
+      throw failure;
+    },
+  });
+  try {
+    const error = await client.predictions
+      .get('/private')
+      .catch((error: unknown) => error);
+    expect(inspect(error, { depth: 10 })).not.toContain(credentials.secret);
+    expect(error).toBeInstanceOf(
+      kind === 'transport' ? TransportError : RequestRejectedError,
+    );
+    if (kind === 'rejected')
+      expect(error).toMatchObject({
+        status: 403,
+        code: 'permission_denied',
+        retryAfter: 2,
+      });
+  } finally {
+    await client.endAuthentication();
   }
 });

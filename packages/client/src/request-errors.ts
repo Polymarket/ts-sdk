@@ -1,5 +1,59 @@
-import { TransportError } from './errors';
+import {
+  OrderHeartbeatMismatchError,
+  RateLimitError,
+  RequestAbortedError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+} from './errors';
 import type { Fetch } from './request-options';
+
+function redact(message: string, secrets: Iterable<string>): string {
+  let result = message;
+  for (const secret of [...secrets]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length))
+    result = result.replaceAll(secret, '[REDACTED]');
+  return result;
+}
+
+/** Redact diagnostics without retaining untrusted causes or custom properties. @internal */
+export function redactRequestError(
+  error: unknown,
+  secrets: Iterable<string>,
+  sensitive = false,
+): unknown {
+  if (error instanceof Error) {
+    const message = redact(error.message, secrets);
+    if (error instanceof OrderHeartbeatMismatchError)
+      return new OrderHeartbeatMismatchError(error.heartbeatId);
+    if (error instanceof RequestRejectedError)
+      return new RequestRejectedError(message, {
+        status: error.status,
+        code: error.code,
+        retryAfter: error.retryAfter,
+        restriction: error.restriction,
+      });
+    if (error instanceof RateLimitError)
+      return new RateLimitError(message, {
+        retryAfter: error.retryAfter,
+        rateLimit: error.rateLimit,
+      });
+    if (error instanceof RequestAbortedError)
+      return new RequestAbortedError(message);
+    if (error instanceof UnexpectedResponseError)
+      return new UnexpectedResponseError(message);
+    if (error instanceof UserInputError) return new UserInputError(message);
+    return new TransportError(
+      sensitive && !(error instanceof TransportError)
+        ? 'Authentication transport failed.'
+        : message,
+    );
+  }
+  if (sensitive) return new TransportError('Authentication transport failed.');
+  return error;
+}
 
 /** Keeps authentication material out of transport diagnostics. @internal */
 export function protectRequestErrors(
@@ -35,14 +89,6 @@ export function protectRequestErrors(
         .json()
         .then(collect, () => undefined);
     }
-    const redact = (value: string): string => {
-      let result = value;
-      for (const secret of [...secrets]
-        .filter(Boolean)
-        .sort((a, b) => b.length - a.length))
-        result = result.replaceAll(secret, '[REDACTED]');
-      return result;
-    };
     try {
       const response = await fetch(request);
       if (response.ok) return response;
@@ -70,15 +116,14 @@ export function protectRequestErrors(
             { message: 'Authentication request rejected.', code },
             { status: response.status, headers },
           )
-        : new Response(redact(text), { status: response.status, headers });
+        : new Response(redact(text, secrets), {
+            status: response.status,
+            headers,
+          });
       Object.defineProperty(result, 'url', { value: response.url });
       return result;
     } catch (error) {
-      if (sensitive && !(error instanceof TransportError))
-        throw new TransportError('Authentication transport failed.');
-      if (error instanceof Error && redact(error.message) !== error.message)
-        throw new TransportError(redact(error.message));
-      throw error;
+      throw redactRequestError(error, secrets, sensitive);
     }
   };
 }
