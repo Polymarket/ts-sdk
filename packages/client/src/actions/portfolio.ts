@@ -190,8 +190,8 @@ export const ListPositionsError = makeErrorGuard(
  * fee-exclusive entry economics. A dust floor of 0.1 shares applies on every
  * status but CLOSED unless `filterType`/`filterAmount` say otherwise.
  * `conditionId` accepts at most 20 distinct ids (with `user`). `pageSize`
- * defaults to 100 (max 1000). Transient rate limits are retried
- * by default.
+ * defaults to 100 (max 1000). Set `retries` to
+ * retry transient failures.
  *
  * `REDEEMABLE_LOST` requires `user`. For `MERGEABLE`, provide `user` to
  * filter to mergeable positions; a `conditionId`-only request falls back
@@ -365,7 +365,7 @@ export const ListComboPositionsError = makeErrorGuard(
  * `redeemable` flag is set. Every row carries its legs enriched with market
  * metadata and exact entry economics. `updatedAfter`/`updatedBefore` bound
  * the rows' change watermark for incremental sync. `pageSize` defaults to
- * 100 (max 1000). Transient rate limits are retried by default.
+ * 100 (max 1000). Set `retries` to retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
