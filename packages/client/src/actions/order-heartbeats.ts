@@ -69,6 +69,5 @@ export async function sendOrderHeartbeat(
   return client.secureClob.post('/v1/heartbeats', {
     schema: OrderHeartbeatSchema,
     json: { heartbeat_id: heartbeatId },
-    retry: false,
   });
 }

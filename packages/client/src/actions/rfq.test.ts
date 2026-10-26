@@ -571,7 +571,7 @@ describe('acceptComboQuote', () => {
       takerOrderHash: TAKER_ORDER_HASH,
     });
     expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1', {
-      retries: 2,
+      retries: 0,
       signal: undefined,
       schema: expect.anything(),
     });

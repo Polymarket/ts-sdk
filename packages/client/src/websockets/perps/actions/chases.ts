@@ -174,7 +174,6 @@ export async function createPerpsChase(
   ] as const satisfies PerpsSignedOp;
   const accepted = await client.post('/v1/trade/chases', {
     schema: CreatePerpsChaseResponseSchema,
-    retry: false,
     json: {
       ...signCommand(op, params.expiresAt),
       op: { type: 'createChase', args },
@@ -254,7 +253,6 @@ export async function cancelPerpsChase(
   const op = ['cancelChase', [params.chaseId]] as const satisfies PerpsSignedOp;
   const response = await client.del('/v1/trade/chases', {
     schema: PerpsCommandAckSchema,
-    retry: false,
     json: {
       ...signCommand(op, params.expiresAt),
       op: { type: 'cancelChase', args: { chid: params.chaseId } },

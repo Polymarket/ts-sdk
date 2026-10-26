@@ -522,8 +522,8 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
  *
  * Results contain one row per market, ordered by taker volume descending, and
  * a total across all returned markets. Volume is measured in shares. Event IDs
- * must be positive 32-bit integers. Transient rate limits are retried
- * by default.
+ * must be positive 32-bit integers. Set `retries` to
+ * retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
