@@ -497,6 +497,14 @@ class BasePublicClient<
   }
 
   /** @internal */
+  assertPlatformChallengeSupported(): void {
+    if (this.context.apiKey?.authorizeGateway === undefined)
+      throw new UserInputError(
+        'Create platform challenges with a client configured with platformApiKey.',
+      );
+  }
+
+  /** @internal */
   async requestOwnershipChallenge(
     request: OwnershipChallengeRequest,
   ): Promise<OwnershipChallenge> {
@@ -875,13 +883,9 @@ class BaseSecureClient<
     return this.session.credentials;
   }
 
-  /** @internal Wallet submissions can use a platform-attributed bearer session. */
-  get supportsGaslessWallet(): boolean {
-    return (
-      this.supportsGasless ||
-      (this.context.session !== undefined &&
-        this.context.apiKey?.authorizeGateway !== undefined)
-    );
+  /** @internal Gasless submissions accept a bearer session or submission credentials. */
+  override get supportsGasless(): boolean {
+    return super.supportsGasless || this.context.session !== undefined;
   }
 
   /** @internal */
@@ -1177,7 +1181,10 @@ export type PublicClientOptions = {
   environment?: EnvironmentConfig;
 
   /**
-   * Optional request authorization applied by the client when needed.
+   * Optional request authorization applied by the client when needed:
+   * `platformApiKey` or `remotePlatformApiKey` for application attribution, or
+   * `builderApiKey`, `relayerApiKey` or `remoteBuilderSigning` for builder and
+   * submission authorization.
    */
   apiKey?: ApiKeyAuthorization;
 

@@ -175,8 +175,8 @@ export type RemotePlatformApiKeyConfig = {
   credentials?: RequestCredentials;
   /** Application authentication or CSRF headers for the proxy. Never supply a Platform API Key or SDK session tokens here. */
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
-  /** Retain separately required builder/submission authorization during migration, such as remoteBuilderSigning. */
-  legacyApiKey?: ApiKeyAuthorization;
+  /** Builder or submission authorization sent alongside the challenge proxy, such as `remoteBuilderSigning`. */
+  submissionApiKey?: ApiKeyAuthorization;
 };
 
 const RemotePlatformApiKeyConfigSchema = z.object({
@@ -202,10 +202,8 @@ const RemotePlatformApiKeyConfigSchema = z.object({
   headers: z
     .custom<HeadersInit | (() => HeadersInit | Promise<HeadersInit>)>()
     .optional(),
-  legacyApiKey: DirectApiKeyAuthorizationSchema.optional(),
+  submissionApiKey: DirectApiKeyAuthorizationSchema.optional(),
 });
-export type RemotePlatformApiKeyError = UserInputError;
-export const RemotePlatformApiKeyError = UserInputError;
 
 /** Configures an application backend that proxies challenge creation only.
  * Your backend must authorize the caller and keep its Platform API Key private.
@@ -215,7 +213,7 @@ export const RemotePlatformApiKeyError = UserInputError;
  * const apiKey = remotePlatformApiKey({ url: '/api/auth/challenge' });
  * const client = await createSecureClient({ signer, wallet, apiKey });
  * ```
- * @throws {@link RemotePlatformApiKeyError} Thrown for invalid configuration.
+ * @throws {@link UserInputError} Thrown for invalid configuration.
  */
 export function remotePlatformApiKey(
   config: RemotePlatformApiKeyConfig,
@@ -230,18 +228,18 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
     this.#config = config;
   }
   get isBuilderKey(): boolean {
-    return this.#config.legacyApiKey?.isBuilderKey ?? false;
+    return this.#config.submissionApiKey?.isBuilderKey ?? false;
   }
   // Challenge attribution alone does not provide separately required submission credentials.
   get supportGasless(): boolean {
-    return this.#config.legacyApiKey?.supportGasless ?? false;
+    return this.#config.submissionApiKey?.supportGasless ?? false;
   }
   authorize(
     request: ApiKeyAuthorizationRequest,
     options?: ApiKeyAuthorizationOptions,
   ): Promise<HeadersInit> {
     return (
-      this.#config.legacyApiKey?.authorize(request, options) ??
+      this.#config.submissionApiKey?.authorize(request, options) ??
       Promise.resolve({})
     );
   }
@@ -284,7 +282,7 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
               signer: request.signer,
               wallet: request.wallet,
               nonce: request.nonce,
-              verification_token: request.verification_token,
+              verificationToken: request.verification_token,
             }),
           }),
           signal,
