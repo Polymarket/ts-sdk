@@ -563,10 +563,14 @@ describe('secure client gasless wallet setup', () => {
     client.webSockets.rfqQuoter.shutdown = rfqShutdown;
 
     expect(client.predictions).toBeInstanceOf(ServiceClient);
-    await expect(client.predictions.del('/cancel-all')).rejects.toMatchObject({
+    const rejected = await client.predictions
+      .del('/cancel-all')
+      .catch((error: unknown) => error);
+    expect(rejected).toMatchObject({
       name: TransportError.name,
-      cause: failure,
+      message: failure.message,
     });
+    expect(rejected).not.toHaveProperty('cause');
     const publicClient = await client.endAuthentication();
     expect(publicClient.predictions).toBeInstanceOf(ServiceClient);
     await expect(
