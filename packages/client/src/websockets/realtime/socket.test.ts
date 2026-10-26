@@ -128,7 +128,7 @@ describe('price channel lifecycle', () => {
   it('subscribes publicly and routes cold snapshots and live BBO by asset', async () => {
     const client = createPublicClient();
     const subscription = client.subscribe([
-      { topic: 'prices.polymarket', assetIds: ['123', '456'] },
+      { topic: 'prices.polymarket', assetIds: ['000123', '000456', '456'] },
     ]);
     await vi.advanceTimersByTimeAsync(250);
     const handle = await subscription;
@@ -189,7 +189,7 @@ describe('price channel lifecycle', () => {
       payload: { assetId: '456', bestBid: '0.51', bestAsk: null },
     });
     const latePending = client.subscribe([
-      { topic: 'prices.polymarket', assetIds: ['456'] },
+      { topic: 'prices.polymarket', assetIds: ['000456'] },
     ]);
     await vi.advanceTimersByTimeAsync(1);
     const late = await latePending;

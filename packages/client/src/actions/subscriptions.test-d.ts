@@ -75,6 +75,57 @@ describe('SecureClient.subscribe user order statuses', () => {
   });
 });
 
+describe('public outcome price subscription contracts', () => {
+  it('infers public and secure BBO events and only requested mixed topics', async () => {
+    const publicClient = createPublicClient();
+    const publicPrices = publicClient.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['123'] },
+    ]);
+    expectTypeOf(publicPrices).resolves.toEqualTypeOf<
+      SubscriptionHandle<ClientExports.PolymarketPriceEvent>
+    >();
+    const securePrices = secureClient.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['123'] },
+    ]);
+    expectTypeOf(securePrices).resolves.toEqualTypeOf<
+      SubscriptionHandle<ClientExports.PolymarketPriceEvent>
+    >();
+    const mixed = publicClient.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['123'] },
+      { topic: 'market', assetIds: ['123'] },
+    ]);
+    expectTypeOf(mixed).resolves.toEqualTypeOf<
+      SubscriptionHandle<
+        ClientExports.PolymarketPriceEvent | StandardMarketEvent
+      >
+    >();
+    const secureMixed = secureClient.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['123'] },
+      { topic: 'prices.crypto', symbols: ['btcusd'] },
+    ]);
+    expectTypeOf(secureMixed).resolves.toEqualTypeOf<
+      SubscriptionHandle<ClientExports.PolymarketPriceEvent | CryptoPriceEvent>
+    >();
+    for await (const event of await publicPrices) {
+      if (event.type === 'subscribe') {
+        expectTypeOf(
+          event,
+        ).toEqualTypeOf<ClientExports.PolymarketPriceSnapshotEvent>();
+        expectTypeOf(event.payload.data).toEqualTypeOf<
+          ClientExports.PolymarketPriceQuote[]
+        >();
+      } else {
+        expectTypeOf(
+          event,
+        ).toEqualTypeOf<ClientExports.PolymarketPriceUpdateEvent>();
+        expectTypeOf(
+          event.payload,
+        ).toEqualTypeOf<ClientExports.PolymarketPriceQuote>();
+      }
+    }
+  });
+});
+
 describe('price subscription contracts', () => {
   it('exports provider selection only for the four vendor-neutral price topics', () => {
     expectTypeOf<PriceProvider>().toEqualTypeOf<BindingExports.PriceProvider>();
