@@ -51,8 +51,9 @@ export function redactRequestError(
         : message,
     );
   }
-  if (sensitive) return new TransportError('Authentication transport failed.');
-  return error;
+  return new TransportError(
+    sensitive ? 'Authentication transport failed.' : 'Request failed',
+  );
 }
 
 /** Keeps authentication material out of transport diagnostics. @internal */

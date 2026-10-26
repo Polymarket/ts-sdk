@@ -549,6 +549,8 @@ it.each([
 it.each([
   'transport',
   'rejected',
+  'object',
+  'string',
 ] as const)('drops secret causes while preserving the public %s failure', async (kind) => {
   const credentials = l2Credentials;
   const failure =
@@ -556,12 +558,16 @@ it.each([
       ? new TransportError('Request failed', {
           cause: new Error(credentials.secret),
         })
-      : new RequestRejectedError('Request rejected', {
-          status: 403,
-          code: 'permission_denied',
-          retryAfter: 2,
-          cause: new Error(credentials.secret),
-        });
+      : kind === 'object'
+        ? { secret: credentials.secret }
+        : kind === 'string'
+          ? credentials.secret
+          : new RequestRejectedError('Request rejected', {
+              status: 403,
+              code: 'permission_denied',
+              retryAfter: 2,
+              cause: new Error(credentials.secret),
+            });
   const client = await createSecureClient({
     environment,
     signer: signer(),
@@ -577,7 +583,7 @@ it.each([
       .catch((error: unknown) => error);
     expect(inspect(error, { depth: 10 })).not.toContain(credentials.secret);
     expect(error).toBeInstanceOf(
-      kind === 'transport' ? TransportError : RequestRejectedError,
+      kind === 'rejected' ? RequestRejectedError : TransportError,
     );
     if (kind === 'rejected')
       expect(error).toMatchObject({
