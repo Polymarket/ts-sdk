@@ -33,7 +33,6 @@ import {
   PerpsKlineIntervalSchema,
   type PerpsPublicTrade,
   type PerpsTicker,
-  PerpsTradeIdSchema,
   type PerpsWithdrawalId,
   PerpsWithdrawResponseSchema,
 } from '@polymarket/bindings/perps';
@@ -63,12 +62,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import {
-  decodeCursorState,
-  encodeCursorState,
-  type Paginated,
-  paginate,
-} from '../pagination';
+import { decodeCursorState, type Paginated, paginate } from '../pagination';
 import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   expectTransactionHandle,
@@ -93,6 +87,17 @@ import {
   type GaslessWorkflowRequest,
   prepareGaslessTransaction,
 } from './gasless';
+import {
+  type PerpsCandlesCursorState,
+  PerpsCandlesCursorStateSchema,
+  type PerpsFundingCursorState,
+  PerpsFundingCursorStateSchema,
+  type PerpsTradesCursorState,
+  PerpsTradesCursorStateSchema,
+  toPerpsCandlesPage,
+  toPerpsFundingPage,
+  toPerpsTradesPage,
+} from './perps/public-pagination';
 
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
@@ -534,23 +539,7 @@ export function listPerpsCandles(
           snakeCase(),
         ),
       })
-      .then((response) => {
-        const last = response.data.at(-1);
-        const hasMore = response.more && last !== undefined;
-
-        return {
-          items: response.data,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeCursorState({
-                ...state,
-                startTimestamp:
-                  last.timestamp +
-                  perpsKlineIntervalMilliseconds(state.interval),
-              })
-            : undefined,
-        };
-      });
+      .then((response) => toPerpsCandlesPage(state, response));
   }, initialCursor);
 }
 
@@ -668,24 +657,7 @@ export function listPerpsFundingHistory(
           snakeCase(),
         ),
       })
-      .then((response) => {
-        const last = response.data.at(-1);
-        const hasMore =
-          response.more &&
-          last !== undefined &&
-          last.timestamp > state.startTimestamp;
-
-        return {
-          items: response.data,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeCursorState({
-                ...state,
-                endTimestamp: last.timestamp - 1,
-              })
-            : undefined,
-        };
-      });
+      .then((response) => toPerpsFundingPage(state, response));
   }, initialCursor);
 }
 
@@ -755,7 +727,6 @@ export function listPerpsTrades(
       cursor === undefined
         ? createInitialPerpsTradesCursor(params)
         : decodePerpsTradesCursor(cursor);
-    const seenTradeIds = new Set(state.seenTradeIds);
 
     return client.perps
       .get('/v1/info/trades', {
@@ -770,34 +741,7 @@ export function listPerpsTrades(
           snakeCase(),
         ),
       })
-      .then((response) => {
-        const items = response.data.filter(
-          (trade) => !seenTradeIds.has(trade.tradeId),
-        );
-        const rawLast = response.data.at(-1);
-        const last = items.at(-1);
-        const cursorTimestamp = last?.timestamp ?? rawLast?.timestamp;
-        const hasMore =
-          response.more &&
-          cursorTimestamp !== undefined &&
-          cursorTimestamp > state.startTimestamp;
-
-        return {
-          items,
-          hasMore,
-          nextCursor: hasMore
-            ? encodeCursorState({
-                ...state,
-                endTimestamp:
-                  last === undefined ? cursorTimestamp - 1 : cursorTimestamp,
-                seenTradeIds:
-                  last === undefined
-                    ? []
-                    : nextPerpsTradeCursorSeenIds(state, items, last),
-              })
-            : undefined,
-        };
-      });
+      .then((response) => toPerpsTradesPage(state, response));
   }, initialCursor);
 }
 
@@ -846,33 +790,6 @@ export async function fetchPerpsFees(
 
   return response.feeSchedule;
 }
-
-const PerpsCandlesCursorStateSchema = z.object({
-  kind: z.literal('perpsCandles'),
-  instrumentId: PerpsInstrumentIdSchema,
-  interval: PerpsKlineIntervalSchema,
-  startTimestamp: TimestampInputSchema,
-  endTimestamp: TimestampInputSchema,
-});
-
-const PerpsFundingCursorStateSchema = z.object({
-  kind: z.literal('perpsFundingHistory'),
-  instrumentId: PerpsInstrumentIdSchema,
-  startTimestamp: TimestampInputSchema,
-  endTimestamp: TimestampInputSchema,
-});
-
-const PerpsTradesCursorStateSchema = z.object({
-  kind: z.literal('perpsTrades'),
-  instrumentId: PerpsInstrumentIdSchema,
-  startTimestamp: TimestampInputSchema,
-  endTimestamp: TimestampInputSchema,
-  seenTradeIds: z.array(PerpsTradeIdSchema),
-});
-
-type PerpsCandlesCursorState = z.infer<typeof PerpsCandlesCursorStateSchema>;
-type PerpsFundingCursorState = z.infer<typeof PerpsFundingCursorStateSchema>;
-type PerpsTradesCursorState = z.infer<typeof PerpsTradesCursorStateSchema>;
 
 function toPerpsCandlesParams(
   request: Omit<
@@ -949,42 +866,6 @@ function decodePerpsTradesCursor(
     PerpsTradesCursorStateSchema,
     'Invalid Perps pagination cursor',
   );
-}
-
-function perpsKlineIntervalMilliseconds(interval: PerpsKlineInterval): number {
-  switch (interval) {
-    case '1s':
-      return 1000;
-    case '1m':
-      return 60 * 1000;
-    case '5m':
-      return 5 * 60 * 1000;
-    case '15m':
-      return 15 * 60 * 1000;
-    case '1h':
-      return 60 * 60 * 1000;
-    case '4h':
-      return 4 * 60 * 60 * 1000;
-    case '1d':
-      return 24 * 60 * 60 * 1000;
-    case '1w':
-      return 7 * 24 * 60 * 60 * 1000;
-  }
-  invariant(false, `Unsupported Perps kline interval: ${String(interval)}`);
-}
-
-function nextPerpsTradeCursorSeenIds(
-  state: PerpsTradesCursorState,
-  items: PerpsPublicTrade[],
-  last: PerpsPublicTrade,
-) {
-  const seen = new Set(
-    state.endTimestamp === last.timestamp ? state.seenTradeIds : [],
-  );
-  for (const item of items) {
-    if (item.timestamp === last.timestamp) seen.add(item.tradeId);
-  }
-  return Array.from(seen);
 }
 
 const PrivateKeySchema = z.custom<PrivateKey>(
