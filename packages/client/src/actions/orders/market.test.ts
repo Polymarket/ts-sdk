@@ -56,7 +56,7 @@ describe('protected market order amounts', () => {
   it.each([
     OrderType.FAK,
     OrderType.FOK,
-  ] as const)('signs $1.05 for 15 shares when $1.09 buys at 0.07 (%s)', async (orderType) => {
+  ] as const)('signs $1.0899 for 15.57 shares when $1.09 buys at 0.07 (%s)', async (orderType) => {
     const deps = createProtectedDeps(metadata(0.01));
     const { amounts } = await resolveProtectedMarketOrderAmounts(
       buyParams({ amount: 1.09, maxPrice: 0.07, orderType }),
@@ -64,8 +64,8 @@ describe('protected market order amounts', () => {
     );
 
     expect(amounts).toEqual({
-      offeredAmount: 1_050_000n,
-      requestedAmount: 15_000_000n,
+      offeredAmount: 1_089_900n,
+      requestedAmount: 15_570_000n,
     });
     expect(deps.fetchCurrentMarket).not.toHaveBeenCalled();
     expect(deps.resolveBuilderTakerFeeRate).not.toHaveBeenCalled();
@@ -105,7 +105,10 @@ describe('protected market order amounts', () => {
   ] as const)('fails closed if no exact amount reaches the minimum after a refresh (%s)', async (orderType) => {
     const deps = createProtectedDeps(metadata(0.1));
     await expect(
-      resolveProtectedMarketOrderAmounts(buyParams({ orderType }), deps),
+      resolveProtectedMarketOrderAmounts(
+        buyParams({ amount: 0.99, orderType }),
+        deps,
+      ),
     ).rejects.toThrow('cannot be spent exactly');
     expect(deps.fetchCurrentMarket).toHaveBeenCalledTimes(1);
   });
@@ -122,16 +125,16 @@ describe('protected market order amounts', () => {
     deps.resolveBuilderTakerFeeRate.mockResolvedValue(0.01);
 
     // 0.75 is off the cached 0.1 grid, so the order refreshes the market. The
-    // refreshed 7% fee and the 1% builder fee leave 1.51 of the 1.67 budget,
-    // and 1.50 buys exactly 2 shares at 0.75.
+    // refreshed 7% fee and the 1% builder fee leave about 1.5136 of the 1.67
+    // budget, which buys exactly 2.018124 shares at 0.75.
     const { amounts } = await resolveProtectedMarketOrderAmounts(
       buyParams({ amount: 100, maxPrice: 0.75, maxSpend: 1.67 }),
       deps,
     );
 
     expect(amounts).toEqual({
-      offeredAmount: 1_500_000n,
-      requestedAmount: 2_000_000n,
+      offeredAmount: 1_513_593n,
+      requestedAmount: 2_018_124n,
     });
     expect(deps.fetchCurrentMarket).toHaveBeenCalledTimes(1);
     expect(deps.resolveBuilderTakerFeeRate).toHaveBeenCalledTimes(1);
@@ -141,7 +144,7 @@ describe('protected market order amounts', () => {
     const deps = createProtectedDeps(metadata(0.1));
     await expect(
       resolveProtectedMarketOrderAmounts(
-        buyParams({ amount: 100, maxSpend: 1 }),
+        buyParams({ amount: 100, maxSpend: 0.99 }),
         deps,
       ),
     ).rejects.toThrow('cannot be spent exactly');
@@ -151,7 +154,7 @@ describe('protected market order amounts', () => {
   it.each([
     { amount: 0.005 },
     { amount: 100, maxSpend: 0.005 },
-  ])('rejects a BUY that rounds to zero (%j)', async (input) => {
+  ])('rejects a BUY below the minimum (%j)', async (input) => {
     const deps = createProtectedDeps(metadata(0.0001));
     await expect(
       resolveProtectedMarketOrderAmounts(buyParams(input), deps),
@@ -173,7 +176,7 @@ describe('protected market order amounts', () => {
   it('reuses cached metadata for an exactly representable coarse-tick BUY', async () => {
     const deps = createProtectedDeps(metadata(0.1));
     const { amounts } = await resolveProtectedMarketOrderAmounts(
-      buyParams({ maxPrice: 0.1 }),
+      buyParams({ amount: 1, maxPrice: 0.1 }),
       deps,
     );
     expect(amounts).toEqual({
@@ -208,7 +211,7 @@ describe('protected market order amounts', () => {
     const error = new Error('refresh unavailable');
     deps.fetchCurrentMarket.mockRejectedValue(error);
     const rejection = await resolveProtectedMarketOrderAmounts(
-      buyParams(),
+      buyParams({ amount: 0.99 }),
       deps,
     ).catch((caught: unknown) => caught);
 
@@ -242,7 +245,7 @@ describe('protected market order amounts', () => {
   it('reports the existing public error type when safe sizing is impossible', async () => {
     await expect(
       resolveProtectedMarketOrderAmounts(
-        buyParams(),
+        buyParams({ amount: 0.99 }),
         createProtectedDeps(metadata(0.1)),
       ),
     ).rejects.toBeInstanceOf(UserInputError);

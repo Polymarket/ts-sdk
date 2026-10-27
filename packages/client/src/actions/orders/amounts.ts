@@ -71,15 +71,24 @@ export function computeMarketOrderAmounts(params: {
   requestedAmount: bigint;
 } {
   const roundConfig = resolveRoundingConfig(params.tickSize);
+
+  if (params.side === OrderSide.BUY) {
+    return computeMarketBuyAmounts(
+      quantize(
+        toScaledAmount(params.amount),
+        roundConfig.amount,
+        Rounding.Down,
+      ),
+      params.price,
+      roundConfig,
+    );
+  }
+
   const amount = quantize(
     toScaledAmount(params.amount),
     roundConfig.size,
     Rounding.Down,
   );
-
-  if (params.side === OrderSide.BUY) {
-    return computeMarketBuyAmounts(amount, params.price, roundConfig);
-  }
 
   return {
     offeredAmount: amount,
@@ -92,8 +101,12 @@ export function computeMarketOrderAmounts(params: {
   };
 }
 
-/** Smallest collateral amount, in base units, that a marketable BUY may spend. */
-const MIN_MARKET_BUY_AMOUNT = 1_000_000n;
+/**
+ * Smallest collateral amount, in base units, that a marketable BUY may spend.
+ * It is 0.99 USD, not 1 USD, because an exact-price spend of a 1 USD amount can
+ * land just below 1 USD.
+ */
+const MIN_MARKET_BUY_AMOUNT = 990_000n;
 
 function gcd(a: bigint, b: bigint): bigint {
   let x = a;
@@ -110,8 +123,8 @@ function formatCollateral(amount: bigint): string {
 
 /**
  * Returns the largest collateral and share amounts within `amount` whose ratio
- * is exactly `price`, with collateral in whole `size` decimals and shares in
- * whole `amount` decimals of the rounding config.
+ * is exactly `price`, with collateral and shares both in whole `amount`
+ * decimals of the rounding config (the precision of a limit BUY's collateral).
  *
  * The exchange reads the order price as collateral / shares, so the pair must
  * encode `price` exactly. Both amounts then move in fixed steps: the smallest
@@ -125,7 +138,7 @@ function computeMarketBuyAmounts(
   offeredAmount: bigint;
   requestedAmount: bigint;
 } {
-  const collateralUnit = scaledQuantum(roundConfig.size);
+  const collateralUnit = scaledQuantum(roundConfig.amount);
   const shareUnit = scaledQuantum(roundConfig.amount);
   // collateral = shares * price / FIXED_SCALE must be a whole number of
   // collateral units.
@@ -137,10 +150,7 @@ function computeMarketBuyAmounts(
   const steps = amount / collateralStep;
   const collateral = steps * collateralStep;
 
-  if (
-    collateral === 0n ||
-    (collateral < MIN_MARKET_BUY_AMOUNT && amount >= MIN_MARKET_BUY_AMOUNT)
-  ) {
+  if (collateral < MIN_MARKET_BUY_AMOUNT) {
     const minimumSteps =
       (MIN_MARKET_BUY_AMOUNT + collateralStep - 1n) / collateralStep;
     throw new UserInputError(
