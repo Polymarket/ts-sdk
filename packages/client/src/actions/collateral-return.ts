@@ -12,7 +12,6 @@ import {
   RelayerTransactionType,
 } from '@polymarket/bindings/relayer';
 import {
-  delay,
   type EvmSignature,
   type HexString,
   invariant,
@@ -38,12 +37,11 @@ import {
   buildDepositWalletExecuteRequest,
   buildProxyWalletExecuteRequest,
   buildSafeWalletExecuteRequest,
-  extractOnChainNonceFromSubmitError,
   GaslessTransactionHandle,
   type GaslessWorkflowRequest,
-  isRetryableGaslessSubmitError,
   resignDepositWalletExecuteRequest,
 } from './gasless';
+import { submitGaslessWorkflow } from './gasless/submission';
 
 export {
   CollateralReturnKnownOperationKind,
@@ -169,55 +167,30 @@ export async function prepareCollateralReturnExecution(
       },
     ];
 
-    for (
-      let attempt = 0;
-      attempt <= COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS;
-      attempt += 1
-    ) {
-      try {
-        const envelope = yield* buildCollateralReturnEnvelope(client, calls);
-
-        try {
-          return await submitCollateralReturnPlan(
-            client,
-            plan.planHash,
-            envelope,
-          );
-        } catch (error) {
-          const nonce = extractOnChainNonceFromSubmitError(error);
-          if (
-            nonce === undefined ||
-            envelope.type !== RelayerTransactionType.WALLET
-          ) {
-            throw error;
-          }
-
-          const resignedEnvelope = yield* resignDepositWalletExecuteRequest(
-            client,
-            envelope,
-            calls,
-            nonce,
-          );
-
-          return await submitCollateralReturnPlan(
-            client,
-            plan.planHash,
-            resignedEnvelope,
-          );
-        }
-      } catch (error) {
-        if (
-          !isRetryableGaslessSubmitError(error) ||
-          attempt === COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS
-        ) {
-          throw error;
-        }
-
-        await delay(client.environment.relayerPollFrequencyMs);
-      }
-    }
-
-    invariant(false, 'Expected collateral return submit retry loop to return');
+    return yield* submitGaslessWorkflow(
+      {
+        build: () => buildCollateralReturnEnvelope(client, calls),
+        submit: (envelope) =>
+          submitCollateralReturnPlan(client, plan.planHash, envelope),
+        resign:
+          client.account.walletType === WalletType.DEPOSIT_WALLET
+            ? (envelope, nonce) => {
+                invariant(
+                  envelope.type === RelayerTransactionType.WALLET,
+                  'Expected Deposit Wallet envelope',
+                );
+                return resignDepositWalletExecuteRequest(
+                  client,
+                  envelope,
+                  calls,
+                  nonce,
+                );
+              }
+            : undefined,
+      },
+      COLLATERAL_RETURN_SUBMIT_RETRY_ATTEMPTS,
+      client.environment.relayerPollFrequencyMs,
+    );
   }.call(null);
 }
 
