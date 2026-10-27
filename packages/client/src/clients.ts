@@ -500,14 +500,6 @@ class BasePublicClient<
   }
 
   /** @internal */
-  assertCredentialMigrationSupported(): void {
-    if (this.context.apiKey?.createChallenge !== undefined)
-      throw new UserInputError(
-        'Migrate L2 credentials on your server with platformApiKey, then restore the returned bearer pair in this client.',
-      );
-  }
-
-  /** @internal */
   assertPlatformChallengeSupported(): void {
     if (this.context.apiKey?.authorizeGateway === undefined)
       throw new UserInputError(
@@ -526,7 +518,6 @@ class BasePublicClient<
     return this.auth.post('/v1/auth/challenge', {
       json: request,
       schema: OwnershipChallengeSchema,
-      retry: false,
     });
   }
 

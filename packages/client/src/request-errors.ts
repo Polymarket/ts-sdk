@@ -3,6 +3,7 @@ import {
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
+  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -44,6 +45,7 @@ export function redactRequestError(
       return new RequestAbortedError(message);
     if (error instanceof UnexpectedResponseError)
       return new UnexpectedResponseError(message);
+    if (error instanceof SigningError) return new SigningError(message);
     if (error instanceof UserInputError) return new UserInputError(message);
     return new TransportError(
       sensitive && !(error instanceof TransportError)
