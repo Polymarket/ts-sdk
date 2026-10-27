@@ -246,11 +246,31 @@ describe('public client HTTP reads', () => {
 
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {
+    server.use(
+      http.post(`${clobRoot}/v1/auth/migrate`, async ({ request }) => {
+        const body = (await request.json()) as { wallet: string };
+        return HttpResponse.json(testTokens(body.wallet));
+      }),
+      http.post(
+        `${clobRoot}/v1/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
     server.listen({ onUnhandledRequest: 'bypass' });
   });
 
   afterEach(() => {
     server.resetHandlers();
+    server.use(
+      http.post(`${clobRoot}/v1/auth/migrate`, async ({ request }) => {
+        const body = (await request.json()) as { wallet: string };
+        return HttpResponse.json(testTokens(body.wallet));
+      }),
+      http.post(
+        `${clobRoot}/v1/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
   });
 
   afterAll(() => {
