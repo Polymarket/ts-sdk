@@ -101,14 +101,7 @@ describe('RFQ sessions', () => {
         const credentials = secureClientWithDepositWallet.credentials;
         expect(outboundFrames).toContainEqual(
           expect.objectContaining({
-            auth:
-              credentials.type === 'bearer'
-                ? { accessToken: credentials.accessToken }
-                : {
-                    apiKey: credentials.key,
-                    secret: credentials.secret,
-                    passphrase: credentials.passphrase,
-                  },
+            auth: { accessToken: credentials.accessToken },
             type: 'auth',
           }),
         );
