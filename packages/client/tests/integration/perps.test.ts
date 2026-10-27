@@ -35,6 +35,35 @@ const [ticker] = await publicClient
   .then(expectNonEmptyArray);
 
 describe('Perps integration', () => {
+  it('reads public trades within the requested window and follows continuation when present', async ({
+    publicClient,
+  }) => {
+    const end = Date.now();
+    const start = end - 24 * 60 * 60 * 1000;
+    const pages = publicClient.listPerpsTrades({
+      instrumentId: instrument.id,
+      start,
+      end,
+    });
+    const first = await pages.firstPage();
+    const seen = new Set(first.items.map((trade) => trade.tradeId));
+    expect(seen.size).toBe(first.items.length);
+    for (const trade of first.items)
+      expect(trade.timestamp).toBeGreaterThanOrEqual(start);
+    for (const trade of first.items)
+      expect(trade.timestamp).toBeLessThanOrEqual(end);
+    if (first.hasMore) {
+      const second = await pages.from(first.nextCursor).firstPage();
+      expect(second.nextCursor).not.toBe(first.nextCursor);
+      for (const trade of second.items) {
+        expect(seen.has(trade.tradeId)).toBe(false);
+        seen.add(trade.tradeId);
+        expect(trade.timestamp).toBeGreaterThanOrEqual(start);
+        expect(trade.timestamp).toBeLessThanOrEqual(end);
+      }
+    }
+  });
+
   it('rejects malformed and self-transfer recipients before signing or sending', async ({
     secureClientWithDepositWallet: client,
   }) => {
