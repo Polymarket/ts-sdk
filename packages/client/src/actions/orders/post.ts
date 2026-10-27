@@ -175,8 +175,6 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
 }
 
 function orderOwner(client: BaseSecureClient): string {
-  const credentials = client.credentials;
-  if (credentials.type === 'l2') return credentials.key;
   const owner = client.session.claims.clob_api_key;
   if (!owner)
     throw new RequestRejectedError('This session has no trading identity.', {
