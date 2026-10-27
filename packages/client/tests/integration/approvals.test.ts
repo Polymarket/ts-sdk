@@ -185,7 +185,7 @@ describe('Approvals', () => {
   });
 
   describe('SecureClient.setupTradingApprovals', () => {
-    it('submits a combined trading-setup approval workflow', async ({
+    it('sets up Deposit Wallet approvals without signing again when repeated', async ({
       depositWalletAddress,
       depositWalletSigner,
       environment,
@@ -203,6 +203,16 @@ describe('Approvals', () => {
       await expect(
         secureClient.setupTradingApprovals(),
       ).resolves.toBeUndefined();
+
+      const sign = vi.spyOn(depositWalletSigner, 'signTypedData');
+      try {
+        await expect(
+          secureClient.setupTradingApprovals(),
+        ).resolves.toBeUndefined();
+        expect(sign).not.toHaveBeenCalled();
+      } finally {
+        sign.mockRestore();
+      }
     });
 
     it.runIf(runMeteredTests)(

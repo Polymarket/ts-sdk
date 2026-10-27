@@ -3,29 +3,18 @@ import {
   ApprovalStandard,
   type ApprovalsSnapshot,
 } from '@polymarket/bindings/data';
-import { WalletType } from '@polymarket/bindings/gamma';
-import {
-  expectEvmAddress,
-  expectTxHash,
-  type HexString,
-} from '@polymarket/types';
+import { expectEvmAddress, type HexString } from '@polymarket/types';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  erc20ApprovalCall,
-  erc1155ApprovalForAllCall,
-  MAX_UINT256,
-} from '../abis';
-import type { BaseSecureClient } from '../clients';
+import { MAX_UINT256 } from '../abis';
 import { production } from '../environments';
 import { UnexpectedResponseError } from '../errors';
-import type { EthCallRequest } from '../rpc';
 import type { TransactionHandle } from '../types';
-import { SignerType } from '../wallet';
+import type { TradingApprovalRequirements } from './approvals';
 import {
-  prepareTradingApprovals,
-  type TradingApprovalRequirements,
-} from './approvals';
-import { resolveIndexedTradingApprovals } from './approvals-state';
+  resolveIndexedTradingApprovals,
+  resolveRpcTradingApprovals,
+} from './approvals-state';
+import { prepareEoaTradingApprovals } from './approvals-workflow';
 
 const FALSE_RESULT = `0x${'0'.repeat(64)}` as HexString;
 const TRUE_RESULT = `0x${'0'.repeat(63)}1` as HexString;
@@ -199,151 +188,123 @@ describe('indexed trading approval requirements', () => {
   });
 });
 
-describe('prepareTradingApprovals', () => {
-  it('submits every missing approval and waits after each EOA transaction', async () => {
-    const { client } = createClient([
-      ...Array<HexString>(7).fill(FALSE_RESULT),
-      ...Array<HexString>(10).fill(FALSE_RESULT),
-    ]);
-    const workflow = await prepareTradingApprovals(client);
-    const handles = Array.from({ length: 17 }, createTransactionHandle);
-    let result = await workflow.next();
+describe('RPC trading approval requirements', () => {
+  const { contracts } = production;
+  const required: TradingApprovalRequirements = {
+    erc20: [
+      {
+        tokenAddress: contracts.collateralToken,
+        spenderAddress: contracts.standardExchange,
+        amount: MAX_UINT256,
+      },
+      {
+        tokenAddress: contracts.collateralToken,
+        spenderAddress: contracts.perpsDepositContract,
+        amount: MAX_UINT256,
+      },
+    ],
+    erc1155: [
+      {
+        tokenAddress: contracts.conditionalTokens,
+        operatorAddress: contracts.autoRedeemOperator,
+      },
+    ],
+  };
 
-    for (const handle of handles) {
-      expect(result.done).toBe(false);
-      result = await workflow.next(handle);
-    }
-
-    expect(result).toEqual({
-      done: true,
-      value: undefined,
-    });
-    for (const handle of handles) {
-      expect(handle.wait).toHaveBeenCalledTimes(1);
-    }
+  it('returns every requirement when allowances and operator approval are missing', () => {
+    expect(
+      resolveRpcTradingApprovals(
+        [FALSE_RESULT, FALSE_RESULT, FALSE_RESULT],
+        required,
+      ),
+    ).toEqual(required);
   });
 
-  it('completes without transactions when approvals are already set', async () => {
-    const { client, ethCallBatch } = createClient([
-      ...Array<HexString>(7).fill(MAX_UINT256_RESULT),
-      ...Array<HexString>(10).fill(TRUE_RESULT),
-    ]);
-
-    const workflow = await prepareTradingApprovals(client);
-
-    const result = await workflow.next();
-
-    expect(result).toEqual({
-      done: true,
-      value: undefined,
-    });
-    expect(ethCallBatch).toHaveBeenCalledTimes(1);
-    expect(ethCallBatch.mock.calls[0]?.[0]).toHaveLength(17);
+  it('returns no requirements when all allowances and operator approvals are granted', () => {
+    expect(
+      resolveRpcTradingApprovals(
+        [MAX_UINT256_RESULT, MAX_UINT256_RESULT, TRUE_RESULT],
+        required,
+      ),
+    ).toEqual({ erc20: [], erc1155: [] });
   });
 
-  it('submits only missing approvals', async () => {
-    const { client } = createClient([
-      ...Array<HexString>(6).fill(MAX_UINT256_RESULT),
-      FALSE_RESULT,
-      ...Array<HexString>(5).fill(TRUE_RESULT),
-      FALSE_RESULT,
-      FALSE_RESULT,
-      ...Array<HexString>(3).fill(TRUE_RESULT),
-    ]);
-    const firstHandle = createTransactionHandle();
-    const secondHandle = createTransactionHandle();
-    const thirdHandle = createTransactionHandle();
-    const workflow = await prepareTradingApprovals(client);
+  it('returns only missing approvals in requirement order', () => {
+    expect(
+      resolveRpcTradingApprovals(
+        [MAX_UINT256_RESULT, TRUE_RESULT, FALSE_RESULT],
+        required,
+      ),
+    ).toEqual({ erc20: [required.erc20[1]], erc1155: required.erc1155 });
+  });
 
-    let result = await workflow.next();
-
-    expect(result).toEqual({
-      done: false,
-      value: {
-        kind: 'sendErc20ApprovalTransaction',
-        request: {
-          chainId: production.chainId,
-          ...erc20ApprovalCall(
-            production.contracts.collateralToken,
-            production.contracts.perpsDepositContract,
-            MAX_UINT256,
-          ),
-        },
-      },
-    });
-
-    result = await workflow.next(firstHandle);
-
-    expect(result).toEqual({
-      done: false,
-      value: {
-        kind: 'sendErc1155ApprovalForAllTransaction',
-        request: {
-          chainId: production.chainId,
-          ...erc1155ApprovalForAllCall(
-            production.contracts.conditionalTokens,
-            production.contracts.binaryModule,
-            true,
-          ),
-        },
-      },
-    });
-
-    result = await workflow.next(secondHandle);
-
-    expect(result).toEqual({
-      done: false,
-      value: {
-        kind: 'sendErc1155ApprovalForAllTransaction',
-        request: {
-          chainId: production.chainId,
-          ...erc1155ApprovalForAllCall(
-            production.contracts.conditionalTokens,
-            production.contracts.negRiskModule,
-            true,
-          ),
-        },
-      },
-    });
-
-    result = await workflow.next(thirdHandle);
-
-    expect(result).toEqual({
-      done: true,
-      value: undefined,
-    });
-    expect(firstHandle.wait).toHaveBeenCalledTimes(1);
-    expect(secondHandle.wait).toHaveBeenCalledTimes(1);
-    expect(thirdHandle.wait).toHaveBeenCalledTimes(1);
+  it.each([
+    { label: 'empty batch', results: [] },
+    { label: 'missing allowance', results: [MAX_UINT256_RESULT] },
+    {
+      label: 'unreadable operator',
+      results: [MAX_UINT256_RESULT, MAX_UINT256_RESULT, '0x' as HexString],
+    },
+  ])('rejects $label results', ({ results }) => {
+    expect(() => resolveRpcTradingApprovals(results, required)).toThrow(
+      UnexpectedResponseError,
+    );
   });
 });
 
-function createClient(results: HexString[]) {
-  const ethCallBatch = vi.fn(
-    async (_calls: readonly EthCallRequest[]): Promise<HexString[]> => results,
-  );
-  const client = {
-    account: {
-      signerType: SignerType.OWNER,
-      wallet,
-      walletType: WalletType.EOA,
-    },
-    environment: production,
-    rpc: { ethCallBatch },
-  } as unknown as BaseSecureClient;
+describe('EOA trading approval workflow', () => {
+  it('confirms each ERC-20 approval before the next approval, then confirms ERC-1155 approvals', async () => {
+    const calls = [
+      { to: production.contracts.collateralToken, data: '0x01' as HexString },
+      { to: production.contracts.collateralToken, data: '0x02' as HexString },
+      { to: production.contracts.conditionalTokens, data: '0x03' as HexString },
+    ];
+    const workflow = prepareEoaTradingApprovals(
+      production.chainId,
+      calls.slice(0, 2),
+      calls.slice(2),
+    );
+    let step = await workflow.next();
+    for (const [index, call] of calls.entries()) {
+      expect(step).toEqual({
+        done: false,
+        value: {
+          kind:
+            index < 2
+              ? 'sendErc20ApprovalTransaction'
+              : 'sendErc1155ApprovalForAllTransaction',
+          request: { chainId: production.chainId, ...call },
+        },
+      });
+      let confirm: () => void = () => {
+        throw new Error('Expected wait to start');
+      };
+      const confirmation = new Promise<void>((resolve) => {
+        confirm = resolve;
+      });
+      const handle: TransactionHandle = {
+        transactionHash: null,
+        transactionId: null,
+        wait: vi.fn().mockReturnValue(confirmation),
+      };
+      let advanced = false;
+      const next = workflow.next(handle).then((result) => {
+        advanced = true;
+        return result;
+      });
+      await vi.waitFor(() =>
+        expect(handle.wait).toHaveBeenCalledExactlyOnceWith(),
+      );
+      expect(advanced).toBe(false);
+      confirm();
+      step = await next;
+    }
+    expect(step).toEqual({ done: true, value: undefined });
+  });
 
-  return { client, ethCallBatch };
-}
-
-function createTransactionHandle(): TransactionHandle {
-  return {
-    transactionHash: null,
-    transactionId: null,
-    wait: vi.fn(async () => ({
-      transactionHash: expectTxHash(
-        '0x1111111111111111111111111111111111111111111111111111111111111111',
-      ),
-      transactionId: null,
-    })),
-  };
-}
+  it('finishes without requesting a transaction when no approvals are missing', async () => {
+    expect(
+      await prepareEoaTradingApprovals(production.chainId, [], []).next(),
+    ).toEqual({ done: true, value: undefined });
+  });
+});

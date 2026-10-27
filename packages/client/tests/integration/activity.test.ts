@@ -1,5 +1,6 @@
 import { ActivityType, ComboActivityType } from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
+import { vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
@@ -37,25 +38,46 @@ describe('Activity', () => {
   });
 
   describe('listActivity', () => {
-    it('lists wallet activity', async ({ publicClient }) => {
-      const result = await publicClient
-        .listActivity({
-          user: TEST_USER,
-          pageSize: 100,
-          type: [ActivityType.TRADE],
-        })
-        .firstPage()
-        .then(expectNonEmptyPage);
+    for (const { label, type } of [
+      { label: 'without type filters', type: undefined },
+      {
+        label: 'with multiple type filters',
+        type: [ActivityType.TRADE, ActivityType.DEPOSIT],
+      },
+    ]) {
+      it(`sends exclude_deposits_withdrawals=false ${label}`, async ({
+        publicClient,
+      }) => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-      expect(result.items.length).toBeGreaterThan(0);
-      expect(expectPresent(result.items[0])).toEqual(
-        expect.objectContaining({
-          conditionId: expect.any(String),
-          type: ActivityType.TRADE,
-          wallet: TEST_USER,
-        }),
-      );
-    });
+        try {
+          const result = await publicClient
+            .listActivity({ user: TEST_USER, pageSize: 100, type })
+            .firstPage()
+            .then(expectNonEmptyPage);
+
+          expect(expectPresent(result.items[0]).wallet).toBe(TEST_USER);
+          if (type !== undefined) {
+            expect(
+              result.items.every((item) =>
+                type.some((requestedType) => requestedType === item.type),
+              ),
+            ).toBe(true);
+          }
+          const params = fetchSpy.mock.calls
+            .map(
+              ([input]) =>
+                new URL(input instanceof Request ? input.url : String(input)),
+            )
+            .find((url) => url.pathname === '/v2/activity')?.searchParams;
+          expect(params?.get('user')).toBe(TEST_USER);
+          expect(params?.get('exclude_deposits_withdrawals')).toBe('false');
+          expect(params?.get('type')).toBe(type?.join(',') ?? null);
+        } finally {
+          fetchSpy.mockRestore();
+        }
+      });
+    }
 
     it('defaults secure clients to the authenticated wallet', async ({
       depositWalletAddress,
