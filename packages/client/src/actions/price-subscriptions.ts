@@ -1,6 +1,10 @@
+import { PriceProvider } from '@polymarket/bindings/subscriptions';
 import { z } from 'zod';
 import { parseUserInput } from '../input';
-import type { PriceSubscription } from './subscriptions';
+import type {
+  PriceSubscription,
+  PriceSubscriptionConfirmation,
+} from './subscriptions';
 
 const SymbolSchema = z
   .string()
@@ -23,15 +27,43 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
   z.strictObject({
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
+    provider: z.enum(PriceProvider).optional(),
+    onSubscribed: z
+      .custom<
+        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+      >((value) => typeof value === 'function')
+      .optional(),
   }),
   z.strictObject({
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(CryptoSymbolSchema).min(1),
+    provider: z.enum(PriceProvider).optional(),
+    onSubscribed: z
+      .custom<
+        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+      >((value) => typeof value === 'function')
+      .optional(),
   }),
   z.strictObject({
     topic: z.literal('prices.equity'),
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
+    provider: z.enum(PriceProvider).optional(),
+    onSubscribed: z
+      .custom<
+        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+      >((value) => typeof value === 'function')
+      .optional(),
+  }),
+  z.strictObject({
+    topic: z.literal('prices.equity.twap'),
+    symbol: SymbolSchema,
+    provider: z.enum(PriceProvider).optional(),
+    onSubscribed: z
+      .custom<
+        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+      >((value) => typeof value === 'function')
+      .optional(),
   }),
 ]);
 

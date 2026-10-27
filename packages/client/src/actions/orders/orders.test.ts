@@ -5,12 +5,14 @@ import {
   toPositionId,
   toTokenId,
 } from '@polymarket/bindings';
-import { SignatureType } from '@polymarket/bindings/clob';
+import { AssetTypeSchema, SignatureType } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ExchangeOrderProtocolVersion } from '../../exchange';
+import { AssetType } from '../../index';
 import { SignerType } from '../../wallet';
+import { resolveBalanceAllowanceAssetType } from './allowance';
 import { createUnsignedOrder } from './orders';
 import type { OrderDraft } from './types';
 
@@ -19,6 +21,26 @@ const DEPOSIT_WALLET =
   '0x57ffbc34de23124faeb8387fcd689d314e57accd' as EvmAddress;
 const PROXY_WALLET = '0x7754536ecd85c00b2e0cf9c1aa679340d8550756' as EvmAddress;
 const SAFE_WALLET = '0x766b6851a199bf91ae3fa13b1cfac5187355118f' as EvmAddress;
+
+describe('order balance and allowance asset selection', () => {
+  const ctfTokenId = toTokenId((1n << 40n).toString());
+  const protocolV2PositionId = toPositionId((1n << 248n).toString());
+
+  it('exports the Protocol V2 asset type from the client entry point', () => {
+    expect(AssetType.CONDITIONAL_V2).toBe('CONDITIONAL-V2');
+  });
+
+  it.each([
+    [OrderSide.BUY, ctfTokenId, 'COLLATERAL'],
+    [OrderSide.BUY, protocolV2PositionId, 'COLLATERAL'],
+    [OrderSide.SELL, ctfTokenId, 'CONDITIONAL'],
+    [OrderSide.SELL, protocolV2PositionId, 'CONDITIONAL-V2'],
+  ] as const)('selects %s %s as %s for reads and refreshes', (side, assetId, expected) => {
+    const assetType = resolveBalanceAllowanceAssetType(side, assetId);
+
+    expect(AssetTypeSchema.parse(assetType)).toBe(expected);
+  });
+});
 
 describe('createUnsignedOrder', () => {
   afterEach(() => {

@@ -1,0 +1,166 @@
+import {
+  createPublicClient,
+  createSecureClient,
+  FetchPerpsPositionSnapshotsError,
+  FetchPerpsRegistrationError,
+  RequestAbortedError,
+} from '@polymarket/client';
+import { fetchTag } from '@polymarket/client/actions';
+import { describe, expect, it } from './fixtures';
+
+describe('HTTP request controls', () => {
+  it('reads a public markets page through the production gateway contract', async ({
+    environment,
+  }) => {
+    const inputs: (RequestInfo | URL)[] = [];
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      inputs.push(input);
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch });
+    const params = new URLSearchParams({ limit: '1', closed: 'false' });
+    const result = await client.predictions.get('/v1/markets', {
+      params,
+      timeout: 10_000,
+      retries: 0,
+    });
+    expect(result).toEqual(
+      expect.objectContaining({ markets: expect.any(Array) }),
+    );
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    expect(url.origin).toBe(new URL(environment.predictions.rest).origin);
+    expect(url.pathname).toBe('/v1/markets');
+    expect(url.searchParams.get('limit')).toBe('1');
+    expect(url.searchParams.get('closed')).toBe('false');
+  });
+  it('reads the live gateway ping through predictions with custom fetch', async ({
+    environment,
+  }) => {
+    const inputs: (RequestInfo | URL)[] = [];
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      inputs.push(input);
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch });
+    const result = await client.predictions.get<{ status: string }>('/ping', {
+      timeout: 10_000,
+      retries: 0,
+    });
+    expect(result).toEqual({ status: 'ok' });
+    expect(inputs).toHaveLength(1);
+    const input = inputs[0];
+    const url = input instanceof Request ? input.url : String(input);
+    expect(url).toBe(`${environment.predictions.rest}/ping`);
+  });
+  it('forwards live reads through custom fetch for client and extended action calls', async ({
+    environment,
+  }) => {
+    let requests = 0;
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      requests += 1;
+      return globalThis.fetch(input, init);
+    }
+    const client = createPublicClient({ environment, fetch });
+
+    const tag = await client.fetchTag({ id: '144' }, { retries: 0 });
+    const extended = client.extend((base) => ({
+      fetchElectionTag: () =>
+        fetchTag(base, { slug: 'elections' }, { retries: 0 }),
+    }));
+    const sameTag = await extended.fetchElectionTag();
+    const trades = await client
+      .listTrades({ pageSize: 1 }, { retries: 0 })
+      .firstPage();
+
+    expect(tag.id).toBe(sameTag.id);
+    expect(trades.items).toHaveLength(1);
+    expect(requests).toBe(3);
+  });
+
+  it('cancels a pending read without cancelling another read on the same client', async ({
+    publicClient,
+  }) => {
+    const controller = new AbortController();
+    const reason = new Error('query superseded');
+    const cancelled = publicClient.fetchTag(
+      { id: '144' },
+      { signal: controller.signal },
+    );
+    const unaffected = publicClient.fetchTag({ slug: 'elections' });
+    controller.abort(reason);
+
+    await expect(cancelled).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
+    await expect(unaffected).resolves.toMatchObject({ id: '144' });
+  });
+
+  it('cancels public Perps reads through the caller signal', async ({
+    publicClient,
+  }) => {
+    const address = '0x0000000000000000000000000000000000000000';
+    await expect(
+      publicClient.fetchPerpsRegistration({ address }),
+    ).resolves.toEqual(expect.any(Boolean));
+    for (const read of [
+      (signal: AbortSignal) =>
+        publicClient.fetchPerpsRegistration({ address }, { signal }),
+      (signal: AbortSignal) =>
+        publicClient.fetchPerpsPositionSnapshots(
+          { address, activeInstrumentIds: [0] },
+          { signal },
+        ),
+    ]) {
+      const controller = new AbortController();
+      const pending = read(controller.signal);
+      controller.abort('query disposed');
+      await expect(pending).rejects.toSatisfy(
+        (error: unknown) =>
+          error instanceof RequestAbortedError &&
+          error.cause === 'query disposed' &&
+          FetchPerpsRegistrationError.isError(error) &&
+          FetchPerpsPositionSnapshotsError.isError(error),
+      );
+    }
+  });
+
+  it('preserves fetch through authentication and forwards secure account read options', async ({
+    depositWalletAddress,
+    depositWalletSigner,
+    environment,
+    secureClientWithDepositWallet,
+  }) => {
+    let requests = 0;
+    function fetch(input: RequestInfo | URL, init?: RequestInit) {
+      requests += 1;
+      return globalThis.fetch(input, init);
+    }
+    const client = await createSecureClient({
+      credentials: secureClientWithDepositWallet.credentials,
+      environment,
+      fetch,
+      signer: depositWalletSigner,
+      wallet: depositWalletAddress,
+    });
+    expect(requests).toBeGreaterThan(0);
+    requests = 0;
+
+    await expect(client.fetchClosedOnlyMode({ retries: 0 })).resolves.toEqual(
+      expect.any(Boolean),
+    );
+    expect(requests).toBe(1);
+    const controller = new AbortController();
+    const paginator = client.listPositions(
+      { pageSize: 1 },
+      { signal: controller.signal },
+    );
+    await paginator.firstPage();
+    controller.abort();
+    await expect(paginator.firstPage()).rejects.toBeInstanceOf(
+      RequestAbortedError,
+    );
+  });
+});

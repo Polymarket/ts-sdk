@@ -1,14 +1,21 @@
-import { PerpsInstrumentCategory } from '@polymarket/bindings/perps';
+import {
+  type PerpsCredentials,
+  PerpsInstrumentCategory,
+} from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
+  ApprovePerpsBuilderFeeRequest,
   CancelAllPerpsOrdersRequest,
   CancelPerpsOrderRequest,
   CancelPerpsOrdersRequest,
+  DecimalString,
   DepositToPerpsRequest,
+  EpochMilliseconds,
   FetchPerpsAccountConfigRequest,
   FetchPerpsBookRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  FetchPerpsRegistrationRequest,
   FetchPerpsTickerRequest,
   FetchPerpsTickersRequest,
   ListPerpsCandlesRequest,
@@ -17,25 +24,274 @@ import type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
   ListPerpsWithdrawalsRequest,
   OpenPerpsSessionRequest,
+  PerpsAccountFill,
+  PerpsCancelOptions,
+  PerpsCancelOrderErrorCode,
+  PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
+  PerpsInstrumentSettlement,
+  PerpsInternalTransfer,
+  PerpsInternalTransferId,
+  PerpsLiquidationDetails,
+  PerpsLiquidationMethod,
+  PerpsPositionDeleveragedNotification,
+  PerpsPositionSnapshots,
+  PerpsSession,
   PerpsSessionAccountError,
+  PerpsSessionEvent,
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
+  PerpsUpdateLeverageBatchResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderWithTpSlRequest,
   PlacePerpsPositionTpSlRequest,
   PostPerpsOrdersRequest,
+  PublicClient,
+  PublicPerpsActions,
   RevokePerpsCredentialsRequest,
   FetchPerpsInstrumentsRequest as RootFetchPerpsInstrumentsRequest,
+  SecureClient,
+  SecureClientOptions,
+  SecurePerpsActions,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../index';
-import { FetchPerpsTickerError, UpdatePerpsMarginError } from '../index';
-import type { FetchPerpsInstrumentsRequest } from './perps';
+import {
+  FetchPerpsTickerError,
+  PerpsCancelRetryError,
+  PerpsKnownCancelOrderErrorCode,
+  UpdatePerpsMarginError,
+} from '../index';
+import type {
+  CreatePerpsSessionRequest,
+  FetchPerpsInstrumentsRequest,
+  ResumePerpsSessionRequest,
+} from './perps';
+
+describe('registration lookup types', () => {
+  it('accepts a plain address and returns a boolean', () => {
+    function read(
+      client: PublicPerpsActions,
+      request: FetchPerpsRegistrationRequest,
+    ) {
+      expectTypeOf(client.fetchPerpsRegistration(request)).toEqualTypeOf<
+        Promise<boolean>
+      >();
+      client.fetchPerpsRegistration({
+        address: '0x1111111111111111111111111111111111111111',
+      });
+      // @ts-expect-error An address is required.
+      client.fetchPerpsRegistration({});
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
+describe('cancellable public Perps read types', () => {
+  it('accepts the operation signal on registration and position snapshots on both public clients', () => {
+    function read(client: PublicClient | SecureClient, signal: AbortSignal) {
+      expectTypeOf(
+        client.fetchPerpsRegistration(
+          { address: '0x1111111111111111111111111111111111111111' },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<boolean>>();
+      expectTypeOf(
+        client.fetchPerpsPositionSnapshots(
+          {
+            address: '0x1111111111111111111111111111111111111111',
+            activeInstrumentIds: [7],
+          },
+          { signal },
+        ),
+      ).toEqualTypeOf<Promise<PerpsPositionSnapshots>>();
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
+declare const batchLeverageClient: SecurePerpsActions;
+
+describe('batch leverage session contract', () => {
+  it('returns ordered success and rejection models through the public session', async () => {
+    const session = await batchLeverageClient.openPerpsSession();
+    const results = await session.updateLeverages({
+      updates: [
+        { instrumentId: 1, leverage: 5, crossMargin: false },
+        { instrumentId: 2, leverage: 10, crossMargin: true },
+      ],
+    });
+    expectTypeOf(results).toEqualTypeOf<PerpsUpdateLeverageBatchResult[]>();
+    for (const result of results) {
+      if (result.status === 'ok') {
+        expectTypeOf(result.leverage).toEqualTypeOf<number>();
+        expectTypeOf(result.crossMargin).toEqualTypeOf<boolean>();
+      } else {
+        expectTypeOf(result.error).toEqualTypeOf<string>();
+      }
+    }
+  });
+});
+
+describe('session notification recovery', () => {
+  it('narrows server recovery metadata from the public session iterator', () => {
+    async function consume(client: SecureClient) {
+      const session = await client.openPerpsSession({
+        includeBuilderFills: true,
+      });
+      for await (const event of session) {
+        expectTypeOf(event).toEqualTypeOf<PerpsSessionEvent>();
+        if (event.type !== 'resync') {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<EpochMilliseconds | null>();
+          if (event.eventTimestamp !== null) {
+            expectTypeOf(
+              event.eventTimestamp,
+            ).toEqualTypeOf<EpochMilliseconds>();
+          } else {
+            expectTypeOf(event.eventTimestamp).toEqualTypeOf<null>();
+          }
+          continue;
+        }
+        expectTypeOf(event.previousSequence).toEqualTypeOf<
+          number | undefined
+        >();
+        if (event.reason === 'server') {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<EpochMilliseconds | null>();
+          if (event.eventTimestamp !== null) {
+            expectTypeOf(
+              event.eventTimestamp,
+            ).toEqualTypeOf<EpochMilliseconds>();
+          } else {
+            expectTypeOf(event.eventTimestamp).toEqualTypeOf<null>();
+          }
+          expectTypeOf(event.channel).toEqualTypeOf<'notifications'>();
+          expectTypeOf(event.sequence).toEqualTypeOf<number>();
+          expectTypeOf(event.timestamp).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<undefined>();
+          expectTypeOf(event).not.toHaveProperty('payload');
+        } else {
+          expectTypeOf(event.eventTimestamp).toEqualTypeOf<undefined>();
+          expectTypeOf(event.reason).toEqualTypeOf<
+            'reconnect' | 'sequence_gap'
+          >();
+          expectTypeOf(event.previousSequence).toEqualTypeOf<
+            number | undefined
+          >();
+        }
+      }
+    }
+    void consume;
+  });
+});
+
+describe('session portfolio risk data', () => {
+  it('exposes exact collateral and ADL tiers through reads and the iterator', () => {
+    async function read(session: PerpsSession) {
+      const portfolio = await session.fetchPortfolio();
+      expectTypeOf(
+        portfolio.margin.availableOrderMargin,
+      ).toEqualTypeOf<DecimalString>();
+      expectTypeOf(portfolio.feeTier).toEqualTypeOf<number>();
+      for (const position of portfolio.positions) {
+        expectTypeOf(position.adlIndex).toEqualTypeOf<0 | 1 | 2 | 3>();
+      }
+      for await (const event of session) {
+        if (event.type === 'portfolio') {
+          expectTypeOf(event.payload).toEqualTypeOf<typeof portfolio>();
+        }
+      }
+    }
+    void read;
+  });
+});
+
+describe('session fill risk data', () => {
+  it('filters public session reads and exposes fill details through reads and updates', () => {
+    async function read(session: PerpsSession) {
+      const page = await session.listFills({ instrumentId: 0 }).firstPage();
+      expectTypeOf(page.items).toEqualTypeOf<PerpsAccountFill[]>();
+      for (const fill of page.items) {
+        expectTypeOf(fill.adl).toEqualTypeOf<boolean>();
+        expectTypeOf(fill.liquidationDetails).toEqualTypeOf<
+          PerpsLiquidationDetails | undefined
+        >();
+        if (fill.liquidationDetails) {
+          expectTypeOf(
+            fill.liquidationDetails.mark,
+          ).toEqualTypeOf<DecimalString>();
+          expectTypeOf(
+            fill.liquidationDetails.method,
+          ).toEqualTypeOf<PerpsLiquidationMethod>();
+          expectTypeOf(fill.liquidationDetails.liquidatedUser).toEqualTypeOf<
+            string | undefined
+          >();
+        }
+      }
+      for await (const event of session) {
+        if (event.type === 'fill') {
+          for (const fill of event.payload) {
+            expectTypeOf(fill.adl).toEqualTypeOf<boolean>();
+            expectTypeOf(fill.liquidationDetails).toEqualTypeOf<
+              PerpsLiquidationDetails | undefined
+            >();
+          }
+        }
+      }
+      // @ts-expect-error Instrument filters accept integer identifiers, not strings.
+      session.listFills({ instrumentId: '1' });
+    }
+    void read;
+  });
+});
+
+describe('session builder consent', () => {
+  it('requires an explicit maximum and keeps versions internal', () => {
+    function approve(session: PerpsSession) {
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+        maxFeeRate: '0.0003',
+      });
+      void session.approveBuilderFee({ maxFeeRate: '0.0005' });
+      // @ts-expect-error Consent requires an explicit maximum.
+      void session.approveBuilderFee();
+      // @ts-expect-error Selecting a builder does not specify an approved maximum.
+      void session.approveBuilderFee({
+        builderAddress: '0x1111111111111111111111111111111111111111',
+      });
+      void session.revokeBuilderFee();
+    }
+    void approve;
+    expectTypeOf<ApprovePerpsBuilderFeeRequest>().not.toHaveProperty(
+      'approvalVersion',
+    );
+  });
+
+  it('accepts an address selector and receipts option on creation and resume', () => {
+    const create: CreatePerpsSessionRequest = {
+      builderAttribution: '0x1111111111111111111111111111111111111111',
+      includeBuilderFills: true,
+    };
+    function resume(credentials: PerpsCredentials): ResumePerpsSessionRequest {
+      return { ...create, credentials };
+    }
+    expectTypeOf(create).toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf(resume).returns.toExtend<OpenPerpsSessionRequest>();
+    expectTypeOf<SecureClientOptions>().not.toHaveProperty(
+      'perpsBuilderAttribution',
+    );
+  });
+});
 
 describe('FetchPerpsInstrumentsRequest', () => {
   it('allows current instrument filters', () => {
@@ -78,6 +334,7 @@ describe('public Perps exports', () => {
       FetchPerpsOrdersRequest,
       ListPerpsFillsRequest,
       ListPerpsFundingPaymentsRequest,
+      ListPerpsInternalTransfersRequest,
       ListPerpsDepositsRequest,
       ListPerpsWithdrawalsRequest,
       ListPerpsEquityHistoryRequest,
@@ -89,8 +346,11 @@ describe('public Perps exports', () => {
       CancelAllPerpsOrdersRequest,
       CancelPerpsOrderRequest,
       CancelPerpsOrdersRequest,
+      PerpsCancelOptions,
+      PerpsCancelRetryOptions,
       UpdatePerpsLeverageRequest,
       UpdatePerpsMarginRequest,
+      TransferPerpsCollateralRequest,
     ];
 
     expectTypeOf<RootPerpsRequests>().toEqualTypeOf<RootPerpsRequests>();
@@ -107,4 +367,156 @@ describe('public Perps exports', () => {
     void FetchPerpsTickerError;
     void UpdatePerpsMarginError;
   });
+
+  it('exposes owner transfers only on secure Perps actions', () => {
+    const secureActions = {} as SecurePerpsActions;
+    const publicActions = {} as PublicPerpsActions;
+
+    expectTypeOf(secureActions.transferPerpsCollateral).returns.toEqualTypeOf<
+      Promise<PerpsInternalTransferId>
+    >();
+    // @ts-expect-error Collateral movement requires an owner-capable secure client.
+    void publicActions.transferPerpsCollateral;
+  });
+
+  it('exposes normalized internal-transfer history on Perps sessions', () => {
+    const session = {} as import('../index').PerpsSession;
+
+    expectTypeOf(session.listInternalTransfers).returns.toMatchTypeOf<
+      import('../index').Paginated<PerpsInternalTransfer[]>
+    >();
+  });
+
+  it('narrows ADL notifications from session history and events', async () => {
+    const session = {} as PerpsSession;
+    const page = await session.listNotifications().firstPage();
+    for (const entry of page.items) {
+      if (entry.notification.type === 'position_deleveraged') {
+        expectTypeOf(
+          entry.notification,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
+    for await (const event of session) {
+      if (
+        event.type === 'notification' &&
+        event.payload.type === 'position_deleveraged'
+      ) {
+        expectTypeOf(
+          event.payload,
+        ).toEqualTypeOf<PerpsPositionDeleveragedNotification>();
+      }
+    }
+  });
+
+  it('exports known cancel rejections and narrows rejected results', () => {
+    const result = undefined as unknown as PerpsCancelOrderResult;
+
+    if (result.status === 'err') {
+      expectTypeOf(result.error).toEqualTypeOf<PerpsCancelOrderErrorCode>();
+    } else {
+      expectTypeOf(result.error).toEqualTypeOf<undefined>();
+    }
+    void PerpsKnownCancelOrderErrorCode.OrderInFlight;
+  });
+
+  it('exposes retry failures with typed historical results for reconciliation', () => {
+    const error = new PerpsCancelRetryError('Retry failed', {
+      results: [],
+      pendingIndexes: [],
+      cause: new Error('Connection lost'),
+    });
+
+    expectTypeOf(error.results).toEqualTypeOf<
+      readonly PerpsCancelOrderResult[]
+    >();
+    expectTypeOf(error.pendingIndexes).toEqualTypeOf<readonly number[]>();
+    expectTypeOf(error.cause).toEqualTypeOf<unknown>();
+    expectTypeOf<
+      Extract<PerpsSessionTradingError, PerpsCancelRetryError>
+    >().toEqualTypeOf<PerpsCancelRetryError>();
+  });
+});
+
+import type {
+  CreatePerpsTwapRequest,
+  PausePerpsTwapRequest,
+  PerpsTwap,
+  PerpsTwapAccepted,
+} from '../index';
+
+it('exposes authenticated TWAP session calls and public models', () => {
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('createTwap')
+    .toEqualTypeOf<
+      (request: CreatePerpsTwapRequest) => Promise<PerpsTwapAccepted>
+    >();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('fetchTwaps')
+    .toEqualTypeOf<() => Promise<PerpsTwap[]>>();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('pauseTwap')
+    .toEqualTypeOf<(request: PausePerpsTwapRequest) => Promise<void>>();
+});
+
+describe('instrument retirement metadata', () => {
+  it('exposes canonical metadata through the public client read', () => {
+    async function read(client: PublicPerpsActions) {
+      const instruments = await client.fetchPerpsInstruments();
+      for (const instrument of instruments) {
+        expectTypeOf(
+          instrument.uiLiveTime,
+        ).toEqualTypeOf<EpochMilliseconds | null>();
+        expectTypeOf(instrument.logo).toEqualTypeOf<
+          { light: string; dark: string } | undefined
+        >();
+        expectTypeOf(instrument.closeOnly).toEqualTypeOf<boolean>();
+        expectTypeOf(instrument.displaySymbol).toEqualTypeOf<
+          string | undefined
+        >();
+        expectTypeOf(instrument.settlement).toEqualTypeOf<
+          PerpsInstrumentSettlement | undefined
+        >();
+        if (instrument.settlement) {
+          expectTypeOf(instrument.settlement.sequence).toEqualTypeOf<number>();
+          expectTypeOf(
+            instrument.settlement.timestamp,
+          ).toEqualTypeOf<EpochMilliseconds>();
+          expectTypeOf(
+            instrument.settlement.price,
+          ).toEqualTypeOf<DecimalString>();
+          expectTypeOf(
+            instrument.settlement.insuranceDebit,
+          ).toEqualTypeOf<DecimalString>();
+        }
+      }
+    }
+    void read;
+  });
+});
+
+import type {
+  CancelPerpsChaseRequest,
+  CreatePerpsChaseRequest,
+  PerpsChase,
+  PerpsChaseAccepted,
+  PerpsChaseId,
+  PerpsOrder,
+} from '../index';
+
+it('exposes chase lifecycle on the authenticated session with canonical models', () => {
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('createChase')
+    .toEqualTypeOf<
+      (request: CreatePerpsChaseRequest) => Promise<PerpsChaseAccepted>
+    >();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('fetchChases')
+    .toEqualTypeOf<() => Promise<PerpsChase[]>>();
+  expectTypeOf<PerpsSession>()
+    .toHaveProperty('cancelChase')
+    .toEqualTypeOf<(request: CancelPerpsChaseRequest) => Promise<void>>();
+  expectTypeOf<PerpsOrder>()
+    .toHaveProperty('chaseId')
+    .toEqualTypeOf<PerpsChaseId | undefined>();
 });

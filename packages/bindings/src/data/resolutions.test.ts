@@ -3,6 +3,7 @@ import {
   FetchResolutionsResponseSchema,
   ResolutionMarketType,
   ResolutionReporter,
+  ResolutionSettlementTimeBasis,
   ResolutionSource,
   ResolutionStatus,
 } from './resolutions';
@@ -11,6 +12,59 @@ const QUESTION_ID = `0x${'a'.repeat(64)}`;
 const CONDITION_ID = `0x${'b'.repeat(64)}`;
 
 describe('FetchResolutionsResponseSchema', () => {
+  it.each([
+    [
+      'managed_proposal_expiration',
+      ResolutionSettlementTimeBasis.ManagedProposalExpiration,
+    ],
+    ['proposal_expiration', ResolutionSettlementTimeBasis.ProposalExpiration],
+    ['liveness', ResolutionSettlementTimeBasis.Liveness],
+    ['dvm_round_estimate', ResolutionSettlementTimeBasis.DvmRoundEstimate],
+  ])('preserves a settlement estimate based on %s, including elapsed estimates', (wireBasis, basis) => {
+    const [resolution] = FetchResolutionsResponseSchema.parse({
+      data: [
+        {
+          question_id: QUESTION_ID,
+          status: 'proposed',
+          extended_review: false,
+          was_disputed: false,
+          new_version_q: false,
+          transaction_hash: '',
+          log_index: '',
+          last_update_timestamp: '1722470400',
+          expected_settlement_time: '2024-08-01T02:00:00Z',
+          settlement_time_basis: wireBasis,
+        },
+      ],
+    });
+
+    expect(resolution?.expectedSettlementTime).toBe('2024-08-01T02:00:00Z');
+    expect(resolution?.settlementTimeBasis).toBe(basis);
+  });
+
+  it.each([
+    { expected_settlement_time: 'not-a-date' },
+    { settlement_time_basis: 'unknown' },
+  ])('rejects malformed settlement metadata: %j', (metadata) => {
+    expect(() =>
+      FetchResolutionsResponseSchema.parse({
+        data: [
+          {
+            question_id: QUESTION_ID,
+            status: 'proposed',
+            extended_review: false,
+            was_disputed: false,
+            new_version_q: false,
+            transaction_hash: '',
+            log_index: '',
+            last_update_timestamp: '1722470400',
+            ...metadata,
+          },
+        ],
+      }),
+    ).toThrow();
+  });
+
   it('normalizes a question-keyed oracle lifecycle row', () => {
     const resolutions = FetchResolutionsResponseSchema.parse({
       data: [

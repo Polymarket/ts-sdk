@@ -1,3 +1,5 @@
+import type { ServiceClient as ServiceClientInstance } from './ServiceClient';
+
 export type * from '@polymarket/bindings';
 export {
   CommentParentEntityType,
@@ -6,32 +8,43 @@ export {
 } from '@polymarket/bindings';
 export type * from '@polymarket/bindings/clob';
 export {
+  AssetType,
   NotificationType,
   OrderPostStatus,
   OrderResponseErrorCode,
+  RewardMarketSort,
   SignatureType,
 } from '@polymarket/bindings/clob';
 export type * from '@polymarket/bindings/data';
-export { ActivityType } from '@polymarket/bindings/data';
+export { ActivityType, TokenModule } from '@polymarket/bindings/data';
 export type * from '@polymarket/bindings/gamma';
 export {
   ComboKnownStatus,
+  MarketResolutionStatus,
   ProtocolVersion,
   TeamOrdering,
   WalletType,
 } from '@polymarket/bindings/gamma';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type * from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   PerpsDepositStatus,
   PerpsInstrumentCategory,
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
+  PerpsKnownCancelOrderErrorCode,
+  PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
+  PerpsLiquidationMethod,
+  PerpsLiquidityRole,
   PerpsMarginType,
   PerpsNotificationOrderType,
   PerpsNotificationType,
   PerpsOrderStatus,
+  PerpsPositionSnapshotMarkerKind,
+  PerpsPositionSnapshotStatus,
   PerpsSide,
   PerpsSortDirection,
   PerpsTimeInForce,
@@ -61,5 +74,28 @@ export type {
   RateLimitUpdate,
   RateLimitUpdateListener,
 } from './rate-limit';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type { Fetch, RequestOptions } from './request-options';
+/**
+ * Service client returned by the experimental `predictions` getter.
+ *
+ * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
+ */
+export type ServiceClient = ServiceClientInstance;
+/** @experimental See {@link ServiceClient}. */
+export type {
+  ServiceClientDeleteOptions,
+  ServiceClientGetOptions,
+  ServiceClientJsonResponseOptions,
+  ServiceClientNonJsonResponseOptions,
+  ServiceClientNonJsonResponseType,
+  ServiceClientPatchOptions,
+  ServiceClientPostOptions,
+  ServiceClientRequestOptions,
+  ServiceClientResponse,
+  ServiceClientResponseOptions,
+  ServiceClientResponseType,
+} from './ServiceClient';
+export { ServiceClientRequestError } from './ServiceClient';
 export * from './types';
 export { type AccountIdentity, SignerType } from './wallet';

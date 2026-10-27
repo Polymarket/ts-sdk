@@ -17,6 +17,8 @@ export enum PerpsNotificationType {
   LimitOrderCanceled = 'limit_order_canceled',
   LiquidationWarning = 'liquidation_warning',
   PositionLiquidated = 'position_liquidated',
+  /** @experimental This API may change in a breaking way in any release, including patch releases. */
+  PositionDeleveraged = 'position_deleveraged',
 }
 
 /**
@@ -242,6 +244,42 @@ export type PerpsPositionLiquidatedNotification = z.infer<
 >;
 
 /**
+ * A profitable position was reduced or closed by auto-deleveraging.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsPositionDeleveragedNotificationSchema = z
+  .object({
+    id: PerpsNotificationIdSchema,
+    type: z.literal(PerpsNotificationType.PositionDeleveraged),
+    instrument_id: PerpsInstrumentIdSchema,
+    side: PerpsSideSchema,
+    size_closed: DecimalStringSchema,
+    price: DecimalStringSchema,
+    pnl: DecimalStringSchema,
+    margin_type: PerpsMarginTypeSchema,
+  })
+  .transform((notification) => ({
+    id: notification.id,
+    type: notification.type,
+    instrumentId: notification.instrument_id,
+    side: notification.side,
+    sizeClosed: notification.size_closed,
+    price: notification.price,
+    pnl: notification.pnl,
+    marginType: notification.margin_type,
+  }));
+
+/**
+ * A profitable position was reduced or closed by auto-deleveraging.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPositionDeleveragedNotification = z.infer<
+  typeof PerpsPositionDeleveragedNotificationSchema
+>;
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsNotificationSchema = z.discriminatedUnion('type', [
@@ -250,6 +288,7 @@ export const PerpsNotificationSchema = z.discriminatedUnion('type', [
   PerpsLimitOrderCanceledNotificationSchema,
   PerpsLiquidationWarningNotificationSchema,
   PerpsPositionLiquidatedNotificationSchema,
+  PerpsPositionDeleveragedNotificationSchema,
 ]);
 
 /**

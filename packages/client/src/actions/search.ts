@@ -10,7 +10,9 @@ import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
+  PaginationLimitError,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -24,7 +26,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 export enum SearchSort {
@@ -36,6 +38,8 @@ export enum SearchSort {
   StartDate = 'start_date',
   EndDate = 'end_date',
 }
+
+const MAX_SEARCH_PAGE = 100;
 
 const SearchRequestSchema = z.object({
   q: z.string().trim().min(1),
@@ -71,12 +75,16 @@ export type SearchResults = {
 };
 
 export type SearchError =
+  | RequestAbortedError
+  | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const SearchError = makeErrorGuard(
+  RequestAbortedError,
+  PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -91,6 +99,11 @@ export const SearchError = makeErrorGuard(
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  * `keepClosedMarkets` is an hour window for including recently closed markets
  * when searching active events.
+ *
+ * Search serves up to 100 pages. If more results may exist at that boundary,
+ * automatic iteration yields the page with `limitReached: true` and stops
+ * normally, keeping `hasMore` true. Explicitly following its cursor throws
+ * {@link PaginationLimitError} before any request. Completeness is unknown.
  *
  * @throws {@link SearchError}
  * Thrown on failure.
@@ -116,7 +129,9 @@ export const SearchError = makeErrorGuard(
 export function search(
   client: BaseClient,
   request: SearchRequest,
+  options: RequestOptions = {},
 ): Paginated<SearchResults> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     SearchRequestSchema,
@@ -124,10 +139,15 @@ export function search(
 
   return paginate(
     (cursor) => {
-      const decoded = decodeOffsetCursor(cursor, pageSize);
+      // Search stores one-based page numbers in the offset cursor.
+      const decoded = decodeOffsetCursor(cursor, pageSize, {
+        maxOffset: MAX_SEARCH_PAGE,
+      });
 
       return client.gamma
         .get('/public-search', {
+          schema: PublicSearchResponseSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               ...params,
@@ -139,10 +159,12 @@ export function search(
             }),
           ),
         })
-        .andThen(validateWith(PublicSearchResponseSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: toSearchResults(response),
           hasMore: response.pagination?.hasMore ?? false,
+          limitReached:
+            (response.pagination?.hasMore ?? false) &&
+            decoded.offset + 1 > MAX_SEARCH_PAGE,
           totalCount: response.pagination?.totalResults ?? undefined,
           nextCursor: response.pagination?.hasMore
             ? encodeOffsetCursor({

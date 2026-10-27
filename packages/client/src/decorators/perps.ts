@@ -1,9 +1,12 @@
 import type {
   PerpsBook,
+  PerpsBuilderStatus,
   PerpsCandle,
   PerpsFeeScheduleEntry,
   PerpsFundingRate,
   PerpsInstrument,
+  PerpsInternalTransferId,
+  PerpsPositionSnapshots,
   PerpsPublicTrade,
   PerpsTicker,
   PerpsWithdrawalId,
@@ -31,17 +34,42 @@ import {
   type PerpsSession,
   type RevokePerpsCredentialsRequest,
   revokePerpsCredentials,
+  type TransferPerpsCollateralRequest,
+  transferPerpsCollateral,
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
 } from '../actions';
+import {
+  type FetchPerpsBuilderStatusRequest,
+  fetchPerpsBuilderStatus,
+} from '../actions/perps/builders';
+import {
+  type FetchPerpsPositionSnapshotsRequest,
+  fetchPerpsPositionSnapshots,
+} from '../actions/perps/position-snapshots';
+import {
+  type FetchPerpsRegistrationRequest,
+  fetchPerpsRegistration,
+} from '../actions/perps/registration';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsPositionSnapshotsError,
+  type FetchPerpsPositionSnapshotsRequest,
+  type PerpsPositionSnapshotFill,
+  type PerpsPositionSnapshotSelection,
+} from '../actions/perps/position-snapshots';
+
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import type { TransactionHandle } from '../types';
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -63,6 +91,7 @@ export type {
   ListPerpsFillsRequest,
   ListPerpsFundingHistoryRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsTradesRequest,
@@ -71,14 +100,18 @@ export type {
   OpenPerpsSessionRequest,
   PerpsAutoCancelStatus,
   PerpsBookDepth,
+  PerpsCancelOptions,
   PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
@@ -86,6 +119,9 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -96,10 +132,13 @@ export type {
   PostPerpsOrdersRequest,
   ResumePerpsSessionRequest,
   RevokePerpsCredentialsRequest,
+  TransferPerpsCollateralRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
   DepositToPerpsError,
@@ -113,15 +152,70 @@ export {
   ListPerpsTradesError,
   OpenPerpsSessionError,
   RevokePerpsCredentialsError,
+  TransferPerpsCollateralError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
 } from '../actions';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  ApprovePerpsBuilderFeeError,
+  type ApprovePerpsBuilderFeeRequest,
+  FetchPerpsBuilderStatusError,
+  type FetchPerpsBuilderStatusRequest,
+} from '../actions/perps/builders';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsRegistrationError,
+  type FetchPerpsRegistrationRequest,
+} from '../actions/perps/registration';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  FetchPerpsBuilderApprovalsError,
+  type FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryError,
+  type FetchPerpsBuilderEarningsSummaryRequest,
+  ListPerpsBuilderEarningsError,
+  type ListPerpsBuilderEarningsRequest,
+  type PerpsBuilderFillUpdateEvent,
+  type PerpsBuilderTermsInput,
+  RevokePerpsBuilderFeeError,
+} from '../websockets/perps/session';
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PublicPerpsActions = {
+  /** Fetches ordered snapshots anonymously, including on secure clients. Use
+   * session.fetchPositionSnapshots for owner-only leverage and PnL percentage.
+   * No pagination or automatic retries of item statuses.
+   * @throws {@link FetchPerpsPositionSnapshotsError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsPositionSnapshots(
+    request: FetchPerpsPositionSnapshotsRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsPositionSnapshots>;
+  /**
+   * Fetches whether an address has a Perps account without authentication.
+   * Registration is permanent; a false result may be cached for up to ten seconds.
+   * @throws {@link FetchPerpsRegistrationError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsRegistration(
+    request: FetchPerpsRegistrationRequest,
+    options?: RequestOptions,
+  ): Promise<boolean>;
+  /**
+   * Fetches public builder availability and the platform fee cap.
+   * @throws {@link FetchPerpsBuilderStatusError} Thrown on failure.
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  fetchPerpsBuilderStatus(
+    request: FetchPerpsBuilderStatusRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
    *
@@ -137,6 +231,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsInstruments(
     request?: FetchPerpsInstrumentsRequest,
+    options?: RequestOptions,
   ): Promise<PerpsInstrument[]>;
 
   /**
@@ -152,7 +247,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsTicker(request: FetchPerpsTickerRequest): Promise<PerpsTicker>;
+  fetchPerpsTicker(
+    request: FetchPerpsTickerRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsTicker>;
 
   /**
    * Fetches current Perps tickers.
@@ -167,7 +265,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsTickers(request?: FetchPerpsTickersRequest): Promise<PerpsTicker[]>;
+  fetchPerpsTickers(
+    request?: FetchPerpsTickersRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsTicker[]>;
 
   /**
    * Fetches a Perps order book.
@@ -182,7 +283,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsBook(request: FetchPerpsBookRequest): Promise<PerpsBook>;
+  fetchPerpsBook(
+    request: FetchPerpsBookRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsBook>;
 
   /**
    * Lists Perps candles for an instrument with SDK-owned pagination.
@@ -202,7 +306,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  listPerpsCandles(request: ListPerpsCandlesRequest): Paginated<PerpsCandle[]>;
+  listPerpsCandles(
+    request: ListPerpsCandlesRequest,
+    options?: RequestOptions,
+  ): Paginated<PerpsCandle[]>;
 
   /**
    * Lists Perps funding-rate history for an instrument with SDK-owned pagination.
@@ -223,6 +330,7 @@ export type PublicPerpsActions = {
    */
   listPerpsFundingHistory(
     request: ListPerpsFundingHistoryRequest,
+    options?: RequestOptions,
   ): Paginated<PerpsFundingRate[]>;
 
   /**
@@ -242,6 +350,7 @@ export type PublicPerpsActions = {
    */
   listPerpsTrades(
     request: ListPerpsTradesRequest,
+    options?: RequestOptions,
   ): Paginated<PerpsPublicTrade[]>;
 
   /**
@@ -257,7 +366,7 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsFees(): Promise<PerpsFeeScheduleEntry[]>;
+  fetchPerpsFees(options?: RequestOptions): Promise<PerpsFeeScheduleEntry[]>;
 };
 
 /**
@@ -287,10 +396,21 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
    * longer credential lifetime, or pass existing credentials to validate and
    * resume a previous session.
+   * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+   * Opening or resuming checks builder availability and uses the lower of the
+   * builder cap and the trader's saved approved maximum. Missing approval counts
+   * as zero. A zero effective fee disables attribution without failing setup.
+   * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+   * The builder address defaults to the session's selected builder.
+   * Opening a session never grants consent. Approval remains valid until revoked
+   * or replaced and does not need to be repeated for each session.
+   * Set `includeBuilderFills` to receive builder receipts in the session iterator.
    *
    * @example
    * ```ts
-   * const session = await client.openPerpsSession();
+   * const session = await client.openPerpsSession({
+   *   builderAttribution: builderAddress,
+   * });
    * ```
    *
    * @throws {@link OpenPerpsSessionError}
@@ -317,6 +437,32 @@ export type SecurePerpsActions = PublicPerpsActions & {
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   revokePerpsCredentials(request: RevokePerpsCredentialsRequest): Promise<void>;
+
+  /**
+   * Transfers Perps collateral to another account.
+   *
+   * @remarks
+   * This owner-signed request is attempted once. If a timeout or server error
+   * occurs after submission, reconcile through internal-transfer history using
+   * the label before submitting another transfer.
+   *
+   * @example
+   * ```ts
+   * const transferId = await client.transferPerpsCollateral({
+   *   recipient: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8',
+   *   amount: '100.00',
+   *   label: 'treasury-rebalance-42',
+   * });
+   * ```
+   *
+   * @throws {@link TransferPerpsCollateralError}
+   * Thrown on failure.
+   *
+   * @experimental This API may change in a breaking way in any release, including patch releases.
+   */
+  transferPerpsCollateral(
+    request: TransferPerpsCollateralRequest,
+  ): Promise<PerpsInternalTransferId>;
 
   /**
    * Requests a Perps withdrawal to the authenticated wallet.
@@ -356,15 +502,17 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
-    fetchPerpsBook: (request) => fetchPerpsBook(client, request),
-    fetchPerpsFees: () => fetchPerpsFees(client),
-    fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),
-    fetchPerpsTicker: (request) => fetchPerpsTicker(client, request),
-    fetchPerpsTickers: (request) => fetchPerpsTickers(client, request),
-    listPerpsCandles: (request) => listPerpsCandles(client, request),
-    listPerpsFundingHistory: (request) =>
-      listPerpsFundingHistory(client, request),
-    listPerpsTrades: (request) => listPerpsTrades(client, request),
+    fetchPerpsPositionSnapshots: fetchPerpsPositionSnapshots.bind(null, client),
+    fetchPerpsRegistration: fetchPerpsRegistration.bind(null, client),
+    fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
+    fetchPerpsBook: fetchPerpsBook.bind(null, client),
+    fetchPerpsFees: fetchPerpsFees.bind(null, client),
+    fetchPerpsInstruments: fetchPerpsInstruments.bind(null, client),
+    fetchPerpsTicker: fetchPerpsTicker.bind(null, client),
+    fetchPerpsTickers: fetchPerpsTickers.bind(null, client),
+    listPerpsCandles: listPerpsCandles.bind(null, client),
+    listPerpsFundingHistory: listPerpsFundingHistory.bind(null, client),
+    listPerpsTrades: listPerpsTrades.bind(null, client),
   };
 
   if (!client.isSecureClient()) return actions;
@@ -375,6 +523,41 @@ export function perpsActions(
     openPerpsSession: (request) => openPerpsSession(client, request),
     revokePerpsCredentials: (request) =>
       revokePerpsCredentials(client, request),
+    transferPerpsCollateral: transferPerpsCollateral.bind(null, client),
     withdrawFromPerps: (request) => withdrawFromPerps(client, request),
   };
 }
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type {
+  PerpsChase,
+  PerpsChaseAccepted,
+  PerpsChaseId,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  type PerpsTwap,
+  type PerpsTwapAccepted,
+  type PerpsTwapId,
+  PerpsTwapStatus,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsChaseError,
+  type CancelPerpsChaseRequest,
+  CreatePerpsChaseError,
+  type CreatePerpsChaseRequest,
+  FetchPerpsChasesError,
+} from '../websockets/perps/actions/chases';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from '../websockets/perps/actions/twaps';

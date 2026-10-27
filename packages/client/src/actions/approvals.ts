@@ -1,4 +1,5 @@
 import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
+import { FetchApprovalsResponseSchema } from '@polymarket/bindings/data';
 import { WalletType } from '@polymarket/bindings/gamma';
 import type { EvmSignature, HexString } from '@polymarket/types';
 import { z } from 'zod';
@@ -16,6 +17,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -25,6 +27,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
@@ -36,12 +39,14 @@ import {
   type SendErc1155ApprovalForAllTransactionRequest,
   signerTransactionRequest,
 } from '../workflow';
+import { resolveIndexedTradingApprovals } from './approvals-state';
 import {
   GaslessTransactionMetadataSchema,
   type GaslessWorkflowRequest,
   prepareGaslessTransaction,
   type WaitForGaslessTransactionError,
 } from './gasless';
+import { toDataSearchParams } from './params';
 
 export type Erc20ApprovalWorkflowRequest =
   | GaslessWorkflowRequest
@@ -352,11 +357,15 @@ export type TradingApprovalsState = {
 };
 
 export type FetchTradingApprovalsStateError =
+  | RequestAbortedError
+  | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchTradingApprovalsStateError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -366,8 +375,9 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
 /**
  * Reads the approvals a wallet is missing for supported trading workflows.
  *
- * This action only reads on-chain state. It does not require a signer or submit
- * transactions.
+ * Reads the wallet's current approval state. Recent grants and revocations
+ * may take time to appear. It does not require a signer or submit
+ * transactions. Trading setup re-checks approvals before preparing them.
  *
  * @example
  * ```ts
@@ -386,12 +396,24 @@ export const FetchTradingApprovalsStateError = makeErrorGuard(
 export async function fetchTradingApprovalsState(
   client: BaseClient,
   request: FetchTradingApprovalsStateRequest,
+  options: RequestOptions = {},
 ): Promise<TradingApprovalsState> {
+  const requestOptions = parseRequestOptions(options);
   const { user } = parseUserInput(
     request,
     FetchTradingApprovalsStateRequestSchema,
   );
-  const missing = await resolveMissingTradingApprovals(client, user);
+  const snapshot = await client.data.get('/v2/approvals', {
+    ...requestOptions,
+    params: toDataSearchParams({ user }),
+    schema: FetchApprovalsResponseSchema,
+  });
+  const missing = resolveIndexedTradingApprovals(
+    snapshot,
+    user,
+    client.environment.chainId,
+    getRequiredTradingApprovals(client),
+  );
 
   return {
     isFullyApproved: missing.erc20.length === 0 && missing.erc1155.length === 0,

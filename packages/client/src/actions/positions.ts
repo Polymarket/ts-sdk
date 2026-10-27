@@ -10,12 +10,11 @@ import {
   MarketIdSchema,
   PositionIdSchema,
 } from '@polymarket/bindings';
-import { type Market, WalletType } from '@polymarket/bindings/gamma';
+import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type EvmAddress,
   type EvmSignature,
   invariant,
-  isPresent,
 } from '@polymarket/types';
 import { z } from 'zod';
 import {
@@ -69,11 +68,10 @@ import {
   prepareGaslessTransaction,
 } from './gasless';
 import { listMarkets } from './markets';
-
-enum PositionProtocol {
-  CTF = 'ctf',
-  V2 = 'v2',
-}
+import {
+  normalizeMarketPositionContext,
+  PositionProtocol,
+} from './positions-market';
 
 export type SplitPositionWorkflowRequest =
   | GaslessWorkflowRequest
@@ -1198,72 +1196,6 @@ function parseMarketId(id: MarketId): number {
   }
 
   return parsed;
-}
-
-type NormalizedCtfMarketPositionContext = MarketPositionContextBase & {
-  protocol: PositionProtocol.CTF;
-  negRisk: boolean;
-  outcomeIds: [yes: TokenId, no: TokenId];
-};
-
-type NormalizedV2MarketPositionContext = MarketPositionContextBase & {
-  protocol: PositionProtocol.V2;
-  outcomeIds: [yes: PositionId, no: PositionId];
-};
-
-function normalizeMarketPositionContext(
-  market: Market,
-  context: string,
-): NormalizedCtfMarketPositionContext | NormalizedV2MarketPositionContext {
-  if (!isPresent(market.conditionId)) {
-    throw new UnexpectedResponseError(`Missing condition ID for ${context}`);
-  }
-
-  const yesTokenId = market.outcomes.yes.tokenId;
-  const noTokenId = market.outcomes.no.tokenId;
-  const yesPositionId = market.outcomes.yes.positionId;
-  const noPositionId = market.outcomes.no.positionId;
-
-  if (isPresent(yesTokenId) !== isPresent(noTokenId)) {
-    throw new UnexpectedResponseError(
-      `Incomplete market token IDs for ${context}`,
-    );
-  }
-
-  if (isPresent(yesTokenId) && isPresent(noTokenId)) {
-    if (!isPresent(market.state.negRisk)) {
-      throw new UnexpectedResponseError(
-        `Missing negative-risk flag for ${context}`,
-      );
-    }
-
-    return {
-      marketId: market.id,
-      conditionId: market.conditionId,
-      protocol: PositionProtocol.CTF,
-      negRisk: market.state.negRisk,
-      outcomeIds: [yesTokenId, noTokenId],
-    };
-  }
-
-  if (isPresent(yesPositionId) !== isPresent(noPositionId)) {
-    throw new UnexpectedResponseError(
-      `Incomplete market position IDs for ${context}`,
-    );
-  }
-
-  if (isPresent(yesPositionId) && isPresent(noPositionId)) {
-    return {
-      marketId: market.id,
-      conditionId: market.conditionId,
-      protocol: PositionProtocol.V2,
-      outcomeIds: [yesPositionId, noPositionId],
-    };
-  }
-
-  throw new UnexpectedResponseError(
-    `Missing tradeable outcome IDs for ${context}`,
-  );
 }
 
 async function prepareMarketRedemptionCalls(

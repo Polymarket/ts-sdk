@@ -17,6 +17,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from './errors';
+import type { Fetch } from './request-options';
 
 export type TypedDataField = {
   name: string;
@@ -60,6 +61,12 @@ export type ApiKeyAuthorizationRequest = {
   body?: string;
 };
 
+/** HTTP controls supplied to API key authorization for one request. @internal */
+export type ApiKeyAuthorizationOptions = {
+  fetch?: Fetch;
+  signal?: AbortSignal;
+};
+
 export interface ApiKeyAuthorization {
   /** @internal */
   get isBuilderKey(): boolean;
@@ -68,7 +75,10 @@ export interface ApiKeyAuthorization {
   get supportGasless(): boolean;
 
   /** @internal */
-  authorize(request: ApiKeyAuthorizationRequest): Promise<HeadersInit>;
+  authorize(
+    request: ApiKeyAuthorizationRequest,
+    options?: ApiKeyAuthorizationOptions,
+  ): Promise<HeadersInit>;
 }
 
 export type TransactionOutcome = {

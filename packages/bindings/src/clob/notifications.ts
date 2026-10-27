@@ -15,6 +15,8 @@ import {
   DecimalStringSchema,
   EpochMillisecondsSchema,
   EvmAddressSchema,
+  emptyStringToNull,
+  emptyStringToUndefined,
   type IsoDateTimeString,
   IsoDateTimeStringSchema,
   NotificationIdSchema,
@@ -30,6 +32,7 @@ import {
   QuestionIdSchema,
   type TokenId,
   TxHashSchema,
+  toIsoCalendarDateString,
 } from '../shared';
 
 /**
@@ -47,18 +50,10 @@ export enum NotificationType {
   ORDER_FILL_FAILED = 8,
   AUTO_REDEEMED = 9,
   COMBO_AUTO_REDEEMED = 10,
+  TAKER_TIER_UPGRADED = 11,
 }
 
 export const NotificationTypeSchema = z.enum(NotificationType);
-
-/**
- * Preprocess helper for upstream fields that serialize missing values as
- * empty strings and whose populated form is a validated format that rejects
- * `''`. Normalizes `''` to `undefined` so the field can parse as optional.
- */
-function emptyStringToUndefined(value: unknown): unknown {
-  return value === '' ? undefined : value;
-}
 
 /**
  * Payload of an order lifecycle notification (cancellation, fill, and
@@ -225,7 +220,10 @@ export const MarketNotificationPayloadSchema = z
     end_date_iso: DateLikeToIsoDateTimeStringSchema.nullish(),
     eventSlug: z.string().optional(),
     fpmm: z.string(),
-    game_start_time: DateLikeToIsoDateTimeStringSchema.nullish(),
+    game_start_time: z.preprocess(
+      emptyStringToNull,
+      DateLikeToIsoDateTimeStringSchema.nullish(),
+    ),
     icon: z.string(),
     image: z.string(),
     is_50_50_outcome: z.boolean().optional(),
@@ -430,6 +428,25 @@ export type ComboAutoRedeemedNotificationPayload = z.infer<
   typeof ComboAutoRedeemedNotificationPayloadSchema
 >;
 
+/** A taker tier upgrade in a daily snapshot; rebateBps is in basis points. */
+export const TakerTierUpgradedNotificationPayloadSchema = z
+  .object({
+    previous_tier: z.number().int(),
+    tier: z.number().int(),
+    rebate_bps: z.number().int(),
+    snapshot_date: z.iso.date().transform(toIsoCalendarDateString),
+  })
+  .transform(({ previous_tier, tier, rebate_bps, snapshot_date }) => ({
+    previousTier: previous_tier,
+    tier,
+    rebateBps: rebate_bps,
+    snapshotDate: snapshot_date,
+  }));
+
+export type TakerTierUpgradedNotificationPayload = z.infer<
+  typeof TakerTierUpgradedNotificationPayloadSchema
+>;
+
 const NotificationTimestampSchema = z.preprocess((value) => {
   if (typeof value !== 'string') {
     return value;
@@ -539,6 +556,15 @@ export type ComboAutoRedeemedNotification = z.infer<
   typeof ComboAutoRedeemedNotificationSchema
 >;
 
+export const TakerTierUpgradedNotificationSchema = createNotificationSchema(
+  NotificationType.TAKER_TIER_UPGRADED,
+  TakerTierUpgradedNotificationPayloadSchema,
+);
+
+export type TakerTierUpgradedNotification = z.infer<
+  typeof TakerTierUpgradedNotificationSchema
+>;
+
 /**
  * Account notification. Discriminated on `type`: narrowing on it also
  * narrows `payload` to the shape carried by that notification kind.
@@ -554,6 +580,7 @@ export const NotificationSchema = z.discriminatedUnion('type', [
   OrderFillFailedNotificationSchema,
   AutoRedeemedNotificationSchema,
   ComboAutoRedeemedNotificationSchema,
+  TakerTierUpgradedNotificationSchema,
 ]);
 
 export type Notification = z.infer<typeof NotificationSchema>;

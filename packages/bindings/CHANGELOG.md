@@ -1,5 +1,94 @@
 # @polymarket/bindings
 
+## 0.14.0
+
+### Minor Changes
+
+- c05ca40, f059b22: Add optional equity market status (`open`, `closed`, `unknown`) to spot/TWAP updates and snapshots; omission means not stated, never open. Status describes the provider's instrument. Spot status-only updates may repeat the price timestamp with `isCarriedForward: true`; do not deduplicate by timestamp alone. Older unstated spot frames retain the last stated snapshot status. Snapshots carry status at batch level and may retain an older closing price; TWAP status changes with a new price.
+- 3bc5493: Breaking 0.x: `SplitActivity`, `MergeActivity` and `RedeemActivity` include Combo variants (`isCombo: true`, `ComboConditionId`, optional titles, no `slug`/`eventSlug`). Add `!activity.isCombo` to SPLIT/MERGE/REDEEM guards before accessing market URLs. Parsed ordinary rows use `isCombo: false`; ordinary object construction may omit it. Combo presentation metadata is optional; trade/redemption `outcome` and `outcomeIndex` preserve zero and normalize blank labels/index `999` to `undefined`. Automatic redemption remains REDEEM; `listComboActivity` is unchanged.
+- 3d93028: Add one-shot authenticated order heartbeats with mismatch-ID recovery (`OrderHeartbeatMismatchError` retains `RequestRejectedError` inheritance and its own runtime name). The first accepted send enables API-key-wide timeout cancellation with no disarm operation. Callers own scheduling and ID serialization; cancellation after expiry is best effort.
+- 8ae8885: Add Router v2 neg-risk workflows by market condition ID; low-level helpers retain explicit protocol event IDs.
+- ef3d314: Add optional oracle event/request IDs, market resolution status, and discovery filters for these fields and protocol version, with pagination and backend ID-count limits.
+- 8d0ecfb, bffb030, 66b441d: Add filtered/sorted reward-market cursor pagination (preserving selections, supported 24-hour volume keys, no removed tag-exclusion filter, ISO 8601 dates), current maker rebates by date/address (decimal-string amounts; empty results become `[]`), and direct outcome-asset reference lookup by decimal asset/condition selectors with nullable metadata.
+- a2ebe7c, 84e07ef, bdcfad0, d79941a: Extend experimental Perps with fill instrument filters and ADL/liquidation details, portfolio available order margin/fee tier/position ADL index, and instrument UI live time/logos (advisory, not trading eligibility). Preserve server event horizons as `eventTimestamp: EpochMilliseconds | null` independently of send time; zero becomes `null`, and synthetic recovery invents no horizon.
+- 3fd2412: Normalize native/upstream rejection envelopes and expose extensible known rejection codes, preserving transport fallbacks.
+
+### Patch Changes
+
+- d54c900, 24ec298: Normalize `gameStartTime` on new-market events/notifications to ISO 8601, empty values to `null`, and impossible dates/times to validation failures. Deliver user order websocket `INVALID` and `CANCELED_*` statuses instead of dropping them.
+- 911574f, edf336f: Add optional native/sponsored earnings breakdowns and sponsored queries without changing defaults; retain taker-tier upgrade notifications (previous/current tier, rebate basis points and snapshot date).
+- 7705d09: UMA lifecycle rows retain the initial RequestPrice log index, while their transaction hash may identify a later event; do not combine them as a log locator. Condition-resolution fallback rows retain their own event transaction/log metadata.
+- Update `@polymarket/types` to `0.3.0` (removed `neverthrow` exports and `unwrap`; await SDK requests directly and import remaining `neverthrow` APIs from your own dependency).
+
+## 0.13.0
+
+### Minor Changes
+
+- ea1237e: Read indexed trading approvals from the configured data endpoint, with no RPC fallback. Recent changes may lag; setup still checks on chain. Incomplete snapshots raise `UnexpectedResponseError`.
+- 61f140f, d0be2fd, bbbcb20: Add 60-second equity TWAPs, Chainlink/Pyth provider selection, subscription confirmations, and price source metadata. Cached history resets when the source changes.
+- b824569, 95766f8: Add Perps chase and TWAP execution lifecycles.
+- 2eea382, d004008: Add Perps GTD orders and trailing stop losses with activation events.
+- 04af7cc, d918f6a: Add public and authenticated Perps position snapshots and public registration lookup.
+- 1e0b3dd: Expose Perps close-only state, settlement records, display labels, and settlement flags on trades and fills.
+- ab1e3b2: Add `position_deleveraged` notifications. Exhaustive notification handlers must handle this variant; Perps remains experimental.
+- 1a2e9ca, 8d7fccc: Add position acquisition time (`firstEntryAt`, epoch milliseconds) and `PositionSortBy.Price`. Redeemable and closed listings retain their existing ordering.
+- 5976187: Add `expectedSettlementTime` and `settlementTimeBasis` as earliest settlement estimates, not guaranteed deadlines.
+
+### Patch Changes
+
+- 98adafb: Add ordered batch Perps leverage updates with per-instrument rejection results.
+- ae8b4e8: Emit server notification resync signals with the catch-up sequence and timestamp. Backfill and deduplicate by notification ID.
+- fcbe83c: Accept current terminal Perps order statuses so valid terminal updates resolve placement.
+
+## 0.12.0
+
+### Minor Changes
+
+- 348977a: Add `REDEEMABLE_LOST` and `MERGEABLE` to `PositionStatus` as `listPositions` filters. `REDEEMABLE_LOST` lists still-held zero-payout positions and requires `user`, so a request without one now fails locally with `UserInputError`. `MERGEABLE` lists live complementary pairs a wallet can merge back to collateral, sorted by `TOKENS` by default. Without `user` it falls back to the broader `OPEN` listing. Rows still report only `OPEN`, `REDEEMABLE`, or `CLOSED`, so `Position.status` is now typed as `PositionRowStatus`. Lost rows report `REDEEMABLE` and mergeable rows report `OPEN`.
+- 2393b48: Type known Perps cancellation rejections while preserving unrecognized identifiers, and retry transient `order_in_flight` results with configurable bounded backoff.
+
+  When a later cancellation attempt fails, throw `PerpsCancelRetryError` with the last received results in original request order, the pending request indexes, and the underlying cause. Earlier confirmed outcomes remain available; pending entries describe the previous attempt and must be reconciled if the retry's response was lost. Initial-attempt failures keep their existing error types.
+
+- a56f27f: `listComments` pages through a whole thread by server cursor when the read has no `holdersOnly` or `getPositions` and sorts by nothing, `id` or `createdAt`; the first page keeps today's newest-first order. Cursors carry the parent, order and direction they were minted for and are rejected before any request when reused for a different query. Reads with those options or another order stay on offset pages under the existing 200 cap, and cursors saved from earlier versions keep working with the same arguments. Adds `ListCommentsKeysetResponseSchema` to the bindings.
+
+  `listEvents` cursors likewise carry the query they were minted for and are rejected before any request when reused for a different one; cursors saved from earlier versions keep working with the same arguments.
+
+- e7b7af1: Add owner-signed Perps internal transfers and normalized transfer history.
+
+  Preserve submillisecond transfers at history page boundaries. If a full
+  millisecond cannot be paged safely, report an error instead of omitting records.
+
+- f3ba735: Add Perps Builder Codes with explicit owner-signed fee approval and revocation.
+  Approving a builder updates the session's attribution after confirmation; revoking
+  clears it after confirmation. Approval versions are managed internally.
+  Approval requires an explicit `maxFeeRate`, while the builder address defaults
+  to the session's selected builder.
+
+  An optional builder address at session setup reads the trader's saved approval.
+  The lower of the approved maximum and builder cap applies consistently to single
+  orders, batches, and TP/SL exits. Missing or revoked approval disables attribution
+  without failing setup. The selected builder remains available for approval.
+  New approvals refresh the builder cap
+  and replace the session rate after confirmation. Setup never creates consent.
+
+  Preserve builder terms on orders and expose `builderFee` and `totalFee` on fills;
+  `fee` continues to mean the exchange fee. Legacy responses normalize to zero
+  builder fee. Existing untagged order signatures are unchanged.
+
+  Expose typed builder earnings reporting and opt-in builder receipts through the
+  existing session iterator with `includeBuilderFills`. This extends the experimental
+  `PerpsSessionEvent` union with `builderFill`. Historical reconciliation remains
+  application-owned. Failed consent submissions are not automatically retried.
+
+### Patch Changes
+
+- 5e30528: Accept account trades without a transaction hash so a fill without one does not invalidate the entire page. Missing and empty hashes normalize to `undefined`; populated hashes are unchanged.
+- a195c64: Preserve each sport's `name` on sports-list and event responses.
+- 54337ed: Support `CONDITIONAL-V2` balance and allowance reads and refreshes. Use the Protocol
+  V2 position selector for both allowance checks and post-approval refreshes when
+  automatically recovering a Protocol V2 sell order. Export `AssetType` from
+  `@polymarket/client` for explicit balance and allowance calls.
+
 ## 0.11.0
 
 ### Minor Changes

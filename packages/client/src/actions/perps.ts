@@ -1,7 +1,7 @@
 import {
+  EvmAddressSchema,
   type PaginationCursor,
   PaginationCursorSchema,
-  toPaginationCursor,
 } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
@@ -18,6 +18,8 @@ import {
   PerpsCreateProxyResponseSchema,
   type PerpsCredentials,
   PerpsCredentialsResponseSchema,
+  type PerpsDecimalInput,
+  PerpsDecimalInputSchema,
   PerpsDeleteProxyResponseSchema,
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
@@ -25,6 +27,8 @@ import {
   type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
   PerpsInstrumentIdSchema,
+  type PerpsInternalTransferId,
+  PerpsInternalTransferResponseSchema,
   type PerpsKlineInterval,
   PerpsKlineIntervalSchema,
   type PerpsPublicTrade,
@@ -42,7 +46,6 @@ import {
   isPrivateKey,
   isSameEvmAddress,
   type PrivateKey,
-  unwrap,
 } from '@polymarket/types';
 import { Address, Secp256k1, TypedData } from 'ox';
 import { z } from 'zod';
@@ -52,6 +55,7 @@ import {
   CancelledSigningError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TransportError,
@@ -59,18 +63,25 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { type Paginated, paginate } from '../pagination';
-import { validateWith } from '../response';
+import {
+  decodeCursorState,
+  encodeCursorState,
+  type Paginated,
+  paginate,
+} from '../pagination';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   expectTransactionHandle,
   type SignerTransactionRequest,
   type TransactionHandle,
   type TypedDataPayload,
 } from '../types';
+import { SignerType } from '../wallet';
 import type { PerpsSession } from '../websockets/perps/session';
 import {
   createPerpsOpTypedDataPayload,
   type PerpsSignedOp,
+  randomUint32,
 } from '../websockets/perps/signing';
 import {
   completeWith,
@@ -83,6 +94,7 @@ import {
   prepareGaslessTransaction,
 } from './gasless';
 
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   ArmPerpsAutoCancelRequest,
   CancelAllPerpsOrdersRequest,
@@ -90,25 +102,35 @@ export type {
   CancelPerpsOrdersRequest,
   DisarmPerpsAutoCancelRequest,
   FetchPerpsAccountConfigRequest,
+  FetchPerpsBuilderApprovalsRequest,
+  FetchPerpsBuilderEarningsSummaryRequest,
   FetchPerpsOpenOrdersRequest,
   FetchPerpsOrdersRequest,
+  ListPerpsBuilderEarningsRequest,
   ListPerpsDepositsRequest,
   ListPerpsEquityHistoryRequest,
   ListPerpsFillsRequest,
   ListPerpsFundingPaymentsRequest,
+  ListPerpsInternalTransfersRequest,
   ListPerpsNotificationsRequest,
   ListPerpsPnlHistoryRequest,
   ListPerpsWithdrawalsRequest,
   MarkPerpsNotificationsReadRequest,
   PerpsAutoCancelStatus,
+  PerpsBuilderFillUpdateEvent,
+  PerpsBuilderTermsInput,
+  PerpsCancelOptions,
   PerpsCancelOrderResult,
+  PerpsCancelRetryOptions,
   PerpsOrderRequest,
   PerpsPlacedTpSlOrder,
   PerpsPlacedTpSlOrders,
   PerpsPlaceFokOrderRequest,
   PerpsPlaceGtcOrderRequest,
+  PerpsPlaceGtdOrderRequest,
   PerpsPlaceIocOrderRequest,
   PerpsPositionTpSlTrigger,
+  PerpsPositionTrailingStop,
   PerpsPostOrderAck,
   PerpsSession,
   PerpsSessionAccountError,
@@ -116,6 +138,9 @@ export type {
   PerpsSessionLifecycleError,
   PerpsSessionTradingError,
   PerpsTpSlTrigger,
+  PerpsTrailingStop,
+  PerpsUpdateLeverageBatchResult,
+  PerpsUpdateLeverageRejection,
   PerpsUpdateLeverageResult,
   PlacePerpsOrderRequest,
   PlacePerpsOrderResult,
@@ -125,17 +150,27 @@ export type {
   PlacePerpsPositionTpSlResult,
   PostPerpsOrdersRequest,
   UpdatePerpsLeverageRequest,
+  UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
 } from '../websockets/perps/session';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
+  FetchPerpsBuilderApprovalsError,
+  FetchPerpsBuilderEarningsSummaryError,
+  ListPerpsBuilderEarningsError,
+  RevokePerpsBuilderFeeError,
   UpdatePerpsLeverageError,
+  UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
 } from '../websockets/perps/session';
 
 import { snakeCase, toSearchParams } from './params';
+import { approvePerpsBuilderFee } from './perps/builders';
+import { executePerpsCollateralTransfer } from './perps/internal-transfer';
 
 type PerpsPublicReadError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
@@ -143,6 +178,7 @@ type PerpsPublicReadError =
   | UserInputError;
 
 const PerpsPublicReadError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -206,16 +242,16 @@ export const FetchPerpsInstrumentsError = PerpsPublicReadError;
 export async function fetchPerpsInstruments(
   client: BaseClient,
   request?: FetchPerpsInstrumentsRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsInstrument[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsInstrumentsRequestSchema);
 
-  return unwrap(
-    client.perps
-      .get('/v1/info/instruments', {
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(FetchPerpsInstrumentsResponseSchema)),
-  );
+  return client.perps.get('/v1/info/instruments', {
+    schema: FetchPerpsInstrumentsResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const FetchPerpsTickerRequestSchema = z.object({
@@ -253,9 +289,11 @@ export const FetchPerpsTickerError = PerpsPublicReadError;
 export async function fetchPerpsTicker(
   client: BaseClient,
   request: FetchPerpsTickerRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsTicker> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsTickerRequestSchema);
-  const [ticker] = await fetchPerpsTickers(client, params);
+  const [ticker] = await fetchPerpsTickers(client, params, requestOptions);
 
   if (ticker === undefined) {
     throw new UnexpectedResponseError(
@@ -303,20 +341,22 @@ export const FetchPerpsTickersError = PerpsPublicReadError;
 export async function fetchPerpsTickers(
   client: BaseClient,
   request?: FetchPerpsTickersRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsTicker[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsTickersRequestSchema);
   const query = toSearchParams(params, snakeCase());
   const [tickers, statistics] = await Promise.all([
-    unwrap(
-      client.perps
-        .get('/v1/info/tickers', { params: query })
-        .andThen(validateWith(FetchPerpsTickersResponseSchema)),
-    ),
-    unwrap(
-      client.perps
-        .get('/v1/info/statistics', { params: query })
-        .andThen(validateWith(FetchPerpsStatisticsResponseSchema)),
-    ),
+    client.perps.get('/v1/info/tickers', {
+      schema: FetchPerpsTickersResponseSchema,
+      ...requestOptions,
+      params: query,
+    }),
+    client.perps.get('/v1/info/statistics', {
+      schema: FetchPerpsStatisticsResponseSchema,
+      ...requestOptions,
+      params: query,
+    }),
   ]);
   const statisticsByInstrument = new Map(
     statistics.map((statistic) => [statistic.instrumentId, statistic]),
@@ -383,16 +423,16 @@ export const FetchPerpsBookError = PerpsPublicReadError;
 export async function fetchPerpsBook(
   client: BaseClient,
   request: FetchPerpsBookRequest,
+  options: RequestOptions = {},
 ): Promise<PerpsBook> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsBookRequestSchema);
 
-  return unwrap(
-    client.perps
-      .get('/v1/info/book', {
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(PerpsBookSchema)),
-  );
+  return client.perps.get('/v1/info/book', {
+    schema: PerpsBookSchema,
+    ...requestOptions,
+    params: toSearchParams(params, snakeCase()),
+  });
 }
 
 const ListPerpsCandlesInitialRequestSchema = z.object({
@@ -466,7 +506,9 @@ export const ListPerpsCandlesError = PerpsPublicReadError;
 export function listPerpsCandles(
   client: BaseClient,
   request: ListPerpsCandlesRequest,
+  options: RequestOptions = {},
 ): Paginated<PerpsCandle[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor: initialCursor, params } = parseUserInput(
     request,
     ListPerpsCandlesRequestSchema,
@@ -480,6 +522,8 @@ export function listPerpsCandles(
 
     return client.perps
       .get('/v1/info/klines', {
+        schema: FetchPerpsCandlesResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             endTimestamp: state.endTimestamp,
@@ -490,8 +534,7 @@ export function listPerpsCandles(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsCandlesResponseSchema))
-      .map((response) => {
+      .then((response) => {
         const last = response.data.at(-1);
         const hasMore = response.more && last !== undefined;
 
@@ -499,7 +542,7 @@ export function listPerpsCandles(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 startTimestamp:
                   last.timestamp +
@@ -598,7 +641,9 @@ export const ListPerpsFundingHistoryError = PerpsPublicReadError;
 export function listPerpsFundingHistory(
   client: BaseClient,
   request: ListPerpsFundingHistoryRequest,
+  options: RequestOptions = {},
 ): Paginated<PerpsFundingRate[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor: initialCursor, params } = parseUserInput(
     request,
     ListPerpsFundingHistoryRequestSchema,
@@ -612,6 +657,8 @@ export function listPerpsFundingHistory(
 
     return client.perps
       .get('/v1/info/funding', {
+        schema: FetchPerpsFundingHistoryResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             endTimestamp: state.endTimestamp,
@@ -621,8 +668,7 @@ export function listPerpsFundingHistory(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsFundingHistoryResponseSchema))
-      .map((response) => {
+      .then((response) => {
         const last = response.data.at(-1);
         const hasMore =
           response.more &&
@@ -633,7 +679,7 @@ export function listPerpsFundingHistory(
           items: response.data,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp: last.timestamp - 1,
               })
@@ -696,7 +742,9 @@ export const ListPerpsTradesError = PerpsPublicReadError;
 export function listPerpsTrades(
   client: BaseClient,
   request: ListPerpsTradesRequest,
+  options: RequestOptions = {},
 ): Paginated<PerpsPublicTrade[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor: initialCursor, params } = parseUserInput(
     request,
     ListPerpsTradesRequestSchema,
@@ -711,6 +759,8 @@ export function listPerpsTrades(
 
     return client.perps
       .get('/v1/info/trades', {
+        schema: FetchPerpsTradesResponseSchema,
+        ...requestOptions,
         params: toSearchParams(
           {
             endTimestamp: state.endTimestamp,
@@ -720,8 +770,7 @@ export function listPerpsTrades(
           snakeCase(),
         ),
       })
-      .andThen(validateWith(FetchPerpsTradesResponseSchema))
-      .map((response) => {
+      .then((response) => {
         const items = response.data.filter(
           (trade) => !seenTradeIds.has(trade.tradeId),
         );
@@ -737,7 +786,7 @@ export function listPerpsTrades(
           items,
           hasMore,
           nextCursor: hasMore
-            ? encodePerpsCursor({
+            ? encodeCursorState({
                 ...state,
                 endTimestamp:
                   last === undefined ? cursorTimestamp - 1 : cursorTimestamp,
@@ -756,18 +805,22 @@ export function listPerpsTrades(
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type FetchPerpsFeesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
-  | UnexpectedResponseError;
+  | UnexpectedResponseError
+  | UserInputError;
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const FetchPerpsFeesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
+  UserInputError,
 );
 
 /**
@@ -783,12 +836,13 @@ export const FetchPerpsFeesError = makeErrorGuard(
  */
 export async function fetchPerpsFees(
   client: BaseClient,
+  options: RequestOptions = {},
 ): Promise<PerpsFeeScheduleEntry[]> {
-  const response = await unwrap(
-    client.perps
-      .get('/v1/info/fees')
-      .andThen(validateWith(FetchPerpsFeesResponseSchema)),
-  );
+  const requestOptions = parseRequestOptions(options);
+  const response = await client.perps.get('/v1/info/fees', {
+    schema: FetchPerpsFeesResponseSchema,
+    ...requestOptions,
+  });
 
   return response.feeSchedule;
 }
@@ -870,41 +924,31 @@ function createInitialPerpsTradesCursor(
 function decodePerpsCandlesCursor(
   cursor: PaginationCursor,
 ): PerpsCandlesCursorState {
-  return decodePerpsCursor(cursor, PerpsCandlesCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsCandlesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsFundingCursor(
   cursor: PaginationCursor,
 ): PerpsFundingCursorState {
-  return decodePerpsCursor(cursor, PerpsFundingCursorStateSchema);
+  return decodeCursorState(
+    cursor,
+    PerpsFundingCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function decodePerpsTradesCursor(
   cursor: PaginationCursor,
 ): PerpsTradesCursorState {
-  return decodePerpsCursor(cursor, PerpsTradesCursorStateSchema);
-}
-
-function decodePerpsCursor<T>(
-  cursor: PaginationCursor,
-  schema: z.ZodType<T>,
-): T {
-  try {
-    return schema.parse(JSON.parse(atob(cursor)));
-  } catch (error) {
-    throw new UserInputError('Invalid Perps pagination cursor', {
-      cause: error,
-    });
-  }
-}
-
-function encodePerpsCursor(
-  state:
-    | PerpsCandlesCursorState
-    | PerpsFundingCursorState
-    | PerpsTradesCursorState,
-): PaginationCursor {
-  return toPaginationCursor(btoa(JSON.stringify(state)));
+  return decodeCursorState(
+    cursor,
+    PerpsTradesCursorStateSchema,
+    'Invalid Perps pagination cursor',
+  );
 }
 
 function perpsKlineIntervalMilliseconds(interval: PerpsKlineInterval): number {
@@ -958,6 +1002,8 @@ const PerpsCredentialsSchema = z.object({
 const DEFAULT_PERPS_CREDENTIAL_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000;
 
 const CreatePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   expiresIn: z
     .number()
     .int()
@@ -967,6 +1013,8 @@ const CreatePerpsSessionRequestSchema = z.strictObject({
 }) satisfies z.ZodType<CreatePerpsSessionRequest>;
 
 const ResumePerpsSessionRequestSchema = z.strictObject({
+  builderAttribution: EvmAddressSchema.optional(),
+  includeBuilderFills: z.boolean().optional(),
   credentials: PerpsCredentialsSchema,
 }) satisfies z.ZodType<ResumePerpsSessionRequest>;
 
@@ -988,6 +1036,10 @@ const RevokePerpsCredentialsRequestSchema =
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type CreatePerpsSessionRequest = {
+  /** Builder address whose saved approval supplies the fee, limited by the builder cap. Zero disables attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Delegated credential lifetime in milliseconds. */
   expiresIn?: number;
   /** Optional label for the delegated credentials. */
@@ -1001,6 +1053,10 @@ type ParsedCreatePerpsSessionRequest = z.output<
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ResumePerpsSessionRequest = {
+  /** Select this builder for resumed orders. Credentials do not store attribution. */
+  builderAttribution?: string;
+  /** Include builder receipts for this authenticated account in the session iterator. */
+  includeBuilderFills?: boolean;
   /** Existing delegated Perps credentials to validate and resume. */
   credentials: PerpsCredentials;
 };
@@ -1047,6 +1103,25 @@ const WithdrawFromPerpsRequestSchema = z.object({
   amount: PerpsBaseUnitAmountSchema,
 }) satisfies z.ZodType<WithdrawFromPerpsRequest>;
 
+const PositivePerpsDecimalInputSchema = PerpsDecimalInputSchema.refine(
+  (value) => /^\d+(?:\.\d+)?$/.test(value) && /[1-9]/.test(value),
+  'Expected a positive fixed-point decimal amount.',
+);
+
+const PerpsInternalTransferLabelSchema = z
+  .string()
+  .min(1)
+  .refine(
+    (value) => new TextEncoder().encode(value).byteLength <= 64,
+    'Expected a label no longer than 64 UTF-8 bytes.',
+  );
+
+const TransferPerpsCollateralRequestSchema = z.object({
+  recipient: EvmAddressSchema,
+  amount: PositivePerpsDecimalInputSchema,
+  label: PerpsInternalTransferLabelSchema.optional(),
+}) satisfies z.ZodType<TransferPerpsCollateralRequest>;
+
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -1063,6 +1138,18 @@ export type DepositToPerpsRequest = {
 export type WithdrawFromPerpsRequest = {
   /** Collateral amount in base units. */
   amount: bigint;
+};
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralRequest = {
+  /** Main address of the receiving Perps account. */
+  recipient: string;
+  /** Positive collateral amount in decimalized token units. */
+  amount: PerpsDecimalInput;
+  /** Optional reconciliation label, up to 64 UTF-8 bytes. */
+  label?: string;
 };
 
 /**
@@ -1165,6 +1252,28 @@ export const WithdrawFromPerpsError = makeErrorGuard(
 );
 
 /**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type TransferPerpsCollateralError =
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const TransferPerpsCollateralError = makeErrorGuard(
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
  * Opens a Perps account session.
  *
  * @remarks
@@ -1172,6 +1281,16 @@ export const WithdrawFromPerpsError = makeErrorGuard(
  * one week. Pass `expiresIn` as a duration in milliseconds to use a shorter or
  * longer credential lifetime, or pass existing credentials to validate and
  * resume a previous session.
+ *
+ * Pass `builderAttribution` to select a builder for new orders and TP/SL exits.
+ * Opening or resuming checks builder availability and uses the lower of the
+ * builder cap and the trader's saved approved maximum. Missing approval counts
+ * as zero. A zero effective fee disables attribution without failing setup.
+ * Approve a maximum explicitly with `session.approveBuilderFee({ maxFeeRate })`.
+ * The builder address defaults to the session's selected builder.
+ * Opening a session never grants consent. Approval remains valid until revoked
+ * or replaced and does not need to be repeated for each session.
+ * Set `includeBuilderFills` to receive builder receipts through the session iterator.
  *
  * @throws {@link OpenPerpsSessionError}
  * Thrown on failure.
@@ -1187,7 +1306,12 @@ export async function openPerpsSession(
     'credentials' in params
       ? await resumePerpsCredentials(client, params.credentials)
       : await createPerpsCredentials(client, params);
-  return client.webSockets.perpsSession.connect(credentials);
+  return client.webSockets.perpsSession.connect(
+    credentials,
+    params.builderAttribution,
+    approvePerpsBuilderFee.bind(null, client),
+    params.includeBuilderFills,
+  );
 }
 
 /**
@@ -1225,18 +1349,15 @@ export async function revokePerpsCredentials(
     timestamp,
   });
 
-  const response = await unwrap(
-    client.perps
-      .del('/v1/account/proxy', {
-        json: {
-          op,
-          salt,
-          sig: signature,
-          ts: timestamp,
-        },
-      })
-      .andThen(validateWith(PerpsDeleteProxyResponseSchema)),
-  );
+  const response = await client.perps.del('/v1/account/proxy', {
+    schema: PerpsDeleteProxyResponseSchema,
+    json: {
+      op,
+      salt,
+      sig: signature,
+      ts: timestamp,
+    },
+  });
 
   if (response.status === 'err') {
     throw new RequestRejectedError(
@@ -1339,18 +1460,15 @@ export async function withdrawFromPerps(
     timestamp,
   });
 
-  const response = await unwrap(
-    client.perps
-      .post('/v1/account/withdraw', {
-        json: {
-          op,
-          salt,
-          sig: signature,
-          ts: timestamp,
-        },
-      })
-      .andThen(validateWith(PerpsWithdrawResponseSchema)),
-  );
+  const response = await client.perps.post('/v1/account/withdraw', {
+    schema: PerpsWithdrawResponseSchema,
+    json: {
+      op,
+      salt,
+      sig: signature,
+      ts: timestamp,
+    },
+  });
 
   if (response.status === 'err') {
     throw new RequestRejectedError(
@@ -1366,6 +1484,78 @@ export async function withdrawFromPerps(
   }
 
   return response.withdrawalId;
+}
+
+/**
+ * Transfers Perps collateral to another account.
+ *
+ * @remarks
+ * The exact decimal amount is signed by the owner account and sent unchanged.
+ * The request is attempted once. A timeout or server error after submission
+ * has an unknown outcome; reconcile through internal-transfer history using a
+ * caller-supplied label before submitting another transfer.
+ *
+ * @throws {@link TransferPerpsCollateralError}
+ * Thrown on failure.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export async function transferPerpsCollateral(
+  client: BaseSecureClient,
+  request: TransferPerpsCollateralRequest,
+): Promise<PerpsInternalTransferId> {
+  assertPerpsOwnerSigner(client);
+  const params = parseUserInput(request, TransferPerpsCollateralRequestSchema);
+
+  if (isSameEvmAddress(params.recipient, client.account.signer)) {
+    throw new UserInputError(
+      'Perps collateral cannot be transferred to the authenticated account.',
+    );
+  }
+
+  return executePerpsCollateralTransfer(
+    {
+      signTransfer({ account, token, amount, recipient, salt, timestamp }) {
+        return signPerpsOwnerOp(client, {
+          salt,
+          signedOp: ['internalTransfer', [account, token, amount, recipient]],
+          timestamp,
+        });
+      },
+      async submitTransfer(transfer) {
+        const body: Record<string, unknown> = {
+          op: {
+            type: 'internalTransfer',
+            args: {
+              account: transfer.account,
+              token: transfer.token,
+              amount: transfer.amount,
+              to: transfer.recipient,
+            },
+          },
+          salt: transfer.salt,
+          sig: transfer.signature,
+          ts: transfer.timestamp,
+        };
+        if (transfer.label !== undefined) body.label = transfer.label;
+
+        const response = await client.perps.post(
+          '/v1/account/internal-transfer',
+          { schema: PerpsInternalTransferResponseSchema, json: body },
+        );
+        return response.transferId;
+      },
+    },
+    {
+      account: client.account.signer,
+      token: client.environment.contracts.collateralToken,
+      amount: params.amount,
+      recipient: params.recipient,
+      label: params.label,
+      salt: randomUint32(),
+      timestamp: Date.now(),
+    },
+  );
 }
 
 async function createPerpsCredentials(
@@ -1400,11 +1590,10 @@ async function createPerpsCredentials(
   };
   if (request.label !== undefined) body.label = request.label;
 
-  const response = await unwrap(
-    client.perps
-      .post('/v1/account/proxy', { json: body })
-      .andThen(validateWith(PerpsCreateProxyResponseSchema)),
-  );
+  const response = await client.perps.post('/v1/account/proxy', {
+    schema: PerpsCreateProxyResponseSchema,
+    json: body,
+  });
   const credentials = {
     expiresAt,
     privateKey,
@@ -1427,13 +1616,10 @@ async function validatePerpsCredentials(
   client: BaseSecureClient,
   credentials: PerpsCredentials,
 ): Promise<PerpsCredentials> {
-  const response = await unwrap(
-    client.perps
-      .get('/v1/account/credentials', {
-        headers: perpsCredentialHeaders(credentials),
-      })
-      .andThen(validateWith(PerpsCredentialsResponseSchema)),
-  );
+  const response = await client.perps.getWorkflow('/v1/account/credentials', {
+    schema: PerpsCredentialsResponseSchema,
+    headers: perpsCredentialHeaders(credentials),
+  });
 
   if (!isSameEvmAddress(response.address, client.account.signer)) {
     throw new UnexpectedResponseError(
@@ -1646,6 +1832,14 @@ function assertPerpsCredentialsKeyMatchesProxy(
   }
 }
 
+function assertPerpsOwnerSigner(client: BaseSecureClient): void {
+  if (client.account.signerType !== SignerType.OWNER) {
+    throw new UserInputError(
+      'Perps collateral transfers must be signed by the account owner.',
+    );
+  }
+}
+
 function perpsCredentialHeaders(
   credentials: Pick<PerpsCredentials, 'proxy' | 'secret'>,
 ): HeadersInit {
@@ -1664,11 +1858,36 @@ function sendPerpsDepositTransaction(
   };
 }
 
-function randomUint32(): number {
-  const [value] = crypto.getRandomValues(new Uint32Array(1));
-  invariant(
-    value !== undefined,
-    'Expected crypto.getRandomValues to return a salt.',
-  );
-  return value;
-}
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type {
+  PerpsChase,
+  PerpsChaseAccepted,
+  PerpsChaseId,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  type PerpsTwap,
+  type PerpsTwapAccepted,
+  type PerpsTwapId,
+  PerpsTwapStatus,
+} from '@polymarket/bindings/perps';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsChaseError,
+  type CancelPerpsChaseRequest,
+  CreatePerpsChaseError,
+  type CreatePerpsChaseRequest,
+  FetchPerpsChasesError,
+} from '../websockets/perps/actions/chases';
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  CancelPerpsTwapError,
+  type CancelPerpsTwapRequest,
+  CreatePerpsTwapError,
+  type CreatePerpsTwapRequest,
+  FetchPerpsTwapsError,
+  PausePerpsTwapError,
+  type PausePerpsTwapRequest,
+  ResumePerpsTwapError,
+  type ResumePerpsTwapRequest,
+} from '../websockets/perps/actions/twaps';

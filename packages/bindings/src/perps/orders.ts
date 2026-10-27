@@ -1,9 +1,13 @@
 import { z } from 'zod';
 import {
+  type DecimalString,
   DecimalStringSchema,
   EpochMillisecondsSchema,
   OrderSide,
+  toDecimalString,
 } from '../shared';
+import { PerpsBuilderTermsSchema } from './builders';
+import { PerpsChaseIdSchema } from './chases';
 import {
   PerpsAssetSchema,
   PerpsClientOrderIdSchema,
@@ -17,6 +21,35 @@ import {
   PerpsTradeIdSchema,
   PerpsTxHashSchema,
 } from './common';
+
+const FeeDecimalSchema = z
+  .string()
+  .regex(/^-?\d+(?:\.\d+)?$/)
+  .pipe(DecimalStringSchema);
+
+// Fees can include rebates. Align decimal scales before adding so large values
+// and fractions never pass through floating-point arithmetic.
+function totalFee(
+  exchangeFee: DecimalString,
+  builderFee: DecimalString,
+): DecimalString {
+  const [exchangeWhole = '0', exchangeFraction = ''] = exchangeFee.split('.');
+  const [builderWhole = '0', builderFraction = ''] = builderFee.split('.');
+  const scale = Math.max(exchangeFraction.length, builderFraction.length);
+  const exchangeUnits = BigInt(
+    `${exchangeWhole}${exchangeFraction.padEnd(scale, '0')}`,
+  );
+  const builderUnits = BigInt(
+    `${builderWhole}${builderFraction.padEnd(scale, '0')}`,
+  );
+  const sum = exchangeUnits + builderUnits;
+  const digits = (sum < 0n ? -sum : sum).toString().padStart(scale + 1, '0');
+  const fraction = scale === 0 ? '' : digits.slice(-scale).replace(/0+$/, '');
+  const whole = scale === 0 ? digits : digits.slice(0, -scale);
+  return toDecimalString(
+    `${sum < 0n ? '-' : ''}${whole}${fraction ? `.${fraction}` : ''}`,
+  );
+}
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -36,9 +69,18 @@ export enum PerpsOrderStatus {
   ZeroQuantity = 'zero_quantity',
   DuplicateOrder = 'duplicate_order',
   OrderNotFound = 'order_not_found',
+  OrderAlreadyTerminal = 'order_already_terminal',
   ReduceOnlyInvalid = 'reduce_only_invalid',
   ReduceOnlyExpired = 'reduce_only_expired',
   OrderExpired = 'order_expired',
+  SweepCapExceeded = 'sweep_cap_exceeded',
+  RestingOrderLimitExceeded = 'resting_order_limit_exceeded',
+  BelowMinNotional = 'below_min_notional',
+  InstrumentDisabled = 'instrument_disabled',
+  InstrumentCloseOnly = 'instrument_close_only',
+  InstrumentSettled = 'instrument_settled',
+  InsufficientMarginAtFill = 'insufficient_margin_at_fill',
+  MarkPriceUnavailable = 'mark_price_unavailable',
   Untriggered = 'untriggered',
   Armed = 'armed',
   Triggered = 'triggered',
@@ -60,6 +102,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parent_oid: PerpsOrderIdSchema.optional(),
     armed_qty: DecimalStringSchema.optional(),
     slip_bps: z.number().int().nonnegative().optional(),
+    trail_bps: z.number().int().nonnegative().optional(),
+    act: DecimalStringSchema.optional(),
+    trail_anchor: DecimalStringSchema.optional(),
+    trail_active: z.boolean().optional(),
   })
   .transform((fields) => ({
     kind: fields.kind,
@@ -68,6 +114,10 @@ export const PerpsTpSlOrderFieldsSchema = z
     parentOrderId: fields.parent_oid,
     armedQuantity: fields.armed_qty,
     slippageBps: fields.slip_bps,
+    trailingBps: fields.trail_bps,
+    activationPrice: fields.act,
+    trailingAnchor: fields.trail_anchor,
+    trailingActive: fields.trail_active,
   }));
 
 /**
@@ -84,6 +134,43 @@ export const PerpsOrderStatusSchema = z.enum(PerpsOrderStatus);
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsCommandStatusSchema = z.enum(['ok', 'err']);
+
+/**
+ * Known rejection identifiers returned when a Perps order cancellation fails.
+ *
+ * The service evolves this set independently of released clients, so
+ * cancellation parsing accepts unknown identifiers as plain strings; see
+ * {@link PerpsCancelOrderErrorCode}.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownCancelOrderErrorCode {
+  OrderUnknown = 'order_unknown',
+  OrderNotInOrderbook = 'order_not_in_orderbook',
+  OrderInFlight = 'order_in_flight',
+  OrderNotPendingEngine = 'order_not_pending_engine',
+  OrderNotFound = 'order_not_found',
+}
+
+/**
+ * A Perps order cancellation rejection identifier. Known identifiers are
+ * enumerated in {@link PerpsKnownCancelOrderErrorCode}; newly introduced
+ * identifiers flow through as plain strings so they can be handled before a
+ * client release that enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsCancelOrderErrorCode =
+  | PerpsKnownCancelOrderErrorCode
+  | (string & {});
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsCancelOrderErrorCodeSchema = z
+  .string()
+  .min(1)
+  .transform((value): PerpsCancelOrderErrorCode => value);
 
 const PerpsAckErrorSchema = z
   .string()
@@ -116,6 +203,7 @@ export const PerpsPostOrderAckSchema = z
     oid: PerpsOrderIdSchema.optional(),
     coid: PerpsClientOrderIdSchema.optional(),
     error: z.string().optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((ack, ctx) => {
     if (ack.status === 'err') {
@@ -138,6 +226,7 @@ export const PerpsPostOrderAckSchema = z
       status: 'ok' as const,
       orderId: ack.oid,
       clientOrderId: ack.coid,
+      ...(ack.builder === undefined ? {} : { builder: ack.builder }),
     };
   });
 
@@ -150,17 +239,24 @@ export type PerpsPostOrderAck = z.infer<typeof PerpsPostOrderAckSchema>;
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsCancelOrderResultSchema = z
-  .object({
-    status: PerpsCommandStatusSchema,
-    oid: PerpsOrderIdSchema.optional(),
-    coid: PerpsClientOrderIdSchema.optional(),
-    error: z.string().optional(),
-  })
+  .discriminatedUnion('status', [
+    z.object({
+      status: z.literal('ok'),
+      oid: PerpsOrderIdSchema.optional(),
+      coid: PerpsClientOrderIdSchema.optional(),
+    }),
+    z.object({
+      status: z.literal('err'),
+      error: PerpsCancelOrderErrorCodeSchema,
+      oid: PerpsOrderIdSchema.optional(),
+      coid: PerpsClientOrderIdSchema.optional(),
+    }),
+  ])
   .transform((ack) => {
     if (ack.status === 'err') {
       return {
         status: 'err' as const,
-        error: perpsAckError(ack.error),
+        error: ack.error,
         orderId: ack.oid,
         clientOrderId: ack.coid,
       };
@@ -218,6 +314,51 @@ export type PerpsUpdateLeverageResult = z.infer<
   typeof PerpsUpdateLeverageResultSchema
 >;
 
+/**
+ * A rejected item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeverageRejectionSchema = z
+  .object({
+    status: z.literal('err'),
+    instrument_id: PerpsInstrumentIdSchema,
+    error: z.string().optional(),
+  })
+  .transform((result) => ({
+    status: result.status,
+    instrumentId: result.instrument_id,
+    error: perpsAckError(result.error),
+  }));
+
+/**
+ * A rejected item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeverageRejection = z.infer<
+  typeof PerpsUpdateLeverageRejectionSchema
+>;
+
+/**
+ * The result for one item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsUpdateLeverageBatchResultSchema = z.union([
+  PerpsUpdateLeverageResultSchema,
+  PerpsUpdateLeverageRejectionSchema,
+]);
+
+/**
+ * The result for one item in a batch Perps leverage update.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsUpdateLeverageBatchResult = z.infer<
+  typeof PerpsUpdateLeverageBatchResultSchema
+>;
+
 function perpsAckError(error: string | undefined): string {
   return error ?? 'Perps command was rejected.';
 }
@@ -241,7 +382,9 @@ export const PerpsOrderSchema = z
     created_timestamp: EpochMillisecondsSchema,
     updated_timestamp: EpochMillisecondsSchema,
     client_order_id: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((order) => ({
     id: order.order_id,
@@ -258,7 +401,9 @@ export const PerpsOrderSchema = z
     createdTimestamp: order.created_timestamp,
     updatedTimestamp: order.updated_timestamp,
     clientOrderId: order.client_order_id,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
+    ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
 
 /**
@@ -295,7 +440,9 @@ export const PerpsOrderUpdateSchema = z
     cts: EpochMillisecondsSchema,
     uts: EpochMillisecondsSchema,
     coid: z.string().optional(),
+    chid: PerpsChaseIdSchema.optional(),
     tpsl: PerpsTpSlOrderFieldsSchema.nullish(),
+    builder: PerpsBuilderTermsSchema.optional(),
   })
   .transform((order) => ({
     id: order.oid,
@@ -312,8 +459,46 @@ export const PerpsOrderUpdateSchema = z
     createdTimestamp: order.cts,
     updatedTimestamp: order.uts,
     clientOrderId: order.coid,
+    ...(order.chid === undefined ? {} : { chaseId: order.chid }),
     tpSl: order.tpsl ?? undefined,
+    ...(order.builder === undefined ? {} : { builder: order.builder }),
   }));
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsLiquidationMethod {
+  Market = 'market',
+  Backstop = 'backstop',
+}
+
+/**
+ * Liquidation command context, distinct from the fill's accounting price.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsLiquidationDetailsSchema = z
+  .object({
+    liquidated_user: z.string().optional(),
+    mark: z
+      .string()
+      .regex(/^-?\d+(?:\.\d+)?$/)
+      .pipe(DecimalStringSchema),
+    method: z.enum(PerpsLiquidationMethod),
+  })
+  .transform((details) => ({
+    ...(details.liquidated_user === undefined
+      ? {}
+      : { liquidatedUser: details.liquidated_user }),
+    mark: details.mark,
+    method: details.method,
+  }));
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsLiquidationDetails = z.infer<
+  typeof PerpsLiquidationDetailsSchema
+>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -324,15 +509,21 @@ export const PerpsAccountFillSchema = z
     order_id: PerpsOrderIdSchema,
     instrument_id: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     price: DecimalStringSchema,
     quantity: DecimalStringSchema,
     taker: z.boolean(),
-    fee: DecimalStringSchema,
+    fee: FeeDecimalSchema,
+    builder_fee: FeeDecimalSchema.optional(),
+    total_fee: FeeDecimalSchema.optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
     fee_asset: PerpsAssetSchema,
     previous_size: DecimalStringSchema,
     previous_entry_price: DecimalStringSchema,
     pnl: DecimalStringSchema,
     liquidation: z.boolean(),
+    adl: z.boolean(),
+    liquidation_details: PerpsLiquidationDetailsSchema.optional(),
     timestamp: EpochMillisecondsSchema,
     hash: PerpsTxHashSchema,
   })
@@ -341,15 +532,29 @@ export const PerpsAccountFillSchema = z
     orderId: fill.order_id,
     instrumentId: fill.instrument_id,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.price,
     quantity: fill.quantity,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
+    builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
+    totalFee:
+      fill.total_fee ??
+      totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),
+    ...(fill.builder === undefined ? {} : { builder: fill.builder }),
     feeAsset: fill.fee_asset,
     previousSize: fill.previous_size,
     previousEntryPrice: fill.previous_entry_price,
     pnl: fill.pnl,
     liquidation: fill.liquidation,
+    /** Whether this fill came from auto-deleveraging. */
+    adl: fill.adl,
+    /** Present for backstop liquidations; ordinary order-book liquidations omit it. */
+    liquidationDetails: fill.liquidation_details,
     timestamp: fill.timestamp,
     hash: fill.hash,
   }));
@@ -375,15 +580,21 @@ export const PerpsAccountFillUpdateSchema = z
     oid: PerpsOrderIdSchema,
     iid: PerpsInstrumentIdSchema,
     side: PerpsSideSchema,
+    settlement: z.boolean().default(false),
     p: DecimalStringSchema,
     qty: DecimalStringSchema,
     taker: z.boolean(),
-    fee: DecimalStringSchema,
+    fee: FeeDecimalSchema,
+    builder_fee: FeeDecimalSchema.optional(),
+    total_fee: FeeDecimalSchema.optional(),
+    builder: PerpsBuilderTermsSchema.optional(),
     fea: PerpsAssetSchema,
     psz: DecimalStringSchema,
     pep: DecimalStringSchema,
     pnl: DecimalStringSchema,
     liq: z.boolean(),
+    adl: z.boolean(),
+    liquidation_details: PerpsLiquidationDetailsSchema.optional(),
     ts: EpochMillisecondsSchema,
     coid: z.string().optional(),
   })
@@ -392,15 +603,29 @@ export const PerpsAccountFillUpdateSchema = z
     orderId: fill.oid,
     instrumentId: fill.iid,
     side: fill.side,
+    /** True for a position close at instrument settlement; false on older responses. */
+    settlement: fill.settlement,
     price: fill.p,
     quantity: fill.qty,
     taker: fill.taker,
+    /** Exchange fee for this fill, excluding any builder fee. */
     fee: fill.fee,
+    /** Builder fee charged in addition to `fee`; zero without one. */
+    builderFee: fill.builder_fee ?? toDecimalString('0'),
+    /** Sum of `fee` and `builderFee`. */
+    totalFee:
+      fill.total_fee ??
+      totalFee(fill.fee, fill.builder_fee ?? toDecimalString('0')),
+    ...(fill.builder === undefined ? {} : { builder: fill.builder }),
     feeAsset: fill.fea,
     previousSize: fill.psz,
     previousEntryPrice: fill.pep,
     pnl: fill.pnl,
     liquidation: fill.liq,
+    /** Whether this fill came from auto-deleveraging. */
+    adl: fill.adl,
+    /** Present for backstop liquidations; ordinary order-book liquidations omit it. */
+    liquidationDetails: fill.liquidation_details,
     timestamp: fill.ts,
     clientOrderId: fill.coid,
   }));

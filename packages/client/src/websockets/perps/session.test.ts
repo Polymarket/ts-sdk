@@ -1,6 +1,13 @@
-import { OrderSide, toPaginationCursor } from '@polymarket/bindings';
 import {
+  OrderSide,
+  toDecimalString,
+  toEpochMilliseconds,
+  toPaginationCursor,
+} from '@polymarket/bindings';
+import {
+  type PerpsBuilderApproval,
   type PerpsCredentials,
+  PerpsKnownInternalTransferType,
   PerpsPnlInterval,
   PerpsSortDirection,
   PerpsTimeInForce,
@@ -24,6 +31,7 @@ import {
   RequestRejectedError,
   TimeoutError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import {
@@ -31,7 +39,12 @@ import {
   expectDropsUnknownFrame,
   waitForNextEvent,
 } from '../testing';
-import { PerpsSession } from './session';
+import {
+  type PerpsOrderRequest,
+  PerpsSession,
+  type PerpsSessionOptions,
+} from './session';
+import { createPerpsOpTypedDataPayload, signPerpsOp } from './signing';
 
 const perps = ws.link(production.perps.ws);
 const server = setupServer();
@@ -65,11 +78,918 @@ describe('PerpsSession', () => {
     server.close();
   });
 
+  it('fetches snapshots for the authenticated credential owner', async () => {
+    const address = '0x1111111111111111111111111111111111111111';
+    server.use(
+      http.get(
+        `${production.perps.rest}/v1/account/credentials`,
+        ({ request }) => {
+          expect(request.headers.get('POLYMARKET-PROXY')).toBe(
+            credentials.proxy,
+          );
+          return HttpResponse.json({ address, keys: [] });
+        },
+      ),
+      http.post(
+        `${production.perps.rest}/v1/info/position-snapshots`,
+        async ({ request }) => {
+          expect(request.headers.get('POLYMARKET-SECRET')).toBe(
+            credentials.secret,
+          );
+          expect(await request.json()).toEqual({
+            address,
+            active_instrument_ids: [7],
+          });
+          return HttpResponse.json({
+            history_as_of_at: 0,
+            active: [{ instrument_id: 7, status: 'not_found' }],
+            history: [],
+          });
+        },
+      ),
+    );
+    const session = createSession();
+    await expect(
+      session.fetchPositionSnapshots({ activeInstrumentIds: [7] }),
+    ).resolves.toMatchObject({
+      active: [{ instrumentId: 7, status: 'not_found' }],
+    });
+    await session.close();
+  });
+
+  describe('chase lifecycle', () => {
+    it('does not retry cancellation after a lost acknowledgement', async () => {
+      let writes = 0;
+      server.use(
+        http.delete(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          return HttpResponse.error();
+        }),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session.cancelChase({ chaseId: 1 }),
+        ).rejects.toBeInstanceOf(TransportError);
+        expect(writes).toBe(1);
+      } finally {
+        await session.close();
+      }
+    });
+    it('delivers chase child identity through the private order iterator', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+      await session.connect();
+      try {
+        const nextEvent = waitForNextEvent(session);
+        const frame = orderUpdate('open', 'a'.repeat(32));
+        await connection.send({ ...frame, data: { ...frame.data, chid: 123 } });
+        await expect(nextEvent).resolves.toMatchObject({
+          value: { type: 'order', payload: { chaseId: 123 } },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+    it.each([
+      {
+        request: {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1.000000000000000001',
+        },
+        args: {
+          iid: 1,
+          buy: true,
+          qty: '1.000000000000000001',
+          po: true,
+          ro: false,
+        },
+        op: ['createChase', [1, true, '1.000000000000000001', true, false]],
+        hash: '0x49bb16d14842595245b19ddc957a9d56fe389bebbb419a8ba384ddcefbbdc100',
+      },
+      {
+        request: {
+          instrumentId: 1,
+          side: OrderSide.SELL,
+          quantity: 1e-8,
+          limitPrice: '1.000000000000000001',
+          maxDistance: '0',
+          maxDistanceBps: 1000,
+          postOnly: false,
+          reduceOnly: true,
+          clientOrderId: 'a'.repeat(32),
+        },
+        args: {
+          iid: 1,
+          buy: false,
+          qty: '0.00000001',
+          lim: '1.000000000000000001',
+          max_dist: '0',
+          max_dist_bps: 1000,
+          po: false,
+          ro: true,
+          c: 'a'.repeat(32),
+        },
+        op: [
+          'createChase',
+          [
+            1,
+            false,
+            '0.00000001',
+            '1.000000000000000001',
+            '0',
+            1000,
+            false,
+            true,
+            'a'.repeat(32),
+          ],
+        ],
+        hash: '0xcaed1e7545bd77ee7256f65e289acb851dafca4c3d52cee69cc999f31042f7b6',
+      },
+    ])('signs exact create tuples, reads privately and cancels the same identity ($hash)', async (fixture) => {
+      const signedOp = fixture.op as import('./signing').PerpsSignedOp;
+      expect(
+        createPerpsOpTypedDataPayload({
+          chainId: 137,
+          op: signedOp,
+          salt: 1,
+          timestamp: 1,
+        }).message.data,
+      ).toBe(fixture.hash);
+      let writes = 0;
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/chases`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              exp: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createChase',
+              args: fixture.args,
+            });
+            expect(body.exp).toBe(1767225660000);
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: signedOp,
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            writes++;
+            return HttpResponse.json({
+              status: 'ok',
+              chid: 9007199254740991,
+              ts: 1767225600000,
+            });
+          },
+        ),
+        http.get(
+          `${production.perps.rest}/v1/account/chases`,
+          ({ request }) => {
+            expect(request.headers.get('polymarket-proxy')).toBe(
+              credentials.proxy,
+            );
+            expect(request.headers.get('polymarket-secret')).toBe(
+              credentials.secret,
+            );
+            return HttpResponse.json([]);
+          },
+        ),
+        http.delete(
+          `${production.perps.rest}/v1/trade/chases`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'cancelChase',
+              args: { chid: 9007199254740991 },
+            });
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: ['cancelChase', [9007199254740991]],
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            writes++;
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+      try {
+        const accepted = await session.createChase({
+          ...fixture.request,
+          expiresAt: 1767225660000,
+        });
+        expect(accepted).toEqual({
+          chaseId: 9007199254740991,
+          timestamp: 1767225600000,
+        });
+        expect(await session.fetchChases()).toEqual([]);
+        await session.cancelChase({ chaseId: accepted.chaseId });
+        expect(writes).toBe(2);
+      } finally {
+        await session.close();
+      }
+    });
+    it.each([
+      { quantity: '0' },
+      { quantity: 'NaN' },
+      { quantity: '0.00000000000000000000000000001' },
+      { quantity: '79228162514264337593543950336' },
+      { limitPrice: '-1' },
+      { maxDistance: '1', maxDistanceBps: 50 },
+      { maxDistanceBps: 0 },
+      { maxDistanceBps: 1001 },
+      { maxDistanceBps: 1.5 },
+      { expiresAt: -1 },
+      { clientOrderId: 'bad' },
+      { instrumentId: 4294967296 },
+    ])('validates full input before signing/dispatch %j', async (invalid) => {
+      const salt = vi.spyOn(crypto, 'getRandomValues');
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          return HttpResponse.json({ status: 'ok' });
+        }),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session.createChase({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            quantity: '1',
+            ...invalid,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(writes).toBe(0);
+        expect(salt).not.toHaveBeenCalled();
+        await expect(
+          session.cancelChase({ chaseId: 9007199254740992 }),
+        ).rejects.toBeInstanceOf(UserInputError);
+      } finally {
+        salt.mockRestore();
+        await session.close();
+      }
+    });
+    it.each([
+      'timeout',
+      'transport',
+      'malformed',
+      'domain',
+      'disabled',
+    ])('never resubmits uncertain/rejected writes: %s', async (mode) => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/chases`, () => {
+          writes++;
+          if (mode === 'transport') return HttpResponse.error();
+          if (mode === 'timeout')
+            return HttpResponse.json({ error: 'timeout' }, { status: 500 });
+          if (mode === 'disabled')
+            return HttpResponse.json({ error: 'not_found' }, { status: 404 });
+          if (mode === 'domain')
+            return HttpResponse.json({
+              status: 'err',
+              error: 'chase_limit_exceeded',
+            });
+          return HttpResponse.json({ status: 'ok', chid: 1 });
+        }),
+      );
+      const session = createSession();
+      try {
+        const expected =
+          mode === 'transport'
+            ? TransportError
+            : mode === 'malformed'
+              ? UnexpectedResponseError
+              : RequestRejectedError;
+        await expect(
+          session.createChase({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            quantity: '1',
+          }),
+        ).rejects.toBeInstanceOf(expected);
+        expect(writes).toBe(1);
+      } finally {
+        await session.close();
+      }
+    });
+  });
+
+  describe('TWAP lifecycle', () => {
+    it('signs every optional field in source order and normalizes decimal exponent input', async () => {
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              exp: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createTwap',
+              args: {
+                iid: 5,
+                buy: false,
+                qty: '0.00000001',
+                dur: 3600000,
+                ivl: 60000,
+                rnd: true,
+                slip_bps: 10000,
+                min_px: '1.000000000000000001',
+                max_px: '1.000000000000000002',
+                ro: true,
+                c: 'a'.repeat(32),
+              },
+            });
+            expect(body.exp).toBe(1767225660000);
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: [
+                  'createTwap',
+                  [
+                    5,
+                    false,
+                    '0.00000001',
+                    3600000,
+                    60000,
+                    true,
+                    10000,
+                    '1.000000000000000001',
+                    '1.000000000000000002',
+                    true,
+                    'a'.repeat(32),
+                  ],
+                ],
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            return HttpResponse.json({
+              status: 'ok',
+              twid: 1,
+              ts: 1767225600000,
+            });
+          },
+        ),
+      );
+      await createSession().createTwap({
+        instrumentId: 5,
+        side: OrderSide.SELL,
+        quantity: 1e-8,
+        durationMs: 3600000,
+        intervalMs: 60000,
+        randomize: true,
+        slippageBps: 10000,
+        minPrice: '1.000000000000000001',
+        maxPrice: '1.000000000000000002',
+        reduceOnly: true,
+        clientOrderId: 'a'.repeat(32),
+        expiresAt: 1767225660000,
+      });
+    });
+
+    it('signs the exact default tuple, reads and controls the accepted identity', async () => {
+      const signedOp = [
+        'createTwap',
+        [1, true, '1.000000000000000001', 300000, false, 0, false],
+      ] as const;
+      expect(
+        createPerpsOpTypedDataPayload({
+          chainId: 1,
+          op: signedOp,
+          salt: 1,
+          timestamp: 1,
+        }).message.data,
+      ).toBe(
+        '0x68225979ea9c0dda2641be3e25f940f6d515138c2aeb54320ea2be8e5a0b5e25',
+      );
+      const commands: unknown[] = [];
+      server.use(
+        http.post(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            const body = (await request.json()) as {
+              sig: string;
+              salt: number;
+              ts: number;
+              op: unknown;
+            };
+            expect(body.op).toEqual({
+              type: 'createTwap',
+              args: {
+                iid: 1,
+                buy: true,
+                qty: '1.000000000000000001',
+                dur: 300000,
+                rnd: false,
+                slip_bps: 0,
+                ro: false,
+              },
+            });
+            expect(body.sig).toBe(
+              signPerpsOp({
+                chainId: production.chainId,
+                op: signedOp,
+                privateKey: credentials.privateKey,
+                salt: body.salt,
+                timestamp: body.ts,
+              }),
+            );
+            commands.push(body.op);
+            return HttpResponse.json({
+              status: 'ok',
+              twid: 9007199254740991,
+              ts: 1767225600000,
+            });
+          },
+        ),
+        http.get(`${production.perps.rest}/v1/account/twaps`, () =>
+          HttpResponse.json([]),
+        ),
+        http.patch(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            commands.push(await request.json());
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+        http.delete(
+          `${production.perps.rest}/v1/trade/twaps`,
+          async ({ request }) => {
+            commands.push(await request.json());
+            return HttpResponse.json({ status: 'ok' });
+          },
+        ),
+      );
+      const session = createSession();
+      const accepted = await session.createTwap({
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1.000000000000000001',
+        durationMs: 300000,
+      });
+      expect(accepted).toEqual({
+        twapId: 9007199254740991,
+        timestamp: 1767225600000,
+      });
+      expect(await session.fetchTwaps()).toEqual([]);
+      await session.pauseTwap({ twapId: accepted.twapId });
+      await session.resumeTwap({ twapId: accepted.twapId });
+      await session.cancelTwap({ twapId: accepted.twapId });
+      expect(commands).toHaveLength(4);
+      expect(commands[1]).toMatchObject({
+        op: {
+          type: 'controlTwap',
+          args: { twid: accepted.twapId, act: 'pause' },
+        },
+      });
+      expect(commands[2]).toMatchObject({
+        op: {
+          type: 'controlTwap',
+          args: { twid: accepted.twapId, act: 'resume' },
+        },
+      });
+      expect(commands[3]).toMatchObject({
+        op: { type: 'cancelTwap', args: { twid: accepted.twapId } },
+      });
+    });
+    it.each([
+      { intervalMs: 31000 },
+      { quantity: '0' },
+      { quantity: 'garbage' },
+      { durationMs: 86400001 },
+      { slippageBps: 10001 },
+      { minPrice: '1.000000000000000002', maxPrice: '1.000000000000000001' },
+    ])('validates all input before signing and dispatch: %j', async (invalid) => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.json({ status: 'ok' });
+        }),
+      );
+      const session = createSession();
+      await expect(
+        session.createTwap({
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1',
+          durationMs: 300000,
+          ...invalid,
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(writes).toBe(0);
+    });
+    it('does not retry a TWAP cancellation after a lost response', async () => {
+      let writes = 0;
+      server.use(
+        http.delete(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.error();
+        }),
+      );
+      const session = createSession();
+      await expect(session.cancelTwap({ twapId: 1 })).rejects.toBeInstanceOf(
+        TransportError,
+      );
+      expect(writes).toBe(1);
+    });
+    it('surfaces uncertain and malformed creates without resubmission', async () => {
+      let writes = 0;
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () => {
+          writes++;
+          return HttpResponse.json({ error: 'timeout' }, { status: 500 });
+        }),
+      );
+      const session = createSession();
+      const request = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        durationMs: 300000,
+      };
+      await expect(session.createTwap(request)).rejects.toBeInstanceOf(
+        RequestRejectedError,
+      );
+      expect(writes).toBe(1);
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () =>
+          HttpResponse.json({ status: 'ok', twid: 1 }),
+        ),
+      );
+      await expect(session.createTwap(request)).rejects.toBeInstanceOf(
+        UnexpectedResponseError,
+      );
+      server.use(
+        http.post(`${production.perps.rest}/v1/trade/twaps`, () =>
+          HttpResponse.json({ status: 'err', error: 'twap_limit_exceeded' }),
+        ),
+      );
+      await expect(session.createTwap(request)).rejects.toMatchObject({
+        message: 'twap_limit_exceeded',
+      });
+    });
+  });
+
+  describe('builder consent', () => {
+    const builderAddress = '0xabababababababababababababababababababab';
+    const terms = { builderAddress, feeRate: '0.0003' };
+    let builderMaxFeeRate = '0.0005';
+    let approvedMaxFeeRate: string | undefined = '0.0003';
+    let rejectCapRead = false;
+    beforeEach(() => {
+      builderMaxFeeRate = '0.0005';
+      approvedMaxFeeRate = '0.0003';
+      rejectCapRead = false;
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          rejectCapRead
+            ? HttpResponse.json({ error: 'unavailable' }, { status: 400 })
+            : HttpResponse.json({
+                address: builderAddress,
+                registered: true,
+                enabled: true,
+                admission_enabled: true,
+                max_fee_rate: builderMaxFeeRate,
+              }),
+        ),
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.json({
+            data:
+              approvedMaxFeeRate === undefined
+                ? []
+                : [
+                    {
+                      trader: credentials.proxy,
+                      builder: builderAddress,
+                      max_fee_rate: approvedMaxFeeRate,
+                      approval_version: 1,
+                      timestamp: 1_767_225_600_000,
+                      sequence: 1,
+                    },
+                  ],
+          }),
+        ),
+      );
+    });
+
+    it.each([
+      undefined,
+      {},
+    ])('rejects a missing maximum before owner approval (%s)', async (request) => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, builderMaxFeeRate, 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      // @ts-expect-error Exercise untyped callers omitting the required maximum.
+      await expect(session.approveBuilderFee(request)).rejects.toBeInstanceOf(
+        UserInputError,
+      );
+      expect(approveBuilderFee).not.toHaveBeenCalled();
+      await session.close();
+    });
+
+    it('uses the selected builder and the explicitly approved maximum', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      await session.close();
+    });
+
+    it('rejects an inactive builder at setup', async () => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/info/builder`, () =>
+          HttpResponse.json({
+            address: builderAddress,
+            registered: true,
+            enabled: false,
+            admission_enabled: true,
+            max_fee_rate: builderMaxFeeRate,
+          }),
+        ),
+      );
+      const session = createSession({ builderAttribution: builderAddress });
+      await expect(session.connect()).rejects.toThrow(
+        'Builder attribution is not active for this builder address.',
+      );
+      await session.close();
+    });
+
+    it.each([
+      'missing',
+      'revoked',
+      'zero builder cap',
+    ] as const)('omits attribution with %s until approval enables it', async (state) => {
+      approvedMaxFeeRate =
+        state === 'missing' ? undefined : state === 'revoked' ? '0' : '0.0003';
+      if (state === 'zero builder cap') builderMaxFeeRate = '0';
+      const frames = mockCommandSession(responseForFrame);
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee,
+      });
+      const orders: PerpsOrderRequest[] = [
+        {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          quantity: '1',
+          timeInForce: PerpsTimeInForce.IOC,
+        },
+      ];
+      await session.connect();
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).not.toHaveProperty('op.args.0.builder');
+
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      expect(approveBuilderFee).toHaveBeenCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      await session.postOrders({ orders });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0002' } }],
+        },
+      });
+      await session.close();
+    });
+
+    it.each([
+      ['0.0005', '0.0003'],
+      ['0.0002', '0.0002'],
+    ])('restores the lower saved cap when the builder cap is %s', async (cap, expected) => {
+      builderMaxFeeRate = cap;
+      mockCommandSession(responseForFrame);
+      const session = createSession({ builderAttribution: builderAddress });
+      await session.connect();
+      expect(session.builderAttribution?.feeRate).toBe(expected);
+      await session.close();
+    });
+
+    it('submits saved terms directly after approval and forwards later server rejections', async () => {
+      let approved = false;
+      const frames = mockCommandSession((frame) =>
+        frame.op?.type === 'createOrders' && !approved
+          ? [{ status: 'err', error: 'builder_approval_required' }]
+          : responseForFrame(frame),
+      );
+      const session = createSession({
+        builderAttribution: builderAddress,
+        approveBuilderFee: async () => {
+          approved = true;
+          return builderApproval(builderAddress, '0.0003', 1);
+        },
+      });
+      await session.connect();
+      const order = {
+        instrumentId: 1,
+        side: OrderSide.BUY,
+        quantity: '1',
+        timeInForce: PerpsTimeInForce.IOC,
+      } as const;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.approveBuilderFee({ maxFeeRate: '0.0003' });
+      // Any fee/status lookup on the order path would now fail.
+      rejectCapRead = true;
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-approvals`, () =>
+          HttpResponse.error(),
+        ),
+      );
+      await session.postOrders({ orders: [order] });
+      expect(frames.at(-1)).toMatchObject({
+        op: {
+          args: [{ builder: { address: builderAddress, fee_rate: '0.0003' } }],
+        },
+      });
+      approved = false;
+      await expect(
+        session.postOrders({ orders: [order] }),
+      ).resolves.toMatchObject([
+        { status: 'err', error: 'builder_approval_required' },
+      ]);
+      await session.close();
+    });
+
+    it('refreshes the cap after approval and replaces the effective session rate', async () => {
+      const approveBuilderFee = vi.fn(async () =>
+        builderApproval(builderAddress, '0.0003', 1),
+      );
+      const session = createSession({
+        approveBuilderFee,
+      });
+      builderMaxFeeRate = '0.0002';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0002');
+      builderMaxFeeRate = '0';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution).toBeUndefined();
+      builderMaxFeeRate = '0.0005';
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      rejectCapRead = true;
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0003' }),
+      ).rejects.toBeInstanceOf(RequestRejectedError);
+      expect(session.builderAttribution?.feeRate).toBe('0.0003');
+      expect(approveBuilderFee).toHaveBeenCalledTimes(4);
+      await session.close();
+    });
+
+    it('serializes approval and revocation and adopts only confirmed terms', async () => {
+      let confirmApproval!: (approval: PerpsBuilderApproval) => void;
+      const approval = new Promise<PerpsBuilderApproval>((resolve) => {
+        confirmApproval = resolve;
+      });
+      const approveBuilderFee = vi
+        .fn()
+        .mockReturnValueOnce(approval)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0', 2));
+      const session = createSession({ approveBuilderFee });
+      const approving = session.approveBuilderFee({
+        builderAddress,
+        maxFeeRate: '0.0003',
+      });
+      const revoking = session.revokeBuilderFee();
+      await vi.waitFor(() =>
+        expect(approveBuilderFee).toHaveBeenCalledTimes(1),
+      );
+      expect(session.builderAttribution).toBeUndefined();
+      confirmApproval(builderApproval(builderAddress, '0.0003', 1));
+      await approving;
+      await revoking;
+      expect(approveBuilderFee).toHaveBeenLastCalledWith(session, {
+        builderAddress,
+        maxFeeRate: '0',
+      });
+      expect(session.builderAttribution).toBeUndefined();
+      await session.close();
+    });
+
+    it('preserves active terms after rejected changes and recovers the consent queue', async () => {
+      const rejected = new RequestRejectedError('rejected', { status: 400 });
+      const approveBuilderFee = vi
+        .fn()
+        .mockRejectedValueOnce(rejected)
+        .mockRejectedValueOnce(rejected)
+        .mockResolvedValueOnce(builderApproval(builderAddress, '0.0004', 2));
+      const session = createSession({
+        approveBuilderFee,
+        builderAttribution: terms,
+      });
+      await expect(
+        session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' }),
+      ).rejects.toBe(rejected);
+      await expect(session.revokeBuilderFee()).rejects.toBe(rejected);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.approveBuilderFee({ builderAddress, maxFeeRate: '0.0004' });
+      expect(session.builderAttribution?.feeRate).toBe('0.0004');
+      await session.close();
+    });
+
+    it('keeps the selected builder when revoking a different builder', async () => {
+      rejectCapRead = true;
+      const otherBuilder = '0x3333333333333333333333333333333333333333';
+      const session = createSession({
+        builderAttribution: terms,
+        approveBuilderFee: async () => builderApproval(otherBuilder, '0', 2),
+      });
+      await session.revokeBuilderFee(otherBuilder);
+      expect(session.builderAttribution).toEqual(terms);
+      await session.close();
+    });
+  });
+
   describe('successful session', () => {
     let frames: unknown[];
 
     beforeEach(() => {
       frames = mockSuccessfulSession();
+    });
+
+    it('keeps pre-ack builder frames and treats sparse sequences as valid', async () => {
+      server.resetHandlers();
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.chs?.includes('builderFills')) {
+              for (const sequence of [10, 100])
+                client.send(
+                  JSON.stringify({
+                    ch: 'builderFills',
+                    ts: 1_700_000_000_000,
+                    ets: 1_699_999_999_000,
+                    sq: sequence,
+                    data: [],
+                  }),
+                );
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession({ includeBuilderFills: true });
+      await session.connect();
+      for (const sequence of [10, 100]) {
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
+          value: {
+            type: 'builderFill',
+            sequence,
+          },
+        });
+      }
+      await session.close();
     });
 
     it('authenticates and subscribes to session channels', async () => {
@@ -234,8 +1154,99 @@ describe('PerpsSession', () => {
       connectionFrames = mockSuccessfulSessions();
     });
 
+    it('restores builder fills separately and emits one resync', async () => {
+      const session = createSession({ includeBuilderFills: true });
+      vi.useFakeTimers();
+      try {
+        await session.connect();
+        connectionFrames[0]?.client.close();
+        await vi.advanceTimersToNextTimerAsync();
+        await vi.waitFor(() =>
+          expect(connectionFrames[1]?.frames[2]).toMatchObject({
+            req: 'sub',
+            chs: ['builderFills'],
+          }),
+        );
+        await expect(waitForNextEvent(session)).resolves.toMatchObject({
+          value: { type: 'resync', reason: 'reconnect' },
+        });
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      'rejection',
+      'timeout',
+    ] as const)('keeps core events flowing through connect and reconnect after builder fills %s', async (failure) => {
+      server.resetHandlers();
+      const connections: Array<{
+        close(): void;
+        send(data: string): void;
+      }> = [];
+      const subscriptions: string[][] = [];
+      server.use(
+        perps.addEventListener('connection', ({ client }) => {
+          connections.push(client);
+          client.addEventListener('message', (message) => {
+            const frame = JSON.parse(String(message.data));
+            if (frame.req === 'sub') subscriptions.push(frame.chs);
+            if (frame.chs?.includes('builderFills')) {
+              if (failure === 'rejection') {
+                client.send(
+                  JSON.stringify({
+                    id: frame.id,
+                    data: [{ status: 'err', error: 'builder_not_enabled' }],
+                  }),
+                );
+              }
+              return;
+            }
+            client.send(
+              JSON.stringify({ id: frame.id, data: { status: 'ok' } }),
+            );
+          });
+        }),
+      );
+      const session = createSession({ includeBuilderFills: true });
+      vi.useFakeTimers();
+      try {
+        // Readiness must not wait for the optional subscription's deadline.
+        await session.connect();
+        for (const index of [0, 1]) {
+          await vi.waitFor(() =>
+            expect(subscriptions).toHaveLength((index + 1) * 2),
+          );
+          expect(subscriptions[index * 2]).toContain('orders');
+          expect(subscriptions[index * 2]).not.toContain('builderFills');
+          expect(subscriptions[index * 2 + 1]).toEqual(['builderFills']);
+          for (const sequence of [1, 2]) {
+            if (sequence === 2) await vi.advanceTimersByTimeAsync(30_000);
+            const next = waitForNextEvent(session);
+            connections[index]?.send(
+              JSON.stringify(balanceUpdate({ balance: '1', sequence })),
+            );
+            await expect(next).resolves.toMatchObject({
+              value: { type: 'balance', sequence },
+            });
+          }
+          if (index === 0) {
+            connections[0]?.close();
+            await vi.advanceTimersToNextTimerAsync();
+            await expect(waitForNextEvent(session)).resolves.toMatchObject({
+              value: { type: 'resync', reason: 'reconnect' },
+            });
+          }
+        }
+        expect(connections).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
     it('reauthenticates, resubscribes, and emits resync', async () => {
       const session = createSession();
+      const connection = captureConnection(server, perps);
 
       vi.useFakeTimers();
 
@@ -243,6 +1254,18 @@ describe('PerpsSession', () => {
         await session.connect();
         await vi.waitFor(() => {
           expect(connectionFrames[0]?.frames).toHaveLength(2);
+        });
+
+        const serverResync = waitForNextEvent(session);
+        await connection.send({
+          ch: 'notifications',
+          ets: 1_699_999_999_000,
+          sq: 1050,
+          ts: 1_700_000_000_000,
+          type: 'resync',
+        });
+        await expect(serverResync).resolves.toMatchObject({
+          value: { reason: 'server', sequence: 1050, type: 'resync' },
         });
 
         const nextEvent = waitForNextEvent(session);
@@ -285,6 +1308,13 @@ describe('PerpsSession', () => {
             reason: 'reconnect',
             type: 'resync',
           },
+        });
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence: 1080, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          value: { sequence: 1080, type: 'notification' },
         });
       } finally {
         await session.close();
@@ -347,8 +1377,11 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('waits for the matching private order update', async () => {
-      const frames = mockOrderPlacementSession({ status: 'open' });
+    it.each([
+      'open',
+      'insufficient_margin_at_fill',
+    ])('waits for the matching %s private order update', async (status) => {
+      const frames = mockOrderPlacementSession({ status });
       const session = createSession();
       await session.connect();
 
@@ -368,7 +1401,7 @@ describe('PerpsSession', () => {
           clientOrderId: '0123456789abcdef0123456789abcdef',
           id: 123,
           restingQuantity: '1.5',
-          status: 'open',
+          status,
         },
       });
       expect(frames[2]).toMatchObject({
@@ -380,7 +1413,7 @@ describe('PerpsSession', () => {
         value: {
           payload: {
             id: 123,
-            status: 'open',
+            status,
           },
           type: 'order',
         },
@@ -389,9 +1422,92 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('uses a matching private order update received before the acknowledgement', async () => {
+    it('rejects an expiry on a trigger before sending any order', async () => {
+      const session = createSession();
+      await session.connect();
+      try {
+        await expect(
+          session.placeOrder({
+            instrumentId: 1,
+            side: OrderSide.BUY,
+            price: '100',
+            quantity: '1',
+            timeInForce: PerpsTimeInForce.GTD,
+            gtdExpiry: Date.now() + 60_000,
+            stopLoss: {
+              triggerPrice: '90',
+              gtdExpiry: Date.now() + 60_000,
+            } as never,
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      false,
+      true,
+    ])('places GTD with separate command deadline and optional exits (%s)', async (withExits) => {
       const frames = mockOrderPlacementSession({
         status: 'open',
+        timeInForce: PerpsTimeInForce.GTD,
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+      try {
+        const gtdExpiry = Date.now() + 60_000;
+        const expiresAt = Date.now() + 5_000;
+        const request = {
+          instrumentId: 1,
+          side: OrderSide.BUY,
+          price: '100.00',
+          quantity: '1.5',
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry,
+        } as const;
+        const placement = withExits
+          ? await session.placeOrder({
+              ...request,
+              expiresAt,
+              stopLoss: { triggerPrice: '90' },
+            })
+          : await session.placeOrder({ ...request, expiresAt });
+        expect(placement.order.timeInForce).toBe(PerpsTimeInForce.GTD);
+        expect(frames[2]).toMatchObject({
+          exp: expiresAt,
+          op: {
+            args: withExits
+              ? [
+                  { tif: 'gtd', gtd_expiry: gtdExpiry },
+                  { tr: { trp: '90' }, ro: true },
+                ]
+              : [{ tif: 'gtd', gtd_expiry: gtdExpiry }],
+          },
+        });
+        if (withExits) {
+          expect(frames[2]).not.toMatchObject({
+            op: {
+              args: [expect.anything(), { gtd_expiry: expect.anything() }],
+            },
+          });
+          expect(frames[2]).not.toMatchObject({
+            op: { args: [expect.anything(), { tif: expect.anything() }] },
+          });
+        }
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      'open',
+      'instrument_settled',
+    ])('uses a matching %s private order update received before the acknowledgement', async (status) => {
+      const frames = mockOrderPlacementSession({
+        status,
         updateBeforeAck: true,
       });
       const session = createSession();
@@ -412,7 +1528,7 @@ describe('PerpsSession', () => {
             clientOrderId: expect.stringMatching(/^[0-9a-f]{32}$/),
             id: 123,
             restingQuantity: '1.5',
-            status: 'open',
+            status,
           },
         });
         expect(frames[2]).toMatchObject({
@@ -752,6 +1868,82 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
+    it('places a GTD entry with a trailing stop loss without expiry on trigger legs', async () => {
+      const frames = mockOrderPlacementSession({
+        status: 'open',
+        updateBeforeAck: true,
+      });
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.placeOrder({
+          instrumentId: 1,
+          price: '100.00',
+          quantity: '1.5',
+          side: OrderSide.BUY,
+          timeInForce: PerpsTimeInForce.GTD,
+          gtdExpiry: 1893456000000,
+          stopLoss: {
+            trailingBps: 200,
+            activationPrice: '105.00',
+          },
+          takeProfit: {
+            triggerPrice: '120.00',
+          },
+        }),
+      ).resolves.toEqual({
+        order: expect.objectContaining({
+          id: 123,
+          restingQuantity: '1.5',
+          status: 'open',
+        }),
+        tpSl: {
+          takeProfit: { orderId: 124 },
+          stopLoss: { orderId: 125 },
+        },
+      });
+
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            {
+              buy: true,
+              c: expect.stringMatching(/^[0-9a-f]{32}$/),
+              iid: 1,
+              p: '100.00',
+              po: false,
+              qty: '1.5',
+              tif: 'gtd',
+              gtd_expiry: 1893456000000,
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'tp', trp: '120.00' },
+            },
+            {
+              buy: false,
+              iid: 1,
+              po: false,
+              qty: '1.5',
+              ro: true,
+              tr: { market: true, tpsl: 'sl', trail_bps: 200, act: '105.00' },
+            },
+          ],
+          grp: 'order',
+          type: 'createOrders',
+        },
+        req: 'post',
+      });
+
+      await session.close();
+    });
+
     it('places full-position take-profit and stop-loss triggers', async () => {
       server.use(mockPortfolioPosition({ size: '1.5' }));
       const session = createSession();
@@ -893,6 +2085,206 @@ describe('PerpsSession', () => {
       }
     });
 
+    it('updates leverage for an ordered batch over the session socket', async () => {
+      const session = createSession();
+      await session.connect();
+
+      await expect(
+        session.updateLeverages({
+          updates: [
+            { crossMargin: false, instrumentId: 1, leverage: 5 },
+            { crossMargin: true, instrumentId: 2, leverage: 10 },
+          ],
+        }),
+      ).resolves.toEqual([
+        {
+          crossMargin: false,
+          instrumentId: 1,
+          leverage: 5,
+          status: 'ok',
+        },
+        {
+          crossMargin: true,
+          instrumentId: 2,
+          leverage: 10,
+          status: 'ok',
+        },
+      ]);
+      expect(frames[2]).toMatchObject({
+        id: 3,
+        op: {
+          args: [
+            { cross: false, iid: 1, lev: 5 },
+            { cross: true, iid: 2, lev: 10 },
+          ],
+          type: 'updateLeverages',
+        },
+        req: 'post',
+        salt: expect.any(Number),
+        sig: expect.stringMatching(/^0x[0-9a-f]{130}$/),
+        ts: expect.any(Number),
+      });
+
+      await session.close();
+    });
+
+    it('keeps an empty per-item leverage error in the ordered results', async () => {
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'updateLeverages') {
+          return [
+            {
+              status: 'ok',
+              instrument_id: 1,
+              leverage: 5,
+              cross: false,
+            },
+            {
+              status: 'err',
+              instrument_id: 2,
+              error: '',
+            },
+            {
+              status: 'ok',
+              instrument_id: 3,
+              leverage: 10,
+              cross: true,
+            },
+          ];
+        }
+
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({
+            updates: [
+              { crossMargin: false, instrumentId: 1, leverage: 5 },
+              { crossMargin: false, instrumentId: 2, leverage: 5 },
+              { crossMargin: true, instrumentId: 3, leverage: 10 },
+            ],
+          }),
+        ).resolves.toEqual([
+          {
+            status: 'ok',
+            instrumentId: 1,
+            leverage: 5,
+            crossMargin: false,
+          },
+          { status: 'err', instrumentId: 2, error: '' },
+          {
+            status: 'ok',
+            instrumentId: 3,
+            leverage: 10,
+            crossMargin: true,
+          },
+        ]);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('throws when the complete leverage batch is rejected', async () => {
+      mockCommandSession((frame) =>
+        frame.op?.type === 'updateLeverages'
+          ? [{ status: 'err', error: 'action_rate_limited' }]
+          : responseForFrame(frame),
+      );
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({
+            updates: [{ crossMargin: false, instrumentId: 1, leverage: 5 }],
+          }),
+        ).rejects.toBeInstanceOf(RequestRejectedError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      [],
+      [{ status: 'ok', instrument_id: 1, leverage: 5, cross: false }],
+      [
+        { status: 'err', instrument_id: 2, error: 'invalid_leverage' },
+        { status: 'ok', instrument_id: 1, leverage: 5, cross: false },
+      ],
+    ])('rejects a leverage batch with missing or misordered results: %j', async (...entries) => {
+      frames = mockCommandSession((frame) =>
+        frame.op?.type === 'updateLeverages'
+          ? entries
+          : responseForFrame(frame),
+      );
+      const session = createSession();
+      await session.connect();
+      try {
+        await expect(
+          session.updateLeverages({
+            updates: [
+              { crossMargin: false, instrumentId: 1, leverage: 5 },
+              { crossMargin: false, instrumentId: 2, leverage: 5 },
+            ],
+          }),
+        ).rejects.toBeInstanceOf(UnexpectedResponseError);
+        expect(frames).toHaveLength(3);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('does not resubmit a leverage batch after a response timeout', async () => {
+      server.resetHandlers();
+      let submissions = 0;
+      mockCommandSession((frame) => {
+        if (frame.op?.type === 'updateLeverages') {
+          submissions++;
+          return NO_RESPONSE;
+        }
+        return responseForFrame(frame);
+      });
+      const session = createSession();
+      await session.connect();
+      vi.useFakeTimers();
+      try {
+        const pending = session.updateLeverages({
+          updates: [{ crossMargin: false, instrumentId: 1, leverage: 5 }],
+        });
+        const rejection =
+          expect(pending).rejects.toBeInstanceOf(TransportError);
+        await vi.advanceTimersByTimeAsync(30_000);
+        await rejection;
+        expect(submissions).toBe(1);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it('validates the complete leverage batch before sending', async () => {
+      const session = createSession();
+      await session.connect();
+
+      try {
+        await expect(
+          session.updateLeverages({ updates: [] }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        await expect(
+          session.updateLeverages({
+            updates: [
+              { crossMargin: false, instrumentId: 1, leverage: 5 },
+              { crossMargin: false, instrumentId: 2, leverage: 0 },
+            ],
+          }),
+        ).rejects.toBeInstanceOf(UserInputError);
+        expect(frames).toHaveLength(2);
+      } finally {
+        await session.close();
+      }
+    });
+
     it('updates isolated margin over the session socket', async () => {
       const session = createSession();
       await session.connect();
@@ -999,7 +2391,7 @@ describe('PerpsSession', () => {
           return [
             {
               coid: '0123456789abcdef0123456789abcdef',
-              error: 'order not found',
+              error: 'order_not_found',
               status: 'err',
             },
           ];
@@ -1017,7 +2409,7 @@ describe('PerpsSession', () => {
           }),
         ).resolves.toEqual({
           clientOrderId: '0123456789abcdef0123456789abcdef',
-          error: 'order not found',
+          error: 'order_not_found',
           status: 'err',
         });
       } finally {
@@ -1110,24 +2502,30 @@ describe('PerpsSession', () => {
 
       await session.connect();
 
-      const nextEvent = waitForNextEvent(session);
-      await connection.send({
-        ch: 'tpsl::1',
-        data: { oid: 123, st: 'armed' },
-        sq: 1,
-        ts: 1_700_000_000_000,
-      });
+      for (const [index, status] of [
+        'armed',
+        'activated',
+        'expired',
+      ].entries()) {
+        const nextEvent = waitForNextEvent(session);
+        await connection.send({
+          ch: 'tpsl::1',
+          data: { oid: 123, st: status },
+          ets: 1_699_999_999_000,
+          sq: index + 1,
+          ts: 1_700_000_000_000,
+        });
 
-      await expect(nextEvent).resolves.toMatchObject({
-        done: false,
-        value: {
-          channel: 'tpsl::1',
-          payload: { orderId: 123, status: 'armed' },
-          sequence: 1,
-          type: 'tpsl',
-        },
-      });
-
+        await expect(nextEvent).resolves.toMatchObject({
+          done: false,
+          value: {
+            channel: 'tpsl::1',
+            payload: { orderId: 123, status },
+            sequence: index + 1,
+            type: 'tpsl',
+          },
+        });
+      }
       await session.close();
     });
 
@@ -1142,12 +2540,14 @@ describe('PerpsSession', () => {
       await connection.send({
         ch: 'tpsl::1',
         data: { oid: 123, st: 'future_status' },
+        ets: 1_699_999_999_000,
         sq: 1,
         ts: 1_700_000_000_000,
       });
       await connection.send({
         ch: 'tpsl::1',
         data: { oid: 123, st: 'armed' },
+        ets: 1_699_999_999_000,
         sq: 2,
         ts: 1_700_000_000_000,
       });
@@ -1169,6 +2569,55 @@ describe('PerpsSession', () => {
   });
 
   describe('notifications', () => {
+    it('delivers ADL settlements through the existing session iterator', async () => {
+      mockSuccessfulSession();
+      const connection = captureConnection(server, perps);
+      const session = createSession();
+      await session.connect();
+
+      const nextEvent = waitForNextEvent(session);
+      await connection.send({
+        ch: 'notifications',
+        ets: 1_699_999_999_000,
+        sq: 1042,
+        ts: 1_767_225_600_000,
+        data: {
+          id: NOTIFICATION_ID,
+          type: 'position_deleveraged',
+          instrument_id: 1,
+          side: 'short',
+          size_closed: '0.01',
+          price: '52000',
+          pnl: '130',
+          margin_type: 'isolated',
+        },
+      });
+      // A subsequent known event prevents a dropped ADL frame from only timing out.
+      await connection.send(
+        notificationUpdate({ sequence: 1043, type: 'position_opened' }),
+      );
+      await expect(nextEvent).resolves.toMatchObject({
+        done: false,
+        value: {
+          type: 'notification',
+          channel: 'notifications',
+          sequence: 1042,
+          timestamp: 1_767_225_600_000,
+          payload: {
+            id: NOTIFICATION_ID,
+            type: 'position_deleveraged',
+            instrumentId: 1,
+            side: 'short',
+            sizeClosed: '0.01',
+            price: '52000',
+            pnl: '130',
+            marginType: 'isolated',
+          },
+        },
+      });
+      await session.close();
+    });
+
     it('emits notification events from the notifications channel', async () => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
@@ -1200,37 +2649,51 @@ describe('PerpsSession', () => {
       await session.close();
     });
 
-    it('drops server resync frames without emitting an event', async () => {
+    it.each([
+      0, 1_699_999_999_000,
+    ])('emits server resync horizon %s and continues notifications without synthetic gaps', async (horizon) => {
       mockSuccessfulSession();
       const connection = captureConnection(server, perps);
       const session = createSession();
 
       await session.connect();
 
-      // The server resync control frame is parsed but intentionally not
-      // surfaced until DEV-428; the notification sent afterwards arriving as
-      // the next event proves it was dropped without closing the session.
       const nextEvent = waitForNextEvent(session);
       await connection.send({
         ch: 'notifications',
+        ets: horizon,
         sq: 1050,
         ts: 1_700_000_000_000,
         type: 'resync',
       });
-      await connection.send(
-        notificationUpdate({ sequence: 1051, type: 'position_opened' }),
-      );
-
-      await expect(nextEvent).resolves.toMatchObject({
+      await expect(nextEvent).resolves.toEqual({
         done: false,
         value: {
           channel: 'notifications',
-          sequence: 1051,
-          type: 'notification',
+          reason: 'server',
+          eventTimestamp: horizon === 0 ? null : horizon,
+          sequence: 1050,
+          timestamp: 1_700_000_000_000,
+          type: 'resync',
         },
       });
 
+      // Engine sequences can repeat or skip values after a resync too.
+      for (const sequence of [1050, 1050, 1080]) {
+        const nextNotification = waitForNextEvent(session);
+        await connection.send(
+          notificationUpdate({ sequence, type: 'position_opened' }),
+        );
+        await expect(nextNotification).resolves.toMatchObject({
+          done: false,
+          value: { channel: 'notifications', sequence, type: 'notification' },
+        });
+      }
+
       await session.close();
+      await expect(waitForNextEvent(session)).resolves.toMatchObject({
+        done: true,
+      });
     });
 
     it('does not synthesize sequence-gap resyncs for notification sequences', async () => {
@@ -1284,6 +2747,7 @@ describe('PerpsSession', () => {
         unknownFrame: {
           ch: 'notifications',
           data: { id: NOTIFICATION_ID, type: 'future_notification' },
+          ets: 1_699_999_999_000,
           sq: 1,
           ts: 1_700_000_000_000,
         },
@@ -1446,6 +2910,68 @@ describe('PerpsSession', () => {
   });
 
   describe('account reads', () => {
+    // Malformed continuation responses cannot be produced reliably by live APIs.
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('rejects builder earnings with more=true and cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: true,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        const pages = session.listBuilderEarnings();
+        if (cursor === undefined) {
+          await expect(pages.firstPage()).rejects.toThrow(
+            UnexpectedResponseError,
+          );
+        }
+        await expect(
+          pages.from(toPaginationCursor('current-cursor')).firstPage(),
+        ).rejects.toThrow(UnexpectedResponseError);
+      } finally {
+        await session.close();
+      }
+    });
+
+    it.each([
+      undefined,
+      'current-cursor',
+    ])('accepts final builder earnings with cursor=%s', async (cursor) => {
+      server.use(
+        http.get(`${production.perps.rest}/v1/account/builder-earnings`, () =>
+          HttpResponse.json({
+            data: [],
+            more: false,
+            cursor,
+            start_timestamp: 0,
+            end_timestamp: 1000,
+            as_of_sequence: 10,
+          }),
+        ),
+      );
+      const session = createSession();
+      try {
+        await expect(
+          session
+            .listBuilderEarnings()
+            .from(toPaginationCursor('current-cursor'))
+            .firstPage(),
+        ).resolves.toEqual({ items: [], hasMore: false });
+      } finally {
+        await session.close();
+      }
+    });
+
     it('sends session credentials as REST auth headers', async () => {
       server.use(
         http.get(
@@ -1497,27 +3023,26 @@ describe('PerpsSession', () => {
       });
     });
 
-    it('throws user input errors for invalid account pagination cursors', () => {
+    it('rejects invalid account pagination cursors with user input errors', async () => {
       const cursor = toPaginationCursor(
         btoa(JSON.stringify({ kind: 'perpsTrades' })),
       );
       const session = createSession();
 
-      let thrown: unknown;
-      try {
-        session.listFundingPayments({ cursor }).firstPage();
-      } catch (error) {
-        thrown = error;
-      }
+      const firstPage = session.listFundingPayments({ cursor }).firstPage();
 
-      expect(thrown).toBeInstanceOf(UserInputError);
-      expect(thrown).toMatchObject({
+      await expect(firstPage).rejects.toBeInstanceOf(UserInputError);
+      await expect(firstPage).rejects.toMatchObject({
         message: 'Invalid Perps account pagination cursor',
         cause: expect.any(Error),
       });
     });
 
-    it('pages fills with the native cursor while keeping the requested filters', async () => {
+    it.each([
+      undefined,
+      0,
+      4_294_967_295,
+    ])('pages fills with instrument %s while keeping the requested filters', async (instrumentId) => {
       const requests: URLSearchParams[] = [];
       server.use(
         http.get(`${production.perps.rest}/v1/account/fills`, ({ request }) => {
@@ -1540,16 +3065,36 @@ describe('PerpsSession', () => {
       const session = createSession();
 
       const pages: number[][] = [];
-      for await (const page of session.listFills({ end: 3000, start: 0 })) {
+      for await (const page of session.listFills({
+        instrumentId,
+        end: 3000,
+        start: 0,
+      })) {
         pages.push(page.items.map((fill) => fill.tradeId));
         if (pages.length > MAX_EXPECTED_PAGES) break;
       }
 
       expect(pages).toEqual([[3, 2], [1]]);
+      const filter =
+        instrumentId === undefined ? '' : `&instrument_id=${instrumentId}`;
       expect(requests.map((params) => params.toString())).toEqual([
-        'start_timestamp=0&end_timestamp=3000',
-        'start_timestamp=0&end_timestamp=3000&cursor=2',
+        `start_timestamp=0&end_timestamp=3000${filter}`,
+        `start_timestamp=0&end_timestamp=3000${filter}&cursor=2`,
       ]);
+    });
+
+    it.each([
+      -1,
+      4_294_967_296,
+      1.5,
+      Number.NaN,
+      true,
+      '1',
+    ])('rejects invalid fill instrument %s before requests', (instrumentId) => {
+      const session = createSession();
+      expect(() =>
+        session.listFills({ instrumentId: instrumentId as number }),
+      ).toThrow(UserInputError);
     });
 
     it('forwards a sort direction and a caller-provided fills cursor as-is', async () => {
@@ -1570,6 +3115,7 @@ describe('PerpsSession', () => {
         .listFills({
           cursor: toPaginationCursor('42'),
           sort: PerpsSortDirection.Ascending,
+          instrumentId: 4_294_967_295,
         })
         .firstPage();
 
@@ -1577,7 +3123,7 @@ describe('PerpsSession', () => {
       expect(first.hasMore).toBe(false);
       expect(first.nextCursor).toBeUndefined();
       expect(requests.map((params) => params.toString())).toEqual([
-        'sort=asc&cursor=42',
+        'instrument_id=4294967295&sort=asc&cursor=42',
       ]);
     });
 
@@ -1719,6 +3265,60 @@ describe('PerpsSession', () => {
       ]);
     });
 
+    it('lists normalized internal transfers and dedupes timestamp boundaries', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/internal-transfers`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+
+            if (params.get('end_timestamp') === '3000') {
+              return HttpResponse.json({
+                data: [
+                  internalTransfer(3, 3000, 'transfer'),
+                  internalTransfer(2, 2000, 'referral_payout'),
+                ],
+                more: true,
+              });
+            }
+
+            return HttpResponse.json({
+              data: [
+                internalTransfer(2, 2000, 'referral_payout'),
+                internalTransfer(1, 1000, 'future_transfer_type'),
+              ],
+              more: false,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: number[][] = [];
+      const types: string[] = [];
+      for await (const page of session.listInternalTransfers({
+        end: 3000,
+        start: 0,
+      })) {
+        pages.push(page.items.map((transfer) => transfer.transferId));
+        types.push(...page.items.map((transfer) => transfer.type));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages).toEqual([[3, 2], [1]]);
+      expect(types).toEqual([
+        PerpsKnownInternalTransferType.Transfer,
+        PerpsKnownInternalTransferType.ReferralPayout,
+        'future_transfer_type',
+      ]);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2001',
+      ]);
+    });
+
     it('stops paging at the requested start timestamp', async () => {
       const requests: URLSearchParams[] = [];
       server.use(
@@ -1797,13 +3397,16 @@ describe('PerpsSession', () => {
   });
 });
 
-function createSession(): PerpsSession {
+function createSession(
+  options: Partial<PerpsSessionOptions> = {},
+): PerpsSession {
   return new PerpsSession({
     chainId: production.chainId,
     credentials,
     onClose: () => undefined,
     restUrl: production.perps.rest,
     wsUrl: production.perps.ws,
+    ...options,
   });
 }
 
@@ -1840,6 +3443,7 @@ function mockCommandSession(
 function mockOrderPlacementSession(request: {
   status: string;
   updateBeforeAck?: boolean;
+  timeInForce?: PerpsTimeInForce;
 }): unknown[] {
   const frames: unknown[] = [];
 
@@ -1854,6 +3458,7 @@ function mockOrderPlacementSession(request: {
             request.status,
             clientOrderIdFromFrame(frame),
           );
+          update.data.tif = request.timeInForce ?? PerpsTimeInForce.GTC;
           if (request.updateBeforeAck) {
             client.send(JSON.stringify(update));
           }
@@ -1922,6 +3527,21 @@ function responseForFrame(frame: {
     }
     case 'updateLeverage':
       return { status: 'ok', instrument_id: 1, leverage: 5, cross: false };
+    case 'updateLeverages':
+      return [
+        {
+          status: 'ok',
+          instrument_id: 1,
+          leverage: 5,
+          cross: false,
+        },
+        {
+          status: 'ok',
+          instrument_id: 2,
+          leverage: 10,
+          cross: true,
+        },
+      ];
     case 'updateMargin':
       return { status: 'ok' };
     case 'cancelOrdersCOID':
@@ -1999,6 +3619,7 @@ function balanceUpdate(request: { balance: string; sequence: number }) {
       balance: request.balance,
       value: request.balance,
     },
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };
@@ -2013,6 +3634,7 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
       fee: '1.25',
       iid: 1,
       liq: false,
+      adl: false,
       oid: 123,
       p: '100.00',
       pep: '100.00',
@@ -2024,6 +3646,7 @@ function fillsUpdate(request: { sequence: number; tradeIds: number[] }) {
       tid,
       ts: 1_700_000_000_000,
     })),
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };
@@ -2041,6 +3664,7 @@ function fundingUpdate(request: { id: number }) {
       sz: '10.00',
       ts: 1_700_000_000_000,
     },
+    ets: 1_699_999_999_000,
     sq: 1,
     ts: 1_700_000_000_000,
   };
@@ -2065,6 +3689,7 @@ function orderUpdate(status: string, clientOrderId: string) {
       tif: 'gtc',
       uts: 1_700_000_000_000,
     },
+    ets: 1_699_999_999_000,
     sq: 1,
     ts: 1_700_000_000_000,
   };
@@ -2085,6 +3710,7 @@ function notificationUpdate(request: { sequence: number; type: string }) {
       size: '10.00',
       type: request.type,
     },
+    ets: 1_699_999_999_000,
     sq: request.sequence,
     ts: 1_700_000_000_000,
   };
@@ -2113,6 +3739,7 @@ function accountFill(tradeId: number, timestamp: number) {
     hash: `0x${'1'.repeat(64)}`,
     instrument_id: 1,
     liquidation: false,
+    adl: false,
     order_id: 100 + tradeId,
     pnl: '0',
     previous_entry_price: '0',
@@ -2123,6 +3750,23 @@ function accountFill(tradeId: number, timestamp: number) {
     taker: true,
     timestamp,
     trade_id: tradeId,
+  };
+}
+
+function internalTransfer(
+  transferId: number,
+  createdTimestamp: number,
+  type: string,
+) {
+  return {
+    transfer_id: transferId,
+    type,
+    asset: 'USDC',
+    amount: '100.00',
+    direction: 'out',
+    counterparty: '0x0000000000000000000000000000000000000002',
+    label: `transfer-${transferId}`,
+    created_timestamp: createdTimestamp,
   };
 }
 
@@ -2145,6 +3789,7 @@ function mockPortfolioPosition(request: { size: string }) {
         {
           cross: false,
           cumulative_funding: '0',
+          adl_index: 0,
           entry_price: '100',
           initial_margin: '30',
           instrument_id: 1,
@@ -2160,13 +3805,30 @@ function mockPortfolioPosition(request: { size: string }) {
       ],
       margin: {
         total_account_value: '1000',
+        available_order_margin: '970',
         total_initial_margin: '30',
         total_maintenance_margin: '10',
         total_position_value: '150',
       },
       withdrawable: '970',
       in_liquidation: false,
+      fee_tier: 0,
       timestamp: 1_700_000_000_000,
     }),
   );
+}
+
+function builderApproval(
+  builder: string,
+  maxFeeRate: string,
+  approvalVersion: number,
+): PerpsBuilderApproval {
+  return {
+    trader: credentials.proxy,
+    builder: expectEvmAddress(builder),
+    maxFeeRate: toDecimalString(maxFeeRate),
+    approvalVersion,
+    timestamp: toEpochMilliseconds(1_767_225_600_000),
+    sequence: approvalVersion,
+  };
 }

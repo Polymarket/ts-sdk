@@ -4,6 +4,7 @@ import {
   PerpsBalanceSchema,
   PerpsPortfolioSchema,
 } from '../perps/account';
+import { PerpsBuilderEarningSchema } from '../perps/builders';
 import {
   PerpsInstrumentIdSchema,
   type PerpsKlineInterval,
@@ -26,9 +27,14 @@ import {
   PerpsAccountFillUpdateSchema,
   PerpsOrderUpdateSchema,
 } from '../perps/orders';
-import { EpochMillisecondsSchema } from '../shared';
+import { type EpochMilliseconds, EpochMillisecondsSchema } from '../shared';
 
 const SequenceSchema = z.number().int().nonnegative();
+
+// Wire ets is an unsigned epoch-ms value; zero attests no event horizon.
+const PerpsEventHorizonSchema = EpochMillisecondsSchema.refine(
+  (value) => value >= 0,
+).transform((value) => (value === 0 ? null : value));
 
 const TradesChannelSchema = z.string().regex(/^trades::\d+$/);
 const BboChannelSchema = z.string().regex(/^bbo::\d+$/);
@@ -52,6 +58,7 @@ const PerpsSessionChannelSchema = z.enum([
 
 const PerpsUpdateEnvelopeSchema = z.object({
   ts: EpochMillisecondsSchema,
+  ets: PerpsEventHorizonSchema,
   sq: SequenceSchema,
 });
 
@@ -61,11 +68,13 @@ const PerpsUpdateEnvelopeSchema = z.object({
 export const PerpsTradeEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TradesChannelSchema,
   data: z.array(PerpsPublicTradeUpdateSchema),
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.trades' as const,
   type: 'trade' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: data,
 }));
@@ -81,11 +90,13 @@ export type PerpsTradeEvent = z.infer<typeof PerpsTradeEventSchema>;
 export const PerpsBboEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BboChannelSchema,
   data: PerpsBboUpdateSchema,
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.bbo' as const,
   type: 'bbo' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: data,
 }));
@@ -101,11 +112,13 @@ export type PerpsBboEvent = z.infer<typeof PerpsBboEventSchema>;
 export const PerpsBookEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: BookChannelSchema,
   data: PerpsBookUpdateSchema,
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.book' as const,
   type: 'book' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: {
     instrumentId: instrumentIdFromChannel(ch),
@@ -124,11 +137,13 @@ export type PerpsBookEvent = z.infer<typeof PerpsBookEventSchema>;
 export const PerpsTickerEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: TickersChannelSchema,
   data: PerpsTickerEntrySchema,
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.tickers' as const,
   type: 'ticker' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: data,
 }));
@@ -144,11 +159,13 @@ export type PerpsTickerEvent = z.infer<typeof PerpsTickerEventSchema>;
 export const PerpsStatisticEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: StatisticsChannelSchema,
   data: PerpsStatisticUpdateSchema,
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.statistics' as const,
   type: 'statistic' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: data,
 }));
@@ -164,11 +181,13 @@ export type PerpsStatisticEvent = z.infer<typeof PerpsStatisticEventSchema>;
 export const PerpsCandleEventSchema = PerpsUpdateEnvelopeSchema.extend({
   ch: CandlesChannelSchema,
   data: z.array(PerpsCandleSchema),
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   topic: 'perps.candles' as const,
   type: 'candle' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: {
     instrumentId: instrumentIdFromChannel(ch),
@@ -217,12 +236,15 @@ function perpsSessionEventSchema<
       data: z.output<TPayload>;
       sq: number;
       ts: number;
+      ets: EpochMilliseconds | null;
     };
 
     return {
       type,
       channel: event.ch,
       timestamp: event.ts,
+      /** Newest reflected event time; null means the event horizon is unknown. */
+      eventTimestamp: event.ets,
       sequence: event.sq,
       payload: event.data,
     };
@@ -284,6 +306,29 @@ export const PerpsFillUpdateEventSchema = perpsSessionEventSchema(
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type PerpsFillUpdateEvent = z.infer<typeof PerpsFillUpdateEventSchema>;
+
+/**
+ * Live builder receipts. Sequence numbers are sparse engine sequences.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsBuilderFillUpdateEventSchema =
+  PerpsUpdateEnvelopeSchema.extend({
+    ch: z.literal('builderFills'),
+    data: z.array(PerpsBuilderEarningSchema),
+  }).transform(({ ch, ts, ets, sq, data }) => ({
+    type: 'builderFill' as const,
+    channel: ch,
+    timestamp: ts,
+    /** Newest reflected event time; null means the event horizon is unknown. */
+    eventTimestamp: ets,
+    sequence: sq,
+    payload: data,
+  }));
+
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export type PerpsBuilderFillUpdateEvent = z.infer<
+  typeof PerpsBuilderFillUpdateEventSchema
+>;
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -356,19 +401,23 @@ export const PerpsNotificationsResyncFrameSchema = z
   .object({
     ch: z.literal('notifications'),
     ts: EpochMillisecondsSchema,
+    ets: PerpsEventHorizonSchema,
     sq: SequenceSchema,
     type: z.literal('resync'),
   })
-  .transform(({ ch, ts, sq }) => ({
+  .transform(({ ch, ts, ets, sq }) => ({
     type: 'resync' as const,
+    reason: 'server' as const,
     channel: ch,
     timestamp: ts,
+    /** Newest reflected event time; null means the event horizon is unknown. */
+    eventTimestamp: ets,
     sequence: sq,
   }));
 
 const PerpsTpSlLifecycleUpdateSchema = z.object({
   oid: PerpsOrderIdSchema,
-  st: z.enum(['untriggered', 'armed', 'cancelled', 'expired']),
+  st: z.enum(['untriggered', 'armed', 'activated', 'cancelled', 'expired']),
   reason: z.string().optional(),
 });
 
@@ -382,10 +431,12 @@ export const PerpsTpSlUpdateEventSchema = PerpsUpdateEnvelopeSchema.extend({
     status: update.st,
     reason: update.reason,
   })),
-}).transform(({ ch, ts, sq, data }) => ({
+}).transform(({ ch, ts, ets, sq, data }) => ({
   type: 'tpsl' as const,
   channel: ch,
   timestamp: ts,
+  /** Newest reflected event time; null means the event horizon is unknown. */
+  eventTimestamp: ets,
   sequence: sq,
   payload: data,
 }));
@@ -402,6 +453,7 @@ export const PerpsSessionUpdateEventSchema = z.union([
   PerpsPortfolioUpdateEventSchema,
   PerpsOrderUpdateEventSchema,
   PerpsFillUpdateEventSchema,
+  PerpsBuilderFillUpdateEventSchema,
   PerpsFundingUpdateEventSchema,
   PerpsDepositUpdateEventSchema,
   PerpsWithdrawalUpdateEventSchema,
@@ -417,15 +469,26 @@ export type PerpsSessionUpdateEvent = z.infer<
 >;
 
 /**
+ * A recovery signal after reconnect, a sequence gap, or dropped notifications.
+ * For `reason: 'server'`, `sequence` is the highest dropped notification
+ * sequence, not a backfill lower bound. Backfill from the last notification
+ * successfully processed and deduplicate by notification id.
+ *
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsResyncEvent = {
-  type: 'resync';
-  reason: 'reconnect' | 'sequence_gap';
-  channel?: string;
-  previousSequence?: number;
-  sequence?: number;
-};
+export type PerpsResyncEvent =
+  | {
+      type: 'resync';
+      reason: 'reconnect' | 'sequence_gap';
+      /** Local recovery has no attested event horizon. */
+      eventTimestamp?: never;
+      channel?: string;
+      previousSequence?: number;
+      sequence?: number;
+    }
+  | (z.infer<typeof PerpsNotificationsResyncFrameSchema> & {
+      previousSequence?: never;
+    });
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ClobTradeSchema, type OpenOrder, OpenOrderSchema } from './account';
+import {
+  ClobTradeSchema,
+  type OpenOrder,
+  OpenOrderSchema,
+  TotalUserEarningsResponseSchema,
+} from './account';
 
 const baseTrade = {
   asset_id: '1',
@@ -33,6 +38,47 @@ const baseTrade = {
 };
 
 describe('ClobTradeSchema', () => {
+  it.each([
+    'FAILED',
+    'MATCHED_NOT_BROADCASTED',
+  ])('accepts a %s trade without a transaction hash', (status) => {
+    const { transaction_hash: _, ...tradeWithoutHash } = baseTrade;
+    const trade = ClobTradeSchema.parse({
+      ...tradeWithoutHash,
+      status,
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBeUndefined();
+  });
+
+  it('normalizes an empty transaction hash to undefined', () => {
+    const trade = ClobTradeSchema.parse({
+      ...baseTrade,
+      status: 'FAILED',
+      transaction_hash: '',
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBeUndefined();
+  });
+
+  it.each([
+    'CONFIRMED',
+    'FAILED',
+  ])('preserves a populated transaction hash on a %s trade', (status) => {
+    const trade = ClobTradeSchema.parse({
+      ...baseTrade,
+      status,
+      match_time: '1777996829',
+      last_update: '1777996840',
+    });
+
+    expect(trade.transactionHash).toBe(baseTrade.transaction_hash);
+  });
+
   it('normalizes legacy epoch seconds timestamp strings', () => {
     const trade = ClobTradeSchema.parse({
       ...baseTrade,
@@ -113,5 +159,30 @@ describe('OpenOrderSchema', () => {
 
     expect(order.createdAt).toBe('2025-01-01T00:00:00.000Z');
     expect(order.expiresAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+});
+
+describe('TotalUserEarningsResponseSchema', () => {
+  it('preserves sponsored breakdowns and legacy entries without inventing amounts', () => {
+    // Contract: rewards/pkg/model/user_earning.go, native/sponsored JSON numbers.
+    const base = {
+      asset_address: '0xUSDC',
+      asset_rate: 0.0001,
+      date: 1700000000000,
+      earnings: 12.5,
+      maker_address: '0xMAKER',
+    };
+    const [sponsored, legacy, zero] = TotalUserEarningsResponseSchema.parse([
+      { ...base, native_earnings: 10.25, sponsored_earnings: 2.25 },
+      base,
+      { ...base, native_earnings: 0, sponsored_earnings: 0 },
+    ]);
+    expect(sponsored?.earnings).toBe('12.5');
+    expect(sponsored?.nativeEarnings).toBe('10.25');
+    expect(sponsored?.sponsoredEarnings).toBe('2.25');
+    expect(legacy?.nativeEarnings).toBeUndefined();
+    expect(legacy?.sponsoredEarnings).toBeUndefined();
+    expect(zero?.nativeEarnings).toBe('0');
+    expect(zero?.sponsoredEarnings).toBe('0');
   });
 });

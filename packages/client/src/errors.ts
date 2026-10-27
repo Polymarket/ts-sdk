@@ -1,3 +1,12 @@
+import type { GatewayErrorCode } from '@polymarket/bindings';
+
+export {
+  type GatewayErrorCode,
+  GatewayKnownErrorCode,
+} from '@polymarket/bindings';
+
+import type { PerpsCancelOrderResult } from '@polymarket/bindings/perps';
+
 export {
   type RealtimeErrorCode,
   RealtimeKnownErrorCode,
@@ -27,6 +36,24 @@ export class UserInputError extends PolymarketError {
     return new UserInputError(formatInputZodError(error), {
       cause: error,
     });
+  }
+}
+
+/**
+ * Error thrown when pagination would pass the deepest page the service serves
+ * for a list.
+ *
+ * Some list endpoints cap how far an offset-paginated read may go and reject
+ * requests past the cap. The SDK throws this before sending such a request;
+ * the pages already returned stay valid, but whether more items exist past
+ * the cap cannot be established. Automatic iteration stops normally on a page
+ * with `limitReached: true`; explicitly resuming past the cap still throws.
+ */
+export class PaginationLimitError extends PolymarketError {
+  override name = 'PaginationLimitError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
   }
 }
 
@@ -69,6 +96,19 @@ export class TransportError extends PolymarketError {
         cause: error,
       },
     );
+  }
+}
+
+/**
+ * Error thrown when a caller cancels a read through its AbortSignal.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export class RequestAbortedError extends PolymarketError {
+  override name = 'RequestAbortedError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
   }
 }
 
@@ -145,7 +185,7 @@ export type RequestRejectedErrorOptions = {
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  code?: string;
+  code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -163,14 +203,15 @@ export type RequestRejectedErrorOptions = {
  * rate limiting.
  */
 export class RequestRejectedError extends PolymarketError {
-  override name = 'RequestRejectedError' as const;
+  override name: 'RequestRejectedError' | 'OrderHeartbeatMismatchError' =
+    'RequestRejectedError';
 
   readonly status: number;
   /**
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  readonly code?: string;
+  readonly code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -191,6 +232,22 @@ export class RequestRejectedError extends PolymarketError {
     this.code = options.code;
     this.retryAfter = options.retryAfter;
     this.restriction = options.restriction;
+  }
+}
+
+/**
+ * An order heartbeat used a stale ID. Retry explicitly with heartbeatId and retain
+ * the new ID from the successful response. A rejected send does not refresh the deadline.
+ */
+export class OrderHeartbeatMismatchError extends RequestRejectedError {
+  override name = 'OrderHeartbeatMismatchError' as const;
+
+  /** Currently expected ID. It can be empty after a legacy heartbeat. */
+  readonly heartbeatId: string;
+
+  constructor(heartbeatId: string) {
+    super('Invalid Heartbeat ID', { status: 400 });
+    this.heartbeatId = heartbeatId;
   }
 }
 
@@ -247,6 +304,23 @@ export class TimeoutError extends PolymarketError {
 }
 
 /**
+ * Error thrown when an operation is interrupted through an abort signal.
+ */
+export class OperationAbortedError extends PolymarketError {
+  override name = 'OperationAbortedError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+
+  static fromReason(reason: unknown): OperationAbortedError {
+    return new OperationAbortedError('Operation was aborted.', {
+      cause: reason,
+    });
+  }
+}
+
+/**
  * Error thrown when a submitted transaction reaches a terminal failure state.
  */
 export class TransactionFailedError extends PolymarketError {
@@ -299,6 +373,46 @@ export class AutoCancelDailyLimitError extends PolymarketError {
 
   constructor(message: string, options: ErrorOptions = {}) {
     super(message, options);
+  }
+}
+
+/**
+ * Details retained when a Perps cancellation retry fails.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsCancelRetryErrorOptions = {
+  /** Last received per-order outcomes, in the original request order. */
+  results: readonly PerpsCancelOrderResult[];
+  /** Zero-based original request positions retried in the failed attempt. */
+  pendingIndexes: readonly number[];
+};
+
+/**
+ * Error thrown when a Perps cancellation retry fails after per-order results
+ * have already been received. The original failure is available as `cause`.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export class PerpsCancelRetryError extends PolymarketError {
+  override name = 'PerpsCancelRetryError' as const;
+
+  /** Last received per-order outcomes, in the original request order. */
+  readonly results: readonly PerpsCancelOrderResult[];
+  /**
+   * Zero-based original request positions retried in the failed attempt.
+   * Their retained rejections are historical: a transport failure can conceal
+   * completion, so these results do not establish the current order state.
+   */
+  readonly pendingIndexes: readonly number[];
+
+  constructor(
+    message: string,
+    options: ErrorOptions & PerpsCancelRetryErrorOptions,
+  ) {
+    super(message, options);
+    this.results = [...options.results];
+    this.pendingIndexes = [...options.pendingIndexes];
   }
 }
 

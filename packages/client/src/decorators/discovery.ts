@@ -64,12 +64,23 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type DiscoveryActions = {
   /**
    * Lists events.
    *
-   * Defaults to open events. Pass `closed: true` to list settled events.
+   * Defaults to open events. Pass `closed: true` for closed events or
+   * `closed: 'any'` for either state; no identifier filter is required.
+   * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+   * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF events (v1).
+   *
+   * @remarks
+   * Cursors continue the exact query they were minted for and are rejected for
+   * a different one before any request. Cursors saved from earlier versions
+   * keep working with the same arguments.
    *
    * @throws {@link ListEventsError}
    * Thrown on failure.
@@ -101,7 +112,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listEvents(request?: ListEventsRequest): Paginated<Event[]>;
+  listEvents(
+    request?: ListEventsRequest,
+    options?: RequestOptions,
+  ): Paginated<Event[]>;
 
   /**
    * Fetches an event.
@@ -124,7 +138,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEvent(request: FetchEventRequest): Promise<Event>;
+  fetchEvent(
+    request: FetchEventRequest,
+    options?: RequestOptions,
+  ): Promise<Event>;
 
   /**
    * Fetches an event's tags.
@@ -139,14 +156,27 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEventTags(request: FetchEventTagsRequest): Promise<TagReference[]>;
+  fetchEventTags(
+    request: FetchEventTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists markets.
    *
+   * Defaults to open markets. Pass `closed: true` for closed markets or
+   * `closed: 'any'` for either state. The latter requires a non-empty `ids`,
+   * `slug`, `clobTokenIds`, `positionIds`, `conditionIds`, or `questionIds` filter.
+   *
    * @remarks
    * Legacy multi-outcome markets cannot be represented by the binary
    * {@link Market} model and are omitted from results.
+   *
+   * Select one protocol with `version`, or pass both protocol versions in an array.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF markets (v1). Filter v2 markets by `resolutionStatus`, `requestIds`, or
+   * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+   * use the separate `umaResolutionStatus` filter.
    *
    * @throws {@link ListMarketsError}
    * Thrown on failure.
@@ -180,7 +210,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listMarkets(request?: ListMarketsRequest): Paginated<Market[]>;
+  listMarkets(
+    request?: ListMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<Market[]>;
 
   /**
    * Lists markets available for Combos.
@@ -224,7 +257,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  listComboMarkets(request?: ListComboMarketsRequest): Paginated<ComboMarket[]>;
+  listComboMarkets(
+    request?: ListComboMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<ComboMarket[]>;
 
   /**
    * Fetches a market.
@@ -252,7 +288,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarket(request: FetchMarketRequest): Promise<Market>;
+  fetchMarket(
+    request: FetchMarketRequest,
+    options?: RequestOptions,
+  ): Promise<Market>;
 
   /**
    * Fetches a market's tags.
@@ -267,7 +306,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarketTags(request: FetchMarketTagsRequest): Promise<TagReference[]>;
+  fetchMarketTags(
+    request: FetchMarketTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists series.
@@ -302,7 +344,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listSeries(request?: ListSeriesRequest): Paginated<Series[]>;
+  listSeries(
+    request?: ListSeriesRequest,
+    options?: RequestOptions,
+  ): Paginated<Series[]>;
 
   /**
    * Fetches a series.
@@ -317,7 +362,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchSeries(request: FetchSeriesRequest): Promise<Series>;
+  fetchSeries(
+    request: FetchSeriesRequest,
+    options?: RequestOptions,
+  ): Promise<Series>;
 
   /**
    * Lists market clarifications — notes that resolve ambiguity in how a market
@@ -339,6 +387,7 @@ export type DiscoveryActions = {
    */
   listMarketClarifications(
     request?: ListMarketClarificationsRequest,
+    options?: RequestOptions,
   ): Paginated<MarketClarification[]>;
 
   /**
@@ -374,7 +423,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTags(request?: ListTagsRequest): Paginated<Tag[]>;
+  listTags(
+    request?: ListTagsRequest,
+    options?: RequestOptions,
+  ): Paginated<Tag[]>;
 
   /**
    * Fetches a tag by id or slug.
@@ -389,7 +441,7 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchTag(request: FetchTagRequest): Promise<Tag>;
+  fetchTag(request: FetchTagRequest, options?: RequestOptions): Promise<Tag>;
 
   /**
    * Fetches related tag relationships by id or slug.
@@ -404,7 +456,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchRelatedTags(request: FetchRelatedTagsRequest): Promise<RelatedTag[]>;
+  fetchRelatedTags(
+    request: FetchRelatedTagsRequest,
+    options?: RequestOptions,
+  ): Promise<RelatedTag[]>;
 
   /**
    * Fetches resources linked from related tag relationships by id or slug.
@@ -421,6 +476,7 @@ export type DiscoveryActions = {
    */
   fetchRelatedTagResources(
     request: FetchRelatedTagResourcesRequest,
+    options?: RequestOptions,
   ): Promise<Tag[]>;
 
   /**
@@ -428,6 +484,11 @@ export type DiscoveryActions = {
    *
    * `keepClosedMarkets` is an hour window for including recently closed markets
    * when searching active events.
+   *
+   * Search serves up to 100 pages. If more results may exist at that boundary,
+   * automatic iteration yields the page with `limitReached: true` and stops
+   * normally, keeping `hasMore` true. Explicitly following its cursor throws
+   * {@link PaginationLimitError} before any request. Completeness is unknown.
    *
    * @throws {@link SearchError}
    * Thrown on failure.
@@ -450,7 +511,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  search(request: SearchRequest): Paginated<SearchResults>;
+  search(
+    request: SearchRequest,
+    options?: RequestOptions,
+  ): Paginated<SearchResults>;
 
   /**
    * Lists available sports metadata.
@@ -463,7 +527,7 @@ export type DiscoveryActions = {
    * const sports = await client.listSports();
    * ```
    */
-  listSports(): Promise<SportsMetadata[]>;
+  listSports(options?: RequestOptions): Promise<SportsMetadata[]>;
 
   /**
    * Fetches the available market types grouped by sport.
@@ -476,7 +540,9 @@ export type DiscoveryActions = {
    * const marketTypes = await client.fetchSportsMarketTypes();
    * ```
    */
-  fetchSportsMarketTypes(): Promise<SportsMarketTypesResponse>;
+  fetchSportsMarketTypes(
+    options?: RequestOptions,
+  ): Promise<SportsMarketTypesResponse>;
 
   /**
    * Lists teams.
@@ -511,7 +577,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTeams(request?: ListTeamsRequest): Paginated<Team[]>;
+  listTeams(
+    request?: ListTeamsRequest,
+    options?: RequestOptions,
+  ): Paginated<Team[]>;
 
   /**
    * Fetches a public profile by wallet address.
@@ -528,10 +597,30 @@ export type DiscoveryActions = {
    */
   fetchPublicProfile(
     request: FetchPublicProfileRequest,
+    options?: RequestOptions,
   ): Promise<PublicProfile | null>;
 
   /**
    * Lists comments for an event or series.
+   *
+   * @remarks
+   * Without `order`, pages are newest first and `ascending` is ignored. With
+   * `order` (`id` or `createdAt`), pages are ascending unless `ascending` is
+   * `false`.
+   *
+   * Reads without `holdersOnly` or `getPositions` and with one of those orders
+   * page through the whole thread. Their cursors continue that exact query and
+   * are rejected for a different parent, order or direction.
+   *
+   * Reads with `holdersOnly`, `getPositions` or another order serve pages up to
+   * offset 200. Automatic iteration yields the last accessible full page with
+   * `limitReached: true` and stops normally; `hasMore` stays true because
+   * completeness cannot be established. Explicitly following its cursor throws
+   * {@link PaginationLimitError} before any request. Cursors saved from earlier
+   * versions keep working with the same arguments.
+   *
+   * `pageSize` counts top-level comments; replies ride along in the same page.
+   * A thread ending exactly on a page boundary may return one final empty page.
    *
    * @throws {@link ListCommentsError}
    * Thrown on failure.
@@ -567,7 +656,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listComments(request: ListCommentsRequest): Paginated<Comment[]>;
+  listComments(
+    request: ListCommentsRequest,
+    options?: RequestOptions,
+  ): Paginated<Comment[]>;
 
   /**
    * Fetches a comment thread by comment id.
@@ -583,10 +675,22 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchCommentsById(request: FetchCommentsByIdRequest): Promise<Comment[]>;
+  fetchCommentsById(
+    request: FetchCommentsByIdRequest,
+    options?: RequestOptions,
+  ): Promise<Comment[]>;
 
   /**
    * Lists comments written by a wallet address.
+   *
+   * @remarks
+   * Pages starting past offset 200 are not served. Automatic iteration yields
+   * the last accessible full page with `limitReached: true` and stops normally;
+   * `hasMore` stays true because completeness cannot be established. Explicitly
+   * following its cursor throws {@link PaginationLimitError} before any request.
+   *
+   * This is a hard stop for this listing: there are no range filters to
+   * retrieve the remaining comments.
    *
    * @throws {@link ListCommentsByUserAddressError}
    * Thrown on failure.
@@ -597,7 +701,8 @@ export type DiscoveryActions = {
    * const paginator = client.listCommentsByUserAddress({
    *   address: '0x1234...',
    *   pageSize: 10,
-   *   order: 'DESC',
+   *   order: 'createdAt',
+   *   ascending: false,
    * });
    *
    * const firstPage = await paginator.firstPage();
@@ -614,7 +719,8 @@ export type DiscoveryActions = {
    * const paginator = client.listCommentsByUserAddress({
    *   address: '0x1234...',
    *   pageSize: 10,
-   *   order: 'DESC',
+   *   order: 'createdAt',
+   *   ascending: false,
    * });
    *
    * for await (const page of paginator) {
@@ -624,6 +730,7 @@ export type DiscoveryActions = {
    */
   listCommentsByUserAddress(
     request: ListCommentsByUserAddressRequest,
+    options?: RequestOptions,
   ): Paginated<Comment[]>;
 };
 

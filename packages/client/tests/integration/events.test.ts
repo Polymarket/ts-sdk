@@ -1,7 +1,12 @@
-import { createPublicClient, UserInputError } from '@polymarket/client';
+import { toPaginationCursor } from '@polymarket/bindings';
+import {
+  createPublicClient,
+  ProtocolVersion,
+  UserInputError,
+} from '@polymarket/client';
 import { expectPresent } from '@polymarket/types';
-import { afterEach, vi } from 'vitest';
-import { describe, environment, expect, it } from './fixtures';
+import { afterEach, beforeEach, type TestContext, vi } from 'vitest';
+import { describe, environment, expect, it, publicClient } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
 const STRUCTURAL_MARKET_CONDITION_ID =
@@ -25,7 +30,22 @@ describe('Events', () => {
   });
 
   describe('listEvents', () => {
+    it('allows either closed state without identifiers and preserves the open default', async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      await publicClient.listEvents({ closed: 'any', pageSize: 1 }).firstPage();
+      await publicClient.listEvents({ pageSize: 1 }).firstPage();
+
+      const closedFilters = fetchSpy.mock.calls.map(([request]) =>
+        new URL(
+          request instanceof Request ? request.url : String(request),
+        ).searchParams.get('closed'),
+      );
+      expect(closedFilters).toEqual(['any', 'false']);
+    });
     it('fetches events', async ({ publicClient }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const paginator = publicClient.listEvents({
         closed: false,
         pageSize: 100,
@@ -34,6 +54,212 @@ describe('Events', () => {
 
       expect(firstPage.items.length).toBeGreaterThan(0);
       await expectPageWindow(paginator, firstPage, 99);
+
+      for (const [input] of fetchSpy.mock.calls) {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.pathname === '/events/keyset') {
+          expect(url.searchParams.has('version')).toBe(false);
+        }
+      }
+    });
+
+    let testContext: Pick<TestContext, 'skip'>;
+    beforeEach(({ skip }) => {
+      testContext = { skip };
+    });
+
+    const protocolCases = [
+      { name: 'v1', version: ProtocolVersion.V1 },
+      { name: 'v2', version: ProtocolVersion.V2 },
+      {
+        name: 'v1 and v2',
+        version: [ProtocolVersion.V1, ProtocolVersion.V2],
+      },
+    ];
+
+    it.each(
+      protocolCases,
+    )('retains protocol $name on the first page, including empty results', async ({
+      version,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const firstPage = await publicClient
+        .listEvents({ version, pageSize: 2 })
+        .firstPage();
+
+      expect(firstPage.items).toEqual(expect.any(Array));
+      expect(firstPage.items.length).toBeLessThanOrEqual(2);
+      const urls = fetchSpy.mock.calls
+        .map(
+          ([input]) =>
+            new URL(input instanceof Request ? input.url : String(input)),
+        )
+        .filter((url) => url.pathname === '/events/keyset');
+      expect(urls).toHaveLength(1);
+      expect(urls[0]?.searchParams.getAll('version')).toEqual(
+        Array.isArray(version) ? version : [version],
+      );
+      expect(urls[0]?.searchParams.has('after_cursor')).toBe(false);
+    });
+
+    it.each(
+      protocolCases,
+    )('retains protocol $name on continuation pages', async ({
+      name,
+      version,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const paginator = publicClient.listEvents({ version, pageSize: 2 });
+      const firstPage = await paginator.firstPage();
+      const firstUrls = fetchSpy.mock.calls
+        .map(
+          ([input]) =>
+            new URL(input instanceof Request ? input.url : String(input)),
+        )
+        .filter((url) => url.pathname === '/events/keyset');
+      expect(firstUrls).toHaveLength(1);
+      expect(firstUrls[0]?.searchParams.getAll('version')).toEqual(
+        Array.isArray(version) ? version : [version],
+      );
+      expect(firstUrls[0]?.searchParams.has('after_cursor')).toBe(false);
+
+      const nextCursor = firstPage.nextCursor;
+      if (nextCursor === undefined) {
+        return testContext.skip(`No continuation cursor for protocol ${name}`);
+      }
+
+      for await (const page of paginator.from(nextCursor)) {
+        expect(page.items.length).toBeLessThanOrEqual(2);
+        break;
+      }
+
+      const urls = fetchSpy.mock.calls
+        .map(
+          ([input]) =>
+            new URL(input instanceof Request ? input.url : String(input)),
+        )
+        .filter((url) => url.pathname === '/events/keyset');
+      expect(urls).toHaveLength(2);
+      for (const url of urls) {
+        expect(url.searchParams.getAll('version')).toEqual(
+          Array.isArray(version) ? version : [version],
+        );
+      }
+      expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
+
+      fetchSpy.mockClear();
+      for (const request of [
+        {
+          version:
+            version === ProtocolVersion.V1
+              ? ProtocolVersion.V2
+              : ProtocolVersion.V1,
+        },
+        {},
+      ]) {
+        await expect(
+          publicClient.listEvents(request).from(nextCursor).firstPage(),
+        ).rejects.toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('rejects malformed and unsupported protocol filters before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const version of [
+        1,
+        [],
+        ['v1', 'v2', 'v1'],
+        ['v1', 'v3'],
+        'v3',
+        null,
+      ]) {
+        expect(() =>
+          publicClient.listEvents({ version: version as never }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('refuses a cursor reused for a different query before any request', async ({
+      publicClient,
+    }) => {
+      const { nextCursor } = await publicClient
+        .listEvents({ closed: false, pageSize: 2 })
+        .firstPage()
+        .then(expectNonEmptyPage);
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await expect(
+        publicClient
+          .listEvents({
+            closed: false,
+            pageSize: 2,
+            version: ProtocolVersion.V1,
+          })
+          .from(nextCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      await expect(
+        publicClient
+          .listEvents({ closed: true, pageSize: 2 })
+          .from(nextCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // A damaged envelope is rejected locally rather than sent as a token.
+      const damagedCursor = toPaginationCursor(
+        btoa(JSON.stringify({ kind: 'keyset', fingerprint: 42, cursor: 't' })),
+      );
+      await expect(
+        publicClient
+          .listEvents({ closed: false, pageSize: 2 })
+          .from(damagedCursor)
+          .firstPage(),
+      ).rejects.toThrow(UserInputError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      // The same query with another page size continues the walk.
+      const secondPage = await publicClient
+        .listEvents({ closed: false, pageSize: 3 })
+        .from(nextCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+      expect(secondPage.items.length).toBeLessThanOrEqual(3);
+    });
+
+    it('continues a raw cursor minted before query binding', async ({
+      publicClient,
+    }) => {
+      // Cursors saved by earlier versions are the service's own tokens.
+      const raw = (await fetch(
+        `${environment.gamma.rest}/events/keyset?closed=false&limit=2`,
+      ).then((response) => response.json())) as { next_cursor?: string };
+      const legacyCursor = toPaginationCursor(expectPresent(raw.next_cursor));
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      const page = await publicClient
+        .listEvents({ closed: false, pageSize: 2 })
+        .from(legacyCursor)
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      expect(page.items.length).toBeLessThanOrEqual(2);
+      const url = new URL(
+        fetchSpy.mock.calls
+          .map(([input]) =>
+            input instanceof Request ? input.url : String(input),
+          )
+          .find((url) => url.includes('/events/keyset')) ?? '',
+      );
+      expect(url.searchParams.get('after_cursor')).toBe(raw.next_cursor);
     });
   });
 

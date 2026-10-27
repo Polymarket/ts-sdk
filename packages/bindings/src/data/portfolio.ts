@@ -30,17 +30,45 @@ export enum ComboPositionStatus {
 
 export const ComboPositionStatusSchema = z.enum(ComboPositionStatus);
 
+/** Lifecycle filter for a positions listing. */
 export enum PositionStatus {
   Open = 'OPEN',
   Redeemable = 'REDEEMABLE',
+  /** Still-held, zero-payout (lost) positions, ranked on frozen values. */
+  RedeemableLost = 'REDEEMABLE_LOST',
+  /**
+   * Live complementary pairs the wallet can merge back to collateral (holds >= 2
+   * live outcome tokens of a condition). Settled pairs are excluded; they are a
+   * redeem, not a merge.
+   */
+  Mergeable = 'MERGEABLE',
   Closed = 'CLOSED',
 }
 
 export const PositionStatusSchema = z.enum(PositionStatus);
 
+/**
+ * The statuses a position row itself reports, which is narrower than the
+ * listing filter: `REDEEMABLE_LOST` and `MERGEABLE` are filter vocabulary
+ * only. A lost holding still reports `REDEEMABLE`, and a mergeable one
+ * reports `OPEN`.
+ */
+export type PositionRowStatus =
+  | PositionStatus.Open
+  | PositionStatus.Redeemable
+  | PositionStatus.Closed;
+
+export const PositionRowStatusSchema = z.enum([
+  PositionStatus.Open,
+  PositionStatus.Redeemable,
+  PositionStatus.Closed,
+]) satisfies z.ZodType<PositionRowStatus>;
+
 /** Sort key for position listings. */
 export enum PositionSortBy {
   CurrentValue = 'CURRENT_VALUE',
+  /** Current effective price; wallet closed positions use realized PnL instead. */
+  Price = 'PRICE',
   Tokens = 'TOKENS',
   UnrealizedPnl = 'UNREALIZED_PNL',
   RealizedPnl = 'REALIZED_PNL',
@@ -113,9 +141,10 @@ export type Position = {
   percentRealizedPnl: DecimalString;
   /**
    * The row's actual state — can be narrower than the requested status,
-   * since an OPEN request also returns REDEEMABLE rows.
+   * since an OPEN request also returns REDEEMABLE rows, and a
+   * REDEEMABLE_LOST or MERGEABLE listing reports REDEEMABLE or OPEN rows.
    */
-  status: PositionStatus;
+  status: PositionRowStatus;
   redeemable: boolean;
   mergeable: boolean;
   negativeRisk: boolean;
@@ -139,6 +168,8 @@ export type Position = {
    * positions with no native economics.
    */
   lastEventAt?: EpochMilliseconds;
+  /** First acquisition as Unix epoch milliseconds; absent when unrecorded. */
+  firstEntryAt?: EpochMilliseconds;
   name?: string;
   profileImage?: string;
   verified: boolean;
@@ -150,7 +181,7 @@ export type Position = {
  * The wire is strict snake_case: absence arrives as an empty string (or the
  * unknown-outcome sentinel `999`), normalized to `undefined` here. Timestamps
  * arrive as epoch seconds and normalize to epoch milliseconds, with `0`
- * (no native economics) normalized to `undefined`.
+ * (no recorded timestamp) normalized to `undefined`.
  */
 export const PositionSchema = z
   .object({
@@ -170,7 +201,7 @@ export const PositionSchema = z
     total_pnl: DecimalishSchema,
     percent_pnl: DecimalishSchema,
     percent_realized_pnl: DecimalishSchema,
-    status: PositionStatusSchema,
+    status: PositionRowStatusSchema,
     redeemable: z.boolean(),
     mergeable: z.boolean(),
     negative_risk: z.boolean(),
@@ -192,6 +223,10 @@ export const PositionSchema = z
       IsoCalendarDateStringSchema.optional(),
     ),
     last_event_at: z.preprocess(
+      (value) => (value === 0 ? undefined : value),
+      EpochSecondsToMillisecondsSchema.optional(),
+    ),
+    first_entry_at: z.preprocess(
       (value) => (value === 0 ? undefined : value),
       EpochSecondsToMillisecondsSchema.optional(),
     ),
@@ -234,6 +269,7 @@ export const PositionSchema = z
     oppositeTokenId: position.opposite_token_id,
     endDate: position.end_date,
     lastEventAt: position.last_event_at,
+    firstEntryAt: position.first_entry_at,
     name: position.name,
     profileImage: position.profile_image,
     verified: position.verified,
