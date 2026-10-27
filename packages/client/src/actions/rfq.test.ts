@@ -1,14 +1,28 @@
-import { OrderSide } from '@polymarket/bindings';
 import {
+  OrderSide,
+  toBaseUnits,
+  toBuilderCode,
+  toComboConditionId,
+  toDecimalString,
+  toEpochMilliseconds,
+  toPositionId,
+  toRfqId,
+  toRfqQuoteId,
+} from '@polymarket/bindings';
+import { SignatureType } from '@polymarket/bindings/clob';
+import {
+  type BuilderRfqQuoteReadyResponse,
+  type BuilderRfqStatusResponse,
   ComboAcceptFailureReason,
   ComboQuoteUnavailableReason,
+  RfqDirection,
   RfqRejectionCode,
+  RfqRequestedSizeUnit,
+  RfqSide,
   RfqStatus,
 } from '@polymarket/bindings/combos';
-import { WalletType } from '@polymarket/bindings/gamma';
-import { expectEvmAddress } from '@polymarket/types';
-import { describe, expect, it, vi } from 'vitest';
-import type { BaseSecureClient } from '../clients';
+import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { production } from '../environments';
 import {
   RequestRejectedError,
@@ -17,662 +31,433 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
-import { ServiceClient } from '../ServiceClient';
-import type { Signer } from '../types';
-import { SignerType } from '../wallet';
+import { createExchangeV3OrderDomain } from '../exchange';
+import { parseUserInput } from '../input';
+import type { OrderIdentity } from '../wallet';
 import {
-  type AcceptComboQuoteParams,
-  acceptComboQuote,
-  type RequestComboQuoteParams,
   RfqRequestRejectedError,
-  requestComboQuote,
-  waitForComboFill,
-} from './rfq';
+  toRfqRequestRejection,
+} from './rfq/request-errors';
+import {
+  AcceptComboQuoteParamsSchema,
+  acceptComboQuoteOutcome,
+  buildComboQuoteRequest,
+  createComboAcceptanceOrder,
+  pollComboFill,
+  resolveComboQuote,
+  signComboAcceptanceOrder,
+} from './rfq/requester';
 
-const SIGNER = expectEvmAddress('0x1111111111111111111111111111111111111111');
-const SIGNATURE = `0x${'11'.repeat(65)}`;
-const BUILDER_CODE = `0x${'ab'.repeat(32)}`;
-const TAKER_ORDER_HASH = `0x${'ef'.repeat(32)}`;
-const LEGS = ['123', '456'];
-
-const buyRequest: RequestComboQuoteParams = {
-  amount: 100,
+const signer = expectEvmAddress('0x1111111111111111111111111111111111111111');
+const identity: OrderIdentity = {
+  maker: signer,
+  signer,
+  signatureType: SignatureType.EOA,
+};
+const signature = expectEvmSignature(`0x${'11'.repeat(65)}`);
+const builderCode = toBuilderCode(`0x${'ab'.repeat(32)}`);
+const rfqId = toRfqId('rfq-1');
+const takerOrderHash = `0x${'ef'.repeat(32)}`;
+const legs = ['123', '456'];
+const buy = {
   direction: OrderSide.BUY,
-  legPositionIds: LEGS,
-};
-
-const quoteReadyWire = {
-  rfq_id: 'rfq-1',
-  status: 'AWAITING_REQUESTER_ACCEPTANCE',
-  expires_at: 1_773_890_765_500,
-  builder_code: BUILDER_CODE,
+  amount: 100,
+  legPositionIds: legs,
+} as const;
+const ready: BuilderRfqQuoteReadyResponse = {
+  rfqId,
+  status: RfqStatus.AwaitingRequesterAcceptance,
+  expiresAt: toEpochMilliseconds(1_773_890_765_500),
+  builderCode,
   request: {
-    rfq_id: 'rfq-1',
-    leg_position_ids: LEGS,
-    condition_id: `0x03${'0'.repeat(60)}`,
-    yes_position_id: '789',
-    no_position_id: '790',
-    direction: 'BUY',
-    side: 'YES',
-    requested_size: { unit: 'notional', value_e6: '100000000' },
-    created_at: 1_773_890_758_000,
+    rfqId,
+    legPositionIds: legs.map(toPositionId),
+    conditionId: toComboConditionId(`0x03${'0'.repeat(60)}`),
+    yesPositionId: toPositionId('789'),
+    noPositionId: toPositionId('790'),
+    direction: RfqDirection.Buy,
+    side: RfqSide.Yes,
+    requestedSize: {
+      unit: RfqRequestedSizeUnit.Notional,
+      valueE6: toBaseUnits('100000000'),
+    },
   },
   quote: {
-    quote_id: 'quote-1',
-    blended_price_e6: '450000',
-    maker_amount_e6: '966191',
-    taker_amount_e6: '1932381',
-    total_required_e6: '1000000',
+    quoteId: toRfqQuoteId('quote-1'),
+    blendedPrice: toDecimalString('0.45'),
+    makerAmount: toDecimalString('0.966191'),
+    takerAmount: toDecimalString('1.932381'),
+    totalRequired: toDecimalString('1'),
   },
 };
-
-const sellQuoteReadyWire = {
-  ...quoteReadyWire,
+const sellReady: BuilderRfqQuoteReadyResponse = {
+  ...ready,
   request: {
-    ...quoteReadyWire.request,
-    direction: 'SELL',
-    requested_size: { unit: 'shares', value_e6: '2500000' },
+    ...ready.request,
+    direction: RfqDirection.Sell,
+    requestedSize: {
+      unit: RfqRequestedSizeUnit.Shares,
+      valueE6: toBaseUnits('2500000'),
+    },
   },
   quote: {
-    ...quoteReadyWire.quote,
-    maker_amount_e6: '2500000',
-    taker_amount_e6: '1125000',
-    total_required_e6: '2500000',
-    net_receive_e6: '1090000',
+    ...ready.quote,
+    makerAmount: toDecimalString('2.5'),
+    takerAmount: toDecimalString('1.125'),
+    totalRequired: toDecimalString('2.5'),
+    netReceive: toDecimalString('1.09'),
   },
 };
+const executing: BuilderRfqStatusResponse = {
+  rfqId,
+  status: RfqStatus.Executing,
+};
+const pending: BuilderRfqStatusResponse = {
+  rfqId,
+  status: RfqStatus.AwaitingMakerConfirmation,
+  takerOrderHash,
+};
 
-const comboQuote = {
-  blendedPrice: '0.45',
-  builderCode: BUILDER_CODE,
-  direction: 'BUY',
-  expiresAt: 1_773_890_765_500,
-  makerAmount: '0.966191',
-  positionId: '789',
-  quoteId: 'quote-1',
-  rfqId: 'rfq-1',
-  takerAmount: '1.932381',
-  totalRequired: '1',
-} satisfies AcceptComboQuoteParams;
+afterEach(() => vi.useRealTimers());
 
-const sellComboQuote = {
-  blendedPrice: '0.45',
-  builderCode: BUILDER_CODE,
-  direction: 'SELL',
-  expiresAt: 1_773_890_765_500,
-  makerAmount: '2.5',
-  netReceive: '1.09',
-  positionId: '789',
-  quoteId: 'quote-1',
-  rfqId: 'rfq-1',
-  takerAmount: '1.125',
-  totalRequired: '2.5',
-} satisfies AcceptComboQuoteParams;
-
-describe('requestComboQuote', () => {
-  it('builds the BUY request and returns a self-contained quote', async () => {
-    const { client, gatewayPost } = createClient({
-      postResults: [jsonResponse(quoteReadyWire)],
+describe('combo quote construction and projection', () => {
+  it('builds the BUY request and returns a self-contained quote', () => {
+    const request = buildComboQuoteRequest(identity, buy);
+    expect(request).toEqual({
+      direction: 'BUY',
+      leg_position_ids: legs,
+      maker_address: signer,
+      requested_size: { unit: 'notional', value_e6: '100000000' },
+      side: 'YES',
+      signature_type: 0,
+      signer_address: signer,
     });
-
-    const result = await requestComboQuote(client, buyRequest);
-
-    expect(gatewayPost).toHaveBeenCalledWith('/v1/builder/rfq/requests', {
-      json: {
-        direction: 'BUY',
-        leg_position_ids: LEGS,
-        maker_address: SIGNER,
-        requested_size: { unit: 'notional', value_e6: '100000000' },
-        side: 'YES',
-        signature_type: 0,
-        signer_address: SIGNER,
+    expect(resolveComboQuote(ready, request)).toEqual({
+      rfqId,
+      quote: {
+        ...ready.quote,
+        rfqId,
+        builderCode,
+        expiresAt: ready.expiresAt,
+        positionId: '789',
+        direction: OrderSide.BUY,
       },
-      timeout: 30_000,
-      schema: expect.anything(),
     });
-    expect(result).toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
   });
 
-  it('canonicalizes leg order before comparing the response echo', async () => {
-    const { client, gatewayPost } = createClient({
-      postResults: [jsonResponse(quoteReadyWire)],
+  it('canonicalizes leg order before comparing the response echo', () => {
+    const request = buildComboQuoteRequest(identity, {
+      ...buy,
+      legPositionIds: [...legs].reverse(),
     });
-
-    await expect(
-      requestComboQuote(client, {
-        ...buyRequest,
-        legPositionIds: [...LEGS].reverse(),
-      }),
-    ).resolves.toEqual({ quote: comboQuote, rfqId: 'rfq-1' });
-    expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests',
-      expect.objectContaining({
-        json: expect.objectContaining({ leg_position_ids: LEGS }),
-      }),
-    );
+    expect(request.leg_position_ids).toEqual(legs);
+    expect(resolveComboQuote(ready, request).quote).not.toBeNull();
   });
 
-  it('builds a SELL request and returns exact net proceeds', async () => {
-    const { client, gatewayPost } = createClient({
-      postResults: [jsonResponse(sellQuoteReadyWire)],
-    });
-
-    const result = await requestComboQuote(client, {
+  it('builds SELL share units and preserves exact net proceeds', () => {
+    const request = buildComboQuoteRequest(identity, {
       direction: OrderSide.SELL,
-      legPositionIds: LEGS,
       size: '2.5',
+      legPositionIds: legs,
     });
-
-    expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests',
-      expect.objectContaining({
-        json: expect.objectContaining({
-          direction: 'SELL',
-          requested_size: { unit: 'shares', value_e6: '2500000' },
-        }),
-      }),
-    );
-    expect(result.quote).toMatchObject({
+    expect(request.requested_size).toEqual({
+      unit: 'shares',
+      value_e6: '2500000',
+    });
+    expect(resolveComboQuote(sellReady, request).quote).toMatchObject({
       direction: OrderSide.SELL,
       makerAmount: '2.5',
-      netReceive: '1.09',
       takerAmount: '1.125',
+      netReceive: '1.09',
       totalRequired: '2.5',
     });
   });
 
-  it('rejects a SELL quote that omits net proceeds', async () => {
-    const { client } = createClient({
-      postResults: [
-        jsonResponse({
-          ...sellQuoteReadyWire,
-          quote: {
-            ...sellQuoteReadyWire.quote,
-            net_receive_e6: undefined,
-          },
-        }),
-      ],
+  it('rejects SELL quotes without net proceeds', () => {
+    const { netReceive: _netReceive, ...quote } = sellReady.quote;
+    const request = buildComboQuoteRequest(identity, {
+      direction: OrderSide.SELL,
+      size: '2.5',
+      legPositionIds: legs,
     });
+    expect(() => resolveComboQuote({ ...sellReady, quote }, request)).toThrow(
+      /omitted net sell proceeds/,
+    );
+  });
 
-    await expect(
-      requestComboQuote(client, {
-        direction: OrderSide.SELL,
-        legPositionIds: LEGS,
-        size: '2.5',
-      }),
-    ).rejects.toMatchObject({
-      message: expect.stringContaining('omitted net sell proceeds'),
-      name: 'UnexpectedResponseError',
+  it.each([
+    { field: 'rfqId', request: { ...ready.request, rfqId: toRfqId('other') } },
+    {
+      field: 'direction',
+      request: { ...ready.request, direction: RfqDirection.Sell },
+    },
+    { field: 'side', request: { ...ready.request, side: RfqSide.No } },
+    {
+      field: 'legPositionIds',
+      request: {
+        ...ready.request,
+        legPositionIds: [...ready.request.legPositionIds].reverse(),
+      },
+    },
+    {
+      field: 'requestedSize',
+      request: {
+        ...ready.request,
+        requestedSize: {
+          ...ready.request.requestedSize,
+          valueE6: toBaseUnits('99999999'),
+        },
+      },
+    },
+  ])('rejects mismatched $field in the response echo', ({ request }) => {
+    expect(() =>
+      resolveComboQuote(
+        { ...ready, request },
+        buildComboQuoteRequest(identity, buy),
+      ),
+    ).toThrow(UnexpectedResponseError);
+  });
+
+  it('returns no quote as a business outcome', () => {
+    expect(
+      resolveComboQuote(
+        {
+          rfqId,
+          status: RfqStatus.Failed,
+          error: { code: 'NO_QUOTES', message: 'no quotes' },
+        },
+        buildComboQuoteRequest(identity, buy),
+      ),
+    ).toEqual({
+      rfqId,
+      quote: null,
+      reason: ComboQuoteUnavailableReason.NoQuotes,
     });
+  });
+
+  it('rejects canonically duplicate leg IDs while building the request', () => {
+    expect(() =>
+      buildComboQuoteRequest(identity, { ...buy, legPositionIds: ['01', '1'] }),
+    ).toThrow(UserInputError);
   });
 
   it.each([
     {
-      field: 'rfq_id',
-      response: {
-        ...quoteReadyWire,
-        request: { ...quoteReadyWire.request, rfq_id: 'rfq-other' },
-      },
-    },
-    {
-      field: 'direction',
-      response: {
-        ...quoteReadyWire,
-        request: { ...quoteReadyWire.request, direction: 'SELL' },
-      },
-    },
-    {
-      field: 'side',
-      response: {
-        ...quoteReadyWire,
-        request: { ...quoteReadyWire.request, side: 'NO' },
-      },
-    },
-    {
-      field: 'leg_position_ids',
-      response: {
-        ...quoteReadyWire,
-        request: {
-          ...quoteReadyWire.request,
-          leg_position_ids: [...LEGS].reverse(),
-        },
-      },
-    },
-    {
-      field: 'requested_size',
-      response: {
-        ...quoteReadyWire,
-        request: {
-          ...quoteReadyWire.request,
-          requested_size: { unit: 'notional', value_e6: '99999999' },
-        },
-      },
-    },
-  ])('rejects a response with mismatched $field', async ({ response }) => {
-    const { client } = createClient({
-      postResults: [jsonResponse(response)],
-    });
-
-    await expect(requestComboQuote(client, buyRequest)).rejects.toBeInstanceOf(
-      UnexpectedResponseError,
-    );
-  });
-
-  it('returns no quote as a business outcome', async () => {
-    const { client } = createClient({
-      postResults: [
-        jsonResponse({
-          rfq_id: 'rfq-2',
-          status: 'FAILED',
-          builder_code: BUILDER_CODE,
-          error: { code: 'NO_QUOTES', message: 'no quotes' },
-        }),
-      ],
-    });
-
-    await expect(requestComboQuote(client, buyRequest)).resolves.toEqual({
-      quote: null,
-      reason: ComboQuoteUnavailableReason.NoQuotes,
-      rfqId: 'rfq-2',
-    });
-  });
-
-  it('rejects canonically duplicate leg IDs before transport', async () => {
-    const { client, gatewayPost } = createClient();
-
-    await expect(
-      requestComboQuote(client, {
-        amount: 100,
-        direction: OrderSide.BUY,
-        legPositionIds: ['01', '1'],
-      }),
-    ).rejects.toBeInstanceOf(UserInputError);
-    expect(gatewayPost).not.toHaveBeenCalled();
-  });
-
-  it('requires builder authorization before transport', async () => {
-    const { client, gatewayPost } = createClient({ hasBuilderApiKey: false });
-
-    await expect(requestComboQuote(client, buyRequest)).rejects.toMatchObject({
-      message: expect.stringContaining('require a Builder API Key'),
-      name: 'UserInputError',
-    });
-    expect(gatewayPost).not.toHaveBeenCalled();
-  });
-
-  it('classifies request rejections and preserves their cause', async () => {
-    const rejection = new RequestRejectedError('contradictory legs', {
       code: 'CONTRADICTORY_LEGS',
       status: 400,
+      expected: RfqRejectionCode.ContradictoryLegs,
+    },
+    {
+      code: 'SOMETHING_NEW',
+      status: 400,
+      expected: RfqRejectionCode.RequestFailed,
+    },
+    { code: undefined, status: 502, expected: RfqRejectionCode.RequestFailed },
+  ])('classifies rejection $code and preserves its cause', ({
+    code,
+    expected,
+    status,
+  }) => {
+    const rejection = new RequestRejectedError('rejected', {
+      code,
+      status,
     });
-    const { client } = createClient({ postResults: [rejection] });
-
-    const error = await requestComboQuote(client, buyRequest).catch(
-      (caught: unknown) => caught,
+    expect(toRfqRequestRejection(rejection)).toBeInstanceOf(
+      RfqRequestRejectedError,
     );
-
-    expect(error).toBeInstanceOf(RfqRequestRejectedError);
-    expect(error).toMatchObject({
+    expect(toRfqRequestRejection(rejection)).toMatchObject({
       cause: rejection,
-      code: RfqRejectionCode.ContradictoryLegs,
-      status: 400,
+      code: expected,
+      status,
     });
   });
 
-  it('handles future error codes on both response paths', async () => {
-    const finalStateError = {
-      code: 'SOMETHING_NEW',
-      message: 'something new',
-    };
-    const finalStateClient = createClient({
-      postResults: [
-        jsonResponse({
-          rfq_id: 'rfq-3',
-          status: 'FAILED',
-          builder_code: BUILDER_CODE,
-          error: finalStateError,
-        }),
-      ],
-    }).client;
-
-    await expect(
-      requestComboQuote(finalStateClient, buyRequest),
-    ).rejects.toMatchObject({
-      cause: finalStateError,
-      code: RfqRejectionCode.RequestFailed,
-      name: 'RfqRequestRejectedError',
-      status: 200,
-    });
-
-    const rejection = new RequestRejectedError('something new', {
-      code: 'SOMETHING_NEW',
-      status: 400,
-    });
-    const rejectedClient = createClient({
-      postResults: [rejection],
-    }).client;
-
-    await expect(
-      requestComboQuote(rejectedClient, buyRequest),
-    ).rejects.toMatchObject({
-      cause: rejection,
-      code: RfqRejectionCode.RequestFailed,
-      name: 'RfqRequestRejectedError',
-    });
+  it('maps future final-state error codes and preserves the structured error', () => {
+    const error = { code: 'SOMETHING_NEW', message: 'something new' };
+    expect(() =>
+      resolveComboQuote(
+        { rfqId, status: RfqStatus.Failed, error },
+        buildComboQuoteRequest(identity, buy),
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        cause: error,
+        code: RfqRejectionCode.RequestFailed,
+        status: 200,
+      }),
+    );
   });
+});
 
-  it('classifies an uncoded rejection as a generic request failure', async () => {
-    const rejection = new RequestRejectedError('bad gateway', { status: 502 });
-    const { client } = createClient({ postResults: [rejection] });
-
-    await expect(requestComboQuote(client, buyRequest)).rejects.toMatchObject({
-      cause: rejection,
-      code: RfqRejectionCode.RequestFailed,
-      name: 'RfqRequestRejectedError',
-      status: 502,
+describe('combo acceptance signing', () => {
+  it.each([
+    {
+      name: 'BUY',
+      ready,
+      side: 0,
+      makerAmount: '966191',
+      takerAmount: '1932381',
+    },
+    {
+      name: 'SELL',
+      ready: sellReady,
+      side: 1,
+      makerAmount: '2500000',
+      takerAmount: '1125000',
+    },
+  ])('signs a serialized $name quote without relying on requester state', async ({
+    ready,
+    side,
+    makerAmount,
+    takerAmount,
+  }) => {
+    const request = buildComboQuoteRequest(
+      identity,
+      ready.request.direction === RfqDirection.Buy
+        ? buy
+        : { direction: OrderSide.SELL, size: '2.5', legPositionIds: legs },
+    );
+    const quote = resolveComboQuote(ready, request).quote;
+    const input = parseUserInput(
+      JSON.parse(JSON.stringify(quote)),
+      AcceptComboQuoteParamsSchema,
+    );
+    const order = createComboAcceptanceOrder(identity, input);
+    const sign = vi.fn(async () => signature);
+    const signed = await signComboAcceptanceOrder(
+      sign,
+      createExchangeV3OrderDomain({
+        chainId: production.chainId,
+        exchange: production.contracts.exchangeV3,
+      }),
+      order,
+    );
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(signed).toMatchObject({
+      builder: builderCode,
+      maker: signer,
+      signer,
+      makerAmount,
+      takerAmount,
+      side,
+      signatureType: 0,
+      signature,
+      tokenId: '789',
+      metadata: `0x${'0'.repeat(64)}`,
     });
   });
 });
 
-describe('acceptComboQuote', () => {
-  it('accepts a serialized SELL quote', async () => {
-    const { client, gatewayPost, signTypedData } = createClient({
-      postResults: [jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })],
-    });
-
-    await expect(acceptComboQuote(client, sellComboQuote)).resolves.toEqual({
-      rfqId: 'rfq-1',
-      status: 'executing',
-    });
-    expect(signTypedData).toHaveBeenCalledTimes(1);
-    expect(gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests/rfq-1/accept',
-      expect.objectContaining({
-        json: {
-          quote_id: 'quote-1',
-          signed_order: expect.objectContaining({
-            makerAmount: '2500000',
-            side: 1,
-            takerAmount: '1125000',
-          }),
-        },
-      }),
+describe('combo acceptance outcome', () => {
+  it.each([
+    new TransportError('socket hang up'),
+    new UnexpectedResponseError('invalid status'),
+  ])('retries one dropped or unvalidated acceptance without rebuilding it: $name', async (error) => {
+    const submit = vi
+      .fn<() => Promise<BuilderRfqStatusResponse>>()
+      .mockRejectedValueOnce(error)
+      .mockResolvedValueOnce(executing);
+    const read = vi.fn();
+    await expect(acceptComboQuoteOutcome(rfqId, submit, read)).resolves.toEqual(
+      { rfqId, status: 'executing' },
     );
+    expect(submit).toHaveBeenCalledTimes(2);
+    expect(read).not.toHaveBeenCalled();
   });
 
-  it('accepts a serialized quote with a recreated client', async () => {
-    const requester = createClient({
-      postResults: [jsonResponse(quoteReadyWire)],
-    });
-    const acceptor = createClient({
-      postResults: [
-        jsonResponse({
-          rfq_id: 'rfq-1',
-          status: 'EXECUTING',
-          taker_order_hash: TAKER_ORDER_HASH,
-        }),
-      ],
-    });
-    const requested = await requestComboQuote(requester.client, buyRequest);
-
-    if (requested.quote === null) {
-      expect.unreachable('Expected a winning quote');
-    }
-
-    const serializedQuote = JSON.parse(JSON.stringify(requested.quote));
-    const result = await acceptComboQuote(acceptor.client, serializedQuote);
-
-    expect(acceptor.signTypedData).toHaveBeenCalledTimes(1);
-    expect(acceptor.gatewayPost).toHaveBeenCalledWith(
-      '/v1/builder/rfq/requests/rfq-1/accept',
-      {
-        json: {
-          quote_id: 'quote-1',
-          signed_order: expect.objectContaining({
-            builder: BUILDER_CODE,
-            maker: SIGNER,
-            makerAmount: '966191',
-            metadata: `0x${'0'.repeat(64)}`,
-            side: 0,
-            signature: SIGNATURE,
-            signatureType: 0,
-            signer: SIGNER,
-            takerAmount: '1932381',
-            tokenId: '789',
-          }),
-        },
-        timeout: 30_000,
-        schema: expect.anything(),
-      },
-    );
-    expect(result).toEqual({
-      rfqId: 'rfq-1',
-      status: 'executing',
-      takerOrderHash: TAKER_ORDER_HASH,
-    });
-  });
-
-  it('retries a dropped acceptance and permits a status-only response', async () => {
-    const { client, gatewayPost, signTypedData } = createClient({
-      postResults: [
-        new TransportError('socket hang up'),
-        jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' }),
-      ],
-    });
-
-    await expect(acceptComboQuote(client, comboQuote)).resolves.toEqual({
-      rfqId: 'rfq-1',
-      status: 'executing',
-    });
-    expect(signTypedData).toHaveBeenCalledTimes(1);
-    expect(gatewayPost).toHaveBeenCalledTimes(2);
-  });
-
-  it('retries when the acceptance response cannot be validated', async () => {
-    const { client, gatewayPost, signTypedData } = createClient({
-      postResults: [
-        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
-        jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' }),
-      ],
-    });
-
-    await expect(acceptComboQuote(client, comboQuote)).resolves.toEqual({
-      rfqId: 'rfq-1',
-      status: 'executing',
-    });
-    expect(signTypedData).toHaveBeenCalledTimes(1);
-    expect(gatewayPost).toHaveBeenCalledTimes(2);
+  it('stops after two unvalidated acceptance responses', async () => {
+    const submit = vi
+      .fn()
+      .mockRejectedValue(new UnexpectedResponseError('invalid status'));
+    await expect(
+      acceptComboQuoteOutcome(rfqId, submit, vi.fn()),
+    ).rejects.toBeInstanceOf(UnexpectedResponseError);
+    expect(submit).toHaveBeenCalledTimes(2);
   });
 
   it('returns expiry after a dropped acceptance is retried', async () => {
-    const { client, gatewayPost } = createClient({
-      postResults: [
-        new TransportError('socket hang up'),
+    const submit = vi
+      .fn()
+      .mockRejectedValueOnce(new TransportError('dropped'))
+      .mockRejectedValueOnce(
         new RequestRejectedError('expired rfq', {
           code: 'EXPIRED_RFQ',
           status: 409,
         }),
-      ],
-    });
-
-    await expect(acceptComboQuote(client, comboQuote)).resolves.toMatchObject({
-      reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
-      rfqId: 'rfq-1',
+      );
+    await expect(
+      acceptComboQuoteOutcome(rfqId, submit, vi.fn()),
+    ).resolves.toMatchObject({
+      rfqId,
       status: 'failed',
+      reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
     });
-    expect(gatewayPost).toHaveBeenCalledTimes(2);
-  });
-
-  it('stops after two invalid acceptance responses', async () => {
-    const { client, gatewayPost } = createClient({
-      postResults: [
-        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
-        jsonResponse({ rfq_id: 'rfq-1', status: 'UNKNOWN' }),
-      ],
-    });
-
-    await expect(acceptComboQuote(client, comboQuote)).rejects.toBeInstanceOf(
-      UnexpectedResponseError,
-    );
-    expect(gatewayPost).toHaveBeenCalledTimes(2);
+    expect(submit).toHaveBeenCalledTimes(2);
   });
 
   it.each([
     {
-      expected: {
-        error: { code: 'MAKER_DECLINED', message: 'maker declined' },
-        reason: ComboAcceptFailureReason.MakerDeclined,
-        rfqId: 'rfq-1',
-        status: 'failed',
-      },
       name: 'maker decline',
-      response: jsonResponse({
-        rfq_id: 'rfq-1',
-        status: 'FAILED',
-        error: { code: 'MAKER_DECLINED', message: 'maker declined' },
-      }),
+      status: RfqStatus.Failed,
+      code: 'MAKER_DECLINED',
+      reason: ComboAcceptFailureReason.MakerDeclined,
     },
     {
-      expected: {
-        error: { code: 'EXPIRED_RFQ', message: 'expired rfq' },
-        reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
-        rfqId: 'rfq-1',
-        status: 'failed',
-      },
-      name: 'expired acceptance window',
-      response: new RequestRejectedError('expired rfq', {
-        code: 'EXPIRED_RFQ',
-        status: 409,
-      }),
+      name: 'expiry',
+      status: RfqStatus.Expired,
+      code: 'EXPIRED_RFQ',
+      reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
     },
-  ])('maps a $name to a failed result', async ({ expected, response }) => {
-    const { client } = createClient({ postResults: [response] });
-
-    await expect(acceptComboQuote(client, comboQuote)).resolves.toEqual(
-      expected,
-    );
-  });
-
-  it('polls when the maker outcome is still pending', async () => {
-    const { client, gatewayGet } = createClient({
-      getResults: [jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' })],
-      postResults: [
-        jsonResponse({
-          rfq_id: 'rfq-1',
-          status: 'AWAITING_MAKER_CONFIRMATION',
-          taker_order_hash: TAKER_ORDER_HASH,
-        }),
-      ],
-    });
-
-    await expect(acceptComboQuote(client, comboQuote)).resolves.toEqual({
-      rfqId: 'rfq-1',
-      status: 'executing',
-      takerOrderHash: TAKER_ORDER_HASH,
-    });
-    expect(gatewayGet).toHaveBeenCalledWith('/v1/builder/rfq/requests/rfq-1', {
-      retries: 2,
-      signal: undefined,
-      schema: expect.anything(),
-    });
-  }, 10_000);
-});
-
-describe('waitForComboFill', () => {
-  it('returns terminal failures with their structured error', async () => {
-    const { client } = createClient({
-      getResults: [
-        jsonResponse({
-          rfq_id: 'rfq-1',
-          status: 'FAILED',
-          error: {
-            code: 'TRADE_SUBMISSION_FAILED',
-            message: 'trade submission failed',
-          },
-        }),
-      ],
-    });
-
-    await expect(waitForComboFill(client, { rfqId: 'rfq-1' })).resolves.toEqual(
-      {
-        error: {
-          code: 'TRADE_SUBMISSION_FAILED',
-          message: 'trade submission failed',
-        },
-        rfqId: 'rfq-1',
-        status: RfqStatus.Failed,
-      },
-    );
-  });
-
-  it('throws when the RFQ stays non-terminal past the deadline', async () => {
-    const executing = () =>
-      jsonResponse({ rfq_id: 'rfq-1', status: 'EXECUTING' });
-    const { client } = createClient({
-      getResults: Array.from({ length: 50 }, executing),
-    });
-
+  ])('returns $name with its structured error', async ({
+    status,
+    code,
+    reason,
+  }) => {
+    const error = { code, message: code };
     await expect(
-      waitForComboFill(client, {
-        pollingIntervalMs: 1,
-        rfqId: 'rfq-1',
-        timeoutMs: 10,
-      }),
-    ).rejects.toBeInstanceOf(TimeoutError);
+      acceptComboQuoteOutcome(
+        rfqId,
+        async () => ({ rfqId, status, error }),
+        vi.fn(),
+      ),
+    ).resolves.toEqual({ rfqId, status: 'failed', reason, error });
+  });
+
+  it('polls a pending maker outcome and keeps the accept response order hash', async () => {
+    vi.useFakeTimers();
+    const read = vi.fn().mockResolvedValue(executing);
+    const outcome = acceptComboQuoteOutcome(rfqId, async () => pending, read);
+    await vi.advanceTimersByTimeAsync(500);
+    await expect(outcome).resolves.toEqual({
+      rfqId,
+      status: 'executing',
+      takerOrderHash,
+    });
+    expect(read).toHaveBeenCalledTimes(1);
   });
 });
 
-type GatewayResult = Response | RequestRejectedError | TransportError;
-
-type CreateClientOptions = {
-  getResults?: GatewayResult[];
-  hasBuilderApiKey?: boolean;
-  postResults?: GatewayResult[];
-};
-
-function createClient(options: CreateClientOptions = {}) {
-  const postQueue = [...(options.postResults ?? [])];
-  const getQueue = [...(options.getResults ?? [])];
-
-  const gatewayService = new ServiceClient({
-    root: 'https://builder-gateway.test',
-    fetch: async (input) => {
-      const method = new Request(input).method;
-      const next = (method === 'POST' ? postQueue : getQueue).shift();
-      if (next === undefined) throw new Error(`Unexpected gateway ${method}`);
-      if (next instanceof Error) throw next;
-      return next;
-    },
+describe('combo fill polling', () => {
+  it('returns terminal failures with their structured error', async () => {
+    const error = {
+      code: 'TRADE_SUBMISSION_FAILED',
+      message: 'trade submission failed',
+    };
+    await expect(
+      pollComboFill(rfqId, 30_000, 1000, async () => ({
+        rfqId,
+        status: RfqStatus.Failed,
+        error,
+      })),
+    ).resolves.toEqual({ rfqId, status: RfqStatus.Failed, error });
   });
-  const gatewayPost = vi.spyOn(gatewayService, 'post');
-  const gatewayGet = vi.spyOn(gatewayService, 'get');
-  const signTypedData = vi.fn(async () => SIGNATURE);
 
-  const signer = {
-    getAddress: async () => SIGNER,
-    signMessage: vi.fn(),
-    signTypedData,
-    sendTransaction: vi.fn(),
-  } as unknown as Signer;
-
-  const client = {
-    account: {
-      signer: SIGNER,
-      signerType: SignerType.OWNER,
-      wallet: SIGNER,
-      walletType: WalletType.EOA,
-    },
-    builderGateway: gatewayService,
-    environment: production,
-    hasBuilderApiKey: options.hasBuilderApiKey ?? true,
-    signer,
-  } as unknown as BaseSecureClient;
-
-  return { client, gatewayGet, gatewayPost, signTypedData };
-}
-
-function jsonResponse(payload: unknown): Response {
-  return new Response(JSON.stringify(payload), {
-    headers: { 'content-type': 'application/json' },
+  it('times out when the RFQ remains non-terminal', async () => {
+    vi.useFakeTimers();
+    const result = expect(
+      pollComboFill(rfqId, 10, 1, async () => executing),
+    ).rejects.toBeInstanceOf(TimeoutError);
+    await vi.advanceTimersByTimeAsync(10);
+    await result;
   });
-}
+});

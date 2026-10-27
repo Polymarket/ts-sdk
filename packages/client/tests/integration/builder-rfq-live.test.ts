@@ -10,6 +10,7 @@ import {
   RfqStatus,
 } from '@polymarket/client';
 import { fetchRfqStatus } from '@polymarket/client/actions';
+import { vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 function loadComboLegPositionIds(): string[] | undefined {
@@ -58,6 +59,27 @@ async function discoverComboLegPositionIds(
 }
 
 describe('Builder gateway combo RFQ integration', () => {
+  it('requires builder authorization before requesting a combo quote', async ({
+    secureClientWithDepositWallet: client,
+  }) => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(
+        client.requestComboQuote({
+          direction: OrderSide.BUY,
+          amount: 100,
+          legPositionIds: ['123', '456'],
+        }),
+      ).rejects.toMatchObject({
+        name: 'UserInputError',
+        message: expect.stringContaining('require a Builder API Key'),
+      });
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      fetch.mockRestore();
+    }
+  });
+
   it('rejects status reads for unknown RFQs', { timeout: 60_000 }, async ({
     builderAuthentication,
     depositWalletAddress,

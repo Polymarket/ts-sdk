@@ -5,24 +5,13 @@ import type {
   PositionId,
   TxHash,
 } from '@polymarket/bindings';
-import {
-  OrderSide,
-  OrderSideSchema,
-  toBaseUnits,
-  toBuilderCode,
-  toPositionId,
-  toRfqId,
-  toRfqQuoteId,
-} from '@polymarket/bindings';
+import { type OrderSide, toRfqId } from '@polymarket/bindings';
 import type {
   RfqConfirmationAck as BindingRfqConfirmationAck,
   RfqQuoteAck as BindingRfqQuoteAck,
   RfqQuoteCancelAck as BindingRfqQuoteCancelAck,
   BuilderRfqAcceptRequest,
-  BuilderRfqCreateRequest,
   BuilderRfqError,
-  BuilderRfqFinalStateResponse,
-  BuilderRfqQuoteReadyResponse,
   BuilderRfqStatusResponse,
   RfqConfirmationRequest,
   RfqErrorCode,
@@ -32,24 +21,18 @@ import type {
   RfqQuoteRequest,
   RfqRequestedSize,
   RfqRequestorPublicId,
-  RfqSignedOrder,
 } from '@polymarket/bindings/combos';
 import {
   BuilderRfqCreateResponseSchema,
   BuilderRfqStatusResponseSchema,
-  ComboAcceptFailureReason,
-  ComboQuoteUnavailableReason,
-  RfqDirection,
+  type ComboAcceptFailureReason,
+  type ComboQuoteUnavailableReason,
   RfqExecutionStatus,
-  RfqKnownErrorCode,
-  RfqRejectionCode,
-  RfqRequestedSizeUnit,
-  RfqSide,
-  RfqStatus,
+  type RfqSide,
+  type RfqStatus,
   type RfqTrade,
 } from '@polymarket/bindings/combos';
-import type { EvmSignature } from '@polymarket/types';
-import { delay, PolymarketError } from '@polymarket/types';
+import { PolymarketError } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -58,23 +41,35 @@ import {
   makeErrorGuard,
   RateLimitError,
   RequestAbortedError,
-  RequestRejectedError,
   SigningError,
   TimeoutError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
-import type { ExchangeOrderDomain } from '../exchange';
-import {
-  createExchangeOrderSignature,
-  createExchangeOrderTypedDataPayload,
-  createExchangeV3OrderDomain,
-  encodeExchangeOrderSide,
-} from '../exchange';
+import { createExchangeV3OrderDomain } from '../exchange';
 import { parseUserInput } from '../input';
 import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { resolveOrderIdentity, SignerType } from '../wallet';
+import {
+  RfqRequestRejectedError,
+  toRfqRequestRejection,
+} from './rfq/request-errors';
+
+export {
+  RfqRequestRejectedError,
+  type RfqRequestRejectedErrorOptions,
+} from './rfq/request-errors';
+
+import {
+  AcceptComboQuoteParamsSchema,
+  acceptComboQuoteOutcome,
+  buildComboQuoteRequest,
+  createComboAcceptanceOrder,
+  pollComboFill,
+  resolveComboQuote,
+  signComboAcceptanceOrder,
+} from './rfq/requester';
 
 export {
   ComboAcceptFailureReason,
@@ -432,72 +427,9 @@ const CREATE_QUOTE_TIMEOUT_MS = 30_000;
 // Accept processing includes synchronous validation and reservation work before
 // the gateway briefly holds the request for a maker last-look outcome.
 const ACCEPT_QUOTE_TIMEOUT_MS = 30_000;
-const ACCEPT_OUTCOME_TIMEOUT_MS = 30_000;
-const ACCEPT_OUTCOME_POLL_INTERVAL_MS = 500;
+
 const DEFAULT_FILL_TIMEOUT_MS = 30_000;
 const DEFAULT_FILL_POLL_INTERVAL_MS = 1_000;
-const BYTES32_ZERO =
-  '0x0000000000000000000000000000000000000000000000000000000000000000' as const;
-
-export type RfqRequestRejectedErrorOptions = {
-  /** HTTP status of the rejection. */
-  status: number;
-  /** Classified rejection reason. */
-  code: RfqRejectionCode;
-};
-
-/**
- * Error thrown when an RFQ request or acceptance is rejected.
- *
- * @remarks
- * Inspect {@link RfqRequestRejectedError.code} to distinguish permanent input
- * problems (`INVALID_RFQ`, `CONTRADICTORY_LEGS`) from transient conditions
- * (`LEG_METADATA_UNAVAILABLE`) that may be retried.
- *
- * Wire codes not recognized by this SDK version map to
- * {@link RfqRejectionCode.RequestFailed}; the original error is preserved on
- * `cause`.
- */
-export class RfqRequestRejectedError extends PolymarketError {
-  override name = 'RfqRequestRejectedError' as const;
-
-  /** HTTP status of the rejection. */
-  readonly status: number;
-
-  /** Classified rejection reason. */
-  readonly code: RfqRejectionCode;
-
-  constructor(
-    message: string,
-    options: ErrorOptions & RfqRequestRejectedErrorOptions,
-  ) {
-    super(message, options);
-    this.status = options.status;
-    this.code = options.code;
-  }
-}
-
-function toRfqRequestRejection(error: unknown): unknown {
-  if (error instanceof RequestRejectedError) {
-    return new RfqRequestRejectedError(error.message, {
-      cause: error,
-      code: toRfqRejectionCode(error.code),
-      status: error.status,
-    });
-  }
-
-  return error;
-}
-
-const RFQ_REJECTION_CODES = new Set<string>(Object.values(RfqRejectionCode));
-
-function toRfqRejectionCode(code: string | undefined): RfqRejectionCode {
-  if (code !== undefined && RFQ_REJECTION_CODES.has(code)) {
-    return code as RfqRejectionCode;
-  }
-
-  return RfqRejectionCode.RequestFailed;
-}
 
 function assertBuilderAuthorization(client: BaseSecureClient): void {
   if (!client.hasBuilderApiKey) {
@@ -505,70 +437,6 @@ function assertBuilderAuthorization(client: BaseSecureClient): void {
       'Combo RFQ requests require a Builder API Key in the client configuration, via builderApiKey(...) or remoteBuilderSigning(...).',
     );
   }
-}
-
-const ComboLegPositionIdsSchema = z
-  .array(
-    z
-      .string()
-      .regex(/^\d+$/, 'Leg position IDs must be numeric strings.')
-      .transform((value) => toPositionId(BigInt(value).toString())),
-  )
-  .min(2, 'Combo requests require at least 2 legs.')
-  .max(50, 'Combo requests allow at most 50 legs.')
-  .refine(
-    (legs) => new Set(legs).size === legs.length,
-    'Leg position IDs must not contain duplicates.',
-  )
-  .transform((legs) =>
-    [...legs].sort((left, right) => {
-      const leftPositionId = BigInt(left);
-      const rightPositionId = BigInt(right);
-
-      if (leftPositionId < rightPositionId) return -1;
-      if (leftPositionId > rightPositionId) return 1;
-      return 0;
-    }),
-  );
-
-const ComboAmountToBaseUnitsSchema = z
-  .union([z.number(), z.string()])
-  .transform((value, context): string => {
-    const match = /^(\d+)(?:\.(\d*))?$/.exec(String(value));
-
-    if (match === null) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Value must be a valid decimal.',
-      });
-      return z.NEVER;
-    }
-
-    const [, whole = '', fraction = ''] = match;
-
-    if (fraction.length > 6) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Value must have at most 6 decimal places.',
-      });
-      return z.NEVER;
-    }
-
-    const scaledValue = scaleE6DecimalParts(whole, fraction);
-
-    if (scaledValue <= 0n) {
-      context.addIssue({
-        code: 'custom',
-        message: 'Value must be greater than 0.',
-      });
-      return z.NEVER;
-    }
-
-    return scaledValue.toString();
-  });
-
-function scaleE6DecimalParts(whole: string, fraction: string): bigint {
-  return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, '0'));
 }
 
 type ComboQuoteFields = {
@@ -677,21 +545,6 @@ export type RequestComboQuoteResult =
       reason: ComboQuoteUnavailableReason;
     };
 
-const RequestComboQuoteParamsSchema = z.discriminatedUnion('direction', [
-  z.object({
-    amount: ComboAmountToBaseUnitsSchema,
-    direction: z.literal(OrderSide.BUY),
-    legPositionIds: ComboLegPositionIdsSchema,
-    side: z.literal(RfqSide.Yes).optional(),
-  }),
-  z.object({
-    direction: z.literal(OrderSide.SELL),
-    legPositionIds: ComboLegPositionIdsSchema,
-    side: z.literal(RfqSide.Yes).optional(),
-    size: ComboAmountToBaseUnitsSchema,
-  }),
-]);
-
 export type RequestComboQuoteError =
   | RateLimitError
   | RfqRequestRejectedError
@@ -743,23 +596,11 @@ export async function requestComboQuote(
 ): Promise<RequestComboQuoteResult> {
   assertCombosSupportedForAccount(client);
 
-  const input = parseUserInput(params, RequestComboQuoteParamsSchema);
+  const request = buildComboQuoteRequest(
+    resolveOrderIdentity(client.account),
+    params,
+  );
   assertBuilderAuthorization(client);
-
-  const identity = resolveOrderIdentity(client.account);
-  const request: BuilderRfqCreateRequest = {
-    direction:
-      input.direction === OrderSide.BUY ? RfqDirection.Buy : RfqDirection.Sell,
-    leg_position_ids: input.legPositionIds,
-    maker_address: identity.maker,
-    requested_size:
-      input.direction === OrderSide.BUY
-        ? { unit: RfqRequestedSizeUnit.Notional, value_e6: input.amount }
-        : { unit: RfqRequestedSizeUnit.Shares, value_e6: input.size },
-    side: RfqSide.Yes,
-    signature_type: identity.signatureType,
-    signer_address: identity.signer,
-  };
 
   const response = await client.builderGateway
     .post(BUILDER_RFQ_REQUESTS_PATH, {
@@ -771,138 +612,8 @@ export async function requestComboQuote(
       throw toRfqRequestRejection(error);
     });
 
-  if ('quote' in response) {
-    assertBuilderRfqResponseMatchesRequest(response, request);
-
-    const direction =
-      response.request.direction === RfqDirection.Buy
-        ? OrderSide.BUY
-        : OrderSide.SELL;
-    const quote = {
-      blendedPrice: response.quote.blendedPrice,
-      builderCode: response.builderCode,
-      expiresAt: response.expiresAt,
-      makerAmount: response.quote.makerAmount,
-      positionId: response.request.yesPositionId,
-      quoteId: response.quote.quoteId,
-      rfqId: response.rfqId,
-      takerAmount: response.quote.takerAmount,
-      totalRequired: response.quote.totalRequired,
-    } satisfies ComboQuoteFields;
-
-    if (direction === OrderSide.SELL) {
-      if (response.quote.netReceive === undefined) {
-        throw new UnexpectedResponseError(
-          `SELL quote for RFQ ${response.rfqId} omitted net sell proceeds.`,
-        );
-      }
-
-      return {
-        quote: {
-          ...quote,
-          direction,
-          netReceive: response.quote.netReceive,
-        },
-        rfqId: response.rfqId,
-      };
-    }
-
-    return {
-      quote: {
-        ...quote,
-        direction,
-      },
-      rfqId: response.rfqId,
-    };
-  }
-
-  return toQuoteUnavailableResult(response);
+  return resolveComboQuote(response, request);
 }
-
-function assertBuilderRfqResponseMatchesRequest(
-  response: BuilderRfqQuoteReadyResponse,
-  request: BuilderRfqCreateRequest,
-): void {
-  const echoed = response.request;
-  const mismatchedFields: string[] = [];
-
-  if (echoed.rfqId !== response.rfqId) mismatchedFields.push('rfq_id');
-  if (echoed.direction !== request.direction) {
-    mismatchedFields.push('direction');
-  }
-  if (echoed.side !== request.side) mismatchedFields.push('side');
-  if (
-    echoed.legPositionIds.length !== request.leg_position_ids.length ||
-    echoed.legPositionIds.some(
-      (positionId, index) => positionId !== request.leg_position_ids[index],
-    )
-  ) {
-    mismatchedFields.push('leg_position_ids');
-  }
-  if (
-    echoed.requestedSize.unit !== request.requested_size.unit ||
-    echoed.requestedSize.valueE6 !== request.requested_size.value_e6
-  ) {
-    mismatchedFields.push('requested_size');
-  }
-
-  if (mismatchedFields.length > 0) {
-    throw new UnexpectedResponseError(
-      `Builder RFQ response did not echo the submitted ${mismatchedFields.join(', ')}.`,
-    );
-  }
-}
-
-function toQuoteUnavailableResult(
-  response: BuilderRfqFinalStateResponse,
-): RequestComboQuoteResult {
-  switch (response.error?.code) {
-    case RfqKnownErrorCode.NoQuotes:
-      return {
-        quote: null,
-        reason: ComboQuoteUnavailableReason.NoQuotes,
-        rfqId: response.rfqId,
-      };
-    case RfqKnownErrorCode.SizeTooLarge:
-      return {
-        quote: null,
-        reason: ComboQuoteUnavailableReason.SizeTooLarge,
-        rfqId: response.rfqId,
-      };
-    default:
-      throw new RfqRequestRejectedError(
-        response.error?.message ?? 'The combo quote request failed.',
-        {
-          code: toRfqRejectionCode(response.error?.code),
-          status: 200,
-          ...(response.error === undefined ? {} : { cause: response.error }),
-        },
-      );
-  }
-}
-
-const AcceptComboQuoteDirectionSchema: z.ZodType<OrderSide, `${OrderSide}`> =
-  OrderSideSchema;
-
-const AcceptComboQuoteParamsSchema = z.object({
-  blendedPrice: z.string(),
-  builderCode: z
-    .string()
-    .regex(/^0x[0-9a-fA-F]{64}$/, 'builderCode must be a 32-byte hex string.')
-    .transform(toBuilderCode),
-  direction: AcceptComboQuoteDirectionSchema,
-  expiresAt: z.number().int().nonnegative(),
-  makerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
-  netReceive: z.string().optional(),
-  positionId: z
-    .string()
-    .regex(/^\d+$/, 'positionId must be a numeric string.')
-    .transform(toPositionId),
-  quoteId: z.string().min(1).transform(toRfqQuoteId),
-  rfqId: z.string().min(1).transform(toRfqId),
-  takerAmount: ComboAmountToBaseUnitsSchema.transform(toBaseUnits),
-  totalRequired: z.string(),
-});
 
 type AcceptComboQuoteParamsInput = z.input<typeof AcceptComboQuoteParamsSchema>;
 
@@ -959,11 +670,6 @@ type AcceptComboQuoteParamsSchemaMatch =
  */
 export type AcceptComboQuoteParams = AcceptComboQuoteParamsInput &
   AcceptComboQuoteParamsFields &
-  AcceptComboQuoteParamsSchemaMatch;
-
-type ParsedAcceptComboQuoteParams = z.output<
-  typeof AcceptComboQuoteParamsSchema
-> &
   AcceptComboQuoteParamsSchemaMatch;
 
 export type AcceptComboQuoteResult =
@@ -1061,8 +767,15 @@ export async function acceptComboQuote(
     chainId: client.environment.chainId,
     exchange: client.environment.contracts.exchangeV3,
   });
-  const order = createComboAcceptanceOrder(client, input);
-  const signedOrder = await signComboAcceptanceOrder(client, domain, order);
+  const order = createComboAcceptanceOrder(
+    resolveOrderIdentity(client.account),
+    input,
+  );
+  const signedOrder = await signComboAcceptanceOrder(
+    (payload) => client.signer.signTypedData(payload),
+    domain,
+    order,
+  );
   const request: BuilderRfqAcceptRequest = {
     quote_id: input.quoteId,
     signed_order: signedOrder,
@@ -1079,160 +792,9 @@ export async function acceptComboQuote(
     );
   }
 
-  let accepted: BuilderRfqStatusResponse;
-  try {
-    try {
-      accepted = await postAcceptance();
-    } catch (error) {
-      // Acceptance is idempotent server-side, so a single retry safely covers
-      // both an interrupted request and a response that could not be validated.
-      if (
-        !(
-          error instanceof TransportError ||
-          error instanceof UnexpectedResponseError
-        )
-      ) {
-        throw error;
-      }
-      accepted = await postAcceptance();
-    }
-  } catch (error) {
-    const expired = toAcceptanceExpiredResult(input.rfqId, error);
-    if (expired !== undefined) return expired;
-    throw toRfqRequestRejection(error);
-  }
-
-  let status = accepted;
-  // Only the accept response carries the taker order hash; status polls do
-  // not, so capture it before entering the poll loop.
-  const takerOrderHash = accepted.takerOrderHash;
-  const deadline = Date.now() + ACCEPT_OUTCOME_TIMEOUT_MS;
-
-  // The gateway holds the accept through maker last look but responds with
-  // AWAITING_MAKER_CONFIRMATION when the outcome is still pending after its
-  // hold window; resume over the status endpoint until the outcome lands.
-  while (status.status === RfqStatus.AwaitingMakerConfirmation) {
-    if (Date.now() >= deadline) {
-      throw new TimeoutError(
-        `Timed out waiting for the acceptance outcome of RFQ ${input.rfqId}.`,
-      );
-    }
-
-    await delay(ACCEPT_OUTCOME_POLL_INTERVAL_MS);
-    status = await fetchRfqStatus(client, { rfqId: input.rfqId });
-  }
-
-  if (
-    status.status === RfqStatus.Failed ||
-    status.status === RfqStatus.Expired ||
-    status.status === RfqStatus.Canceled
-  ) {
-    return {
-      reason: toComboAcceptFailureReason(status.status, status.error?.code),
-      rfqId: status.rfqId,
-      status: 'failed',
-      ...(status.error === undefined ? {} : { error: status.error }),
-    };
-  }
-
-  return {
-    rfqId: status.rfqId,
-    status: 'executing',
-    ...(takerOrderHash === undefined ? {} : { takerOrderHash }),
-  };
-}
-
-function toAcceptanceExpiredResult(
-  rfqId: RfqId,
-  error: unknown,
-): AcceptComboQuoteResult | undefined {
-  if (
-    error instanceof RequestRejectedError &&
-    error.code === RfqKnownErrorCode.ExpiredRfq
-  ) {
-    return {
-      error: { code: RfqKnownErrorCode.ExpiredRfq, message: error.message },
-      reason: ComboAcceptFailureReason.AcceptanceWindowExpired,
-      rfqId,
-      status: 'failed',
-    };
-  }
-
-  return undefined;
-}
-
-function toComboAcceptFailureReason(
-  status: RfqStatus,
-  code: RfqErrorCode | undefined,
-): ComboAcceptFailureReason {
-  if (status === RfqStatus.Expired || code === RfqKnownErrorCode.ExpiredRfq) {
-    return ComboAcceptFailureReason.AcceptanceWindowExpired;
-  }
-
-  if (code === RfqKnownErrorCode.MakerDeclined) {
-    return ComboAcceptFailureReason.MakerDeclined;
-  }
-
-  return ComboAcceptFailureReason.ExecutionFailed;
-}
-
-function createComboAcceptanceOrder(
-  client: BaseSecureClient,
-  input: ParsedAcceptComboQuoteParams,
-): Omit<RfqSignedOrder, 'signature'> {
-  const identity = resolveOrderIdentity(client.account);
-
-  return {
-    builder: input.builderCode,
-    maker: identity.maker,
-    makerAmount: input.makerAmount,
-    metadata: BYTES32_ZERO,
-    salt: generateComboAcceptanceOrderSalt().toString(),
-    side: encodeExchangeOrderSide(input.direction),
-    signatureType: identity.signatureType,
-    signer: identity.signer,
-    takerAmount: input.takerAmount,
-    timestamp: Math.floor(Date.now() / 1000).toString(),
-    tokenId: input.positionId,
-  };
-}
-
-function generateComboAcceptanceOrderSalt(): bigint {
-  const bytes = new Uint8Array(8);
-  globalThis.crypto.getRandomValues(bytes);
-
-  // RFQ salts stay strings on the wire, so the full 64-bit value is lossless.
-  return BigInt(
-    `0x${Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')}`,
+  return acceptComboQuoteOutcome(input.rfqId, postAcceptance, () =>
+    fetchRfqStatus(client, { rfqId: input.rfqId }),
   );
-}
-
-async function signComboAcceptanceOrder(
-  client: BaseSecureClient,
-  domain: ExchangeOrderDomain,
-  order: Omit<RfqSignedOrder, 'signature'>,
-): Promise<RfqSignedOrder> {
-  let signature: EvmSignature;
-
-  try {
-    signature = await client.signer.signTypedData(
-      createExchangeOrderTypedDataPayload({ domain, order }),
-    );
-  } catch (error) {
-    if (error instanceof CancelledSigningError) {
-      throw error;
-    }
-
-    throw SigningError.fromError(
-      error,
-      'Could not sign the combo quote acceptance order.',
-    );
-  }
-
-  return {
-    ...order,
-    signature: createExchangeOrderSignature({ domain, order, signature }),
-  };
 }
 
 export type WaitForComboFillParams = {
@@ -1319,48 +881,9 @@ export async function waitForComboFill(
   const timeoutMs = input.timeoutMs ?? DEFAULT_FILL_TIMEOUT_MS;
   const pollingIntervalMs =
     input.pollingIntervalMs ?? DEFAULT_FILL_POLL_INTERVAL_MS;
-  const deadline = Date.now() + timeoutMs;
-
-  for (;;) {
-    const status = await fetchRfqStatus(client, { rfqId: input.rfqId });
-
-    if (
-      status.status === RfqStatus.Filled ||
-      status.status === RfqExecutionStatus.Confirmed
-    ) {
-      if (status.txHash === undefined) {
-        throw new UnexpectedResponseError(
-          `RFQ ${status.rfqId} reached ${status.status} without a transaction hash.`,
-        );
-      }
-
-      return {
-        rfqId: status.rfqId,
-        status: RfqStatus.Filled,
-        txHash: status.txHash,
-      };
-    }
-
-    if (
-      status.status === RfqStatus.Failed ||
-      status.status === RfqStatus.Expired ||
-      status.status === RfqStatus.Canceled
-    ) {
-      return {
-        rfqId: status.rfqId,
-        status: status.status,
-        ...(status.error === undefined ? {} : { error: status.error }),
-      };
-    }
-
-    if (Date.now() >= deadline) {
-      throw new TimeoutError(
-        `Timed out after ${timeoutMs}ms waiting for RFQ ${input.rfqId} to reach a terminal state.`,
-      );
-    }
-
-    await delay(pollingIntervalMs);
-  }
+  return pollComboFill(input.rfqId, timeoutMs, pollingIntervalMs, () =>
+    fetchRfqStatus(client, { rfqId: input.rfqId }),
+  );
 }
 
 export type FetchRfqStatusParams = {
