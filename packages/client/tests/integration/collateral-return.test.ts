@@ -5,6 +5,7 @@ import type {
 import {
   createSecureClient,
   RequestRejectedError,
+  UserInputError,
   WalletType,
 } from '@polymarket/client';
 import { expectHexString } from '@polymarket/types';
@@ -28,6 +29,31 @@ describe('Collateral return', () => {
     expect(plan.wallet.toLowerCase()).toBe(
       secureClient.account.wallet.toLowerCase(),
     );
+  });
+
+  it('rejects plans for another wallet or chain before signing or submitting', async ({
+    secureClientWithDepositWallet: client,
+  }) => {
+    const plan = await fetchPlan(client);
+    const sign = vi.spyOn(client.signer, 'signTypedData');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(
+        client.executeCollateralReturnPlan({
+          plan: { ...plan, wallet: client.account.signer },
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        client.executeCollateralReturnPlan({
+          plan: { ...plan, chainId: client.environment.chainId + 1 },
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(sign).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    } finally {
+      sign.mockRestore();
+      fetch.mockRestore();
+    }
   });
 
   it('plans a collateral return for a Safe Wallet account', async ({
