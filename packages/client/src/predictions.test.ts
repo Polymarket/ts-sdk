@@ -1,4 +1,5 @@
 import {
+  type BearerCredentials,
   CommentParentEntityType,
   OrderSide,
   OrderType,
@@ -16,7 +17,6 @@ import { fetchExecuteParams, fetchTransaction } from './actions/gasless';
 import type { SignedOrder } from './actions/orders/types';
 import { createPublicClient, createSecureClient } from './clients';
 import { forkEnvironmentConfig } from './environments';
-import { buildHmacSignature } from './hmac';
 import type { Signer } from './types';
 import { deriveBeaconDepositWalletAddress } from './wallet';
 
@@ -48,6 +48,12 @@ function tokens(trading = true, ownerWallet = address) {
     refreshExpiresIn: 3600,
   };
 }
+function saved({
+  accessToken,
+  refreshToken,
+}: BearerCredentials): BearerCredentials {
+  return { accessToken, refreshToken };
+}
 const signer: Signer = {
   getAddress: async () => address,
   signTypedData: async () => signature,
@@ -71,11 +77,12 @@ it.each([
     const request = new Request(input, init);
     const path = new URL(request.url).pathname;
     seen.push(request.url);
-    if (path === '/v1/auth/refresh') return Response.json(pair);
+    if (path === '/v1/auth/refresh' || path === '/v1/auth/migrate')
+      return Response.json(pair);
     if (path.endsWith('/deployed')) {
       expect(new URL(request.url).searchParams.get('address')).toBe(wallet);
       expect(request.headers.get('authorization')).toBe(
-        mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+        `Bearer ${pair.accessToken}`,
       );
       return Response.json({ deployed: true });
     }
@@ -94,7 +101,7 @@ it.each([
     ...secureOptions,
     fetch,
     wallet,
-    credentials: mechanism === 'bearer' ? pair : l2Credentials,
+    credentials: mechanism === 'bearer' ? saved(pair) : l2Credentials,
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
   });
   try {
@@ -134,7 +141,8 @@ it('maps wallet deployment submission and polling', async () => {
     const request = new Request(input, init);
     const path = new URL(request.url).pathname;
     seen.push(`${request.method} ${path}`);
-    if (path === '/v1/auth/refresh') return Response.json(pair);
+    if (path === '/v1/auth/refresh' || path === '/v1/auth/migrate')
+      return Response.json(pair);
     if (path === '/v1/wallets/deployed')
       return Response.json({ deployed: false });
     if (path === '/v1/wallets/transactions') {
@@ -161,7 +169,7 @@ it('maps wallet deployment submission and polling', async () => {
     ...secureOptions,
     fetch,
     wallet,
-    credentials: pair,
+    credentials: saved(pair),
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
   });
   await client.endAuthentication();
@@ -184,10 +192,11 @@ it.each(['l2', 'bearer'])('routes midpoint reads (%s)', async (mode) => {
   const pair = tokens();
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url.endsWith('/refresh')) return Response.json(pair);
+    if (request.url.endsWith('/refresh') || request.url.endsWith('/migrate'))
+      return Response.json(pair);
     expect(request.url).toBe(`${root}/v1/pricing/midpoint?token_id=1`);
     expect(request.headers.get('authorization')).toBe(
-      mode === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+      `Bearer ${pair.accessToken}`,
     );
     expect(request.headers.has('POLY_API_KEY')).toBe(false);
     return Response.json({ mid: '0.5' });
@@ -195,12 +204,12 @@ it.each(['l2', 'bearer'])('routes midpoint reads (%s)', async (mode) => {
   const client = await createSecureClient({
     ...secureOptions,
     fetch,
-    credentials: mode === 'l2' ? l2Credentials : pair,
+    credentials: mode === 'l2' ? l2Credentials : saved(pair),
   });
   try {
     await client.fetchMidpoint({ assetId: '1' });
   } finally {
-    if (client.credentials.type === 'bearer') client.session.close();
+    client.closeAuthenticationSession();
     await client.closeSubscriptions();
   }
 });
@@ -214,27 +223,18 @@ it.each([
   const requests: Request[] = [];
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
-    if (request.url.endsWith('/refresh')) return Response.json(pair);
+    if (request.url.endsWith('/refresh') || request.url.endsWith('/migrate'))
+      return Response.json(pair);
     requests.push(request);
     expect(request.url).toBe(`${root}/v1/orders`);
     const body = await request.clone().text();
     expect(JSON.parse(body).owner).toBe(l2Credentials.key);
     expect(body).not.toContain(pair.accessToken);
     expect(body).not.toContain(pair.refreshToken);
-    if (mode === 'l2')
-      expect(request.headers.get('POLY_SIGNATURE')).toBe(
-        await buildHmacSignature(
-          l2Credentials.secret,
-          Number(request.headers.get('POLY_TIMESTAMP')),
-          'POST',
-          '/order',
-          body,
-        ),
-      );
-    else
-      expect(request.headers.get('authorization')).toBe(
-        `Bearer ${pair.accessToken}`,
-      );
+    expect(request.headers.get('authorization')).toBe(
+      `Bearer ${pair.accessToken}`,
+    );
+    expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
     return Response.json({
       success: true,
       errorMsg: '',
@@ -247,7 +247,7 @@ it.each([
   const client = await createSecureClient({
     ...secureOptions,
     fetch,
-    credentials: mode === 'l2' ? l2Credentials : pair,
+    credentials: mode === 'l2' ? l2Credentials : saved(pair),
   });
   const order: SignedOrder = {
     builder: expectHexString(`0x${'00'.repeat(32)}`),
@@ -275,7 +275,7 @@ it.each([
       expect(requests).toHaveLength(1);
     }
   } finally {
-    if (client.credentials.type === 'bearer') client.session.close();
+    client.closeAuthenticationSession();
     await client.closeSubscriptions();
   }
 });
@@ -332,19 +332,23 @@ it.each([
   );
   const client = await createSecureClient({
     ...secureOptions,
-    credentials: mechanism === 'l2' ? l2Credentials : pair,
+    credentials: mechanism === 'l2' ? l2Credentials : saved(pair),
     apiKey: { isBuilderKey: true, supportGasless: true, authorize },
     fetch: async (input, init) => {
       const request = new Request(input, init);
       const url = new URL(request.url);
       expect(url.origin).toBe(root);
-      if (url.pathname === '/v1/auth/refresh') return Response.json(pair);
+      if (
+        url.pathname === '/v1/auth/refresh' ||
+        url.pathname === '/v1/auth/migrate'
+      )
+        return Response.json(pair);
       seen.push(url);
       expect(request.headers.get('POLY_BUILDER_API_KEY')).toBe(
         'synthetic-builder',
       );
       expect(request.headers.get('authorization')).toBe(
-        mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+        `Bearer ${pair.accessToken}`,
       );
       expect(request.headers.has('POLY_API_KEY')).toBe(false);
       return Response.json(
@@ -437,24 +441,20 @@ it.each([
   query,
   body,
 }) => {
+  const pair = tokens();
   const authorize = vi.fn(async () => ({
     'x-builder-proof': 'synthetic-proof',
   }));
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
+    if (request.url.endsWith('/v1/auth/migrate')) return Response.json(pair);
     expect(request.url).toBe(root + path + query);
     expect(request.method).toBe('POST');
     expect(request.headers.get('x-builder-proof')).toBe('synthetic-proof');
-    if (method === 'GET')
-      expect(request.headers.get('POLY_SIGNATURE')).toBe(
-        await buildHmacSignature(
-          l2Credentials.secret,
-          Number(request.headers.get('POLY_TIMESTAMP')),
-          method,
-          signingPath,
-          body,
-        ),
-      );
+    expect(request.headers.get('authorization')).toBe(
+      `Bearer ${pair.accessToken}`,
+    );
+    expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
     return Response.json('accepted');
   });
   const client = await createSecureClient({
@@ -469,6 +469,7 @@ it.each([
     expect.objectContaining({ method, path: signingPath, body }),
     expect.anything(),
   );
+  client.closeAuthenticationSession();
   await client.closeSubscriptions();
 });
 
@@ -504,11 +505,14 @@ it.each([
     );
     const client = await createSecureClient({
       ...secureOptions,
-      credentials: mechanism === 'l2' ? l2Credentials : pair,
+      credentials: mechanism === 'l2' ? l2Credentials : saved(pair),
       apiKey: { isBuilderKey: true, supportGasless: true, authorize },
       fetch: async (input, init) => {
         const request = new Request(input, init);
-        if (request.url.endsWith('/v1/auth/refresh'))
+        if (
+          request.url.endsWith('/v1/auth/refresh') ||
+          request.url.endsWith('/v1/auth/migrate')
+        )
           return Response.json(pair);
         expect(request.url).toBe(root + path);
         expect(request.method).toBe(method);
@@ -516,21 +520,10 @@ it.each([
           'synthetic-builder',
         );
         expect(request.headers.get('authorization')).toBe(
-          mechanism === 'bearer' ? `Bearer ${pair.accessToken}` : null,
+          `Bearer ${pair.accessToken}`,
         );
-        expect(request.headers.get('POLY_API_KEY')).toBe(
-          mechanism === 'l2' ? l2Credentials.key : null,
-        );
-        if (mechanism === 'l2')
-          expect(request.headers.get('POLY_SIGNATURE')).toBe(
-            await buildHmacSignature(
-              l2Credentials.secret,
-              Number(request.headers.get('POLY_TIMESTAMP')),
-              method,
-              canonical,
-              method === 'POST' ? '{"nonce":"1"}' : undefined,
-            ),
-          );
+        expect(request.headers.has('POLY_API_KEY')).toBe(false);
+        expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
         return Response.json(true);
       },
     });
@@ -557,7 +550,7 @@ it.each([
 it.each([
   'l2',
   'bearer',
-] as const)('preserves routed heartbeat mismatch recovery with %s authentication', async (mechanism) => {
+] as const)('preserves routed heartbeat mismatch recovery from saved %s credentials', async (mechanism) => {
   const pair = tokens();
   let heartbeats = 0;
   const client = await createSecureClient({
@@ -565,7 +558,11 @@ it.each([
     credentials: mechanism === 'l2' ? l2Credentials : saved(pair),
     fetch: async (input, init) => {
       const request = new Request(input, init);
-      if (request.url.endsWith('/v1/auth/refresh')) return Response.json(pair);
+      if (
+        request.url.endsWith('/v1/auth/refresh') ||
+        request.url.endsWith('/v1/auth/migrate')
+      )
+        return Response.json(pair);
       expect(request.url).toBe(`${root}/v1/trading/heartbeats`);
       expect(await request.json()).toEqual({ heartbeat_id: 'stale-id' });
       heartbeats++;
