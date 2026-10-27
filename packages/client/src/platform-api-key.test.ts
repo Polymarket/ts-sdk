@@ -1,6 +1,11 @@
 import { createHmac } from 'node:crypto';
 import { inspect } from 'node:util';
-import { OrderSide, OrderType, toTokenId } from '@polymarket/bindings';
+import {
+  type BearerCredentials,
+  OrderSide,
+  OrderType,
+  toTokenId,
+} from '@polymarket/bindings';
 import { SignatureType } from '@polymarket/bindings/clob';
 import {
   expectEvmAddress,
@@ -18,6 +23,7 @@ import {
 import { createPublicClient, createSecureClient } from './clients';
 import { ClientCredentialsSchema } from './credentials';
 import { forkEnvironmentConfig } from './environments';
+import { SigningError } from './errors';
 // biome-ignore lint/style/noRestrictedImports: This test exercises the server-only public adapter boundary.
 import { builderApiKey, createPlatformChallenge, platformApiKey } from './node';
 import type { Signer } from './types';
@@ -58,6 +64,12 @@ function tokens(sequence = 0, attributedClient = clientId) {
     expiresIn: 900,
     refreshExpiresIn: 3600,
   };
+}
+function saved({
+  accessToken,
+  refreshToken,
+}: BearerCredentials): BearerCredentials {
+  return { accessToken, refreshToken };
 }
 function signer(): Signer {
   return {
@@ -251,13 +263,16 @@ describe('platform API-key compatibility', () => {
   it.each([
     'l2',
     'bearer',
-  ] as const)('requires submission authorization appropriate to %s wallet requests', async (mechanism) => {
+  ] as const)('uses the bearer wallet submission path from saved %s credentials', async (mechanism) => {
     const apiKey = platformApiKey(key);
     expect(apiKey.supportGasless).toBe(false);
     const walletSigner = signer();
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const request = new Request(input, init);
-      if (request.url === `${gateway}/v1/auth/refresh`)
+      if (
+        request.url === `${gateway}/v1/auth/refresh` ||
+        request.url === `${gateway}/v1/auth/migrate`
+      )
         return Response.json(tokens());
       if (request.url === `${environment.clob.rest}/auth/api-keys`) {
         expect(request.headers.has('x-api-key')).toBe(false);
@@ -280,22 +295,14 @@ describe('platform API-key compatibility', () => {
       fetch,
       signer: walletSigner,
       apiKey,
-      credentials: mechanism === 'l2' ? l2Credentials : tokens(),
+      credentials: mechanism === 'l2' ? l2Credentials : saved(tokens()),
     });
     fetch.mockClear();
-    expect(secure.supportsGasless).toBe(mechanism === 'bearer');
-    if (mechanism === 'l2') {
-      await expect(deployDepositWallet(secure)).rejects.toMatchObject({
-        name: 'UserInputError',
-        message: expect.stringContaining('requires a bearer session'),
-      });
-      expect(fetch).not.toHaveBeenCalled();
-    } else {
-      await expect(deployDepositWallet(secure)).resolves.toMatchObject({
-        transactionHash: null,
-      });
-      expect(fetch).toHaveBeenCalledTimes(1);
-    }
+    expect(secure.supportsGasless).toBe(true);
+    await expect(deployDepositWallet(secure)).resolves.toMatchObject({
+      transactionHash: null,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
     secure.closeAuthenticationSession();
     await secure.closeSubscriptions();
@@ -454,24 +461,73 @@ describe('challenge proxy failures and cancellation', () => {
   });
 });
 
-it('requires server-side L2 migration for platform attribution and never sends proofs to a challenge-only proxy', async () => {
-  const fetch = vi.fn<typeof globalThis.fetch>();
-  const client = createPublicClient({
-    environment,
-    fetch,
-    apiKey: remotePlatformApiKey({ url: '/challenge' }),
-  });
-  await expect(
-    client.migrateCredentials({
+it('migrates saved L2 credentials directly with a remote challenge adapter without proxying proofs or signing', async () => {
+  const walletSigner = signer();
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    expect(request.url).toBe(`${gateway}/v1/auth/migrate`);
+    const body = await request.json();
+    expect(body).toMatchObject({
       signer: signerAddress,
       wallet: signerAddress,
-      credentials: l2Credentials,
-    }),
-  ).rejects.toMatchObject({
-    name: 'UserInputError',
-    message: expect.stringContaining('Migrate L2 credentials on your server'),
+      clob_api_key: l2Credentials.key,
+    });
+    expect(body.clob_signature).toBeTruthy();
+    expect(body).not.toHaveProperty('secret');
+    expect(body).not.toHaveProperty('ownership');
+    expect(JSON.stringify(body)).not.toContain(l2Credentials.secret);
+    expect(request.headers.has('x-api-key')).toBe(false);
+    return Response.json(tokens());
   });
-  expect(fetch).not.toHaveBeenCalled();
+  const client = await createSecureClient({
+    ...secureOptions,
+    signer: walletSigner,
+    fetch,
+    apiKey: remotePlatformApiKey({ url: '/challenge-only-proxy' }),
+    credentials: l2Credentials,
+  });
+  expect(client.credentials).toEqual(saved(tokens()));
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+  client.closeAuthenticationSession();
+  await client.closeSubscriptions();
+});
+
+it('preserves sanitized SigningError from submission authorization', async () => {
+  const pair = saved(tokens());
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    Response.json(tokens()),
+  );
+  const client = await createSecureClient({
+    ...secureOptions,
+    signer: signer(),
+    credentials: pair,
+    fetch,
+    apiKey: {
+      isBuilderKey: true,
+      supportGasless: true,
+      authorize: async (request) => {
+        if (request.path === '/private')
+          throw new SigningError(`Signing failed for ${pair.accessToken}`, {
+            cause: new Error(pair.refreshToken),
+          });
+        return {};
+      },
+    },
+  });
+  try {
+    const error = await client.predictions
+      .get('/private')
+      .catch((failure: unknown) => failure);
+    expect(error).toBeInstanceOf(SigningError);
+    expect(error).toMatchObject({ message: 'Signing failed for [REDACTED]' });
+    expect(error).not.toHaveProperty('cause');
+    expect(inspect(error, { depth: 10 })).not.toContain(pair.refreshToken);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  }
 });
 
 it('rejects conflicting platform adapters nested as builder/submission authorization', () => {
@@ -723,11 +779,11 @@ it.each([
   ['bearer', 'headers'],
   ['l2', 'response'],
   ['bearer', 'response'],
-])('redacts all %s credential fields from a %s policy failure', async (mechanism, stage) => {
+])('redacts active bearer credentials after restoring %s from a %s policy failure', async (mechanism, stage) => {
   const credentials = ClientCredentialsSchema.parse(
-    mechanism === 'l2' ? l2Credentials : tokens(),
+    mechanism === 'l2' ? l2Credentials : saved(tokens()),
   );
-  const values = Object.values(credentials);
+  const values = Object.values(saved(tokens()));
   const message = values.join(' ');
   const fetch = vi.fn<typeof globalThis.fetch>(async () =>
     Response.json({ code: 'invalid_credentials', message }, { status: 401 }),
@@ -748,8 +804,11 @@ it.each([
     },
     fetch: async (input, init) => {
       const request = new Request(input, init);
-      if (request.url.endsWith('/v1/auth/refresh'))
-        return Response.json({ ...tokens(), ...credentials });
+      if (
+        request.url.endsWith('/v1/auth/refresh') ||
+        request.url.endsWith('/v1/auth/migrate')
+      )
+        return Response.json(tokens());
       return fetch(input, init);
     },
   });

@@ -126,7 +126,6 @@ export async function migrateCredentials(
   request: MigrateCredentialsRequest,
 ): Promise<BearerCredentials> {
   const params = parseUserInput(request, MigrateCredentialsRequestSchema);
-  client.assertCredentialMigrationSupported();
   const timestamp = Math.floor(Date.now() / 1000);
   let signature: string;
   try {
