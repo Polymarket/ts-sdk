@@ -95,13 +95,7 @@ export type {
   MigrateCredentialsRequest,
 } from './actions/identity';
 export { LoginError, MigrateCredentialsError } from './actions/identity';
-export type {
-  AuthenticatedCredentials,
-  BearerSessionCredentials,
-  CredentialsChanged,
-  L2SessionCredentials,
-  SavedCredentials,
-} from './credentials';
+export type { CredentialsChanged } from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {
   ServiceClientDeleteOptions,

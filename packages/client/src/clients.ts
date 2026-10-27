@@ -1,7 +1,12 @@
-import { EvmAddressSchema, TokenResponseSchema } from '@polymarket/bindings';
+import {
+  type BearerCredentials,
+  EvmAddressSchema,
+  TokenResponseSchema,
+} from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { WalletType } from '@polymarket/bindings/gamma';
 import {
+  type EvmAddress,
   expectEvmAddress,
   invariant,
   isSameEvmAddress,
@@ -25,13 +30,9 @@ import {
 } from './actions/identity';
 import { createClientMetadata } from './client-metadata';
 import {
-  type AuthenticatedCredentials,
-  type BearerSessionCredentials,
   type ClientCredentials,
+  ClientCredentialsSchema,
   type CredentialsChanged,
-  RestoredCredentialsSchema,
-  type SavedCredentials,
-  savedBearerCredentials,
 } from './credentials';
 import {
   allActions,
@@ -80,11 +81,6 @@ import {
   type SecureWebSocketManagers,
   SportsWebSocketManager,
 } from './websockets';
-import {
-  type AuthenticationWorkflow,
-  authenticateWith,
-  requestAddress,
-} from './workflow';
 
 type PublicContext = {
   /** @internal */
@@ -275,29 +271,8 @@ abstract class AbstractClient<TContext extends PublicContext> {
 
 export type { ClientCredentials } from './credentials';
 
-export type BeginAuthenticationRequest = {
-  /** Wallet address to use as the account wallet. */
-  wallet: string;
-  /**
-   * Credentials saved from `client.credentials`, or L2 credentials saved by an
-   * earlier SDK version. Restores the client without a new signature.
-   */
-  credentials?: SavedCredentials;
-  /**
-   * Selects which derived L2 credential set the authentication signature
-   * also covers. The same nonce selects the same set.
-   *
-   * @defaultValue 0
-   */
-  nonce?: number;
-  /** Bot-protection verification token for browser sign-in, when one is required. */
-  verificationToken?: string;
-  /** Called after a refreshed bearer token pair is adopted. */
-  onCredentialsChanged?: CredentialsChanged;
-};
-const BeginAuthenticationRequestSchema = AuthenticationInputSchema.extend({
-  wallet: EvmAddressSchema,
-  credentials: RestoredCredentialsSchema.optional(),
+const SecureClientInputSchema = AuthenticationInputSchema.extend({
+  credentials: ClientCredentialsSchema.optional(),
   onCredentialsChanged: z
     .custom<CredentialsChanged>((value) => typeof value === 'function')
     .optional(),
@@ -485,7 +460,7 @@ class BasePublicClient<
   /** Opens a bearer session by signing a server-issued ownership challenge.
    * @throws {@link LoginError} Thrown on authentication failure.
    */
-  login(request: LoginRequest): Promise<BearerSessionCredentials> {
+  login(request: LoginRequest): Promise<BearerCredentials> {
     return login(this, request);
   }
 
@@ -494,98 +469,14 @@ class BasePublicClient<
    */
   migrateCredentials(
     request: MigrateCredentialsRequest,
-  ): Promise<BearerSessionCredentials> {
+  ): Promise<BearerCredentials> {
     return migrateCredentials(this, request);
   }
 
-  /**
-   * Begins an authentication workflow that produces a {@link SecureClient}.
-   *
-   * @remarks
-   * This is a low-level method for building wallet-interactive workflows. Most
-   * applications should use {@link createSecureClient} instead.
-   *
-   * @internal
-   */
-  beginAuthentication(
-    request: BeginAuthenticationRequest,
-    signer: Signer,
-  ): Promise<
-    AuthenticationWorkflow<SecureClient<TPublicActions, TSecureActions>>
-  > {
-    const params = parseUserInput(request, BeginAuthenticationRequestSchema);
-
-    return Promise.resolve(
-      async function* (
-        this: PublicClient<TPublicActions, TSecureActions>,
-      ): AuthenticationWorkflow<SecureClient<TPublicActions, TSecureActions>> {
-        const signerAddress = expectEvmAddress(yield requestAddress());
-        const wallet = expectEvmAddress(params.wallet);
-        const identity = resolveAccountIdentity(
-          this.environment,
-          signerAddress,
-          wallet,
-        );
-        const credentials =
-          params.credentials ??
-          parseUserInput(
-            await this.login({
-              signer,
-              wallet,
-              nonce: params.nonce,
-              verificationToken: params.verificationToken,
-            }),
-            RestoredCredentialsSchema,
-          );
-        if ('key' in credentials) {
-          const client = this.#createSecureClient(
-            credentials,
-            identity,
-            signer,
-          );
-          // Supplied L2 credentials are checked locally; protected requests validate them remotely.
-          return client;
-        }
-        const claims = accessTokenClaims(credentials.accessToken);
-        if (
-          !isSameEvmAddress(claims.sub, signerAddress) ||
-          claims.wallet === undefined ||
-          !isSameEvmAddress(claims.wallet, wallet)
-        ) {
-          throw new RequestRejectedError(
-            'Session identity does not match the requested signer and wallet.',
-            { status: 401 },
-          );
-        }
-        const client = this.#createSecureClient(
-          credentials,
-          identity,
-          signer,
-          params.onCredentialsChanged,
-        );
-        try {
-          if (
-            params.credentials !== undefined &&
-            'accessToken' in params.credentials
-          ) {
-            // Validate the refresh session as well as the access token: an unexpired
-            // access token alone does not prove that a saved pair can be restored.
-            await client.session.refresh();
-          } else await client.session.ready();
-          client.session.start();
-          return client;
-        } catch (error) {
-          client.session.close();
-          await client.closeSubscriptions();
-          throw error;
-        }
-      }.call(this as unknown as PublicClient<TPublicActions, TSecureActions>),
-    );
-  }
-
-  #createSecureClient(
-    credentials: ClientCredentials,
-    account: AccountIdentity,
+  /** Constructs a client after its authentication workflow has resolved. @internal */
+  createAuthenticatedClient(
+    credentials: BearerCredentials,
+    account: AccountIdentity | undefined,
     signer: Signer,
     onCredentialsChanged?: CredentialsChanged,
   ): SecureClient<TPublicActions, TSecureActions> {
@@ -661,10 +552,7 @@ class BaseSecureClient<
       'accessToken' in config.credentials
         ? new AuthSession({
             credentials: config.credentials,
-            onCredentialsChanged: (credentials) =>
-              config.onCredentialsChanged?.(
-                savedBearerCredentials(credentials),
-              ),
+            onCredentialsChanged: config.onCredentialsChanged,
             refresh: (credentials, signal) =>
               predictions.post('/v1/auth/refresh', {
                 json: { refresh_token: credentials.refreshToken },
@@ -898,19 +786,13 @@ class BaseSecureClient<
    * API credentials for the authenticated session.
    *
    * @remarks
-   * Contains the access and refresh tokens for bearer authentication
-   * (`type: 'bearer'`), or the key, secret and passphrase for L2 authentication
-   * (`type: 'l2'`). Narrow by `type`. Migration is explicit.
+   * Contains the access and refresh tokens for bearer authentication.
    * These credentials are sensitive. Store them securely if you want to create
    * another secure client later without requiring a new authentication signature
    * while the credentials remain valid.
    */
-  get credentials(): AuthenticatedCredentials {
-    const { session, l2Credentials } = this.context;
-    if (session !== undefined)
-      return savedBearerCredentials(session.credentials);
-    invariant(l2Credentials !== undefined, 'Missing client credentials.');
-    return { ...l2Credentials, type: 'l2' };
+  get credentials(): BearerCredentials {
+    return this.session.credentials;
   }
 
   /** @internal */
@@ -927,9 +809,15 @@ class BaseSecureClient<
 
   /**
    * The authenticated account identity associated with this client, including the signer and wallet addresses and wallet type.
+   * @throws {@link UserInputError} Thrown when this session has no wallet.
    */
   get account(): AccountIdentity {
-    return this.context.account;
+    const account = this.context.account;
+    if (account === undefined)
+      throw new UserInputError(
+        'This session has no wallet. Authenticate with a wallet to use account operations.',
+      );
+    return account;
   }
 
   /** @internal */
@@ -1135,7 +1023,7 @@ class BaseSecureClient<
 type SecureContext = PublicContext & {
   predictions: AuthenticatedServiceClient;
   /** @internal */
-  account: AccountIdentity;
+  account: AccountIdentity | undefined;
   /** @internal */
   session?: AuthSession;
   l2Credentials?: ApiKeyCreds;
@@ -1152,7 +1040,7 @@ type SecureContext = PublicContext & {
 };
 
 type SecureClientConfig = PublicClientConfig & {
-  account: AccountIdentity;
+  account: AccountIdentity | undefined;
   credentials: ClientCredentials;
   onCredentialsChanged?: CredentialsChanged;
   signer: Signer;
@@ -1220,8 +1108,10 @@ export type SecureClientOptions = PublicClientOptions & {
   /**
    * Wallet address to use as the account wallet.
    *
-   * If omitted, the client uses the signer's deterministic Deposit Wallet as
-   * the account wallet. Pass the signer address itself to explicitly trade as
+   * For fresh login or L2 migration, omission selects the signer's deterministic
+   * Deposit Wallet. Restored bearer credentials use the token's wallet claim;
+   * signer-only tokens skip wallet discovery and setup.
+   * Pass the signer address itself to explicitly trade as
    * an EOA account, or pass a supported Poly Deposit Wallet, Poly Safe, or Poly
    * Proxy wallet address to use that wallet as the account/funder.
    */
@@ -1238,11 +1128,12 @@ export type SecureClientOptions = PublicClientOptions & {
 } & (
     | {
         /**
-         * Credentials saved from `client.credentials`, or L2 credentials saved
-         * by an earlier SDK version. Restores the client without a new
-         * signature. A rejected bearer session does not fall back to signing.
+         * Saved bearer tokens or L2 credentials from an earlier SDK version.
+         * L2 credentials are exchanged for bearer tokens without a new wallet
+         * signature. A failed migration or rejected bearer session rejects
+         * creation without falling back to signing.
          */
-        credentials?: SavedCredentials;
+        credentials?: object;
         nonce?: never;
       }
     | {
@@ -1310,9 +1201,9 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
  * Creates a new authenticated `SecureClient` instance.
  *
  * @remarks
- * Supplied L2 credentials receive local input checks only; their validity and
- * ownership are checked by protected requests. Wallet discovery and setup retain
- * their own network behavior. Ending an L2 client does not revoke its key.
+ * Supplied L2 credentials are migrated without a new wallet signature. Migration
+ * failures reject client creation. Restored signer-only bearer sessions skip
+ * wallet discovery and setup.
  *
  * @example
  * ```ts
@@ -1333,22 +1224,83 @@ export async function createSecureClient(
     onRateLimitUpdate: options.onRateLimitUpdate,
     fetch: options.fetch,
   });
-  const wallet = await resolveRequestedWallet(client, options);
-
-  const secureClient = await client
-    .beginAuthentication(
-      {
-        wallet,
-        credentials: options.credentials,
-        nonce: options.nonce,
-        verificationToken: options.verificationToken,
-        onCredentialsChanged: options.onCredentialsChanged,
-      },
-      options.signer,
+  const params = parseUserInput(options, SecureClientInputSchema);
+  let address: string;
+  try {
+    address = await options.signer.getAddress();
+  } catch {
+    throw new SigningError('Could not obtain signer address.');
+  }
+  const signerAddress = parseUserInput(address, EvmAddressSchema);
+  let credentials: BearerCredentials;
+  let wallet: EvmAddress | undefined;
+  const restored =
+    params.credentials !== undefined && 'accessToken' in params.credentials;
+  if (params.credentials !== undefined && 'accessToken' in params.credentials) {
+    credentials = params.credentials;
+    const claims = accessTokenClaims(credentials.accessToken);
+    wallet = claims.wallet;
+    if (
+      params.wallet !== undefined &&
+      (wallet === undefined || !isSameEvmAddress(params.wallet, wallet))
     )
-    .then(authenticateWith(options.signer));
+      throw new RequestRejectedError(
+        'Session identity does not match the requested wallet.',
+        { status: 401 },
+      );
+  } else {
+    wallet = await resolveRequestedWallet(client, options, signerAddress);
+    // Validate supported wallet identity before authentication has any side effects.
+    resolveAccountIdentity(
+      client.environment,
+      signerAddress,
+      expectEvmAddress(wallet),
+    );
+    credentials =
+      params.credentials !== undefined && 'key' in params.credentials
+        ? await client.migrateCredentials({
+            credentials: params.credentials,
+            signer: signerAddress,
+            wallet,
+            verificationToken: params.verificationToken,
+          })
+        : await client.login({
+            signer: options.signer,
+            wallet,
+            nonce: params.nonce,
+            verificationToken: params.verificationToken,
+          });
+  }
+  const claims = accessTokenClaims(credentials.accessToken);
+  if (
+    !isSameEvmAddress(claims.sub, signerAddress) ||
+    (wallet !== undefined &&
+      (claims.wallet === undefined || !isSameEvmAddress(claims.wallet, wallet)))
+  )
+    throw new RequestRejectedError(
+      'Session identity does not match the requested signer and wallet.',
+      { status: 401 },
+    );
+  const account =
+    wallet === undefined
+      ? undefined
+      : resolveAccountIdentity(
+          client.environment,
+          signerAddress,
+          expectEvmAddress(wallet),
+        );
+  const secureClient = client.createAuthenticatedClient(
+    credentials,
+    account,
+    options.signer,
+    params.onCredentialsChanged,
+  );
 
   try {
+    if (restored) await secureClient.session.refresh();
+    else await secureClient.session.ready();
+    secureClient.session.start();
+    if (account === undefined) return secureClient;
     if (secureClient.account.walletType === WalletType.EOA) {
       return secureClient;
     }
@@ -1381,12 +1333,12 @@ export async function createSecureClient(
 async function resolveRequestedWallet(
   client: BasePublicClient,
   options: SecureClientOptions,
-): Promise<string> {
+  signerAddress: EvmAddress,
+): Promise<EvmAddress> {
   if (options.wallet !== undefined) {
-    return options.wallet;
+    return expectEvmAddress(options.wallet);
   }
 
-  const signerAddress = expectEvmAddress(await options.signer.getAddress());
   const legacyDepositWallet = deriveUupsDepositWalletAddress(
     signerAddress,
     client.environment.walletDerivation,

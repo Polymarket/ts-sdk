@@ -1,3 +1,4 @@
+import type { BearerCredentials } from '@polymarket/bindings';
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
 import type { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
@@ -42,30 +43,42 @@ it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.predictions.del('/mutation', { retries: 5 });
 });
 
-it('accepts only saved bearer or L2 credentials when restoring', () => {
+it('accepts plain bearer or L2 input and exposes bearer credentials', () => {
   createSecureClient({
     signer,
-    credentials: { type: 'bearer', accessToken: 'a', refreshToken: 'r' },
+    credentials: { accessToken: 'a', refreshToken: 'r' },
   });
   createSecureClient({
     signer,
     credentials: { key: 'k', secret: 's', passphrase: 'p' },
   });
+  const stored: object = { accessToken: 'a', refreshToken: 'r' };
+  createSecureClient({ signer, credentials: stored });
+  expectTypeOf(publicClient.login({ signer })).toEqualTypeOf<
+    Promise<BearerCredentials>
+  >();
+  expectTypeOf(
+    publicClient.migrateCredentials({
+      signer: '0x0000000000000000000000000000000000000001',
+      credentials: { key: 'k', secret: 's', passphrase: 'p' },
+    }),
+  ).toEqualTypeOf<Promise<BearerCredentials>>();
+  expectTypeOf(secureClient.credentials).toEqualTypeOf<BearerCredentials>();
   createSecureClient({
     signer,
-    // @ts-expect-error Arbitrary objects are not credentials.
-    credentials: {},
+    onCredentialsChanged(credentials) {
+      expectTypeOf(credentials).toEqualTypeOf<BearerCredentials>();
+    },
   });
   createSecureClient({
     signer,
-    // @ts-expect-error Bearer credentials carry the access token by name.
-    credentials: { type: 'bearer', key: 'a', refreshToken: 'r' },
+    async onCredentialsChanged(credentials) {
+      expectTypeOf(credentials).toEqualTypeOf<BearerCredentials>();
+    },
   });
-  const credentials = secureClient.credentials;
-  // @ts-expect-error Narrow by `type` before reading mechanism-specific fields.
-  credentials.accessToken;
-  if (credentials.type === 'bearer')
-    expectTypeOf(credentials.accessToken).toEqualTypeOf<string>();
+  expectTypeOf(secureClient.credentials.accessToken).toEqualTypeOf<string>();
+  expectTypeOf(secureClient.credentials.refreshToken).toEqualTypeOf<string>();
+  expectTypeOf(secureClient.credentials).not.toHaveProperty('type');
 });
 
 describe('predictions service types', () => {

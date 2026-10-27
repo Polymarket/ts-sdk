@@ -27,6 +27,7 @@ import {
   ConnectionLostError,
   RequestRejectedError,
   TransportError,
+  UserInputError,
 } from '../../errors';
 import type { AuthSession } from '../../session';
 import type { Signer } from '../../types';
@@ -60,7 +61,7 @@ const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
 
 export type RfqQuoterWebSocketManagerOptions = {
-  account: AccountIdentity;
+  account: AccountIdentity | undefined;
   chainId: number;
   credentials?: ApiKeyCreds;
   session?: AuthSession;
@@ -71,7 +72,7 @@ export type RfqQuoterWebSocketManagerOptions = {
 };
 
 export class RfqQuoterWebSocketManager {
-  readonly #account: AccountIdentity;
+  readonly #account: AccountIdentity | undefined;
   readonly #chainId: number;
   readonly #credentials: ApiKeyCreds | undefined;
   readonly #sessionAuth: AuthSession | undefined;
@@ -105,6 +106,11 @@ export class RfqQuoterWebSocketManager {
       this.#session = undefined;
     }
     if (this.#connecting !== undefined) return this.#connecting;
+
+    if (this.#account === undefined)
+      throw new UserInputError(
+        'This session has no wallet. Authenticate with a wallet to use RFQ.',
+      );
 
     const session = new RfqWebSocketSession({
       account: this.#account,

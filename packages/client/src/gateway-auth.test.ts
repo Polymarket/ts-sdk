@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import { login, migrateCredentials } from './actions';
 import { createPublicClient, createSecureClient } from './clients';
-import type { SavedCredentials } from './credentials';
+import type { ClientCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError, TransportError } from './errors';
 import { AuthSession } from './session';
@@ -39,9 +39,8 @@ function tokens(sequence = 0, seconds = 900) {
     refreshExpiresIn: 3600,
   };
 }
-function saved(pair: BearerCredentials): SavedCredentials {
+function saved(pair: BearerCredentials): ClientCredentials {
   return {
-    type: 'bearer',
     accessToken: pair.accessToken,
     refreshToken: pair.refreshToken,
   };
@@ -84,7 +83,6 @@ describe('gateway public authentication boundary', () => {
       verificationToken: 'synthetic-verification',
     });
     expect(pair).toEqual({
-      type: 'bearer',
       accessToken: loginTokens.accessToken,
       refreshToken: loginTokens.refreshToken,
     });
@@ -144,22 +142,18 @@ describe('gateway public authentication boundary', () => {
     ).resolves.toHaveProperty('refreshToken');
   });
 
-  it('accepts supplied L2 credentials without remote validation or revocation', async () => {
+  it('automatically migrates supplied L2 credentials without signing or notifying persistence', async () => {
     const walletSigner = signer();
     const changed = vi.fn();
-    const requests: Request[] = [];
+    const pair = tokens();
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const request = new Request(input, init);
-      requests.push(request);
-      expect(new URL(request.url).pathname).not.toContain('/auth/');
-      expect(request.headers.get('POLY_API_KEY')).toBe(l2Credentials.key);
-      return Response.json(
-        {
-          code: 'invalid_credentials',
-          message: 'Rejected supplied credentials',
-        },
-        { status: 401 },
-      );
+      expect(request.url).toBe(`${root}/v1/auth/migrate`);
+      expect(await request.json()).toMatchObject({
+        signer: address,
+        wallet: address,
+      });
+      return Response.json(pair);
     });
     const client = await createSecureClient({
       environment,
@@ -169,16 +163,76 @@ describe('gateway public authentication boundary', () => {
       credentials: l2Credentials,
       onCredentialsChanged: changed,
     });
-    expect(client.credentials).toEqual({ ...l2Credentials, type: 'l2' });
-    expect(fetch).not.toHaveBeenCalled();
-    await expect(client.listOpenOrders().firstPage()).rejects.toMatchObject({
-      status: 401,
-    });
-    await client.endAuthentication();
-    expect(requests).toHaveLength(1);
+    expect(client.credentials).toEqual(saved(pair));
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(changed).not.toHaveBeenCalled();
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
-    expect(() => client.credentials).toThrow('closed');
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  });
+
+  it('rejects failed automatic migration without signing or notifying persistence', async () => {
+    const walletSigner = signer();
+    const changed = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ code: 'invalid_credentials' }, { status: 401 }),
+    );
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: walletSigner,
+        wallet: address,
+        credentials: l2Credentials,
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({ status: 401 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(changed).not.toHaveBeenCalled();
+    expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+  });
+
+  it('restores signer-only sessions without wallet discovery and permits authenticated user reads', async () => {
+    const pair = tokens();
+    const payload = JSON.parse(atob(pair.accessToken.split('.')[1] ?? ''));
+    delete payload.wallet;
+    delete payload.signature_type;
+    pair.accessToken = `test.${btoa(JSON.stringify(payload))}.test`;
+    const paths: string[] = [];
+    const walletSigner = signer();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path === '/v1/auth/refresh') return Response.json(pair);
+      if (path === '/internal/users/me') {
+        expect(request.headers.get('authorization')).toBe(
+          `Bearer ${pair.accessToken}`,
+        );
+        return Response.json({ signer: address });
+      }
+      throw new Error(`Unexpected signer-only route: ${path}`);
+    });
+    const client = await createSecureClient({
+      environment,
+      fetch,
+      signer: walletSigner,
+      credentials: saved(pair),
+    });
+    try {
+      await expect(
+        client.predictions.get('/internal/users/me'),
+      ).resolves.toEqual({ signer: address });
+      expect(() => client.account).toThrow('wallet');
+      await expect(client.webSockets.rfqQuoter.connect()).rejects.toThrow(
+        'wallet',
+      );
+      expect(paths).toEqual(['/v1/auth/refresh', '/internal/users/me']);
+      expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+    } finally {
+      client.closeAuthenticationSession();
+      await client.closeSubscriptions();
+    }
   });
 
   it('refreshes expired saved credentials before returning and closes retained transports on logout', async () => {
@@ -210,14 +264,12 @@ describe('gateway public authentication boundary', () => {
       signer: signer(),
       wallet: address,
       credentials: {
-        type: 'bearer',
         accessToken: restored.accessToken,
         refreshToken: restored.refreshToken,
       },
       onCredentialsChanged: changed,
     });
     expect(secure.credentials).toEqual({
-      type: 'bearer',
       accessToken: updated.accessToken,
       refreshToken: updated.refreshToken,
     });
@@ -419,11 +471,30 @@ describe('logout revocation', () => {
   });
 });
 
+it('maps signer address failures before dispatching authentication', async () => {
+  const walletSigner = signer();
+  walletSigner.getAddress = vi.fn(async () => {
+    throw new Error('wallet provider failure');
+  });
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  await expect(
+    createSecureClient({
+      signer: walletSigner,
+      environment,
+      fetch,
+      credentials: saved(tokens()),
+    }),
+  ).rejects.toMatchObject({
+    name: 'SigningError',
+    message: 'Could not obtain signer address.',
+  });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
 it.each([
   { ...tokens(), secret: 'must-not-select-bearer' },
   { key: 'key', secret: 42, passphrase: 'phrase' },
   {
-    type: 'bearer',
     accessToken: 'opaque',
     refreshToken: 'refresh',
     secret: 'mixed',
@@ -437,7 +508,7 @@ it.each([
       fetch,
       signer: walletSigner,
       wallet: address,
-      credentials: credentials as SavedCredentials,
+      credentials: credentials as ClientCredentials,
     }),
   ).rejects.toMatchObject({ name: 'UserInputError' });
   expect(fetch).not.toHaveBeenCalled();
@@ -501,14 +572,14 @@ it.each([
       await expect(request).rejects.toMatchObject({ status: 401 });
     else await expect(request).resolves.toBe('accepted');
     expect(client.credentials).toEqual({
-      type: 'bearer',
       accessToken: attempts === 2 ? rotated.accessToken : pair.accessToken,
       refreshToken: attempts === 2 ? rotated.refreshToken : pair.refreshToken,
     });
     expect(refreshRequests).toBe(attempts);
     expect(privateRequests).toBe(attempts);
   } finally {
-    await client.endAuthentication();
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
   }
 });
 
@@ -573,7 +644,9 @@ it.each([
     signer: signer(),
     wallet: address,
     credentials,
-    fetch: async () => {
+    fetch: async (input, init) => {
+      if (new Request(input, init).url.endsWith('/v1/auth/migrate'))
+        return Response.json(tokens());
       throw failure;
     },
   });
@@ -592,6 +665,7 @@ it.each([
         retryAfter: 2,
       });
   } finally {
-    await client.endAuthentication();
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
   }
 });

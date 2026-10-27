@@ -37,14 +37,7 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
         );
       });
       const credentials = secureClientWithDepositWallet.credentials;
-      const auth =
-        credentials.type === 'bearer'
-          ? { accessToken: credentials.accessToken }
-          : {
-              apiKey: credentials.key,
-              secret: credentials.secret,
-              passphrase: credentials.passphrase,
-            };
+      const auth = { accessToken: credentials.accessToken };
       socket.send(
         JSON.stringify({
           op: 'auth',
