@@ -228,6 +228,25 @@ it.each([
 });
 
 it.each([
+  '/command',
+  '/v1/auth/session',
+])('does not apply read retries to workflow GET %s', async (path) => {
+  const fetch = vi
+    .fn(async () => Response.json('accepted'))
+    .mockRejectedValueOnce(new TypeError('Network request failed'));
+  const refreshToken = vi.fn(async () => false);
+  const service = new AuthenticatedServiceClient({ root, fetch, refreshToken });
+  const options = { retries: 1, responseType: 'json' as const };
+
+  await expect(service.getWorkflow(path, options)).rejects.toMatchObject({
+    name: 'TransportError',
+    cause: { message: 'Network request failed' },
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(refreshToken).not.toHaveBeenCalled();
+});
+
+it.each([
   'get',
   'postRead',
 ] as const)('does not spend the %s read retry budget on HTTP timeouts', async (method) => {

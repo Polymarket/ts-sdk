@@ -212,8 +212,13 @@ export class AuthenticatedServiceClient extends ServiceClient {
     });
     // Only actual HTTP attempts get a deadline, not header resolution or refresh.
     const controls = { ...options, timeout: false as const };
-    if (method === 'get' || method === 'getWorkflow')
-      return client.get(path, controls);
+    if (method === 'get') return client.get(path, controls);
+    if (method === 'getWorkflow')
+      return client.getWorkflow(
+        path,
+        controls as ServiceClientWorkflowGetOptions &
+          ServiceClientJsonResponseOptions,
+      );
     if (method === 'postRead')
       return client.postRead(
         path,
