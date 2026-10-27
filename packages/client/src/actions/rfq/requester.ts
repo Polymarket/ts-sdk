@@ -166,6 +166,7 @@ type ParsedAcceptComboQuoteParams = z.output<
   typeof AcceptComboQuoteParamsSchema
 >;
 
+/** @internal */
 export function buildComboQuoteRequest(
   identity: OrderIdentity,
   params: RequestComboQuoteParams,
@@ -186,6 +187,7 @@ export function buildComboQuoteRequest(
     signer_address: identity.signer,
   };
 }
+/** @internal */
 export function resolveComboQuote(
   response: BuilderRfqCreateResponse,
   request: BuilderRfqCreateRequest,
@@ -299,6 +301,7 @@ function toQuoteUnavailableResult(
   }
 }
 
+/** @internal */
 export function createComboAcceptanceOrder(
   identity: OrderIdentity,
   input: ParsedAcceptComboQuoteParams,
@@ -328,6 +331,7 @@ function generateComboAcceptanceOrderSalt(): bigint {
   );
 }
 
+/** @internal */
 export async function signComboAcceptanceOrder(
   signTypedData: (payload: TypedDataPayload) => Promise<EvmSignature>,
   domain: ExchangeOrderDomain,
@@ -356,6 +360,7 @@ export async function signComboAcceptanceOrder(
   };
 }
 
+/** @internal */
 export async function acceptComboQuoteOutcome(
   rfqId: RfqId,
   postAcceptance: () => Promise<BuilderRfqStatusResponse>,
@@ -457,6 +462,7 @@ function toComboAcceptFailureReason(
   return ComboAcceptFailureReason.ExecutionFailed;
 }
 
+/** @internal */
 export async function pollComboFill(
   rfqId: RfqId,
   timeoutMs: number,
