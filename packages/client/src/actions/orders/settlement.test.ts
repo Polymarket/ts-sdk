@@ -1,77 +1,36 @@
-import { TradeStatus, TxHashSchema, toOrderId } from '@polymarket/bindings';
-import {
-  type AcceptedOrderResponse,
-  type ClobTrade,
-  ClobTradeSchema,
-  OrderPostStatus,
-} from '@polymarket/bindings/clob';
+import { TradeStatus, TxHashSchema } from '@polymarket/bindings';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { BaseSecureClient } from '../../clients';
 import { TimeoutError, TransactionFailedError } from '../../errors';
+import {
+  type OrderFillSnapshot,
+  pollOrderFillSettlement,
+  type SettlementTrade,
+} from './settlement-polling';
 
-// The action polls trades through `listAccountTrades`; mocking that module
-// isolates the settlement loop, which is the boundary under test.
-vi.mock('../account', () => ({ listAccountTrades: vi.fn() }));
+const readTrades = vi.fn<(id: string) => Promise<readonly SettlementTrade[]>>();
 
-const { listAccountTrades } = vi.mocked(await import('../account'));
-const { waitForOrderFillSettlement } = await import('./settlement');
-
-const client = {} as BaseSecureClient;
-
-function makeOrderResponse(
-  overrides: Partial<AcceptedOrderResponse> = {},
-): AcceptedOrderResponse {
+function makeOrderFillSnapshot(
+  overrides: Partial<OrderFillSnapshot> = {},
+): OrderFillSnapshot {
   return {
-    makingAmount: '50',
-    ok: true,
-    orderId: toOrderId('0xorder'),
-    status: OrderPostStatus.MATCHED,
-    takingAmount: '100',
+    orderId: '0xorder',
     tradeIds: [],
     transactionsHashes: [],
     ...overrides,
-  } as AcceptedOrderResponse;
+  };
 }
 
-type MakeTradeOverrides = {
-  id?: string;
-  status?: TradeStatus;
-  transactionHash?: string;
-};
-
-// Trades are built from the wire payload through `ClobTradeSchema` so the
-// factory stays aligned with the real boundary shape, including branded
-// fields, as the schema evolves.
-function makeTrade(overrides: MakeTradeOverrides = {}): ClobTrade {
-  return ClobTradeSchema.parse({
-    asset_id: '123',
-    bucket_index: 0,
-    fee_rate_bps: '0',
-    id: overrides.id ?? 'trade-1',
-    last_update: '1752500000',
-    maker_address: '0xmaker',
-    maker_orders: [],
-    market:
-      '0x00000000000000000000000000000000000000000000000000000000000000a1',
-    match_time: '1752500000',
-    outcome: 'YES',
-    owner: 'owner',
-    price: '0.5',
-    side: 'BUY',
-    size: '100',
-    status: overrides.status ?? TradeStatus.Matched,
-    taker_order_id: '0xorder',
-    trader_side: 'TAKER',
-    transaction_hash: overrides.transactionHash ?? '',
-  });
+function makeTrade(overrides: Partial<SettlementTrade> = {}): SettlementTrade {
+  return {
+    id: 'trade-1',
+    status: TradeStatus.Matched,
+    transactionHash: '',
+    ...overrides,
+  };
 }
 
-function mockTradesPages(...pages: ClobTrade[][]) {
-  for (const items of pages) {
-    listAccountTrades.mockReturnValueOnce({
-      firstPage: async () => ({ hasMore: false, items }),
-    } as ReturnType<typeof listAccountTrades>);
-  }
+function mockTradesPages(...pages: SettlementTrade[][]) {
+  for (const items of pages) readTrades.mockResolvedValueOnce(items);
 }
 
 const TX_HASH =
@@ -80,30 +39,33 @@ const OTHER_TX_HASH =
   '0x2222222222222222222222222222222222222222222222222222222222222222';
 
 afterEach(() => {
-  listAccountTrades.mockReset();
+  readTrades.mockReset();
+  vi.useRealTimers();
 });
 
-describe('waitForOrderFillSettlement', () => {
+describe('order fill settlement polling', () => {
   it('resolves immediately to an empty array when the order had no fills', async () => {
-    const hashes = await waitForOrderFillSettlement(
-      client,
-      makeOrderResponse({ status: OrderPostStatus.LIVE }),
+    const hashes = await pollOrderFillSettlement(
+      makeOrderFillSnapshot(),
+      30_000,
+      readTrades,
     );
 
     expect(hashes).toEqual([]);
-    expect(listAccountTrades).not.toHaveBeenCalled();
+    expect(readTrades).not.toHaveBeenCalled();
   });
 
   it('returns hashes delivered with the order response when there are no trade ids to poll', async () => {
-    const hashes = await waitForOrderFillSettlement(
-      client,
-      makeOrderResponse({
+    const hashes = await pollOrderFillSettlement(
+      makeOrderFillSnapshot({
         transactionsHashes: [TxHashSchema.parse(TX_HASH)],
       }),
+      30_000,
+      readTrades,
     );
 
     expect(hashes).toEqual([TX_HASH]);
-    expect(listAccountTrades).not.toHaveBeenCalled();
+    expect(readTrades).not.toHaveBeenCalled();
   });
 
   it('polls trade ids even when the order response includes hashes', async () => {
@@ -111,16 +73,17 @@ describe('waitForOrderFillSettlement', () => {
       makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH }),
     ]);
 
-    const hashes = await waitForOrderFillSettlement(
-      client,
-      makeOrderResponse({
+    const hashes = await pollOrderFillSettlement(
+      makeOrderFillSnapshot({
         tradeIds: ['trade-1'],
         transactionsHashes: [TxHashSchema.parse(OTHER_TX_HASH)],
       }),
+      30_000,
+      readTrades,
     );
 
     expect(hashes).toEqual([TX_HASH]);
-    expect(listAccountTrades).toHaveBeenCalledWith(client, { id: 'trade-1' });
+    expect(readTrades).toHaveBeenCalledWith('trade-1');
   });
 
   it('polls until every fill confirms and returns the hashes', async () => {
@@ -136,14 +99,15 @@ describe('waitForOrderFillSettlement', () => {
       [makeTrade({ status: TradeStatus.Confirmed, transactionHash: TX_HASH })],
     );
 
-    const hashes = await waitForOrderFillSettlement(
-      client,
-      makeOrderResponse({ tradeIds: ['trade-1'] }),
+    const hashes = await pollOrderFillSettlement(
+      makeOrderFillSnapshot({ tradeIds: ['trade-1'] }),
+      30_000,
+      readTrades,
     );
 
     expect(hashes).toEqual([TX_HASH]);
-    expect(listAccountTrades).toHaveBeenCalledTimes(2);
-    expect(listAccountTrades).toHaveBeenCalledWith(client, { id: 'trade-1' });
+    expect(readTrades).toHaveBeenCalledTimes(2);
+    expect(readTrades).toHaveBeenCalledWith('trade-1');
   });
 
   it('returns settled hashes when only some fills fail execution', async () => {
@@ -158,9 +122,10 @@ describe('waitForOrderFillSettlement', () => {
       ],
     );
 
-    const hashes = await waitForOrderFillSettlement(
-      client,
-      makeOrderResponse({ tradeIds: ['trade-1', 'trade-2'] }),
+    const hashes = await pollOrderFillSettlement(
+      makeOrderFillSnapshot({ tradeIds: ['trade-1', 'trade-2'] }),
+      30_000,
+      readTrades,
     );
 
     expect(hashes).toEqual([OTHER_TX_HASH]);
@@ -170,24 +135,26 @@ describe('waitForOrderFillSettlement', () => {
     mockTradesPages([makeTrade({ status: TradeStatus.Failed })]);
 
     await expect(
-      waitForOrderFillSettlement(
-        client,
-        makeOrderResponse({ tradeIds: ['trade-1'] }),
+      pollOrderFillSettlement(
+        makeOrderFillSnapshot({ tradeIds: ['trade-1'] }),
+        30_000,
+        readTrades,
       ),
     ).rejects.toThrow(TransactionFailedError);
   });
 
   it('throws TimeoutError when fills are still settling at the deadline', async () => {
-    listAccountTrades.mockReturnValue({
-      firstPage: async () => ({ hasMore: false, items: [makeTrade()] }),
-    } as ReturnType<typeof listAccountTrades>);
+    vi.useFakeTimers();
+    readTrades.mockResolvedValue([makeTrade()]);
 
-    await expect(
-      waitForOrderFillSettlement(
-        client,
-        makeOrderResponse({ tradeIds: ['trade-1'] }),
-        { timeoutMs: 1 },
+    const result = expect(
+      pollOrderFillSettlement(
+        makeOrderFillSnapshot({ tradeIds: ['trade-1'] }),
+        1,
+        readTrades,
       ),
     ).rejects.toThrow(TimeoutError);
+    await vi.advanceTimersByTimeAsync(250);
+    await result;
   });
 });
