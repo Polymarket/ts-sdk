@@ -1,9 +1,5 @@
-import { TradeStatus, type TxHash, TxHashSchema } from '@polymarket/bindings';
-import type {
-  AcceptedOrderResponse,
-  ClobTrade,
-} from '@polymarket/bindings/clob';
-import { delay } from '@polymarket/types';
+import type { TxHash } from '@polymarket/bindings';
+import type { AcceptedOrderResponse } from '@polymarket/bindings/clob';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import {
@@ -19,8 +15,8 @@ import {
 } from '../../errors';
 import { parseUserInput } from '../../input';
 import { listAccountTrades } from '../account';
+import { pollOrderFillSettlement } from './settlement-polling';
 
-const SETTLEMENT_POLL_INTERVAL_MS = 250;
 const DEFAULT_SETTLEMENT_TIMEOUT_MS = 30_000;
 
 const WaitForOrderFillSettlementRequestFields = {
@@ -58,21 +54,6 @@ export const WaitForOrderFillSettlementError = makeErrorGuard(
   UnexpectedResponseError,
   UserInputError,
 );
-
-// A trade is settled once execution reached a terminal outcome: its
-// transaction is confirmed on-chain, or it failed and never will be.
-// Earlier statuses are not terminal: a transaction hash observed before
-// confirmation can still be replaced if the transaction is retried.
-function isTradeSettled(trade: ClobTrade): boolean {
-  return (
-    trade.status === TradeStatus.Confirmed ||
-    trade.status === TradeStatus.Failed
-  );
-}
-
-function isFailedTrade(trade: ClobTrade): boolean {
-  return trade.status === TradeStatus.Failed;
-}
 
 /**
  * Waits until every fill listed in an order response reaches a terminal
@@ -116,56 +97,8 @@ export async function waitForOrderFillSettlement(
     WaitForOrderFillSettlementRequestSchema,
   );
 
-  const tradeIds = [...new Set(order.tradeIds)];
-
-  if (tradeIds.length === 0) {
-    return [...order.transactionsHashes];
-  }
-
-  const settled = new Map<string, ClobTrade>();
-  const deadline = Date.now() + timeoutMs;
-
-  while (settled.size < tradeIds.length) {
-    const pending = tradeIds.filter((id) => !settled.has(id));
-    const pages = await Promise.all(
-      pending.map((id) => listAccountTrades(client, { id }).firstPage()),
-    );
-
-    for (const page of pages) {
-      for (const trade of page.items) {
-        if (tradeIds.includes(trade.id) && isTradeSettled(trade)) {
-          settled.set(trade.id, trade);
-        }
-      }
-    }
-
-    if (settled.size === tradeIds.length) {
-      break;
-    }
-
-    if (Date.now() >= deadline) {
-      const unsettled = tradeIds.filter((id) => !settled.has(id));
-      throw new TimeoutError(
-        `Timed out waiting for trades to settle: ${unsettled.join(', ')}`,
-      );
-    }
-
-    await delay(SETTLEMENT_POLL_INTERVAL_MS);
-  }
-
-  const trades = [...settled.values()];
-
-  if (trades.every(isFailedTrade)) {
-    throw new TransactionFailedError(
-      `Every fill of order ${order.orderId} failed execution: ${tradeIds.join(', ')}`,
-    );
-  }
-
-  return [
-    ...new Set(
-      trades
-        .filter((trade) => !isFailedTrade(trade))
-        .map((trade) => trade.transactionHash),
-    ),
-  ].map((hash) => TxHashSchema.parse(hash));
+  return pollOrderFillSettlement(order, timeoutMs, async (id) => {
+    const page = await listAccountTrades(client, { id }).firstPage();
+    return page.items;
+  });
 }
