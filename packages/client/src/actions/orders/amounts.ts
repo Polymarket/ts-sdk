@@ -73,7 +73,6 @@ export function computeLimitOrderAmounts(params: {
 export function computeMarketOrderAmounts(params: {
   amount: number;
   price: ScaledPrice;
-  protectPrice?: boolean;
   side: OrderSide;
   tickSize: TickSizeValue;
 }): {
@@ -86,7 +85,6 @@ export function computeMarketOrderAmounts(params: {
     roundConfig.size,
     Rounding.Down,
   );
-  const rounding = params.protectPrice ? Rounding.Up : Rounding.Down;
 
   if (params.side === OrderSide.BUY) {
     return {
@@ -95,7 +93,7 @@ export function computeMarketOrderAmounts(params: {
         amount,
         params.price,
         roundConfig.amount,
-        rounding,
+        Rounding.Down,
       ),
     };
   }
@@ -106,7 +104,7 @@ export function computeMarketOrderAmounts(params: {
       amount,
       params.price,
       roundConfig.amount,
-      rounding,
+      Rounding.Down,
     ),
   };
 }
