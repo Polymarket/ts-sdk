@@ -1,3 +1,4 @@
+import { ComboConditionIdSchema } from '@polymarket/bindings';
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import type {
   MarketEvent,
@@ -228,7 +229,19 @@ export function userMatcherFor(
   const markets = new Set(
     (subscription.markets ?? []).map((market) => market.toLowerCase()),
   );
-  return (event) => markets.has(event.payload.conditionId.toLowerCase());
+  const comboMarkets = new Set<string>();
+  for (const market of markets) {
+    const result = ComboConditionIdSchema.safeParse(market);
+    if (result.success) {
+      comboMarkets.add(result.data);
+    }
+  }
+  return (event) => {
+    if (event.type === 'combo_auto_redeem') {
+      return comboMarkets.has(event.payload.conditionId);
+    }
+    return markets.has(event.payload.conditionId.toLowerCase());
+  };
 }
 
 function isAllMarketsUserSubscription(subscription: UserSubscription): boolean {

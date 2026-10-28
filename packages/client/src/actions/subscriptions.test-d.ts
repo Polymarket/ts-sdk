@@ -1,4 +1,10 @@
-import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
+import {
+  type ComboConditionId,
+  type ConditionId,
+  type PositionId,
+  type TokenId,
+  toTokenId,
+} from '@polymarket/bindings';
 import type * as BindingExports from '@polymarket/bindings/subscriptions';
 import type {
   CryptoPriceEvent,
@@ -12,6 +18,8 @@ import type {
   MarketEvent,
   SportsEvent,
   StandardMarketEvent,
+  UserAutoRedeemEvent,
+  UserComboAutoRedeemEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
 import { UserOrderStatus } from '@polymarket/bindings/subscriptions';
@@ -46,6 +54,7 @@ import type {
   PublicSubscriptionSpec,
   SubscribeError,
   SubscriptionHandle,
+  UserEventType,
 } from './subscriptions';
 
 declare const secureClient: SecureClient;
@@ -70,6 +79,23 @@ describe('SecureClient.subscribe user order statuses', () => {
         expectTypeOf<'NOT_A_STATUS'>().not.toExtend<
           typeof event.payload.status
         >();
+      }
+    }
+  });
+
+  it('narrows automatic redemptions to their condition ID types', async () => {
+    expectTypeOf<'auto_redeem'>().toExtend<UserEventType>();
+    expectTypeOf<'combo_auto_redeem'>().toExtend<UserEventType>();
+    const handle = await secureClient.subscribe([{ topic: 'user' }]);
+    for await (const event of handle) {
+      if (event.type === 'combo_auto_redeem') {
+        expectTypeOf(event).toEqualTypeOf<UserComboAutoRedeemEvent>();
+        expectTypeOf(
+          event.payload.conditionId,
+        ).toEqualTypeOf<ComboConditionId>();
+      } else if (event.type === 'auto_redeem') {
+        expectTypeOf(event).toEqualTypeOf<UserAutoRedeemEvent>();
+        expectTypeOf(event.payload.conditionId).toEqualTypeOf<ConditionId>();
       }
     }
   });
