@@ -5,8 +5,13 @@ import {
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
   PerpsInstrumentSettlementSchema,
+  PerpsKnownPricingIndexSource,
+  PerpsKnownPricingMode,
+  PerpsKnownPricingReason,
   PerpsPublicTradeSchema,
   PerpsPublicTradeUpdateSchema,
+  PerpsTickerEntrySchema,
+  PerpsTickerSchema,
 } from './market';
 
 const txHash = `0x${'1'.repeat(64)}`;
@@ -321,5 +326,95 @@ describe('Perps market event horizons', () => {
         PerpsMarketDataEventSchema.safeParse({ ...wire, ets }).success,
       ).toBe(false);
     }
+  });
+});
+
+describe('ticker pricing safety metadata', () => {
+  const status = {
+    mode: 'recovery_pending',
+    reason: 'material_recovery_gap',
+    index_source: 'internal',
+    anchor_price: '123.000000000000000001',
+    anchor_timestamp: 1751500000000,
+    index_observed_timestamp: null,
+    state_changed_timestamp: 1751500001234,
+    session_id: 0,
+    config_version: null,
+    no_increase: true,
+    at_lower_bound: false,
+    at_upper_bound: true,
+  };
+  const expanded = {
+    instrument_id: 1,
+    symbol: 'TEST-PERP',
+    index_price: '123',
+    mark_price: '124',
+    last_price: '125',
+    mid_price: '124',
+    open_interest: '10',
+    funding_rate: '0.001',
+    next_funding: 1751503600000,
+  };
+  const compact = {
+    iid: 1,
+    idx: '123',
+    mark: '124',
+    last: '125',
+    mid: '124',
+    oi: '10',
+    fr: '0.001',
+    nxf: 1751503600000,
+  };
+
+  it.each([
+    [PerpsTickerSchema, expanded],
+    [PerpsTickerEntrySchema, compact],
+  ] as const)('preserves nullable provenance and restrictions for REST and streaming tickers', (schema, payload) => {
+    expect(schema.parse(payload).pricingStatus).toBeUndefined();
+    expect(
+      schema.parse({ ...payload, pricing_status: null }).pricingStatus,
+    ).toBeUndefined();
+    expect(
+      schema.parse({ ...payload, pricing_status: status }).pricingStatus,
+    ).toEqual({
+      mode: PerpsKnownPricingMode.RecoveryPending,
+      reason: PerpsKnownPricingReason.MaterialRecoveryGap,
+      indexSource: PerpsKnownPricingIndexSource.Internal,
+      anchorPrice: status.anchor_price,
+      anchorTimestamp: status.anchor_timestamp,
+      indexObservedTimestamp: null,
+      stateChangedTimestamp: status.state_changed_timestamp,
+      noIncrease: true,
+      atLowerBound: false,
+      atUpperBound: true,
+    });
+    for (const field of [
+      'mode',
+      'no_increase',
+      'at_lower_bound',
+      'state_changed_timestamp',
+    ]) {
+      const incomplete = Object.fromEntries(
+        Object.entries(status).filter(([key]) => key !== field),
+      );
+      expect(
+        schema.safeParse({ ...payload, pricing_status: incomplete }).success,
+      ).toBe(false);
+    }
+    expect(
+      schema.parse({
+        ...payload,
+        pricing_status: {
+          ...status,
+          mode: 'future_mode',
+          reason: 'future_reason',
+          index_source: 'future_source',
+        },
+      }).pricingStatus,
+    ).toMatchObject({
+      mode: 'future_mode',
+      reason: 'future_reason',
+      indexSource: 'future_source',
+    });
   });
 });
