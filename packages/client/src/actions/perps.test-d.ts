@@ -41,6 +41,10 @@ import type {
   PerpsLiquidationMethod,
   PerpsPositionDeleveragedNotification,
   PerpsPositionSnapshots,
+  PerpsPricingIndexSource,
+  PerpsPricingMode,
+  PerpsPricingReason,
+  PerpsPricingStatus,
   PerpsSession,
   PerpsSessionAccountError,
   PerpsSessionEvent,
@@ -67,6 +71,7 @@ import {
   FetchPerpsTickerError,
   PerpsCancelRetryError,
   PerpsKnownCancelOrderErrorCode,
+  PerpsKnownPricingMode,
   UpdatePerpsMarginError,
 } from '../index';
 import type {
@@ -89,6 +94,33 @@ describe('registration lookup types', () => {
       });
       // @ts-expect-error An address is required.
       client.fetchPerpsRegistration({});
+    }
+    expectTypeOf(read).toBeFunction();
+  });
+});
+
+describe('Perps ticker pricing status types', () => {
+  it('exposes an optional pricing status with open pricing values', () => {
+    async function read(client: PublicPerpsActions) {
+      const ticker = await client.fetchPerpsTicker({ instrumentId: 1 });
+      expectTypeOf(ticker.pricingStatus).toEqualTypeOf<
+        PerpsPricingStatus | undefined
+      >();
+      if (ticker.pricingStatus !== undefined) {
+        expectTypeOf(
+          ticker.pricingStatus.mode,
+        ).toEqualTypeOf<PerpsPricingMode>();
+        expectTypeOf(
+          ticker.pricingStatus.reason,
+        ).toEqualTypeOf<PerpsPricingReason>();
+        expectTypeOf(
+          ticker.pricingStatus.indexSource,
+        ).toEqualTypeOf<PerpsPricingIndexSource>();
+      }
+      const known: PerpsPricingMode = PerpsKnownPricingMode.External;
+      const unknown: PerpsPricingMode = 'future_mode';
+      void known;
+      void unknown;
     }
     expectTypeOf(read).toBeFunction();
   });

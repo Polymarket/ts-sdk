@@ -153,8 +153,18 @@ export const FetchPerpsInstrumentsResponseSchema = z.array(
   PerpsInstrumentSchema,
 );
 
-/** @experimental This API may change in a breaking way in any release, including patch releases. */
-export enum PerpsPricingMode {
+/**
+ * Known pricing modes for a Perps instrument.
+ *
+ * {@link PerpsKnownPricingMode.External} is normal pricing. The service evolves
+ * this set independently of released clients, so ticker parsing accepts
+ * unknown modes as plain strings; see {@link PerpsPricingMode}. Treat any
+ * mode other than {@link PerpsKnownPricingMode.External}, including unknown
+ * modes, as non-normal pricing.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownPricingMode {
   External = 'external',
   Hold = 'hold',
   Internal = 'internal',
@@ -163,8 +173,26 @@ export enum PerpsPricingMode {
   RecoveryPending = 'recovery_pending',
 }
 
-/** @experimental This API may change in a breaking way in any release, including patch releases. */
-export enum PerpsPricingReason {
+/**
+ * A Perps pricing mode. Known modes are enumerated in
+ * {@link PerpsKnownPricingMode}; newly introduced modes flow through as plain
+ * strings so they can be handled before a client release that enumerates
+ * them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPricingMode = PerpsKnownPricingMode | (string & {});
+
+/**
+ * Known reasons for the current pricing mode of a Perps instrument.
+ *
+ * The service evolves this set independently of released clients, so ticker
+ * parsing accepts unknown reasons as plain strings; see
+ * {@link PerpsPricingReason}.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownPricingReason {
   ExternalAvailable = 'external_available',
   AllSourcesUnavailable = 'all_sources_unavailable',
   ActivationDelay = 'activation_delay',
@@ -186,46 +214,116 @@ export enum PerpsPricingReason {
   MaterialRecoveryGap = 'material_recovery_gap',
 }
 
-/** @experimental This API may change in a breaking way in any release, including patch releases. */
-export enum PerpsPricingIndexSource {
+/**
+ * A reason for a Perps pricing mode. Known reasons are enumerated in
+ * {@link PerpsKnownPricingReason}; newly introduced reasons flow through as
+ * plain strings so they can be handled before a client release that
+ * enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPricingReason = PerpsKnownPricingReason | (string & {});
+
+/**
+ * Known sources of the retained index price of a Perps instrument.
+ *
+ * The service evolves this set independently of released clients, so ticker
+ * parsing accepts unknown sources as plain strings; see
+ * {@link PerpsPricingIndexSource}.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export enum PerpsKnownPricingIndexSource {
   Unknown = 'unknown',
   External = 'external',
   Internal = 'internal',
 }
 
+/**
+ * A source of the retained Perps index price. Known sources are enumerated in
+ * {@link PerpsKnownPricingIndexSource}; newly introduced sources flow through
+ * as plain strings so they can be handled before a client release that
+ * enumerates them.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPricingIndexSource =
+  | PerpsKnownPricingIndexSource
+  | (string & {});
+
+/**
+ * Pricing safety state of a Perps instrument. A missing status does not imply
+ * external pricing.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsPricingStatus = {
+  /**
+   * Pricing mode in effect. {@link PerpsKnownPricingMode.External} is normal
+   * pricing; treat any other value, including modes not enumerated in
+   * {@link PerpsKnownPricingMode}, as non-normal pricing.
+   */
+  mode: PerpsPricingMode;
+  /** Reason for the current pricing mode. */
+  reason: PerpsPricingReason;
+  /** Source of the retained index price, independent of the pricing mode. */
+  indexSource: PerpsPricingIndexSource;
+  /**
+   * Anchor price reported for the current pricing state, or `null` when none
+   * is reported.
+   */
+  anchorPrice: DecimalString | null;
+  /** Time associated with `anchorPrice`, or `null` when none is reported. */
+  anchorTimestamp: EpochMilliseconds | null;
+  /** Time the retained index price was observed, or `null` when unknown. */
+  indexObservedTimestamp: EpochMilliseconds | null;
+  /** Time the pricing state last changed. */
+  stateChangedTimestamp: EpochMilliseconds;
+  /**
+   * Whether the current pricing state reports a no-increase exposure
+   * restriction.
+   */
+  noIncrease: boolean;
+  /**
+   * Whether the current pricing state reports the price at its lower bound.
+   */
+  atLowerBound: boolean;
+  /**
+   * Whether the current pricing state reports the price at its upper bound.
+   */
+  atUpperBound: boolean;
+};
+
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export const PerpsPricingStatusSchema = z
   .object({
-    mode: z.enum(PerpsPricingMode),
-    reason: z.enum(PerpsPricingReason),
-    index_source: z.enum(PerpsPricingIndexSource),
+    mode: z.string().transform((value): PerpsPricingMode => value),
+    reason: z.string().transform((value): PerpsPricingReason => value),
+    index_source: z
+      .string()
+      .transform((value): PerpsPricingIndexSource => value),
     anchor_price: DecimalStringSchema.nullable(),
     anchor_timestamp: EpochMillisecondsSchema.nullable(),
     index_observed_timestamp: EpochMillisecondsSchema.nullable(),
     state_changed_timestamp: EpochMillisecondsSchema,
-    session_id: z.number().int().nonnegative().nullable(),
-    config_version: z.number().int().nonnegative().nullable(),
     no_increase: z.boolean(),
     at_lower_bound: z.boolean(),
     at_upper_bound: z.boolean(),
   })
-  .transform((status) => ({
-    mode: status.mode,
-    reason: status.reason,
-    indexSource: status.index_source,
-    anchorPrice: status.anchor_price,
-    anchorTimestamp: status.anchor_timestamp,
-    indexObservedTimestamp: status.index_observed_timestamp,
-    stateChangedTimestamp: status.state_changed_timestamp,
-    sessionId: status.session_id,
-    configVersion: status.config_version,
-    noIncrease: status.no_increase,
-    atLowerBound: status.at_lower_bound,
-    atUpperBound: status.at_upper_bound,
-  }));
-
-/** @experimental This API may change in a breaking way in any release, including patch releases. */
-export type PerpsPricingStatus = z.infer<typeof PerpsPricingStatusSchema>;
+  .transform(
+    (status): PerpsPricingStatus => ({
+      mode: status.mode,
+      reason: status.reason,
+      indexSource: status.index_source,
+      anchorPrice: status.anchor_price,
+      anchorTimestamp: status.anchor_timestamp,
+      indexObservedTimestamp: status.index_observed_timestamp,
+      stateChangedTimestamp: status.state_changed_timestamp,
+      noIncrease: status.no_increase,
+      atLowerBound: status.at_lower_bound,
+      atUpperBound: status.at_upper_bound,
+    }),
+  );
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -248,7 +346,11 @@ export const PerpsTickerSchema = z
     instrumentId: ticker.instrument_id,
     symbol: ticker.symbol,
     indexPrice: ticker.index_price,
-    pricingStatus: ticker.pricing_status,
+    /**
+     * Pricing safety state, or `undefined` when not reported. A missing status
+     * does not imply external pricing.
+     */
+    pricingStatus: ticker.pricing_status ?? undefined,
     markPrice: ticker.mark_price,
     lastPrice: ticker.last_price,
     midPrice: ticker.mid_price,
@@ -278,6 +380,9 @@ export const PerpsTickerEntrySchema = z
   .object({
     iid: PerpsInstrumentIdSchema,
     idx: DecimalStringSchema,
+    // Unlike the abbreviated keys around it, the stream carries this field
+    // under its full `pricing_status` key, the same key as the REST ticker.
+    // No captured stream frame in this repository confirms that key yet.
     pricing_status: PerpsPricingStatusSchema.nullish(),
     mark: DecimalStringSchema,
     last: DecimalStringSchema,
@@ -289,7 +394,11 @@ export const PerpsTickerEntrySchema = z
   .transform((ticker) => ({
     instrumentId: ticker.iid,
     indexPrice: ticker.idx,
-    pricingStatus: ticker.pricing_status,
+    /**
+     * Pricing safety state, or `undefined` when not reported. A missing status
+     * does not imply external pricing.
+     */
+    pricingStatus: ticker.pricing_status ?? undefined,
     markPrice: ticker.mark,
     lastPrice: ticker.last,
     midPrice: ticker.mid,

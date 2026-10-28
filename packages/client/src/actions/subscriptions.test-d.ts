@@ -531,6 +531,9 @@ describe('Perps event horizon public subscription types', () => {
       }
       for await (const event of handles[3]) {
         expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsTickerEvent>();
+        expectTypeOf(event.payload.pricingStatus).toEqualTypeOf<
+          ClientExports.PerpsPricingStatus | undefined
+        >();
       }
       for await (const event of handles[4]) {
         expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsStatisticEvent>();

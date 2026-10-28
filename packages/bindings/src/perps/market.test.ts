@@ -5,9 +5,9 @@ import {
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
   PerpsInstrumentSettlementSchema,
-  PerpsPricingIndexSource,
-  PerpsPricingMode,
-  PerpsPricingReason,
+  PerpsKnownPricingIndexSource,
+  PerpsKnownPricingMode,
+  PerpsKnownPricingReason,
   PerpsPublicTradeSchema,
   PerpsPublicTradeUpdateSchema,
   PerpsTickerEntrySchema,
@@ -373,28 +373,26 @@ describe('ticker pricing safety metadata', () => {
     expect(schema.parse(payload).pricingStatus).toBeUndefined();
     expect(
       schema.parse({ ...payload, pricing_status: null }).pricingStatus,
-    ).toBeNull();
+    ).toBeUndefined();
     expect(
       schema.parse({ ...payload, pricing_status: status }).pricingStatus,
     ).toEqual({
-      mode: PerpsPricingMode.RecoveryPending,
-      reason: PerpsPricingReason.MaterialRecoveryGap,
-      indexSource: PerpsPricingIndexSource.Internal,
+      mode: PerpsKnownPricingMode.RecoveryPending,
+      reason: PerpsKnownPricingReason.MaterialRecoveryGap,
+      indexSource: PerpsKnownPricingIndexSource.Internal,
       anchorPrice: status.anchor_price,
       anchorTimestamp: status.anchor_timestamp,
       indexObservedTimestamp: null,
       stateChangedTimestamp: status.state_changed_timestamp,
-      sessionId: 0,
-      configVersion: null,
       noIncrease: true,
       atLowerBound: false,
       atUpperBound: true,
     });
     for (const field of [
+      'mode',
       'no_increase',
       'at_lower_bound',
       'state_changed_timestamp',
-      'session_id',
     ]) {
       const incomplete = Object.fromEntries(
         Object.entries(status).filter(([key]) => key !== field),
@@ -403,5 +401,20 @@ describe('ticker pricing safety metadata', () => {
         schema.safeParse({ ...payload, pricing_status: incomplete }).success,
       ).toBe(false);
     }
+    expect(
+      schema.parse({
+        ...payload,
+        pricing_status: {
+          ...status,
+          mode: 'future_mode',
+          reason: 'future_reason',
+          index_source: 'future_source',
+        },
+      }).pricingStatus,
+    ).toMatchObject({
+      mode: 'future_mode',
+      reason: 'future_reason',
+      indexSource: 'future_source',
+    });
   });
 });
