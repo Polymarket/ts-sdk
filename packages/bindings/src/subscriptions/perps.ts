@@ -7,7 +7,7 @@ import {
 import { PerpsBuilderEarningSchema } from '../perps/builders';
 import {
   PerpsInstrumentIdSchema,
-  type PerpsKlineInterval,
+  PerpsKlineInterval,
   PerpsOrderIdSchema,
 } from '../perps/common';
 import {
@@ -41,9 +41,13 @@ const BboChannelSchema = z.string().regex(/^bbo::\d+$/);
 const BookChannelSchema = z.string().regex(/^book::\d+$/);
 const TickersChannelSchema = z.string().regex(/^tickers::(all|\d+)$/);
 const StatisticsChannelSchema = z.string().regex(/^statistics::(all|\d+)$/);
+// Candle channels stream every kline interval except 1s.
+const streamingCandleIntervals = Object.values(PerpsKlineInterval).filter(
+  (interval) => interval !== PerpsKlineInterval.OneSecond,
+);
 const CandlesChannelSchema = z
   .string()
-  .regex(/^klines::\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$/);
+  .regex(new RegExp(`^klines::\\d+::(${streamingCandleIntervals.join('|')})$`));
 const TpslChannelSchema = z.string().regex(/^tpsl::\d+$/);
 const PerpsSessionChannelSchema = z.enum([
   'balances',
