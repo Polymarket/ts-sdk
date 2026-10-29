@@ -77,6 +77,62 @@ export const PerpsInstrumentSettlementSchema = z
   );
 
 /**
+ * Stored fee window with decimal-string rates. Scheduled and expired windows
+ * remain visible; presence does not imply that the override is active.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsFeeOverrideSchema = z
+  .object({
+    start_time: EpochMillisecondsSchema,
+    end_time: EpochMillisecondsSchema.nullable(),
+    tiers: z.array(
+      z
+        .object({
+          taker_fee_rate: DecimalStringSchema,
+          maker_fee_rate: DecimalStringSchema,
+        })
+        .transform((tier) => ({
+          takerFeeRate: tier.taker_fee_rate,
+          makerFeeRate: tier.maker_fee_rate,
+        })),
+    ),
+  })
+  .transform((override) => ({
+    startTime: override.start_time,
+    endTime: override.end_time,
+    tiers: override.tiers,
+  }));
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsFeeOverride = z.infer<typeof PerpsFeeOverrideSchema>;
+
+/**
+ * Stored funding window. A funding period uses the decimal-string multiplier
+ * when its start falls in the start-inclusive, end-exclusive window.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export const PerpsFundingMultiplierSchema = z
+  .object({
+    multiplier: DecimalStringSchema,
+    start_time: EpochMillisecondsSchema,
+    end_time: EpochMillisecondsSchema.nullable(),
+  })
+  .transform((funding) => ({
+    multiplier: funding.multiplier,
+    startTime: funding.start_time,
+    endTime: funding.end_time,
+  }));
+
+/**
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsFundingMultiplier = z.infer<
+  typeof PerpsFundingMultiplierSchema
+>;
+
+/**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export const PerpsInstrumentSchema = z
@@ -88,6 +144,8 @@ export const PerpsInstrumentSchema = z
     display_symbol: z.string().optional(),
     close_only: z.boolean().default(false),
     settlement: PerpsInstrumentSettlementSchema.optional(),
+    fee_override: PerpsFeeOverrideSchema.nullish(),
+    funding_multiplier: PerpsFundingMultiplierSchema.nullish(),
     base_asset: PerpsAssetSchema,
     quote_asset: PerpsAssetSchema,
     funding_interval: PerpsFundingIntervalSchema,
@@ -121,6 +179,8 @@ export const PerpsInstrumentSchema = z
     closeOnly: instrument.close_only,
     /** Present after permanent retirement; trading cannot resume. */
     settlement: instrument.settlement,
+    feeOverride: instrument.fee_override,
+    fundingMultiplier: instrument.funding_multiplier,
     baseAsset: instrument.base_asset,
     quoteAsset: instrument.quote_asset,
     fundingInterval: instrument.funding_interval,

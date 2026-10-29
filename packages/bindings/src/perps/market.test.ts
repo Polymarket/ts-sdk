@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { PerpsMarketDataEventSchema } from '../subscriptions/perps';
 import {
+  FetchPerpsFeesResponseSchema,
+  FetchPerpsInstrumentsResponseSchema,
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
@@ -55,6 +57,77 @@ const baseInstrument = {
 };
 
 describe('PerpsInstrumentSchema', () => {
+  it.each([
+    'equity',
+    'commodity',
+    'index',
+    'crypto',
+    'pre_ipo',
+    'future_category',
+  ])('preserves category %s without rejecting the instrument response', (category) => {
+    const instruments = FetchPerpsInstrumentsResponseSchema.parse([
+      baseInstrument,
+      { ...baseInstrument, instrument_id: 2, category },
+    ]);
+
+    expect(instruments.map((instrument) => instrument.category)).toEqual([
+      'crypto',
+      category,
+    ]);
+  });
+
+  it.each(['', null, 1, {}])('rejects invalid categories: %j', (category) => {
+    expect(
+      FetchPerpsInstrumentsResponseSchema.safeParse([
+        { ...baseInstrument, category },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    null,
+    1_794_355_200_000,
+  ])('normalizes fee and funding windows with end time %j', (endTime) => {
+    const instrument = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      category: 'pre_ipo',
+      fee_override: {
+        start_time: 1_793_145_600_000,
+        end_time: endTime,
+        tiers: [{ taker_fee_rate: '0.0002', maker_fee_rate: '-0.00005' }],
+      },
+      funding_multiplier: {
+        multiplier: '0.5',
+        start_time: 1_793_145_600_000,
+        end_time: endTime,
+      },
+    });
+
+    expect(instrument.feeOverride).toEqual({
+      startTime: 1_793_145_600_000,
+      endTime,
+      tiers: [{ takerFeeRate: '0.0002', makerFeeRate: '-0.00005' }],
+    });
+    expect(instrument.fundingMultiplier).toEqual({
+      multiplier: '0.5',
+      startTime: 1_793_145_600_000,
+      endTime,
+    });
+  });
+
+  it.each([
+    undefined,
+    null,
+  ])('preserves absent or null overrides: %j', (value) => {
+    const instrument = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      fee_override: value,
+      funding_multiplier: value,
+    });
+    expect(instrument.feeOverride).toBe(value);
+    expect(instrument.fundingMultiplier).toBe(value);
+  });
+
   it('preserves advisory visibility independently of logo metadata', () => {
     const visible = PerpsInstrumentSchema.parse({
       ...baseInstrument,
@@ -124,6 +197,31 @@ describe('PerpsInstrumentSchema', () => {
 });
 
 describe('PerpsFeeScheduleEntrySchema', () => {
+  it.each([
+    'pre_ipo',
+    'future_category',
+  ])('preserves category %s in the fee schedule response', (category) => {
+    const fees = FetchPerpsFeesResponseSchema.parse({
+      fee_schedule: [
+        {
+          instrument_type: 'perpetual',
+          category,
+          taker_fee_rate: '0.00045',
+          maker_fee_rate: '0.00015',
+          tiers: [
+            {
+              min_volume_30d: '0',
+              taker_fee_rate: '0.00045',
+              maker_fee_rate: '0.00015',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(fees.feeSchedule[0]?.category).toBe(category);
+  });
+
   it('normalizes volume tiers including negative maker rates', () => {
     const entry = PerpsFeeScheduleEntrySchema.parse({
       instrument_type: 'perpetual',

@@ -218,10 +218,12 @@ export type PublicPerpsActions = {
   ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
+   * Category strings are preserved, including values introduced after this SDK release.
    *
    * @example
    * ```ts
    * const instruments = await client.fetchPerpsInstruments();
+   * const preIpo = await client.fetchPerpsInstruments({ category: 'pre_ipo' });
    * ```
    *
    * @throws {@link FetchPerpsInstrumentsError}
