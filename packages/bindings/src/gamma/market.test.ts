@@ -31,17 +31,19 @@ const rawMultiOutcomeMarket = {
 describe('MarketSchema', () => {
   it.each([
     0,
-    2,
-    0.5,
+    500,
+    2000,
     null,
     undefined,
-  ])('preserves secondsDelay when parsing a market: %s', (secondsDelay) => {
+  ])('preserves takerDelayMs when parsing a market: %s', (takerDelayMs) => {
     const market = MarketSchema.parse({
       ...rawBinaryMarket,
-      ...(secondsDelay === undefined ? {} : { secondsDelay }),
+      secondsDelay: 2,
+      ...(takerDelayMs === undefined ? {} : { takerDelayMs }),
     });
 
-    expect(market.trading.secondsDelay).toBe(secondsDelay);
+    expect(market.trading.takerDelayMs).toBe(takerDelayMs);
+    expect(market.trading.secondsDelay).toBe(2);
   });
 
   it('preserves v2 oracle resolution metadata independently of legacy UMA fields', () => {

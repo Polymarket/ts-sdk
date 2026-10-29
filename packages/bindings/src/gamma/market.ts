@@ -186,7 +186,10 @@ export type MarketPrices = {
 export type MarketTrading = {
   minimumOrderSize?: DecimalString | null;
   minimumTickSize?: TickSizeValue | null;
+  /** @deprecated Use takerDelayMs instead. */
   secondsDelay?: number | null;
+  /** Taker delay in milliseconds. */
+  takerDelayMs?: number | null;
   feesEnabled?: boolean | null;
   feeType?: string | null;
   feeSchedule?: FeeSchedule | null;
@@ -349,7 +352,8 @@ export const GammaMarketSchema = z.object({
   volume1mo: DecimalishSchema.nullish(),
   volume1yr: DecimalishSchema.nullish(),
   gameStartTime: IsoDateTimeStringSchema.nullish(),
-  secondsDelay: z.number().nullish(),
+  secondsDelay: z.number().int().nullish(),
+  takerDelayMs: z.number().int().nullish(),
   clobTokenIds: TokenIdArraySchema,
   comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
@@ -538,6 +542,7 @@ export function normalizeMarket(market: GammaMarket): Market {
       minimumOrderSize: market.orderMinSize,
       minimumTickSize: market.orderPriceMinTickSize,
       secondsDelay: market.secondsDelay,
+      takerDelayMs: market.takerDelayMs,
       feesEnabled: market.feesEnabled,
       feeType: market.feeType,
       feeSchedule: market.feeSchedule,
