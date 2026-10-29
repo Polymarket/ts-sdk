@@ -3,6 +3,7 @@ import {
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
+  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -44,6 +45,7 @@ export function redactRequestError(
       return new RequestAbortedError(message);
     if (error instanceof UnexpectedResponseError)
       return new UnexpectedResponseError(message);
+    if (error instanceof SigningError) return new SigningError(message);
     if (error instanceof UserInputError) return new UserInputError(message);
     return new TransportError(
       sensitive && !(error instanceof TransportError)
@@ -56,17 +58,18 @@ export function redactRequestError(
   );
 }
 
-/** Keeps authentication material out of transport diagnostics. @internal */
+/** Keeps authentication material out of HTTP diagnostics; credentials remain with the caller. @internal */
 export function protectRequestErrors(
   fetch: Fetch = globalThis.fetch,
   sensitive = false,
+  ownedSecrets: () => Iterable<string> = () => [],
 ): Fetch {
   return async (input, init) => {
     const request =
       input instanceof Request && init === undefined
         ? input
         : new Request(input, init);
-    const secrets = new Set<string>();
+    const secrets = new Set(ownedSecrets());
     for (const [key, value] of request.headers) {
       if (/authorization|api.?key|passphrase|signature|secret/i.test(key)) {
         secrets.add(value);
@@ -90,6 +93,8 @@ export function protectRequestErrors(
         .json()
         .then(collect, () => undefined);
     }
+    const authentication =
+      sensitive || new URL(request.url).pathname.includes('/v1/auth/');
     try {
       const response = await fetch(request);
       if (response.ok) return response;
@@ -105,26 +110,42 @@ export function protectRequestErrors(
         typeof body === 'object' &&
         'code' in body &&
         typeof body.code === 'string' &&
-        /^[a-z][a-z0-9_]*$/.test(body.code)
+        /^[a-z][a-z0-9_]*$/.test(body.code) &&
+        redact(body.code, secrets) === body.code
           ? body.code
           : undefined;
+      let message = redact(text, secrets);
+      if (
+        !authentication &&
+        body !== null &&
+        typeof body === 'object' &&
+        'code' in body &&
+        typeof body.code === 'string' &&
+        redact(body.code, secrets) !== body.code
+      )
+        message = redact(JSON.stringify({ ...body, code: undefined }), secrets);
       const headers = new Headers(response.headers);
       headers.delete('content-length');
       headers.delete('content-encoding');
-      if (sensitive) headers.set('content-type', 'application/json');
-      const result = sensitive
+      if (authentication) headers.set('content-type', 'application/json');
+      const result = authentication
         ? Response.json(
             { message: 'Authentication request rejected.', code },
-            { status: response.status, headers },
+            {
+              status: response.status,
+              statusText: response.statusText,
+              headers,
+            },
           )
-        : new Response(redact(text, secrets), {
+        : new Response(message, {
             status: response.status,
+            statusText: response.statusText,
             headers,
           });
       Object.defineProperty(result, 'url', { value: response.url });
       return result;
     } catch (error) {
-      throw redactRequestError(error, secrets, sensitive);
+      throw redactRequestError(error, secrets, authentication);
     }
   };
 }

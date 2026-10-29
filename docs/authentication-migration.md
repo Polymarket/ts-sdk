@@ -59,6 +59,8 @@ Identity HTTP calls use the configured Predictions origin. Business-action routi
 
 Deterministic tests validate these contracts; they do not establish production readiness. Before external release, verify deployed gateway issuer/audience and route coverage, external-origin CORS/WAF access, builder identity and gasless quota continuity, and same-connection renewal support on all socket servers. Requester socket admission is first-party only. Browser ticket flows must remain intact. Do not retire direct upstreams or L2 credentials as part of this SDK migration.
 
+See [Platform API Keys](platform-api-keys.md) for server-only keys, challenge proxies and retained builder/submission authorization.
+
 ## Endpoint configuration
 
 Set `predictions.rest` to the gateway origin, without appending `/v1`: auth actions already include `/v1/auth`. A configured proxy prefix is preserved exactly. Changing only `predictions.rest` does not redirect the other endpoint configurations; configure direct services for the same environment for business actions and pre-login wallet discovery.

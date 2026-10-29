@@ -152,3 +152,14 @@ describe('predictions service types', () => {
     new RootServiceClient({ root: 'https://example.com' });
   });
 });
+
+it('rejects platform secrets in the browser configuration', async () => {
+  const browserSafe = await import('./index');
+  // @ts-expect-error Server-held Platform API Keys must not be exposed from the browser entrypoint.
+  browserSafe.platformApiKey;
+  browserSafe.remotePlatformApiKey({
+    url: '/challenge',
+    // @ts-expect-error Browser configuration has no Platform API Key secret field.
+    key: 'pm_sk_synthetic',
+  });
+});

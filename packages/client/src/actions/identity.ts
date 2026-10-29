@@ -1,7 +1,6 @@
 import {
   type BearerCredentials,
   EvmAddressSchema,
-  OwnershipChallengeSchema,
   TokenResponseSchema,
 } from '@polymarket/bindings';
 import { z } from 'zod';
@@ -68,14 +67,11 @@ export async function login(
     throw new SigningError('Could not obtain signer address.');
   }
   const signer = parseUserInput(address, EvmAddressSchema);
-  const challenge = await client.auth.post('/v1/auth/challenge', {
-    json: {
-      signer,
-      wallet: params.wallet,
-      verification_token: params.verificationToken,
-      nonce: params.nonce,
-    },
-    schema: OwnershipChallengeSchema,
+  const challenge = await client.requestOwnershipChallenge({
+    signer,
+    wallet: params.wallet,
+    verification_token: params.verificationToken,
+    nonce: params.nonce,
   });
   let signature: string;
   try {
