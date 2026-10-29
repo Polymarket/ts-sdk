@@ -1,6 +1,7 @@
 /* eslint-disable import/no-default-export */
 
 import { defineConfig } from 'tsup';
+import { lazyZodShapes } from '../../scripts/build/lazy-zod-shapes.mjs';
 
 export default defineConfig(() => ({
   entry: [
@@ -23,4 +24,5 @@ export default defineConfig(() => ({
   dts: true,
   platform: 'neutral',
   format: ['esm'],
+  esbuildPlugins: [lazyZodShapes()],
 }));

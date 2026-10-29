@@ -1,5 +1,5 @@
 import type { EvmAddress } from '@polymarket/types';
-import { TypedData } from 'ox';
+import * as TypedData from 'ox/TypedData';
 import type { TypedDataPayload } from './types';
 
 /** @internal */

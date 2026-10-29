@@ -15,49 +15,61 @@ import type {
 } from '@polymarket/bindings/gamma';
 import {
   type FetchCommentsByIdRequest,
-  type FetchEventRequest,
-  type FetchEventTagsRequest,
-  type FetchMarketRequest,
-  type FetchMarketTagsRequest,
-  type FetchPublicProfileRequest,
-  type FetchRelatedTagResourcesRequest,
-  type FetchRelatedTagsRequest,
-  type FetchSeriesRequest,
-  type FetchTagRequest,
   fetchCommentsById,
-  fetchEvent,
-  fetchEventTags,
-  fetchMarket,
-  fetchMarketTags,
-  fetchPublicProfile,
-  fetchRelatedTagResources,
-  fetchRelatedTags,
-  fetchSeries,
-  fetchSportsMarketTypes,
-  fetchTag,
-  type ListComboMarketsRequest,
   type ListCommentsByUserAddressRequest,
   type ListCommentsRequest,
-  type ListEventsRequest,
-  type ListMarketClarificationsRequest,
-  type ListMarketsRequest,
-  type ListSeriesRequest,
-  type ListTagsRequest,
-  type ListTeamsRequest,
-  listComboMarkets,
   listComments,
   listCommentsByUserAddress,
+} from '../actions/comments';
+import {
+  type FetchEventRequest,
+  type FetchEventTagsRequest,
+  fetchEvent,
+  fetchEventTags,
+  type ListEventsRequest,
   listEvents,
+} from '../actions/events';
+import {
+  type ListMarketClarificationsRequest,
   listMarketClarifications,
+} from '../actions/market-clarifications';
+import {
+  type FetchMarketRequest,
+  type FetchMarketTagsRequest,
+  fetchMarket,
+  fetchMarketTags,
+  type ListComboMarketsRequest,
+  type ListMarketsRequest,
+  listComboMarkets,
   listMarkets,
-  listSeries,
-  listSports,
-  listTags,
-  listTeams,
+} from '../actions/markets';
+import {
+  type FetchPublicProfileRequest,
+  fetchPublicProfile,
+} from '../actions/profiles';
+import {
   type SearchRequest,
   type SearchResults,
   search,
-} from '../actions';
+} from '../actions/search';
+import {
+  type FetchSeriesRequest,
+  fetchSeries,
+  type ListSeriesRequest,
+  listSeries,
+} from '../actions/series';
+import { fetchSportsMarketTypes, listSports } from '../actions/sports';
+import {
+  type FetchRelatedTagResourcesRequest,
+  type FetchRelatedTagsRequest,
+  type FetchTagRequest,
+  fetchRelatedTagResources,
+  fetchRelatedTags,
+  fetchTag,
+  type ListTagsRequest,
+  listTags,
+} from '../actions/tags';
+import { type ListTeamsRequest, listTeams } from '../actions/teams';
 import type {
   BaseClient,
   BasePublicClient,
@@ -768,24 +780,31 @@ export function discoveryActions(client: BaseClient): DiscoveryActions {
 // Keep this list in sync with the methods on DiscoveryActions.
 export {
   FetchCommentsByIdError,
-  FetchEventError,
-  FetchEventTagsError,
-  FetchMarketError,
-  FetchMarketTagsError,
-  FetchPublicProfileError,
-  FetchRelatedTagResourcesError,
-  FetchRelatedTagsError,
-  FetchSeriesError,
-  FetchSportsMarketTypesError,
-  FetchTagError,
-  ListComboMarketsError,
   ListCommentsByUserAddressError,
   ListCommentsError,
+} from '../actions/comments';
+export {
+  FetchEventError,
+  FetchEventTagsError,
   ListEventsError,
+} from '../actions/events';
+export {
+  FetchMarketError,
+  FetchMarketTagsError,
+  ListComboMarketsError,
   ListMarketsError,
-  ListSeriesError,
+} from '../actions/markets';
+export { FetchPublicProfileError } from '../actions/profiles';
+export { SearchError } from '../actions/search';
+export { FetchSeriesError, ListSeriesError } from '../actions/series';
+export {
+  FetchSportsMarketTypesError,
   ListSportsError,
+} from '../actions/sports';
+export {
+  FetchRelatedTagResourcesError,
+  FetchRelatedTagsError,
+  FetchTagError,
   ListTagsError,
-  ListTeamsError,
-  SearchError,
-} from '../actions';
+} from '../actions/tags';
+export { ListTeamsError } from '../actions/teams';

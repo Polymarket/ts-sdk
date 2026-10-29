@@ -1,7 +1,23 @@
 import { configDefaults, defineConfig } from 'vitest/config';
+import { transformLazyZodShapes } from './scripts/build/lazy-zod-shapes.mjs';
+
+// Tests run the same lazy Zod shape rewrite that the package builds emit.
+const SDK_SOURCE =
+  /[\\/]packages[\\/](bindings|client)[\\/]src[\\/].*(?<!\.test(-d)?)\.ts$/;
 
 export default defineConfig({
   root: './',
+  plugins: [
+    {
+      name: 'lazy-zod-shapes',
+      enforce: 'pre',
+      transform(code, id) {
+        if (!SDK_SOURCE.test(id) || !code.includes("from 'zod'"))
+          return undefined;
+        return { code: transformLazyZodShapes(code, id), map: null };
+      },
+    },
+  ],
   resolve: {
     tsconfigPaths: true,
   },

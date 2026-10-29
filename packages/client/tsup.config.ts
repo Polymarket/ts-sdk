@@ -1,6 +1,7 @@
 /* eslint-disable import/no-default-export */
 
 import { defineConfig } from 'tsup';
+import { lazyZodShapes } from '../../scripts/build/lazy-zod-shapes.mjs';
 import { version } from './package.json';
 
 const define = {
@@ -12,6 +13,7 @@ export default defineConfig(() => [
     define,
     entry: [
       'src/index.ts',
+      'src/hmac.ts',
       'src/actions/index.ts',
       'src/ethers-v5.ts',
       'src/viem.ts',
@@ -26,6 +28,7 @@ export default defineConfig(() => [
     dts: true,
     platform: 'neutral',
     format: ['esm'],
+    esbuildPlugins: [lazyZodShapes()],
   },
   {
     define,
@@ -39,5 +42,6 @@ export default defineConfig(() => [
     dts: true,
     platform: 'node',
     format: ['esm'],
+    esbuildPlugins: [lazyZodShapes()],
   },
 ]);
