@@ -29,6 +29,21 @@ const rawMultiOutcomeMarket = {
 };
 
 describe('MarketSchema', () => {
+  it.each([
+    0,
+    2,
+    0.5,
+    null,
+    undefined,
+  ])('preserves secondsDelay when parsing a market: %s', (secondsDelay) => {
+    const market = MarketSchema.parse({
+      ...rawBinaryMarket,
+      ...(secondsDelay === undefined ? {} : { secondsDelay }),
+    });
+
+    expect(market.trading.secondsDelay).toBe(secondsDelay);
+  });
+
   it('preserves v2 oracle resolution metadata independently of legacy UMA fields', () => {
     const onchainEventId = `0x${'ab'.repeat(29)}000000`;
     const requestId = `0x${'cd'.repeat(31)}00`;

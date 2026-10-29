@@ -349,7 +349,7 @@ export const GammaMarketSchema = z.object({
   volume1mo: DecimalishSchema.nullish(),
   volume1yr: DecimalishSchema.nullish(),
   gameStartTime: IsoDateTimeStringSchema.nullish(),
-  secondsDelay: z.number().int().nullish(),
+  secondsDelay: z.number().nullish(),
   clobTokenIds: TokenIdArraySchema,
   comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
