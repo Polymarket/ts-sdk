@@ -338,6 +338,7 @@ export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
  */
 export const PerpsInstrumentCategorySchema = z
   .string()
+  .min(1)
   .transform((value): PerpsInstrumentCategory => value);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.

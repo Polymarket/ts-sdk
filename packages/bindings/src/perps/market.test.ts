@@ -76,7 +76,7 @@ describe('PerpsInstrumentSchema', () => {
     ]);
   });
 
-  it.each([null, 1, {}])('rejects non-string categories: %j', (category) => {
+  it.each(['', null, 1, {}])('rejects invalid categories: %j', (category) => {
     expect(
       FetchPerpsInstrumentsResponseSchema.safeParse([
         { ...baseInstrument, category },
