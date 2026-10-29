@@ -30,11 +30,11 @@ export type * from '@polymarket/bindings/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   PerpsDepositStatus,
-  PerpsInstrumentCategory,
   PerpsInstrumentType,
   PerpsInternalTransferDirection,
   PerpsKlineInterval,
   PerpsKnownCancelOrderErrorCode,
+  PerpsKnownInstrumentCategory,
   PerpsKnownInternalTransferType,
   PerpsKnownWithdrawalStatus,
   PerpsLiquidationMethod,

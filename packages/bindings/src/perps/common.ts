@@ -176,12 +176,23 @@ export enum PerpsInstrumentType {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export enum PerpsInstrumentCategory {
+export enum PerpsKnownInstrumentCategory {
   Equity = 'equity',
   Commodity = 'commodity',
   Index = 'index',
   Crypto = 'crypto',
+  /** Pre-IPO instruments; the API value is `pre_ipo`. */
+  PreIpo = 'pre_ipo',
 }
+
+/**
+ * An instrument category. Known values are enumerated in
+ * {@link PerpsKnownInstrumentCategory}; new categories pass through as strings.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export type PerpsInstrumentCategory =
+  | PerpsKnownInstrumentCategory
+  | (string & {});
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -325,7 +336,10 @@ export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export const PerpsInstrumentCategorySchema = z.enum(PerpsInstrumentCategory);
+export const PerpsInstrumentCategorySchema = z
+  .string()
+  .min(1)
+  .transform((value): PerpsInstrumentCategory => value);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */

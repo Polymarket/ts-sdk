@@ -217,7 +217,7 @@ const FetchPerpsInstrumentsRequestSchema = z
 export type FetchPerpsInstrumentsRequest = {
   /** Perps instrument identifier to fetch. */
   instrumentId?: number;
-  /** Optional instrument category filter. */
+  /** Optional category filter, including `pre_ipo` and future category strings. */
   category?: PerpsInstrumentCategory;
 };
 
@@ -232,6 +232,7 @@ export const FetchPerpsInstrumentsError = PerpsPublicReadError;
 
 /**
  * Fetches Perps instruments.
+ * Category strings are preserved, including values introduced after this SDK release.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
