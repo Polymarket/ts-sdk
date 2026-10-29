@@ -70,7 +70,7 @@ export const ListBuilderLeaderboardError = makeErrorGuard(
  * Builders are ranked by attributed share volume within `window`, which
  * defaults to one day. `builderCode` is the stable identifier; names and
  * profile images are display metadata. `pageSize` defaults to 100 (max 1000).
- * Transient rate limits are retried by default.
+ * Set `retries` to retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -168,7 +168,7 @@ export const FetchBuilderVolumeError = makeErrorGuard(
  * {@link BuilderVolumeInterval.Year} for one bucket per calendar year.
  * `bucketLimit` returns that many complete recent buckets (default 30, max 90),
  * not that many builder rows. Results are newest bucket first, and volume is
- * measured in shares. Transient rate limits are retried by default.
+ * measured in shares. Set `retries` to retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

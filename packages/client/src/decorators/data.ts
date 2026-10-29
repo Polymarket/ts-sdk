@@ -75,7 +75,7 @@ export type DataActions = {
    * Returns a direct collection. Unknown selectors contribute no rows; asset
    * lookups retain request order and condition groups retain server order.
    * Overlapping conditions can repeat assets. Settlement metadata and outcome
-   * labels can lag by up to a minute. Transient rate limits are retried automatically.
+   * labels can lag by up to a minute. Set `retries` to retry transient failures.
    *
    * @throws {@link FetchTokenReferencesError}
    * Thrown on failure.
@@ -94,8 +94,8 @@ export type DataActions = {
    *
    * Results contain one row per market, ordered by taker volume descending, and
    * a total across all returned markets. Volume is measured in shares. Event
-   * IDs must be positive 32-bit integers. Transient rate limits are retried
-   * by default.
+   * IDs must be positive 32-bit integers. Set `retries` to
+   * retry transient failures.
    *
    * @throws {@link FetchEventLiveVolumeError}
    * Thrown on failure.
@@ -304,8 +304,8 @@ export type DataActions = {
    * when that resolution is unavailable for the window. Prices are decimal
    * strings and returned timestamps are Unix epoch milliseconds. Series pages
    * are ordered oldest first; an `asOf` request returns at most one item. Series
-   * page sizes default to and are capped at 10,000 points. Transient rate limits
-   * are retried by default.
+   * page sizes default to and are capped at 10,000 points. Set `retries` to
+   * retry transient failures.
    *
    * @throws {@link ListPriceHistoryError}
    * Thrown on failure.
@@ -355,8 +355,8 @@ export type DataActions = {
    * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
    * the global aggregate, whose `conditionId` is `null`. A requested servable
    * market with no holdings has a zero value; an absent row means the market
-   * is not servable. Values are in USDC. Transient rate limits are retried
-   * by default.
+   * is not servable. Values are in USDC. Set `retries` to
+   * retry transient failures.
    *
    * @throws {@link FetchOpenInterestError}
    * Thrown on failure.
@@ -382,7 +382,7 @@ export type DataActions = {
    * equivalent to 1,000,000 base units.
    * Amounts are net holdings by default. `includePnl` switches to per-outcome
    * gross holdings and adds position economics; it requires one condition ID and
-   * a page size of at most 100. Transient rate limits are retried by default.
+   * a page size of at most 100. Set `retries` to retry transient failures.
    *
    * @throws {@link ListMarketHoldersError}
    * Thrown on failure.
@@ -413,8 +413,8 @@ export type DataActions = {
    * may be sent alone). `conditionId` accepts at most 20 distinct ids. `pageSize`
    * defaults to 100 (max 1000). `window: 'full'` requests the complete
    * history; an omitted window serves the recent feed. Window bounds accept
-   * Unix epoch seconds or `Date` values. Transient rate limits are retried
-   * by default.
+   * Unix epoch seconds or `Date` values. Set `retries` to
+   * retry transient failures.
    *
    * @throws {@link ListTradesError}
    * Thrown on failure.
