@@ -66,8 +66,10 @@ export {
   CreateSecureClientError,
   createPublicClient,
   createSecureClient,
+  EndAuthenticationError,
   SetupGaslessWalletError,
 } from './clients';
+export type { ClientCredentials } from './credentials';
 export * from './decorators';
 export * from './environments';
 export * from './errors';
@@ -86,6 +88,14 @@ export type { Fetch, RequestOptions } from './request-options';
  * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
  */
 export type ServiceClient = ServiceClientInstance;
+
+export type { BearerCredentials } from '@polymarket/bindings';
+export type {
+  LoginRequest,
+  MigrateCredentialsRequest,
+} from './actions/identity';
+export { LoginError, MigrateCredentialsError } from './actions/identity';
+export type { CredentialsChanged } from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {
   ServiceClientDeleteOptions,
