@@ -176,7 +176,7 @@ export enum PerpsInstrumentType {
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export enum PerpsInstrumentCategory {
+export enum PerpsKnownInstrumentCategory {
   Equity = 'equity',
   Commodity = 'commodity',
   Index = 'index',
@@ -187,11 +187,11 @@ export enum PerpsInstrumentCategory {
 
 /**
  * An instrument category. Known values are enumerated in
- * {@link PerpsInstrumentCategory}; new categories pass through as strings.
+ * {@link PerpsKnownInstrumentCategory}; new categories pass through as strings.
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
-export type PerpsInstrumentCategoryValue =
-  | PerpsInstrumentCategory
+export type PerpsInstrumentCategory =
+  | PerpsKnownInstrumentCategory
   | (string & {});
 
 /**
@@ -338,7 +338,7 @@ export const PerpsInstrumentTypeSchema = z.enum(PerpsInstrumentType);
  */
 export const PerpsInstrumentCategorySchema = z
   .string()
-  .transform((value): PerpsInstrumentCategoryValue => value);
+  .transform((value): PerpsInstrumentCategory => value);
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */

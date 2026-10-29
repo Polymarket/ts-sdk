@@ -24,8 +24,8 @@ import {
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
   type PerpsInstrument,
+  type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
-  type PerpsInstrumentCategoryValue,
   PerpsInstrumentIdSchema,
   type PerpsInternalTransferId,
   PerpsInternalTransferResponseSchema,
@@ -216,7 +216,7 @@ export type FetchPerpsInstrumentsRequest = {
   /** Perps instrument identifier to fetch. */
   instrumentId?: number;
   /** Optional category filter, including `pre_ipo` and future category strings. */
-  category?: PerpsInstrumentCategoryValue;
+  category?: PerpsInstrumentCategory;
 };
 
 /**
