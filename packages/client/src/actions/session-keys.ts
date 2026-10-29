@@ -98,7 +98,7 @@ export async function fetchSessionKeys(
   const requestOptions = parseRequestOptions(options);
   assertOwnerDepositWallet(client);
 
-  const response = await client.secureClob.get('/v1/user/session-signers', {
+  const response = await client.predictions.get('/v1/me/session-signers', {
     ...requestOptions,
     schema: ActiveSessionSignersResponseSchema,
   });
@@ -269,8 +269,8 @@ export async function authorizeSessionKey(
     validUntil: `${validUntil}`,
     walletAddress: client.account.wallet,
   };
-  const response = await client.relayer.post(
-    '/v1/session-signers/authorizations',
+  const response = await client.predictions.post(
+    '/v1/wallets/session-signers/authorizations',
     {
       headers: {
         'Idempotency-Key':
@@ -404,8 +404,8 @@ export async function revokeSessionKey(
     signature: signedBatch.signature,
     walletAddress: client.account.wallet,
   };
-  const response = await client.relayer.post(
-    '/v1/session-signers/revocations',
+  const response = await client.predictions.post(
+    '/v1/wallets/session-signers/revocations',
     {
       headers: {
         'Idempotency-Key':
