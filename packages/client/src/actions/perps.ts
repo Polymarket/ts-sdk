@@ -24,8 +24,8 @@ import {
   type PerpsFeeScheduleEntry,
   type PerpsFundingRate,
   type PerpsInstrument,
-  type PerpsInstrumentCategory,
   PerpsInstrumentCategorySchema,
+  type PerpsInstrumentCategoryValue,
   PerpsInstrumentIdSchema,
   type PerpsInternalTransferId,
   PerpsInternalTransferResponseSchema,
@@ -215,8 +215,8 @@ const FetchPerpsInstrumentsRequestSchema = z
 export type FetchPerpsInstrumentsRequest = {
   /** Perps instrument identifier to fetch. */
   instrumentId?: number;
-  /** Optional instrument category filter. */
-  category?: PerpsInstrumentCategory;
+  /** Optional category filter, including `pre_ipo` and future category strings. */
+  category?: PerpsInstrumentCategoryValue;
 };
 
 /**
@@ -230,6 +230,7 @@ export const FetchPerpsInstrumentsError = PerpsPublicReadError;
 
 /**
  * Fetches Perps instruments.
+ * Category strings are preserved, including values introduced after this SDK release.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

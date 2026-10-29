@@ -294,6 +294,17 @@ describe('session builder consent', () => {
 });
 
 describe('FetchPerpsInstrumentsRequest', () => {
+  it('accepts pre-IPO and future category strings alongside the known enum', () => {
+    const known: FetchPerpsInstrumentsRequest = {
+      category: PerpsInstrumentCategory.PreIpo,
+    };
+    const future: FetchPerpsInstrumentsRequest = {
+      category: 'future_category',
+    };
+    void known;
+    void future;
+  });
+
   it('allows current instrument filters', () => {
     const request: FetchPerpsInstrumentsRequest = {
       category: PerpsInstrumentCategory.Crypto,
