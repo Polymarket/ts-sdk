@@ -25,6 +25,17 @@ for await (const page of result) {
 }
 ```
 
+## HMAC signatures without the client
+
+Import the signing helper directly when only request signing is needed:
+
+```ts
+import { buildHmacSignature } from '@polymarket/client/hmac';
+```
+
+This entry uses native WebCrypto and avoids loading client actions, wallet code,
+and response schemas. The same helper remains available from the root entry.
+
 ## HTTP request controls
 
 HTTP request controls are experimental and may change in a breaking way in any

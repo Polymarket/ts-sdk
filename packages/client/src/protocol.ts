@@ -8,7 +8,8 @@ import {
   toPositionId,
 } from '@polymarket/bindings';
 import type { Tagged } from '@polymarket/types';
-import { AbiParameters, Hash } from 'ox';
+import * as AbiParameters from 'ox/AbiParameters';
+import * as Hash from 'ox/Hash';
 import { UserInputError } from './errors';
 
 const UINT256_BYTE_LENGTH = 32;

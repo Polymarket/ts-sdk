@@ -1,0 +1,705 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-29T11:21:16.961783+00:00",
+  "sourceBaseRevision": "6e482eb3431dfb2f8dc5b2beb7e013d13064bea5",
+  "branch": "codex/reduce-node-heap",
+  "workingTreeChanges": true,
+  "environment": {
+    "node": "v24.19.0",
+    "os": "Linux",
+    "arch": "x86_64"
+  },
+  "method": {
+    "replicates": 15,
+    "discardedWarmupRounds": 3,
+    "gcCyclesPerPhase": 3,
+    "loader": "plain Node ESM or native require(esm); installed production tarballs",
+    "memoryUnits": "bytes",
+    "network": "fetch and websocket construction disabled in all measured processes"
+  },
+  "primaryTargetPassed": true,
+  "primaryTarget": "at least30%lower retained root import and post-schema heap againstsavedsource-lockbaseline",
+  "comparisons": [
+    {
+      "name": "locked-import",
+      "before": 82681400,
+      "after": 51764952,
+      "heapRatio": 0.6260773523428486,
+      "reductionPercent": 37.39226476571515
+    },
+    {
+      "name": "locked-offline",
+      "before": 82880920,
+      "after": 51984144,
+      "heapRatio": 0.6272148523447858,
+      "reductionPercent": 37.27851476552142
+    },
+    {
+      "name": "locked-schema",
+      "before": 83692912,
+      "after": 52779048,
+      "heapRatio": 0.630627453851767,
+      "reductionPercent": 36.9372546148233
+    },
+    {
+      "name": "locked-require",
+      "before": 82639616,
+      "after": 51753912,
+      "heapRatio": 0.6262603156336061,
+      "reductionPercent": 37.373968436639394
+    },
+    {
+      "name": "fresh-import",
+      "before": 26403456,
+      "after": 22536888,
+      "heapRatio": 0.8535582614639539,
+      "reductionPercent": 14.644173853604613
+    },
+    {
+      "name": "fresh-offline",
+      "before": 26606560,
+      "after": 22748016,
+      "heapRatio": 0.854977719780385,
+      "reductionPercent": 14.502228021961505
+    },
+    {
+      "name": "fresh-schema",
+      "before": 27806064,
+      "after": 23948456,
+      "heapRatio": 0.8612673839778259,
+      "reductionPercent": 13.873261602217413
+    },
+    {
+      "name": "fresh-require",
+      "before": 26377608,
+      "after": 22512272,
+      "heapRatio": 0.8534614662557727,
+      "reductionPercent": 14.65385337442273
+    },
+    {
+      "name": "plain",
+      "before": 4400872,
+      "after": 4401904,
+      "heapRatio": 1.000234498981111,
+      "reductionPercent": -0.023449898111094214
+    }
+  ],
+  "packages": {
+    "locked": {
+      "node_modules/@adraffy/ens-normalize": "1.11.1",
+      "node_modules/@msgpack/msgpack": "3.1.3",
+      "node_modules/@noble/ciphers": "1.3.0",
+      "node_modules/@noble/curves": "1.9.1",
+      "node_modules/@noble/hashes": "1.8.0",
+      "node_modules/@polymarket/bindings": "0.14.0",
+      "node_modules/@polymarket/client": "0.14.0",
+      "node_modules/@polymarket/types": "0.3.0",
+      "node_modules/@scure/base": "1.2.6",
+      "node_modules/@scure/bip32": "1.7.0",
+      "node_modules/@scure/bip39": "1.6.0",
+      "node_modules/abitype": "1.2.3",
+      "node_modules/abort-error": "1.0.2",
+      "node_modules/eventemitter3": "5.0.1",
+      "node_modules/it-merge": "3.0.14",
+      "node_modules/it-pushable": "3.2.3",
+      "node_modules/it-queueless-pushable": "2.0.5",
+      "node_modules/ky": "1.14.3",
+      "node_modules/ox": "0.14.16",
+      "node_modules/p-defer": "4.0.1",
+      "node_modules/race-signal": "2.0.2",
+      "node_modules/tagged-tag": "1.0.0",
+      "node_modules/type-fest": "5.5.0",
+      "node_modules/zod": "4.4.3"
+    },
+    "fresh": {
+      "node_modules/@adraffy/ens-normalize": "1.11.1",
+      "node_modules/@msgpack/msgpack": "3.1.3",
+      "node_modules/@noble/ciphers": "1.3.0",
+      "node_modules/@noble/curves": "1.9.1",
+      "node_modules/@noble/hashes": "1.8.0",
+      "node_modules/@polymarket/bindings": "0.14.0",
+      "node_modules/@polymarket/client": "0.14.0",
+      "node_modules/@polymarket/types": "0.3.0",
+      "node_modules/@scure/base": "1.2.6",
+      "node_modules/@scure/bip32": "1.7.0",
+      "node_modules/@scure/bip39": "1.6.0",
+      "node_modules/abitype": "1.3.0",
+      "node_modules/abort-error": "1.0.2",
+      "node_modules/eventemitter3": "5.0.1",
+      "node_modules/it-merge": "3.0.15",
+      "node_modules/it-pushable": "3.2.4",
+      "node_modules/it-queueless-pushable": "2.0.5",
+      "node_modules/ky": "1.14.3",
+      "node_modules/ox": "0.14.60",
+      "node_modules/p-defer": "4.0.1",
+      "node_modules/race-signal": "2.0.2",
+      "node_modules/tagged-tag": "1.0.0",
+      "node_modules/type-fest": "5.10.0",
+      "node_modules/zod": "4.6.7"
+    }
+  },
+  "cases": {
+    "locked-import": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 51764952,
+          "q1": 51750968,
+          "q3": 51784528,
+          "min": 51718256,
+          "max": 51821200
+        },
+        "heapTotal": {
+          "median": 122109952,
+          "q1": 121847808,
+          "q3": 122372096,
+          "min": 121061376,
+          "max": 122372096
+        },
+        "rss": {
+          "median": 133980160,
+          "q1": 133636096,
+          "q3": 138993664,
+          "min": 133103616,
+          "max": 141557760
+        },
+        "external": {
+          "median": 3879317,
+          "q1": 3879317,
+          "q3": 3879317,
+          "min": 3879317,
+          "max": 3879317
+        },
+        "arrayBuffers": {
+          "median": 148879,
+          "q1": 148879,
+          "q3": 148879,
+          "min": 148879,
+          "max": 148879
+        }
+      },
+      "importMs": {
+        "median": 391.46481500000004,
+        "q1": 372.94788800000003,
+        "q3": 475.92278799999997,
+        "min": 352.006551,
+        "max": 601.9976760000001
+      },
+      "networkAttempts": 0
+    },
+    "locked-offline": {
+      "samples": 15,
+      "phase": "afterOffline",
+      "memory": {
+        "heapUsed": {
+          "median": 51984144,
+          "q1": 51970872,
+          "q3": 52018168,
+          "min": 51956728,
+          "max": 52154600
+        },
+        "heapTotal": {
+          "median": 122372096,
+          "q1": 122109952,
+          "q3": 122634240,
+          "min": 121323520,
+          "max": 123158528
+        },
+        "rss": {
+          "median": 134877184,
+          "q1": 134238208,
+          "q3": 139403264,
+          "min": 133840896,
+          "max": 141893632
+        },
+        "external": {
+          "median": 3912253,
+          "q1": 3912253,
+          "q3": 3912253,
+          "min": 3912253,
+          "max": 3912253
+        },
+        "arrayBuffers": {
+          "median": 148879,
+          "q1": 148879,
+          "q3": 148879,
+          "min": 148879,
+          "max": 148879
+        }
+      },
+      "importMs": {
+        "median": 386.66380200000003,
+        "q1": 353.149095,
+        "q3": 427.741615,
+        "min": 311.261307,
+        "max": 536.009804
+      },
+      "networkAttempts": 0
+    },
+    "locked-schema": {
+      "samples": 15,
+      "phase": "afterSchema1000",
+      "memory": {
+        "heapUsed": {
+          "median": 52779048,
+          "q1": 52756968,
+          "q3": 52890024,
+          "min": 52749248,
+          "max": 53145568
+        },
+        "heapTotal": {
+          "median": 123682816,
+          "q1": 123322368,
+          "q3": 123846656,
+          "min": 123060224,
+          "max": 124731392
+        },
+        "rss": {
+          "median": 213389312,
+          "q1": 201281536,
+          "q3": 229859328,
+          "min": 167485440,
+          "max": 239329280
+        },
+        "external": {
+          "median": 3912253,
+          "q1": 3912253,
+          "q3": 3912253,
+          "min": 3912253,
+          "max": 3912253
+        },
+        "arrayBuffers": {
+          "median": 148879,
+          "q1": 148879,
+          "q3": 148879,
+          "min": 148879,
+          "max": 148879
+        }
+      },
+      "importMs": {
+        "median": 388.07230100000004,
+        "q1": 346.016051,
+        "q3": 423.96265500000004,
+        "min": 331.57357,
+        "max": 507.81983699999995
+      },
+      "networkAttempts": 0
+    },
+    "locked-require": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 51753912,
+          "q1": 51747552,
+          "q3": 51758680,
+          "min": 51723888,
+          "max": 51927248
+        },
+        "heapTotal": {
+          "median": 122109952,
+          "q1": 121847808,
+          "q3": 122109952,
+          "min": 121061376,
+          "max": 122372096
+        },
+        "rss": {
+          "median": 134602752,
+          "q1": 133861376,
+          "q3": 137981952,
+          "min": 133369856,
+          "max": 141340672
+        },
+        "external": {
+          "median": 3876945,
+          "q1": 3876945,
+          "q3": 3876945,
+          "min": 3876945,
+          "max": 3876945
+        },
+        "arrayBuffers": {
+          "median": 148879,
+          "q1": 148879,
+          "q3": 148879,
+          "min": 148879,
+          "max": 148879
+        }
+      },
+      "importMs": {
+        "median": 374.73058199999997,
+        "q1": 353.71153300000003,
+        "q3": 411.18791500000003,
+        "min": 312.43427199999996,
+        "max": 554.0983980000001
+      },
+      "networkAttempts": 0
+    },
+    "fresh-import": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 22536888,
+          "q1": 22534176,
+          "q3": 22544896,
+          "min": 22529552,
+          "max": 22945384
+        },
+        "heapTotal": {
+          "median": 57237504,
+          "q1": 56975360,
+          "q3": 57499648,
+          "min": 56975360,
+          "max": 58286080
+        },
+        "rss": {
+          "median": 79052800,
+          "q1": 78700544,
+          "q3": 79523840,
+          "min": 76165120,
+          "max": 80773120
+        },
+        "external": {
+          "median": 3879341,
+          "q1": 3879341,
+          "q3": 3879341,
+          "min": 3879341,
+          "max": 3879341
+        },
+        "arrayBuffers": {
+          "median": 148903,
+          "q1": 148903,
+          "q3": 148903,
+          "min": 148903,
+          "max": 148903
+        }
+      },
+      "importMs": {
+        "median": 305.88343100000003,
+        "q1": 291.35893100000004,
+        "q3": 327.972731,
+        "min": 261.230523,
+        "max": 594.730134
+      },
+      "networkAttempts": 0
+    },
+    "fresh-offline": {
+      "samples": 15,
+      "phase": "afterOffline",
+      "memory": {
+        "heapUsed": {
+          "median": 22748016,
+          "q1": 22746968,
+          "q3": 22752672,
+          "min": 22742336,
+          "max": 22769992
+        },
+        "heapTotal": {
+          "median": 57499648,
+          "q1": 57237504,
+          "q3": 57761792,
+          "min": 57237504,
+          "max": 58023936
+        },
+        "rss": {
+          "median": 79769600,
+          "q1": 79155200,
+          "q3": 80052224,
+          "min": 77119488,
+          "max": 80965632
+        },
+        "external": {
+          "median": 3912277,
+          "q1": 3912277,
+          "q3": 3912277,
+          "min": 3912277,
+          "max": 3912277
+        },
+        "arrayBuffers": {
+          "median": 148903,
+          "q1": 148903,
+          "q3": 148903,
+          "min": 148903,
+          "max": 148903
+        }
+      },
+      "importMs": {
+        "median": 339.793709,
+        "q1": 293.583622,
+        "q3": 390.646145,
+        "min": 256.708502,
+        "max": 504.866785
+      },
+      "networkAttempts": 0
+    },
+    "fresh-schema": {
+      "samples": 15,
+      "phase": "afterSchema1000",
+      "memory": {
+        "heapUsed": {
+          "median": 23948456,
+          "q1": 23943096,
+          "q3": 23952216,
+          "min": 23938448,
+          "max": 23960408
+        },
+        "heapTotal": {
+          "median": 59109376,
+          "q1": 58847232,
+          "q3": 59109376,
+          "min": 58585088,
+          "max": 59633664
+        },
+        "rss": {
+          "median": 102383616,
+          "q1": 101953536,
+          "q3": 103370752,
+          "min": 101670912,
+          "max": 103751680
+        },
+        "external": {
+          "median": 3912277,
+          "q1": 3912277,
+          "q3": 3912277,
+          "min": 3912277,
+          "max": 3912277
+        },
+        "arrayBuffers": {
+          "median": 148903,
+          "q1": 148903,
+          "q3": 148903,
+          "min": 148903,
+          "max": 148903
+        }
+      },
+      "importMs": {
+        "median": 315.95238400000005,
+        "q1": 304.469444,
+        "q3": 327.122865,
+        "min": 278.52871799999997,
+        "max": 527.742121
+      },
+      "networkAttempts": 0
+    },
+    "fresh-require": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 22512272,
+          "q1": 22498488,
+          "q3": 22521392,
+          "min": 22497720,
+          "max": 22805296
+        },
+        "heapTotal": {
+          "median": 57499648,
+          "q1": 57237504,
+          "q3": 57499648,
+          "min": 56975360,
+          "max": 58023936
+        },
+        "rss": {
+          "median": 78639104,
+          "q1": 78376960,
+          "q3": 79675392,
+          "min": 76619776,
+          "max": 80289792
+        },
+        "external": {
+          "median": 3876969,
+          "q1": 3876969,
+          "q3": 3876969,
+          "min": 3876969,
+          "max": 3876969
+        },
+        "arrayBuffers": {
+          "median": 148903,
+          "q1": 148903,
+          "q3": 148903,
+          "min": 148903,
+          "max": 148903
+        }
+      },
+      "importMs": {
+        "median": 287.977391,
+        "q1": 272.18015,
+        "q3": 302.617214,
+        "min": 254.171738,
+        "max": 386.61033199999997
+      },
+      "networkAttempts": 0
+    },
+    "plain": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 4401904,
+          "q1": 4401904,
+          "q3": 4777400,
+          "min": 4393096,
+          "max": 4777864
+        },
+        "heapTotal": {
+          "median": 7598080,
+          "q1": 7335936,
+          "q3": 7598080,
+          "min": 7073792,
+          "max": 7598080
+        },
+        "rss": {
+          "median": 30932992,
+          "q1": 30932992,
+          "q3": 31064064,
+          "min": 30801920,
+          "max": 31195136
+        },
+        "external": {
+          "median": 2015097,
+          "q1": 2015097,
+          "q3": 2015097,
+          "min": 2015097,
+          "max": 2015097
+        },
+        "arrayBuffers": {
+          "median": 137483,
+          "q1": 137483,
+          "q3": 137483,
+          "min": 137483,
+          "max": 137483
+        }
+      },
+      "importMs": {
+        "median": 0.015463000000004001,
+        "q1": 0.014129999999994425,
+        "q3": 0.018777000000000044,
+        "min": 0.012729000000000212,
+        "max": 0.09986800000000073
+      },
+      "networkAttempts": 0
+    },
+    "hmac-esm": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 4478064,
+          "q1": 4478064,
+          "q3": 4478064,
+          "min": 4478064,
+          "max": 4478136
+        },
+        "heapTotal": {
+          "median": 7335936,
+          "q1": 7335936,
+          "q3": 7335936,
+          "min": 7073792,
+          "max": 7598080
+        },
+        "rss": {
+          "median": 31719424,
+          "q1": 31588352,
+          "q3": 31719424,
+          "min": 31457280,
+          "max": 31850496
+        },
+        "external": {
+          "median": 2017469,
+          "q1": 2017469,
+          "q3": 2017469,
+          "min": 2017469,
+          "max": 2017469
+        },
+        "arrayBuffers": {
+          "median": 137483,
+          "q1": 137483,
+          "q3": 137483,
+          "min": 137483,
+          "max": 137483
+        }
+      },
+      "importMs": {
+        "median": 2.322663999999996,
+        "q1": 2.2164199999999994,
+        "q3": 2.9607480000000095,
+        "min": 1.9178289999999976,
+        "max": 3.848815000000002
+      },
+      "networkAttempts": 0
+    },
+    "hmac-require": {
+      "samples": 15,
+      "phase": "afterImport",
+      "memory": {
+        "heapUsed": {
+          "median": 4485712,
+          "q1": 4485712,
+          "q3": 4485712,
+          "min": 4476792,
+          "max": 4579808
+        },
+        "heapTotal": {
+          "median": 7598080,
+          "q1": 7335936,
+          "q3": 7598080,
+          "min": 7073792,
+          "max": 7598080
+        },
+        "rss": {
+          "median": 31719424,
+          "q1": 31719424,
+          "q3": 31719424,
+          "min": 31588352,
+          "max": 31850496
+        },
+        "external": {
+          "median": 2015098,
+          "q1": 2015098,
+          "q3": 2015098,
+          "min": 2015098,
+          "max": 2015098
+        },
+        "arrayBuffers": {
+          "median": 137483,
+          "q1": 137483,
+          "q3": 137483,
+          "min": 137483,
+          "max": 137483
+        }
+      },
+      "importMs": {
+        "median": 2.497653000000007,
+        "q1": 2.1039929999999956,
+        "q3": 2.706532000000003,
+        "min": 1.937266000000001,
+        "max": 3.7414619999999914
+      },
+      "networkAttempts": 0
+    }
+  },
+  "validation": {
+    "build": "pass",
+    "lint": "pass",
+    "workspaceTypecheck": "pass",
+    "baselineUnitTests": 1407,
+    "optimizedUnitTests": 1407,
+    "testFiles": 98,
+    "snapshotsChanged": false,
+    "existingPackedRootExports": 308,
+    "existingPackedActionExports": 409,
+    "existingPackedNodeExports": 1,
+    "existingExportNamesUnchanged": true,
+    "hmacStandaloneLoadedModules": 2,
+    "hmacLoadedOxOrZodOrBindings": false,
+    "hmacFixtureAndEsmRequireIdentity": "pass"
+  },
+  "limitations": [
+    "Node24.19.0 Linuxx86_64 only",
+    "Source-lockprimary reduction37.4%; freshalready-newerZodreduction14.6%",
+    "No livefinancial API/authentication/subscription traffic",
+    "Zod4.4.3 lazybuildermethods retaincallbehavior butschemaown-propertyreflectioncanchange",
+    "Mini prototype excluded: publicAPIbreak or no usefulprivate-memorygain"
+  ]
+}

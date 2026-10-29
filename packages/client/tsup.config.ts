@@ -12,6 +12,7 @@ export default defineConfig(() => [
     define,
     entry: [
       'src/index.ts',
+      'src/hmac.ts',
       'src/actions/index.ts',
       'src/ethers-v5.ts',
       'src/viem.ts',

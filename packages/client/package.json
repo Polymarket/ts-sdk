@@ -37,6 +37,10 @@
     "./viem": {
       "types": "./dist/viem.d.ts",
       "default": "./dist/viem.js"
+    },
+    "./hmac": {
+      "types": "./dist/hmac.d.ts",
+      "default": "./dist/hmac.js"
     }
   },
   "typesVersions": {
@@ -55,6 +59,9 @@
       ],
       "viem": [
         "./dist/viem.d.ts"
+      ],
+      "hmac": [
+        "./dist/hmac.d.ts"
       ]
     }
   },
@@ -98,7 +105,7 @@
     "it-pushable": "^3.2.3",
     "ky": "^1.14.3",
     "ox": "^0.14.16",
-    "zod": "^4.3.6"
+    "zod": "^4.4.3"
   },
   "publishConfig": {
     "access": "public"
