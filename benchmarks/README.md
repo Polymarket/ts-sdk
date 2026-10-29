@@ -1,6 +1,6 @@
 # Node.js memory regression measurements
 
-`node-memory-baseline.json` records the current upstream baseline before these
+`node-memory-baseline.json` records the upstream baseline before these
 changes: revision `6e482eb3431dfb2f8dc5b2beb7e013d13064bea5`, SDK version 0.14.0,
 Node 24.19.0 on Linux x86_64. Measurements use installed production tarballs,
 not TypeScript source, a development loader, or the workspace node_modules.
@@ -72,7 +72,10 @@ NODE_OPTIONS="--import=$PWD/scripts/memory/deny-external-network.mjs" pnpm exec 
 Zod Mini was also prototyped against real schemas. Replacing exported Classic
 schemas changes their fluent methods and error types. A private hybrid provided
 no useful retained-heap gain and increased it on newer Zod. This change therefore
-keeps Classic schemas, validation, error formatting, and crypto implementations.
+keeps Classic schemas, validation, the SDK error formatter, and crypto
+implementations. The patched Zod version can select one union branch's issues
+where older versions reported every branch; the tests cover both selected-branch
+and multi-branch diagnostics.
 
 ## Verified result
 
@@ -80,18 +83,27 @@ On Node 24.19.0/Linux x86_64, using fifteen fresh-process replicates:
 
 | Profile | Baseline heap | Optimized heap | Reduction |
 | --- | ---: | ---: | ---: |
-| Frozen source lock, root import | 78.85 MiB | 49.37 MiB | 37.4% |
-| Same, after 3,003 schema parses | 79.82 MiB | 50.33 MiB | 36.9% |
+| Frozen source lock, root import | 78.85 MiB | 21.27 MiB | 73.0% |
+| Same, after 3,003 schema parses | 79.82 MiB | 22.65 MiB | 71.6% |
 | Fresh dependency resolution, root import | 25.18 MiB | 21.49 MiB | 14.6% |
 
 The 30% primary target passes for import and post-parse retained heap. Fresh
 consumers already receive newer Zod and therefore do not get the old-lock saving.
-The frozen graph differs only in Zod 4.3.6 -> 4.4.3; all other dependency versions
-match. Fresh before/after dependency versions match completely.
+The frozen graph differs only in Zod 4.3.6 -> 4.6.7; all other dependency versions
+match. Fresh before/after dependency versions match completely, including Zod
+4.6.7 and ox 0.14.60. The optimized packages were repacked after rebasing on
+`fd96979bd43fa4ed9a15d1daf6e13df5ac1a72d0`, which also includes main's market-schema
+changes. Raising the minimum to `^4.6.7` excludes versions affected by
+[GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5).
 
-Both before and after pass all 1,407 existing tests in 98 files with unchanged
-snapshots. Full build, lint, and workspace typecheck pass. Installed-package
-checks preserve all existing root/actions/node export names and verify the new
+The original baseline passed 1,407 tests. After rebasing over main's five added
+tests and adding two security/diagnostic regression tests, all 1,414 tests in 98
+files pass. The union diagnostic snapshot intentionally follows Zod 4.6.7; invalid
+input is still rejected. A bounded-array test proves oversized input is rejected
+before its elements are inspected. Full build, lint, and workspace typecheck
+pass. The packed production consumer's `npm audit --omit=dev` reports zero
+vulnerabilities. Installed-package checks preserve all existing root/actions/node
+export names and verify the new
 HMAC entry loads only two SDK modules, no ox/Zod/bindings, and has the same
 function identity through ESM, native require(esm), and the root export.
 
