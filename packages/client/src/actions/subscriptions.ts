@@ -67,6 +67,8 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
   PriceSource,
+  UserAutoRedeemEvent,
+  UserComboAutoRedeemEvent,
 } from '@polymarket/bindings/subscriptions';
 export {
   EquityMarketStatus,
