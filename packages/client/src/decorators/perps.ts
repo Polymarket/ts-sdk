@@ -337,6 +337,9 @@ export type PublicPerpsActions = {
 
   /**
    * Lists recent Perps trades for an instrument with SDK-owned pagination.
+   * Server continuation preserves the original time range and response order,
+   * including trades sharing a millisecond. Older responses without a server
+   * cursor use timestamp pagination.
    *
    * @example
    * ```ts
