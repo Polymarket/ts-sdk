@@ -522,11 +522,16 @@ export function listPerpsDeposits(
         params: toPerpsSearchParams(searchParams),
       })
       .then((response): Page<PerpsDeposit[]> => {
-        const items = response.data.filter(
-          (deposit) => !seenKeys.has(deposit.hash),
-        );
+        const items = response.data.filter((deposit) => {
+          const key = perpsDepositKey(deposit);
+          if (seenKeys.has(key)) return false;
+          // Only deposits with a log index carry an event identity, so legacy
+          // rows sharing a transaction hash are all kept within a page.
+          if (deposit.logIndex !== undefined) seenKeys.add(key);
+          return true;
+        });
         return toPerpsDescendingAccountPage({
-          getKey: (deposit) => deposit.hash,
+          getKey: perpsDepositKey,
           getTimestamp: latestPerpsDepositTimestamp,
           items,
           responseData: response.data,
@@ -1181,6 +1186,12 @@ function toPerpsSearchParams(params: object): URLSearchParams {
   );
 }
 
+function perpsDepositKey(deposit: PerpsDeposit): string {
+  return deposit.logIndex === undefined
+    ? deposit.hash
+    : `${deposit.hash}:${deposit.logIndex}`;
+}
+
 function latestPerpsDepositTimestamp(deposit: PerpsDeposit): number {
   return deposit.confirmedTimestamp ?? deposit.createdTimestamp;
 }
@@ -1205,7 +1216,8 @@ function toPerpsDescendingAccountPage<T>(request: {
   const hasMore =
     request.responseMore &&
     cursorTimestamp !== undefined &&
-    cursorTimestamp > request.state.startTimestamp;
+    (cursorTimestamp > request.state.startTimestamp ||
+      (cursorTimestamp === request.state.startTimestamp && last !== undefined));
 
   if (!hasMore) return { items: request.items, hasMore };
 
