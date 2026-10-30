@@ -194,7 +194,12 @@ describe('Perps actions', () => {
     });
   });
 
-  it('continues candle pages from the next interval boundary', async () => {
+  it.each([
+    [PerpsKlineInterval.OneMinute, 60_000],
+    [PerpsKlineInterval.ThirtyMinutes, 1_800_000],
+    [PerpsKlineInterval.SixHours, 21_600_000],
+    [PerpsKlineInterval.TwelveHours, 43_200_000],
+  ] as const)('continues %s candle pages from the next interval boundary', async (interval, duration) => {
     const requests: URLSearchParams[] = [];
     server.use(
       http.get(`${root}/v1/info/klines`, ({ request }) => {
@@ -203,36 +208,40 @@ describe('Perps actions', () => {
 
         if (params.get('start_timestamp') === '0') {
           return HttpResponse.json({
-            data: [candle(1000), candle(61_000)],
+            data: [candle(0), candle(duration)],
             more: true,
           });
         }
 
         return HttpResponse.json({
-          data: [candle(121_000)],
+          data: [candle(2 * duration)],
           more: false,
         });
       }),
     );
     const pages = listPerpsCandles(createClient(), {
-      end: 300_000,
+      end: 3 * duration,
       instrumentId: 1,
-      interval: PerpsKlineInterval.OneMinute,
+      interval,
       start: 0,
     });
 
     const first = await pages.firstPage();
     const second = await pages.from(first.nextCursor).firstPage();
 
-    expect(first.items.map((item) => item.timestamp)).toEqual([1000, 61_000]);
-    expect(second.items.map((item) => item.timestamp)).toEqual([121_000]);
+    expect(first.items.map((item) => item.timestamp)).toEqual([0, duration]);
+    expect(second.items.map((item) => item.timestamp)).toEqual([2 * duration]);
     expect(requests.map((params) => params.get('start_timestamp'))).toEqual([
       '0',
-      '121000',
+      String(2 * duration),
     ]);
     expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
-      '300000',
-      '300000',
+      String(3 * duration),
+      String(3 * duration),
+    ]);
+    expect(requests.map((params) => params.get('interval'))).toEqual([
+      interval,
+      interval,
     ]);
   });
 
