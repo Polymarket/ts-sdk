@@ -32,6 +32,8 @@ import {
   type PerpsDeposit,
   type PerpsDepositStatus,
   PerpsDepositStatusSchema,
+  type PerpsEquityInterval,
+  PerpsEquityIntervalSchema,
   type PerpsEquityPoint,
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
@@ -81,9 +83,10 @@ type PerpsHistoryParams = {
   hash?: z.output<typeof TxHashSchema>;
 };
 
-type PerpsIntervalHistoryParams = PerpsHistoryParams & {
-  interval: z.output<typeof PerpsPnlIntervalSchema>;
-};
+type PerpsIntervalHistoryParams<T extends PerpsEquityInterval> =
+  PerpsHistoryParams & {
+    interval: T;
+  };
 
 const PerpsHistoryRequestBaseSchema = z.object({
   start: TimestampInputSchema.optional(),
@@ -102,11 +105,6 @@ const PerpsDescendingAccountHistoryKindSchema = z.enum([
   'perpsWithdrawals',
 ]);
 
-const PerpsAscendingAccountHistoryKindSchema = z.enum([
-  'perpsEquityHistory',
-  'perpsPnlHistory',
-]);
-
 const PerpsDescendingAccountCursorStateSchema = z.object({
   kind: PerpsDescendingAccountHistoryKindSchema,
   startTimestamp: TimestampInputSchema,
@@ -118,8 +116,15 @@ const PerpsDescendingAccountCursorStateSchema = z.object({
   seenKeys: z.array(z.string()),
 });
 
+const PerpsEquityHistoryCursorStateSchema = z.object({
+  kind: z.literal('perpsEquityHistory'),
+  startTimestamp: TimestampInputSchema,
+  endTimestamp: TimestampInputSchema,
+  interval: PerpsEquityIntervalSchema,
+});
+
 const PerpsAscendingAccountCursorStateSchema = z.object({
-  kind: PerpsAscendingAccountHistoryKindSchema,
+  kind: z.literal('perpsPnlHistory'),
   startTimestamp: TimestampInputSchema,
   endTimestamp: TimestampInputSchema,
   interval: PerpsPnlIntervalSchema,
@@ -746,6 +751,7 @@ export function listPerpsInternalTransfers(
 const ListPerpsEquityHistoryInitialRequestSchema =
   PerpsIntervalHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
+    interval: PerpsEquityIntervalSchema,
   }) satisfies z.ZodType<
     Exclude<ListPerpsEquityHistoryRequest, { cursor: PaginationCursor }>
   >;
@@ -774,8 +780,8 @@ const ListPerpsEquityHistoryRequestSchema = z.union([
  */
 export type ListPerpsEquityHistoryRequest =
   | {
-      /** History interval. */
-      interval: PerpsPnlInterval;
+      /** History interval. One-second requests use one-minute sample resolution. */
+      interval: PerpsEquityInterval;
       /** Inclusive start timestamp in milliseconds. */
       start: number;
       /** Inclusive end timestamp in milliseconds. */
@@ -800,7 +806,7 @@ export function listPerpsEquityHistory(
     ListPerpsEquityHistoryRequestSchema,
   );
   return paginate((pageCursor) => {
-    let state: PerpsAscendingAccountCursorState;
+    let state: z.infer<typeof PerpsEquityHistoryCursorStateSchema>;
     if (pageCursor === undefined) {
       invariant(
         params !== undefined,
@@ -810,7 +816,7 @@ export function listPerpsEquityHistory(
     } else {
       state = decodeCursorState(
         pageCursor,
-        PerpsAscendingAccountCursorStateSchema,
+        PerpsEquityHistoryCursorStateSchema,
         'Invalid Perps account pagination cursor',
       );
     }
@@ -834,9 +840,7 @@ export function listPerpsEquityHistory(
           nextCursor: hasMore
             ? encodeCursorState({
                 ...state,
-                startTimestamp:
-                  last.timestamp +
-                  perpsHistoryIntervalMilliseconds(state.interval),
+                startTimestamp: last.timestamp + 1,
               })
             : undefined,
         };
@@ -1164,9 +1168,11 @@ function toPerpsHistoryParams<T extends Record<string, unknown>>(
   };
 }
 
-function toPerpsIntervalHistoryParams(
-  request: z.output<typeof PerpsIntervalHistoryRequestBaseSchema>,
-): PerpsIntervalHistoryParams {
+function toPerpsIntervalHistoryParams<T extends PerpsEquityInterval>(request: {
+  interval: T;
+  start: number;
+  end?: number;
+}): PerpsIntervalHistoryParams<T> {
   return {
     endTimestamp: request.end ?? Date.now(),
     interval: request.interval,
