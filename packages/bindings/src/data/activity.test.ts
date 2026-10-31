@@ -343,3 +343,40 @@ describe.each([
     }
   });
 });
+
+it('keeps empty identifiers and unenriched market activity beside valid neighbors', () => {
+  const page = ListActivityResponseSchema.parse({
+    data: [
+      activityRow({ type: ActivityType.REWARD, usdc_size: 1 }),
+      activityRow({ type: ActivityType.REDEEM, transaction_hash: '' }),
+      activityRow({ type: ActivityType.TRADE, side: 'BUY', token_id: '123' }),
+    ],
+    pagination: { limit: 10, offset: 0, has_more: false, next_cursor: null },
+  });
+  expect(page.items).toHaveLength(3);
+  expect(page.items[1]).toMatchObject({
+    type: ActivityType.REDEEM,
+    transactionHash: undefined,
+    conditionId: undefined,
+    title: undefined,
+    slug: undefined,
+    eventSlug: undefined,
+  });
+  expect(page.items[2]).toMatchObject({
+    type: ActivityType.TRADE,
+    assetId: '123',
+    outcome: undefined,
+  });
+});
+
+it.each([
+  { transaction_hash: 'not-a-hash' },
+  { condition_id: 'not-a-condition' },
+  { proxy_wallet: 'not-an-address' },
+])('still rejects malformed activity identifiers: %j', (invalid) => {
+  expect(
+    ActivitySchema.safeParse(
+      activityRow({ type: ActivityType.REDEEM, ...invalid }),
+    ).success,
+  ).toBe(false);
+});
