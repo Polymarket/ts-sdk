@@ -5,6 +5,12 @@ import type { PriceSubscription } from '../../actions/subscriptions';
 export type PriceKey =
   | {
       key: string;
+      topic: 'prices.polymarket';
+      assetId: string;
+      provider?: never;
+    }
+  | {
+      key: string;
       topic: 'prices.crypto';
       symbol: string;
       provider?: PriceProvider;
@@ -24,6 +30,12 @@ export type PriceKey =
     };
 
 export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
+  if (spec.topic === 'prices.polymarket')
+    return spec.assetIds.map((assetId) => ({
+      key: JSON.stringify([spec.topic, assetId]),
+      topic: spec.topic,
+      assetId,
+    }));
   const symbols = 'symbol' in spec ? [spec.symbol.toLowerCase()] : spec.symbols;
   const { provider } = spec;
   return symbols.map((symbol) => {

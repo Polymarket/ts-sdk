@@ -378,6 +378,10 @@ class BasePublicClient<
         fetch: config.fetch,
       }),
       webSockets: {
+        polymarketPrices: new RealtimeWebSocketManager({
+          url: config.environment.realtime.ws,
+          headers: config.environment.realtime.headers,
+        }),
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
           url: config.environment.clob.market.ws,
@@ -440,6 +444,7 @@ class BasePublicClient<
    */
   async closeSubscriptions(): Promise<void> {
     await Promise.all([
+      this.webSockets.polymarketPrices.close(),
       this.webSockets.clobMarket.close(),
       this.webSockets.rtds.close(),
       this.webSockets.sports.close(),
@@ -662,6 +667,10 @@ class BaseSecureClient<
         root: config.environment.combos.builderGateway.rest,
       }),
       webSockets: {
+        polymarketPrices: new RealtimeWebSocketManager({
+          url: config.environment.realtime.ws,
+          headers: config.environment.realtime.headers,
+        }),
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
           url: config.environment.clob.market.ws,
@@ -763,6 +772,7 @@ class BaseSecureClient<
    */
   async closeSubscriptions(): Promise<void> {
     await Promise.allSettled([
+      this.webSockets.polymarketPrices.close(),
       this.webSockets.clobMarket.close(),
       this.webSockets.realtime.close(),
       this.webSockets.rtds.close(),

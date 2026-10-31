@@ -6,6 +6,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceSubscription } from '../../actions/subscriptions';
 import { TransportError } from '../../errors';
+import { createPublicClient } from '../../index';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
 import { SocketPool } from './pool';
 import { polyboltReconnectDelay } from './protocol';
@@ -18,7 +19,12 @@ afterEach(() => {
 
 type SentSubscription = {
   channel: string;
-  filter: { symbol: string; window_seconds?: number; provider?: string };
+  filter: {
+    symbol?: string;
+    asset_id?: string;
+    window_seconds?: number;
+    provider?: string;
+  };
 };
 type SentOperation = {
   op: string;
@@ -118,6 +124,100 @@ describe('price channel lifecycle', () => {
     await vi.advanceTimersByTimeAsync(250);
     return pending;
   }
+
+  it('subscribes publicly and routes cold snapshots and live BBO by asset', async () => {
+    const client = createPublicClient();
+    const subscription = client.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['000123', '000456', '456'] },
+    ]);
+    await vi.advanceTimersByTimeAsync(250);
+    const handle = await subscription;
+    const socket = TestWebSocket.connections[0];
+    expect(socket?.operations).toHaveLength(1);
+    expect(socket?.operations[0]?.op).toBe('subscribe');
+    expect(socket?.operations[0]?.subscriptions).toEqual([
+      { channel: 'price.polymarket', filter: { asset_id: '123' } },
+      { channel: 'price.polymarket', filter: { asset_id: '456' } },
+    ]);
+    const iterator = handle[Symbol.asyncIterator]();
+    const frame = {
+      v: 1,
+      channel: 'price.polymarket',
+      seq: 1,
+      ts: 1700000000000,
+    };
+    const quote = {
+      market: `0x${'a'.repeat(64)}`,
+      asset_id: '456',
+      best_bid: '0.51',
+      best_ask: '',
+      hash: 'book-hash',
+      timestamp: 1699999999999,
+    };
+    socket?.receive({ ...frame, snapshot: true, payload: [] });
+    socket?.receive({ ...frame, seq: 2, snapshot: true, payload: quote });
+    expect((await iterator.next()).value).toMatchObject({
+      topic: 'prices.polymarket',
+      type: 'subscribe',
+      payload: { assetId: '123', data: [] },
+    });
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'subscribe',
+      payload: {
+        assetId: '456',
+        data: [
+          {
+            conditionId: quote.market,
+            assetId: '456',
+            bestBid: '0.51',
+            bestAsk: null,
+            hash: 'book-hash',
+            timestamp: 1699999999999,
+          },
+        ],
+      },
+    });
+    // Unknown and malformed frames must not consume a valid neighboring update.
+    socket?.receive({ ...frame, channel: 'future.channel', payload: quote });
+    socket?.receive({ ...frame, payload: { ...quote, market: 'invalid' } });
+    socket?.receive({ ...frame, payload: { ...quote, asset_id: 'invalid' } });
+    socket?.receive({ ...frame, payload: [] });
+    socket?.receive({ ...frame, seq: 3, payload: quote });
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'update',
+      seq: 3,
+      payload: { assetId: '456', bestBid: '0.51', bestAsk: null },
+    });
+    const latePending = client.subscribe([
+      { topic: 'prices.polymarket', assetIds: ['000456'] },
+    ]);
+    await vi.advanceTimersByTimeAsync(1);
+    const late = await latePending;
+    expect((await late[Symbol.asyncIterator]().next()).value).toMatchObject({
+      type: 'subscribe',
+      payload: { assetId: '456', data: [{ bestBid: '0.51' }] },
+    });
+    expect(TestWebSocket.connections).toHaveLength(1);
+    socket?.disconnect();
+    await vi.advanceTimersByTimeAsync(1000);
+    const recovered = TestWebSocket.connections[1];
+    expect(recovered?.operations.map((operation) => operation.op)).toEqual([
+      'subscribe',
+    ]);
+    recovered?.receive({ ...frame, snapshot: true, payload: [] });
+    recovered?.receive({ ...frame, seq: 2, snapshot: true, payload: quote });
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'subscribe',
+      payload: { assetId: '123', data: [] },
+    });
+    expect((await iterator.next()).value).toMatchObject({
+      type: 'subscribe',
+      payload: { assetId: '456' },
+    });
+    await client.closeSubscriptions();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(socket?.readyState).toBe(TestWebSocket.CLOSED);
+  });
 
   it.each([
     { topic: 'prices.equity', channel: 'price.equity' },
