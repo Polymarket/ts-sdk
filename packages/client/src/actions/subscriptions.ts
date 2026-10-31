@@ -285,6 +285,8 @@ export type PerpsBboSubscription = {
 export type PerpsBookSubscription = {
   topic: 'perps.book';
   instrumentId: PerpsInstrumentIdInput;
+  /** Number of price levels per side. Defaults to 20. */
+  depth?: 20 | 50;
 };
 
 /**
@@ -544,6 +546,12 @@ enum SubscriptionTopic {
   PerpsTickers = 'perps.tickers',
   PerpsStatistics = 'perps.statistics',
 }
+const PerpsBookSubscriptionSchema = z.object({
+  topic: z.literal('perps.book'),
+  instrumentId: z.number().int().nonnegative(),
+  depth: z.union([z.literal(20), z.literal(50)]).optional(),
+});
+
 const SubscriptionTopicSchema = z.object({ topic: z.enum(SubscriptionTopic) });
 const LegacyTwapSubscriptionSchema = z.object({
   topic: z.literal('prices.crypto.chainlink.twap'),
@@ -635,6 +643,8 @@ export async function subscribe(
       case 'prices.crypto.chainlink.twap':
         parseUserInput(subscription, LegacyTwapSubscriptionSchema);
         break;
+      case 'perps.book':
+        return parseUserInput(subscription, PerpsBookSubscriptionSchema);
       case 'market':
         parseUserInput(subscription, MarketSubscriptionSchema);
         break;
