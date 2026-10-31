@@ -1,5 +1,6 @@
 export * from './comment';
 export * from './common';
+export * from './crypto-market-config';
 export * from './event';
 export * from './market';
 export * from './market-clarification';

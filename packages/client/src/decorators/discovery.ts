@@ -1,6 +1,7 @@
 import type { ComboMarket } from '@polymarket/bindings/combos';
 import type {
   Comment,
+  CryptoMarketConfig,
   Event,
   Market,
   MarketClarification,
@@ -25,6 +26,7 @@ import {
   type FetchSeriesRequest,
   type FetchTagRequest,
   fetchCommentsById,
+  fetchCryptoMarketConfigs,
   fetchEvent,
   fetchEventTags,
   fetchMarket,
@@ -67,6 +69,16 @@ import type { Paginated } from '../pagination';
 import type { RequestOptions } from '../request-options';
 
 export type DiscoveryActions = {
+  /**
+   * Fetches the complete catalog of supported crypto market configurations.
+   * Returns a direct collection; this catalog has no continuation.
+   *
+   * @throws {@link FetchCryptoMarketConfigsError}
+   * Thrown on failure.
+   */
+  fetchCryptoMarketConfigs(
+    options?: RequestOptions,
+  ): Promise<CryptoMarketConfig[]>;
   /**
    * Lists events.
    *
@@ -738,6 +750,7 @@ export function discoveryActions(client: BasePublicClient): DiscoveryActions;
 export function discoveryActions(client: BaseSecureClient): DiscoveryActions;
 export function discoveryActions(client: BaseClient): DiscoveryActions {
   return {
+    fetchCryptoMarketConfigs: fetchCryptoMarketConfigs.bind(null, client),
     listEvents: listEvents.bind(null, client),
     fetchEvent: fetchEvent.bind(null, client),
     fetchEventTags: fetchEventTags.bind(null, client),
@@ -768,6 +781,7 @@ export function discoveryActions(client: BaseClient): DiscoveryActions {
 // Keep this list in sync with the methods on DiscoveryActions.
 export {
   FetchCommentsByIdError,
+  FetchCryptoMarketConfigsError,
   FetchEventError,
   FetchEventTagsError,
   FetchMarketError,
