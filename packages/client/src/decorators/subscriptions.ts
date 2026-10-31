@@ -40,10 +40,12 @@ export type {
   PriceSubscription,
   PriceSubscriptionConfirmation,
   SubscriptionHandle,
+  UserOrderStatus,
 } from '../actions';
 export {
   EquityMarketStatus,
   KnownPriceSource,
+  KnownUserOrderStatus,
   PriceProvider,
   SubscribeError,
 } from '../actions';
