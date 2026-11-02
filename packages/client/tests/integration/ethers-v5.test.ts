@@ -1,6 +1,6 @@
 import { OrderSide } from '@polymarket/bindings';
 import { createSecureClient } from '@polymarket/client';
-import { cancelOrder, fetchApiKeys } from '@polymarket/client/actions';
+import { cancelOrder } from '@polymarket/client/actions';
 import { signerFrom } from '@polymarket/client/ethers-v5';
 import { expectPresent } from '@polymarket/types';
 import { ethers } from 'ethers-v5';
@@ -25,7 +25,7 @@ describe('ethers-v5', () => {
       signer: signerFrom(new ethers.Wallet(depositWalletPrivateKey, provider)),
     });
 
-    await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+    await secureClient.listOpenOrders().firstPage();
   });
 
   it.runIf(runMeteredTests)(

@@ -76,6 +76,7 @@ function createClient(options: CreateClientOptions = {}) {
   } as unknown as Signer;
 
   const client = {
+    isSecureClient: () => false,
     account: {
       signer: SIGNER,
       signerType: SignerType.OWNER,
