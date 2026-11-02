@@ -3,9 +3,9 @@ import {
   type PrepareComposeThresholdRequest,
   type PrepareConvertPositionRequest,
   type PrepareDecomposeThresholdRequest,
-  type PrepareMergeDirectionalPositionsRequest,
+  type PrepareMergeDirectionalRequest,
   type PrepareMergeEventPositionsRequest,
-  type PrepareSplitDirectionalPositionsRequest,
+  type PrepareSplitDirectionalRequest,
   type PrepareSplitEventPositionsRequest,
   type SecureWalletActions,
   ThresholdSide,
@@ -34,21 +34,20 @@ describe('directional public input types', () => {
       lowLine: 1,
       highLine: 3,
       amount: 1n,
-    } satisfies PrepareSplitDirectionalPositionsRequest;
-    const invalidSplit = {
+    } satisfies PrepareSplitDirectionalRequest;
+    const maximumSplit = {
       eventId,
       lowLine: 1,
       highLine: 3,
-      // @ts-expect-error Splitting consumes collateral and requires an explicit amount.
       amount: 'max',
-    } satisfies PrepareSplitDirectionalPositionsRequest;
+    } satisfies PrepareSplitDirectionalRequest;
     const invalidEventSplit = {
       eventId,
       // @ts-expect-error Splitting a complete event requires an explicit collateral amount.
       amount: 'max',
     } satisfies PrepareSplitEventPositionsRequest;
     void split;
-    void invalidSplit;
+    void maximumSplit;
     void invalidEventSplit;
   });
 
@@ -100,13 +99,13 @@ describe('directional wallet method types', () => {
         side: ThresholdSide.Below,
         amount: 'max',
       };
-      const directionalSplit: PrepareSplitDirectionalPositionsRequest = {
+      const directionalSplit: PrepareSplitDirectionalRequest = {
         eventId,
         lowLine: 1,
         highLine: 3,
         amount: 1n,
       };
-      const directionalMerge: PrepareMergeDirectionalPositionsRequest = {
+      const directionalMerge: PrepareMergeDirectionalRequest = {
         eventId,
         lowLine: 1,
         highLine: 3,
@@ -128,12 +127,12 @@ describe('directional wallet method types', () => {
       expectTypeOf(client.decomposeThreshold(threshold)).toEqualTypeOf<
         Promise<TransactionHandle>
       >();
-      expectTypeOf(
-        client.splitDirectionalPositions(directionalSplit),
-      ).toEqualTypeOf<Promise<TransactionHandle>>();
-      expectTypeOf(
-        client.mergeDirectionalPositions(directionalMerge),
-      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      expectTypeOf(client.splitDirectional(directionalSplit)).toEqualTypeOf<
+        Promise<TransactionHandle>
+      >();
+      expectTypeOf(client.mergeDirectional(directionalMerge)).toEqualTypeOf<
+        Promise<TransactionHandle>
+      >();
     }
     expectTypeOf(consume).toBeFunction();
   });

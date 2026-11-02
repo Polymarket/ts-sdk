@@ -7,12 +7,20 @@ export * from './clob';
 export * from './collateral-return';
 export * from './comments';
 export * from './directional';
+export {
+  type DirectionalPair,
+  FindDirectionalPairsError,
+  type FindDirectionalPairsRequest,
+  findDirectionalPairs,
+} from './directional-pairs';
 export * from './event-positions';
 export * from './events';
 export * from './gasless';
 export * from './leaderboards';
 export * from './market-clarifications';
 export * from './markets';
+export * from './neg-risk';
+export * from './order-heartbeats';
 export * from './orders';
 export * from './perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
@@ -44,4 +52,5 @@ export * from './sports';
 export * from './subscriptions';
 export * from './tags';
 export * from './teams';
+export * from './tokens';
 export * from './transfers';

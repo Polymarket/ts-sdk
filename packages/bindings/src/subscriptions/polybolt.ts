@@ -40,6 +40,24 @@ export type PriceSource = KnownPriceSource | (string & {});
 
 const PriceSourceSchema = z.string().transform((value): PriceSource => value);
 
+/**
+ * Market state of the instrument priced by an equity provider.
+ * Unknown means the provider cannot determine the state; omission means not stated.
+ */
+export enum EquityMarketStatus {
+  Open = 'open',
+  Closed = 'closed',
+  Unknown = 'unknown',
+}
+
+const EquityMarketStatusPayloadSchema = z
+  .object({
+    market_status: z.enum(EquityMarketStatus).optional(),
+  })
+  .transform(({ market_status }): { marketStatus?: EquityMarketStatus } => ({
+    marketStatus: market_status,
+  }));
+
 export enum PolyboltChannel {
   Crypto = 'price.crypto',
   Twap = 'price.crypto.twap',
@@ -166,6 +184,19 @@ const TwapSnapshotSchema = SnapshotPayloadSchema.extend({
   data,
   windowSeconds: window_seconds,
 }));
+const EquityPricePayloadSchema = PricePayloadSchema.and(
+  EquityMarketStatusPayloadSchema,
+);
+const EquitySnapshotPayloadSchema = SnapshotPayloadSchema.and(
+  EquityMarketStatusPayloadSchema,
+);
+const EquityTwapPayloadSchema = TwapPayloadSchema.and(
+  EquityMarketStatusPayloadSchema,
+);
+const EquityTwapSnapshotSchema = TwapSnapshotSchema.and(
+  EquityMarketStatusPayloadSchema,
+);
+
 const EventMetadataSchema = z.object({
   timestamp: EpochMillisecondsSchema,
   seq: z.number().optional(),
@@ -223,16 +254,22 @@ export const EquityPriceEventSchema = z.union([
   EventMetadataSchema.extend({
     topic: z.literal('prices.equity'),
     type: z.literal('update'),
-    payload: PricePayloadSchema,
+    payload: EquityPricePayloadSchema,
   }),
   EventMetadataSchema.extend({
     topic: z.literal('prices.equity'),
     type: z.literal('subscribe'),
-    payload: SnapshotPayloadSchema,
+    payload: EquitySnapshotPayloadSchema,
   }),
 ]);
 /**
  * An equity price event.
+ *
+ * `payload.marketStatus` describes this provider's instrument. Absence means not
+ * stated, never open. Status-only updates repeat the price timestamp with
+ * `isCarriedForward: true`; do not deduplicate updates by timestamp alone.
+ * Snapshots carry the current status beside `source`, including a closing price
+ * older than two minutes while the status is closed or unknown.
  *
  * `seq` is scoped to one channel on one WebSocket connection and resets after
  * reconnecting. When an SDK subscription spans multiple connections, sequence
@@ -243,16 +280,20 @@ export const EquityTwapPriceEventSchema = z.union([
   EventMetadataSchema.extend({
     topic: z.literal('prices.equity.twap'),
     type: z.literal('update'),
-    payload: TwapPayloadSchema,
+    payload: EquityTwapPayloadSchema,
   }),
   EventMetadataSchema.extend({
     topic: z.literal('prices.equity.twap'),
     type: z.literal('subscribe'),
-    payload: TwapSnapshotSchema,
+    payload: EquityTwapSnapshotSchema,
   }),
 ]);
 /**
  * An equity TWAP event, denominated in the symbol's quote currency.
+ *
+ * `payload.marketStatus` has the same meaning as on equity prices and changes
+ * only with a new TWAP price. Absence means not stated. Snapshots carry the
+ * current status beside `source` and may include an older closing price.
  *
  * `seq` is scoped to one channel on one WebSocket connection and resets after
  * reconnecting. When an SDK subscription spans multiple connections, sequence

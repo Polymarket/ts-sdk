@@ -29,12 +29,12 @@ import {
   type UserStats,
   type UserVolume,
 } from '@polymarket/bindings/data';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -42,8 +42,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { PageSizeSchema, type Paginated, paginate } from '../pagination';
-import { readBlob, validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
   distinctIdList,
   EpochSecondsLikeSchema,
@@ -162,12 +161,14 @@ const ListPositionsRequestSchema = z
 export type ListPositionsRequest = z.input<typeof ListPositionsRequestSchema>;
 
 export type ListPositionsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListPositionsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -190,12 +191,18 @@ export const ListPositionsError = makeErrorGuard(
  * status but CLOSED unless `filterType`/`filterAmount` say otherwise.
  * `conditionId` accepts at most 20 distinct ids (with `user`). `pageSize`
  * defaults to 100 (max 1000). Transient rate limits are retried
- * automatically.
+ * by default.
  *
  * `REDEEMABLE_LOST` requires `user`. For `MERGEABLE`, provide `user` to
  * filter to mergeable positions; a `conditionId`-only request falls back
  * to the broader `OPEN` listing. `sortBy` defaults to `TOKENS` for
  * `MERGEABLE`, `REALIZED_PNL` for `CLOSED`, and `CURRENT_VALUE` otherwise.
+ * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+ * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+ * Keep the original filters and requested sort when resuming a cursor. If
+ * an older cursor is rejected with HTTP 400 because the ordering changed,
+ * discard it and explicitly fetch a new first page; the paginator does not
+ * restart the listing.
  * `title` filters by case-insensitive substring across every status and
  * anchor; the paginator retains it when advancing or resuming.
  *
@@ -237,7 +244,9 @@ export const ListPositionsError = makeErrorGuard(
 export function listPositions(
   client: BaseClient,
   request: ListPositionsRequest,
+  options: RequestOptions = {},
 ): Paginated<Position[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, window, ...params } = parseUserInput(
     request,
     ListPositionsRequestSchema,
@@ -245,19 +254,19 @@ export function listPositions(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/positions', {
-          // The full original filter set rides along with every cursor: the
-          // cursor binds only its paging anchor, and a filter dropped on a
-          // follow-up page would silently widen the result set.
-          params: toDataSearchParams({
-            ...params,
-            ...window,
-            limit: pageSize,
-            cursor,
-          }),
+      client.data.get('/v2/positions', {
+        schema: ListPositionsResponseSchema,
+        ...requestOptions,
+        // The full original filter set rides along with every cursor: the
+        // cursor binds only its paging anchor, and a filter dropped on a
+        // follow-up page would silently widen the result set.
+        params: toDataSearchParams({
+          ...params,
+          ...window,
+          limit: pageSize,
+          cursor,
         }),
-      ).andThen(validateWith(ListPositionsResponseSchema)),
+      }),
     cursor,
   );
 }
@@ -333,12 +342,14 @@ export type ListComboPositionsRequest = Omit<
 };
 
 export type ListComboPositionsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListComboPositionsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -354,7 +365,7 @@ export const ListComboPositionsError = makeErrorGuard(
  * `redeemable` flag is set. Every row carries its legs enriched with market
  * metadata and exact entry economics. `updatedAfter`/`updatedBefore` bound
  * the rows' change watermark for incremental sync. `pageSize` defaults to
- * 100 (max 1000). Transient rate limits are retried automatically.
+ * 100 (max 1000). Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -415,7 +426,9 @@ export const ListComboPositionsError = makeErrorGuard(
 export function listComboPositions(
   client: BaseClient,
   request: ListComboPositionsRequest,
+  options: RequestOptions = {},
 ): Paginated<ComboPosition[]> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     ListComboPositionsRequestSchemaChecked,
@@ -423,11 +436,11 @@ export function listComboPositions(
 
   return paginate(
     (cursor) =>
-      withRateLimitRetry(() =>
-        client.data.get('/v2/positions/combos', {
-          params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
-        }),
-      ).andThen(validateWith(ListComboPositionsResponseSchema)),
+      client.data.get('/v2/positions/combos', {
+        schema: ListComboPositionsResponseSchema,
+        ...requestOptions,
+        params: toDataSearchParams({ ...params, limit: pageSize, cursor }),
+      }),
     cursor,
   );
 }
@@ -442,12 +455,14 @@ export type FetchPortfolioValueRequest = z.input<
 >;
 
 export type FetchPortfolioValueError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchPortfolioValueError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -481,22 +496,22 @@ export const FetchPortfolioValueError = makeErrorGuard(
 export async function fetchPortfolioValue(
   client: BaseClient,
   request: FetchPortfolioValueRequest,
+  options: RequestOptions = {},
 ): Promise<PortfolioValue> {
+  const requestOptions = parseRequestOptions(options);
   const { conditionIds, ...params } = parseUserInput(
     request,
     FetchPortfolioValueRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/value', {
-        params: toDataSearchParams({
-          ...params,
-          condition: conditionIds,
-        }),
-      }),
-    ).andThen(validateWith(FetchPortfolioValueResponseSchema)),
-  );
+  return client.data.get('/v2/value', {
+    schema: FetchPortfolioValueResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({
+      ...params,
+      condition: conditionIds,
+    }),
+  });
 }
 
 const FetchUserStatsRequestSchema = z.object({
@@ -506,12 +521,14 @@ const FetchUserStatsRequestSchema = z.object({
 export type FetchUserStatsRequest = z.input<typeof FetchUserStatsRequestSchema>;
 
 export type FetchUserStatsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchUserStatsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -545,16 +562,16 @@ export const FetchUserStatsError = makeErrorGuard(
 export async function fetchUserStats(
   client: BaseClient,
   request: FetchUserStatsRequest,
+  options: RequestOptions = {},
 ): Promise<UserStats | null> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchUserStatsRequestSchema);
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/user-stats', {
-        params: toDataSearchParams(params),
-      }),
-    ).andThen(validateWith(FetchUserStatsResponseSchema)),
-  );
+  return client.data.get('/v2/user-stats', {
+    schema: FetchUserStatsResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams(params),
+  });
 }
 
 const FetchUserPnlRequestSchema = z.object({
@@ -566,12 +583,14 @@ const FetchUserPnlRequestSchema = z.object({
 export type FetchUserPnlRequest = z.input<typeof FetchUserPnlRequestSchema>;
 
 export type FetchUserPnlError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchUserPnlError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -604,16 +623,16 @@ export const FetchUserPnlError = makeErrorGuard(
 export async function fetchUserPnl(
   client: BaseClient,
   request: FetchUserPnlRequest,
+  options: RequestOptions = {},
 ): Promise<UserPnlSeries> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchUserPnlRequestSchema);
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/user-pnl', {
-        params: toDataSearchParams(params),
-      }),
-    ).andThen(validateWith(FetchUserPnlResponseSchema)),
-  );
+  return client.data.get('/v2/user-pnl', {
+    schema: FetchUserPnlResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams(params),
+  });
 }
 
 const FetchUserVolumeRequestSchema = z.object({
@@ -626,12 +645,14 @@ export type FetchUserVolumeRequest = z.input<
 >;
 
 export type FetchUserVolumeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchUserVolumeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -662,19 +683,19 @@ export const FetchUserVolumeError = makeErrorGuard(
 export async function fetchUserVolume(
   client: BaseClient,
   request: FetchUserVolumeRequest,
+  options: RequestOptions = {},
 ): Promise<UserVolume> {
+  const requestOptions = parseRequestOptions(options);
   const { window, ...params } = parseUserInput(
     request,
     FetchUserVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/user-volume', {
-        params: toDataSearchParams({ ...params, ...window }),
-      }),
-    ).andThen(validateWith(FetchUserVolumeResponseSchema)),
-  );
+  return client.data.get('/v2/user-volume', {
+    schema: FetchUserVolumeResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({ ...params, ...window }),
+  });
 }
 
 const DownloadAccountingSnapshotRequestSchema = z.object({
@@ -686,12 +707,14 @@ export type DownloadAccountingSnapshotRequest = z.input<
 >;
 
 export type DownloadAccountingSnapshotError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const DownloadAccountingSnapshotError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -720,17 +743,17 @@ export const DownloadAccountingSnapshotError = makeErrorGuard(
 export async function downloadAccountingSnapshot(
   client: BaseClient,
   request: DownloadAccountingSnapshotRequest,
+  options: RequestOptions = {},
 ): Promise<Blob> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(
     request,
     DownloadAccountingSnapshotRequestSchema,
   );
 
-  return unwrap(
-    client.data
-      .get('/v1/accounting/snapshot', {
-        params: toLegacyDataSearchParams(params),
-      })
-      .andThen(readBlob),
-  );
+  return client.data.get('/v1/accounting/snapshot', {
+    responseType: 'blob',
+    ...requestOptions,
+    params: toLegacyDataSearchParams(params),
+  });
 }

@@ -36,8 +36,8 @@ import {
   completeWith,
   type SendComposeThresholdTransactionRequest,
   type SendDecomposeThresholdTransactionRequest,
-  type SendMergeDirectionalPositionsTransactionRequest,
-  type SendSplitDirectionalPositionsTransactionRequest,
+  type SendMergeDirectionalTransactionRequest,
+  type SendSplitDirectionalTransactionRequest,
   signerTransactionRequest,
 } from '../workflow';
 import {
@@ -408,12 +408,12 @@ export function decomposeThreshold(
   );
 }
 
-export type SplitDirectionalPositionsWorkflowRequest =
+export type SplitDirectionalWorkflowRequest =
   | GaslessWorkflowRequest
-  | SendSplitDirectionalPositionsTransactionRequest;
+  | SendSplitDirectionalTransactionRequest;
 
-export type SplitDirectionalPositionsWorkflow = AsyncGenerator<
-  SplitDirectionalPositionsWorkflowRequest,
+export type SplitDirectionalWorkflow = AsyncGenerator<
+  SplitDirectionalWorkflowRequest,
   TransactionHandle,
   EvmAddress | EvmSignature | TransactionHandle
 >;
@@ -421,31 +421,39 @@ export type SplitDirectionalPositionsWorkflow = AsyncGenerator<
 /**
  * Parameters for preparing a directional position split.
  */
-export type PrepareSplitDirectionalPositionsRequest = {
+export type PrepareSplitDirectionalRequest = {
   /** Protocol event ID of a directional event. Not the numeric ID of an `Event`. */
   eventId: string | DirectionalEventId;
   /** Lower ordinal line; must be at least 1 and below highLine. */
   lowLine: number;
   /** Higher ordinal line; must be below the real-bucket count. */
   highLine: number;
-  /** Collateral and amount per middle-bucket YES position to consume. */
-  amount: bigint;
+  /** Six-decimal base units per pair. Omit or use 'max' for the minimum of pUSD and every middle-bucket balance. */
+  amount?: bigint | 'max';
   /** Optional transaction metadata. */
   metadata?: string;
 };
 
-const PrepareSplitDirectionalPositionsRequestSchema =
+const PrepareSplitDirectionalRequestSchema =
   DirectionalLinesRequestSchema.safeExtend({
-    amount: z.bigint().positive(),
-  }) satisfies z.ZodType<PrepareSplitDirectionalPositionsRequest>;
+    amount: z
+      .union([
+        z
+          .bigint()
+          .positive()
+          .max((1n << 256n) - 1n),
+        z.literal('max'),
+      ])
+      .default('max'),
+  }) satisfies z.ZodType<PrepareSplitDirectionalRequest>;
 
-export type PrepareSplitDirectionalPositionsError =
+export type PrepareSplitDirectionalError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const PrepareSplitDirectionalPositionsError = makeErrorGuard(
+export const PrepareSplitDirectionalError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -458,7 +466,8 @@ export const PrepareSplitDirectionalPositionsError = makeErrorGuard(
  * ABOVE(lowLine) and BELOW(highLine).
  *
  * Consumes the amount of collateral and each real bucket YES in [lowLine,
- * highLine). Lines are ordinal indices; they are not scalar values. The
+ * highLine). Omitted amount or 'max' uses the fresh minimum of pUSD and all
+ * required bucket balances. Lines are ordinal indices; they are not scalar values. The
  * workflow submits one atomic transaction. Confirm through the returned
  * handle's `wait()`.
  *
@@ -467,7 +476,7 @@ export const PrepareSplitDirectionalPositionsError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const workflow = await prepareSplitDirectionalPositions(client, {
+ * const workflow = await prepareSplitDirectional(client, {
  *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
  *   lowLine: 1,
  *   highLine: 3,
@@ -475,21 +484,19 @@ export const PrepareSplitDirectionalPositionsError = makeErrorGuard(
  * });
  * ```
  *
- * @throws {@link PrepareSplitDirectionalPositionsError}
+ * @throws {@link PrepareSplitDirectionalError}
  * Thrown on failure.
  */
-export async function prepareSplitDirectionalPositions(
+export async function prepareSplitDirectional(
   client: BaseSecureClient,
-  request: PrepareSplitDirectionalPositionsRequest,
-): Promise<SplitDirectionalPositionsWorkflow> {
-  const params = parseUserInput(
-    request,
-    PrepareSplitDirectionalPositionsRequestSchema,
-  );
+  request: PrepareSplitDirectionalRequest,
+): Promise<SplitDirectionalWorkflow> {
+  const params = parseUserInput(request, PrepareSplitDirectionalRequestSchema);
   const amount = await resolveBasketAmount(
     client,
     bucketRangePositionIds(params.eventId, params.lowLine, params.highLine),
     params.amount,
+    { collateral: true },
   );
   const call = routerSplitDirectionalCall(
     client.environment.contracts.protocolV2Router,
@@ -499,10 +506,10 @@ export async function prepareSplitDirectionalPositions(
     amount,
   );
 
-  return async function* (): SplitDirectionalPositionsWorkflow {
+  return async function* (): SplitDirectionalWorkflow {
     if (client.account.walletType === WalletType.EOA) {
       return expectTransactionHandle(
-        yield sendSplitDirectionalPositionsTransaction(
+        yield sendSplitDirectionalTransaction(
           signerTransactionRequest(client.environment.chainId, call),
         ),
       );
@@ -516,7 +523,7 @@ export async function prepareSplitDirectionalPositions(
   }.call(null);
 }
 
-export type SplitDirectionalPositionsError =
+export type SplitDirectionalError =
   | CancelledSigningError
   | RateLimitError
   | RequestRejectedError
@@ -524,7 +531,7 @@ export type SplitDirectionalPositionsError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const SplitDirectionalPositionsError = makeErrorGuard(
+export const SplitDirectionalError = makeErrorGuard(
   CancelledSigningError,
   RateLimitError,
   RequestRejectedError,
@@ -539,7 +546,8 @@ export const SplitDirectionalPositionsError = makeErrorGuard(
  * BELOW(highLine).
  *
  * Consumes the amount of collateral and each real bucket YES in [lowLine,
- * highLine). Lines are ordinal indices; they are not scalar values. Uses
+ * highLine). Omitted amount or 'max' uses the fresh minimum of pUSD and all
+ * required bucket balances. Lines are ordinal indices; they are not scalar values. Uses
  * existing trading approvals; call `setupTradingApprovals()` when needed.
  * Confirmation stays explicit through the returned handle's `wait()`.
  *
@@ -548,7 +556,7 @@ export const SplitDirectionalPositionsError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const handle = await splitDirectionalPositions(client, {
+ * const handle = await splitDirectional(client, {
  *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
  *   lowLine: 1,
  *   highLine: 3,
@@ -557,24 +565,24 @@ export const SplitDirectionalPositionsError = makeErrorGuard(
  * await handle.wait();
  * ```
  *
- * @throws {@link SplitDirectionalPositionsError}
+ * @throws {@link SplitDirectionalError}
  * Thrown on failure.
  */
-export function splitDirectionalPositions(
+export function splitDirectional(
   client: BaseSecureClient,
-  request: PrepareSplitDirectionalPositionsRequest,
+  request: PrepareSplitDirectionalRequest,
 ): Promise<TransactionHandle> {
-  return prepareSplitDirectionalPositions(client, request).then(
+  return prepareSplitDirectional(client, request).then(
     completeWith(client.signer),
   );
 }
 
-export type MergeDirectionalPositionsWorkflowRequest =
+export type MergeDirectionalWorkflowRequest =
   | GaslessWorkflowRequest
-  | SendMergeDirectionalPositionsTransactionRequest;
+  | SendMergeDirectionalTransactionRequest;
 
-export type MergeDirectionalPositionsWorkflow = AsyncGenerator<
-  MergeDirectionalPositionsWorkflowRequest,
+export type MergeDirectionalWorkflow = AsyncGenerator<
+  MergeDirectionalWorkflowRequest,
   TransactionHandle,
   EvmAddress | EvmSignature | TransactionHandle
 >;
@@ -582,31 +590,39 @@ export type MergeDirectionalPositionsWorkflow = AsyncGenerator<
 /**
  * Parameters for preparing a directional position merge.
  */
-export type PrepareMergeDirectionalPositionsRequest = {
+export type PrepareMergeDirectionalRequest = {
   /** Protocol event ID of a directional event. Not the numeric ID of an `Event`. */
   eventId: string | DirectionalEventId;
   /** Lower ordinal line; must be at least 1 and below highLine. */
   lowLine: number;
   /** Higher ordinal line; must be below the real-bucket count. */
   highLine: number;
-  /** Amount per threshold position, or the fresh minimum of both balances. */
-  amount: bigint | 'max';
+  /** Six-decimal base units per pair. Omit or use 'max' for the fresh minimum of both threshold balances. */
+  amount?: bigint | 'max';
   /** Optional transaction metadata. */
   metadata?: string;
 };
 
-const PrepareMergeDirectionalPositionsRequestSchema =
+const PrepareMergeDirectionalRequestSchema =
   DirectionalLinesRequestSchema.safeExtend({
-    amount: z.union([z.bigint().positive(), z.literal('max')]),
-  }) satisfies z.ZodType<PrepareMergeDirectionalPositionsRequest>;
+    amount: z
+      .union([
+        z
+          .bigint()
+          .positive()
+          .max((1n << 256n) - 1n),
+        z.literal('max'),
+      ])
+      .default('max'),
+  }) satisfies z.ZodType<PrepareMergeDirectionalRequest>;
 
-export type PrepareMergeDirectionalPositionsError =
+export type PrepareMergeDirectionalError =
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const PrepareMergeDirectionalPositionsError = makeErrorGuard(
+export const PrepareMergeDirectionalError = makeErrorGuard(
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -619,7 +635,7 @@ export const PrepareMergeDirectionalPositionsError = makeErrorGuard(
  * collateral and middle-bucket YES positions.
  *
  * Returns the amount of collateral and each real bucket YES in [lowLine,
- * highLine). 'max' uses the fresh minimum of the two threshold balances. The
+ * highLine). Omitted amount or 'max' uses the fresh minimum of the two threshold balances. The
  * workflow submits one atomic transaction. Confirm through the returned
  * handle's `wait()`.
  *
@@ -628,7 +644,7 @@ export const PrepareMergeDirectionalPositionsError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const workflow = await prepareMergeDirectionalPositions(client, {
+ * const workflow = await prepareMergeDirectional(client, {
  *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
  *   lowLine: 1,
  *   highLine: 3,
@@ -636,17 +652,14 @@ export const PrepareMergeDirectionalPositionsError = makeErrorGuard(
  * });
  * ```
  *
- * @throws {@link PrepareMergeDirectionalPositionsError}
+ * @throws {@link PrepareMergeDirectionalError}
  * Thrown on failure.
  */
-export async function prepareMergeDirectionalPositions(
+export async function prepareMergeDirectional(
   client: BaseSecureClient,
-  request: PrepareMergeDirectionalPositionsRequest,
-): Promise<MergeDirectionalPositionsWorkflow> {
-  const params = parseUserInput(
-    request,
-    PrepareMergeDirectionalPositionsRequestSchema,
-  );
+  request: PrepareMergeDirectionalRequest,
+): Promise<MergeDirectionalWorkflow> {
+  const params = parseUserInput(request, PrepareMergeDirectionalRequestSchema);
   const abovePositionId = deriveThresholdPositionId(
     params.eventId,
     params.lowLine,
@@ -670,10 +683,10 @@ export async function prepareMergeDirectionalPositions(
     amount,
   );
 
-  return async function* (): MergeDirectionalPositionsWorkflow {
+  return async function* (): MergeDirectionalWorkflow {
     if (client.account.walletType === WalletType.EOA) {
       return expectTransactionHandle(
-        yield sendMergeDirectionalPositionsTransaction(
+        yield sendMergeDirectionalTransaction(
           signerTransactionRequest(client.environment.chainId, call),
         ),
       );
@@ -687,7 +700,7 @@ export async function prepareMergeDirectionalPositions(
   }.call(null);
 }
 
-export type MergeDirectionalPositionsError =
+export type MergeDirectionalError =
   | CancelledSigningError
   | RateLimitError
   | RequestRejectedError
@@ -695,7 +708,7 @@ export type MergeDirectionalPositionsError =
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const MergeDirectionalPositionsError = makeErrorGuard(
+export const MergeDirectionalError = makeErrorGuard(
   CancelledSigningError,
   RateLimitError,
   RequestRejectedError,
@@ -710,7 +723,7 @@ export const MergeDirectionalPositionsError = makeErrorGuard(
  * YES positions.
  *
  * Returns the amount of collateral and each real bucket YES in [lowLine,
- * highLine). 'max' uses the fresh minimum of the two threshold balances. Uses
+ * highLine). Omitted amount or 'max' uses the fresh minimum of the two threshold balances. Uses
  * existing trading approvals; call `setupTradingApprovals()` when needed.
  * Confirmation stays explicit through the returned handle's `wait()`.
  *
@@ -719,7 +732,7 @@ export const MergeDirectionalPositionsError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const handle = await mergeDirectionalPositions(client, {
+ * const handle = await mergeDirectional(client, {
  *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
  *   lowLine: 1,
  *   highLine: 3,
@@ -728,14 +741,14 @@ export const MergeDirectionalPositionsError = makeErrorGuard(
  * await handle.wait();
  * ```
  *
- * @throws {@link MergeDirectionalPositionsError}
+ * @throws {@link MergeDirectionalError}
  * Thrown on failure.
  */
-export function mergeDirectionalPositions(
+export function mergeDirectional(
   client: BaseSecureClient,
-  request: PrepareMergeDirectionalPositionsRequest,
+  request: PrepareMergeDirectionalRequest,
 ): Promise<TransactionHandle> {
-  return prepareMergeDirectionalPositions(client, request).then(
+  return prepareMergeDirectional(client, request).then(
     completeWith(client.signer),
   );
 }
@@ -758,20 +771,20 @@ function sendDecomposeThresholdTransaction(
   };
 }
 
-function sendSplitDirectionalPositionsTransaction(
+function sendSplitDirectionalTransaction(
   request: SignerTransactionRequest,
-): SendSplitDirectionalPositionsTransactionRequest {
+): SendSplitDirectionalTransactionRequest {
   return {
-    kind: 'sendSplitDirectionalPositionsTransaction',
+    kind: 'sendSplitDirectionalTransaction',
     request,
   };
 }
 
-function sendMergeDirectionalPositionsTransaction(
+function sendMergeDirectionalTransaction(
   request: SignerTransactionRequest,
-): SendMergeDirectionalPositionsTransactionRequest {
+): SendMergeDirectionalTransactionRequest {
   return {
-    kind: 'sendMergeDirectionalPositionsTransaction',
+    kind: 'sendMergeDirectionalTransaction',
     request,
   };
 }

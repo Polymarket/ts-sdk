@@ -2,33 +2,62 @@ import {
   approveErc20,
   approveErc1155ForAll,
   type CollateralReturnPlanResponse,
+  type ComposeThresholdWorkflow,
+  type ConvertPositionWorkflow,
+  type ConvertWorkflow,
   composeThreshold,
+  convert,
   convertPosition,
+  type DecomposeThresholdWorkflow,
+  type DirectionalPair,
   decomposeThreshold,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   type FetchTradingApprovalsStateRequest,
+  type FindDirectionalPairsRequest,
   fetchTradingApprovalsState,
-  mergeDirectionalPositions,
+  findDirectionalPairs,
+  type HorizontalMergeWorkflow,
+  type HorizontalSplitWorkflow,
+  horizontalMerge,
+  horizontalSplit,
+  type MergeDirectionalWorkflow,
+  type MergeEventPositionsWorkflow,
+  mergeDirectional,
   mergeEventPositions,
   mergePositions,
   type PrepareComposeThresholdRequest,
   type PrepareConvertPositionRequest,
+  type PrepareConvertRequest,
   type PrepareDecomposeThresholdRequest,
   type PrepareErc20ApprovalRequest,
   type PrepareErc20TransferRequest,
   type PrepareErc1155ApprovalForAllRequest,
-  type PrepareMergeDirectionalPositionsRequest,
+  type PrepareHorizontalMergeRequest,
+  type PrepareHorizontalSplitRequest,
+  type PrepareMergeDirectionalRequest,
   type PrepareMergeEventPositionsRequest,
   type PrepareMergePositionsRequest,
   type PrepareRedeemPositionsRequest,
-  type PrepareSplitDirectionalPositionsRequest,
+  type PrepareSplitDirectionalRequest,
   type PrepareSplitEventPositionsRequest,
   type PrepareSplitPositionRequest,
   planCollateralReturn,
+  prepareComposeThreshold,
+  prepareConvert,
+  prepareConvertPosition,
+  prepareDecomposeThreshold,
+  prepareHorizontalMerge,
+  prepareHorizontalSplit,
+  prepareMergeDirectional,
+  prepareMergeEventPositions,
+  prepareSplitDirectional,
+  prepareSplitEventPositions,
   redeemPositions,
+  type SplitDirectionalWorkflow,
+  type SplitEventPositionsWorkflow,
   setupTradingApprovals,
-  splitDirectionalPositions,
+  splitDirectional,
   splitEventPositions,
   splitPosition,
   type TradingApprovalsState,
@@ -39,6 +68,7 @@ import type {
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
+import type { RequestOptions } from '../request-options';
 import type { TransactionHandle } from '../types';
 
 export type PublicWalletActions = {
@@ -61,10 +91,136 @@ export type PublicWalletActions = {
    */
   fetchTradingApprovalsState(
     request: FetchTradingApprovalsStateRequest,
+    options?: RequestOptions,
   ): Promise<TradingApprovalsState>;
 };
 
 export type SecureWalletActions = {
+  /**
+   * Finds collateral-return pairs in this wallet's indexed holdings, with fresh on-chain balances.
+   * Pairs may overlap; their amounts cannot be added into an execution plan.
+   * Unindexed holdings cannot be discovered. No funds are moved.
+   * @throws {@link FindDirectionalPairsError} Thrown on failure or incomplete pagination.
+   */
+  findDirectionalPairs(
+    request?: FindDirectionalPairsRequest,
+  ): Promise<DirectionalPair[]>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.composeThreshold | composeThreshold}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareComposeThresholdError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareComposeThreshold(
+    request: PrepareComposeThresholdRequest,
+  ): Promise<ComposeThresholdWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.decomposeThreshold | decomposeThreshold}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareDecomposeThresholdError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareDecomposeThreshold(
+    request: PrepareDecomposeThresholdRequest,
+  ): Promise<DecomposeThresholdWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.splitDirectional | splitDirectional}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareSplitDirectionalError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareSplitDirectional(
+    request: PrepareSplitDirectionalRequest,
+  ): Promise<SplitDirectionalWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.mergeDirectional | mergeDirectional}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareMergeDirectionalError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareMergeDirectional(
+    request: PrepareMergeDirectionalRequest,
+  ): Promise<MergeDirectionalWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.splitEventPositions | splitEventPositions}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareSplitEventPositionsError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareSplitEventPositions(
+    request: PrepareSplitEventPositionsRequest,
+  ): Promise<SplitEventPositionsWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.mergeEventPositions | mergeEventPositions}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareMergeEventPositionsError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareMergeEventPositions(
+    request: PrepareMergeEventPositionsRequest,
+  ): Promise<MergeEventPositionsWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.convertPosition | convertPosition}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareConvertPositionError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareConvertPosition(
+    request: PrepareConvertPositionRequest,
+  ): Promise<ConvertPositionWorkflow>;
+
+  /**
+   * Converts NO into YES for all other conditions.
+   * Derives the event and NO condition index from the market's condition ID.
+   * Includes Other unless converting NO(Other).
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link ConvertError} Thrown on failure.
+   */
+  convert(request: PrepareConvertRequest): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Converts NO into YES for all other conditions.
+   * Derives the event and NO condition index from the market's condition ID.
+   * Includes Other unless converting NO(Other).
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareConvertError} Thrown on failure.
+   */
+  prepareConvert(request: PrepareConvertRequest): Promise<ConvertWorkflow>;
+  /**
+   * Splits pUSD into YES for every condition, including Other.
+   * Uses the event containing the supplied market condition.
+   * Requires pUSD spending approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link HorizontalSplitError} Thrown on failure.
+   */
+  horizontalSplit(
+    request: PrepareHorizontalSplitRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Splits pUSD into YES for every condition, including Other.
+   * Uses the event containing the supplied market condition.
+   * Requires pUSD spending approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareHorizontalSplitError} Thrown on failure.
+   */
+  prepareHorizontalSplit(
+    request: PrepareHorizontalSplitRequest,
+  ): Promise<HorizontalSplitWorkflow>;
+  /**
+   * Merges equal YES amounts from every condition, including Other, into pUSD.
+   * Uses the event containing the supplied market condition.
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Signs and submits; call the returned handle's wait() to confirm.
+   * @throws {@link HorizontalMergeError} Thrown on failure.
+   */
+  horizontalMerge(
+    request: PrepareHorizontalMergeRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Prepares a workflow: Merges equal YES amounts from every condition, including Other, into pUSD.
+   * Uses the event containing the supplied market condition.
+   * Requires PositionManager operator approval for the Router; approvals are not submitted automatically.
+   * Preparing does not sign or submit; advance the workflow to execute it.
+   * @throws {@link PrepareHorizontalMergeError} Thrown on failure.
+   */
+  prepareHorizontalMerge(
+    request: PrepareHorizontalMergeRequest,
+  ): Promise<HorizontalMergeWorkflow>;
+
   /**
    * Reads the approvals a wallet is missing for supported trading workflows.
    *
@@ -80,7 +236,9 @@ export type SecureWalletActions = {
    * const state = await client.fetchTradingApprovalsState();
    * ```
    */
-  fetchTradingApprovalsState(): Promise<TradingApprovalsState>;
+  fetchTradingApprovalsState(
+    options?: RequestOptions,
+  ): Promise<TradingApprovalsState>;
   /**
    * Sets up the approvals required for trading and supported position lifecycle workflows.
    *
@@ -414,14 +572,15 @@ export type SecureWalletActions = {
    * and BELOW at `highLine`.
    *
    * Consumes `amount` of collateral and of each real bucket YES position in
-   * `[lowLine, highLine)`. Lines are ordinal bucket boundaries.
+   * `[lowLine, highLine)`. Omit amount or use 'max' for the minimum of
+   * pUSD and every required bucket balance. Lines are ordinal bucket boundaries.
    *
-   * @throws {@link SplitDirectionalPositionsError}
+   * @throws {@link SplitDirectionalError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const handle = await client.splitDirectionalPositions({
+   * const handle = await client.splitDirectional({
    *   amount: 1_000_000n,
    *   eventId: '0x04…',
    *   highLine: 3,
@@ -433,23 +592,23 @@ export type SecureWalletActions = {
    * // outcome.transactionHash: TxHash
    * ```
    */
-  splitDirectionalPositions(
-    request: PrepareSplitDirectionalPositionsRequest,
+  splitDirectional(
+    request: PrepareSplitDirectionalRequest,
   ): Promise<TransactionHandle>;
   /**
    * Merges ABOVE at `lowLine` and BELOW at `highLine` into collateral and
    * middle-bucket YES positions.
    *
    * Returns `amount` of collateral and of each real bucket YES position in
-   * `[lowLine, highLine)`. Use `'max'` to merge the minimum held balance of
+   * `[lowLine, highLine)`. Omit amount or use `'max'` to merge the minimum held balance of
    * the two threshold positions.
    *
-   * @throws {@link MergeDirectionalPositionsError}
+   * @throws {@link MergeDirectionalError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const handle = await client.mergeDirectionalPositions({
+   * const handle = await client.mergeDirectional({
    *   amount: 'max',
    *   eventId: '0x04…',
    *   highLine: 3,
@@ -461,8 +620,8 @@ export type SecureWalletActions = {
    * // outcome.transactionHash: TxHash
    * ```
    */
-  mergeDirectionalPositions(
-    request: PrepareMergeDirectionalPositionsRequest,
+  mergeDirectional(
+    request: PrepareMergeDirectionalRequest,
   ): Promise<TransactionHandle>;
   /**
    * Plans a collateral return for the authenticated account.
@@ -539,22 +698,40 @@ export function walletActions(
 
   return {
     ...actions,
-    fetchTradingApprovalsState: () =>
-      fetchTradingApprovalsState(client, { user: client.account.wallet }),
+    fetchTradingApprovalsState: (options?: RequestOptions) =>
+      fetchTradingApprovalsState(
+        client,
+        { user: client.account.wallet },
+        options,
+      ),
     setupTradingApprovals: setupTradingApprovals.bind(null, client),
     approveErc20: approveErc20.bind(null, client),
     approveErc1155ForAll: approveErc1155ForAll.bind(null, client),
     transferErc20: transferErc20.bind(null, client),
+    convert: convert.bind(null, client),
+    prepareConvert: prepareConvert.bind(null, client),
+    horizontalSplit: horizontalSplit.bind(null, client),
+    prepareHorizontalSplit: prepareHorizontalSplit.bind(null, client),
+    horizontalMerge: horizontalMerge.bind(null, client),
+    prepareHorizontalMerge: prepareHorizontalMerge.bind(null, client),
     splitPosition: splitPosition.bind(null, client),
     mergePositions: mergePositions.bind(null, client),
     redeemPositions: redeemPositions.bind(null, client),
+    prepareComposeThreshold: prepareComposeThreshold.bind(null, client),
+    prepareDecomposeThreshold: prepareDecomposeThreshold.bind(null, client),
+    prepareSplitDirectional: prepareSplitDirectional.bind(null, client),
+    prepareMergeDirectional: prepareMergeDirectional.bind(null, client),
+    prepareSplitEventPositions: prepareSplitEventPositions.bind(null, client),
+    prepareMergeEventPositions: prepareMergeEventPositions.bind(null, client),
+    prepareConvertPosition: prepareConvertPosition.bind(null, client),
     splitEventPositions: splitEventPositions.bind(null, client),
     mergeEventPositions: mergeEventPositions.bind(null, client),
     convertPosition: convertPosition.bind(null, client),
     composeThreshold: composeThreshold.bind(null, client),
     decomposeThreshold: decomposeThreshold.bind(null, client),
-    splitDirectionalPositions: splitDirectionalPositions.bind(null, client),
-    mergeDirectionalPositions: mergeDirectionalPositions.bind(null, client),
+    findDirectionalPairs: findDirectionalPairs.bind(null, client),
+    splitDirectional: splitDirectional.bind(null, client),
+    mergeDirectional: mergeDirectional.bind(null, client),
     planCollateralReturn: planCollateralReturn.bind(null, client),
     executeCollateralReturnPlan: executeCollateralReturnPlan.bind(null, client),
   };
@@ -568,17 +745,33 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
+  ComposeThresholdWorkflow,
+  ConvertPositionWorkflow,
+  ConvertWorkflow,
+  DecomposeThresholdWorkflow,
+  DirectionalPair,
   Erc20TradingApproval,
   Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
   FetchTradingApprovalsStateRequest,
+  FindDirectionalPairsRequest,
+  HorizontalMergeWorkflow,
+  HorizontalSplitWorkflow,
+  MergeDirectionalWorkflow,
+  MergeEventPositionsWorkflow,
+  NegRiskWorkflow,
   PrepareComposeThresholdRequest,
   PrepareConvertPositionRequest,
+  PrepareConvertRequest,
   PrepareDecomposeThresholdRequest,
-  PrepareMergeDirectionalPositionsRequest,
+  PrepareHorizontalMergeRequest,
+  PrepareHorizontalSplitRequest,
+  PrepareMergeDirectionalRequest,
   PrepareMergeEventPositionsRequest,
-  PrepareSplitDirectionalPositionsRequest,
+  PrepareSplitDirectionalRequest,
   PrepareSplitEventPositionsRequest,
+  SplitDirectionalWorkflow,
+  SplitEventPositionsWorkflow,
   TradingApprovalRequirements,
   TradingApprovalsState,
 } from '../actions';
@@ -590,17 +783,31 @@ export {
   ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
   ComposeThresholdError,
+  ConvertError,
   ConvertPositionError,
   DecomposeThresholdError,
   ExecuteCollateralReturnPlanError,
   FetchTradingApprovalsStateError,
-  MergeDirectionalPositionsError,
+  FindDirectionalPairsError,
+  HorizontalMergeError,
+  HorizontalSplitError,
+  MergeDirectionalError,
   MergeEventPositionsError,
   MergePositionsError,
   PlanCollateralReturnError,
+  PrepareComposeThresholdError,
+  PrepareConvertError,
+  PrepareConvertPositionError,
+  PrepareDecomposeThresholdError,
+  PrepareHorizontalMergeError,
+  PrepareHorizontalSplitError,
+  PrepareMergeDirectionalError,
+  PrepareMergeEventPositionsError,
+  PrepareSplitDirectionalError,
+  PrepareSplitEventPositionsError,
   RedeemPositionsError,
   SetupTradingApprovalsError,
-  SplitDirectionalPositionsError,
+  SplitDirectionalError,
   SplitEventPositionsError,
   SplitPositionError,
   TransferErc20Error,

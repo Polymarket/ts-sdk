@@ -17,14 +17,15 @@ import {
   EventSchema,
   FetchEventTagsResponseSchema,
   ListEventsKeysetResponseSchema,
+  ProtocolVersion,
   type TagReference,
 } from '@polymarket/bindings/gamma';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -40,9 +41,9 @@ import {
   readCursorPayload,
 } from '../pagination';
 import { parsePolymarketSlugUrl } from '../polymarket-url';
-import { validateWith } from '../response';
-import { withRateLimitRetry } from '../retry';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import {
+  ClosedFilterSchema,
   PositiveInt32EventIdSchema,
   snakeCase,
   toDataSearchParams,
@@ -59,7 +60,7 @@ export {
 
 const ListEventsRequestSchema = z.object({
   ascending: z.boolean().optional(),
-  closed: z.boolean().default(false),
+  closed: ClosedFilterSchema.default(false),
   cursor: PaginationCursorSchema.optional(),
   pageSize: PageSizeSchema.optional(),
   cyom: z.boolean().optional(),
@@ -96,6 +97,12 @@ const ListEventsRequestSchema = z.object({
   tagMatch: z.enum(['any', 'all']).optional(),
   tagSlug: z.string().optional(),
   titleSearch: z.string().optional(),
+  version: z
+    .union([
+      z.enum(ProtocolVersion),
+      z.array(z.enum(ProtocolVersion)).min(1).max(2),
+    ])
+    .optional(),
   volumeMax: z.number().optional(),
   volumeMin: z.number().optional(),
 });
@@ -137,12 +144,14 @@ export type FetchEventTagsRequest = z.input<typeof FetchEventTagsRequestSchema>;
 type ListEventsParams = z.output<typeof ListEventsRequestSchema>;
 
 export type ListEventsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListEventsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -153,7 +162,12 @@ export const ListEventsError = makeErrorGuard(
 /**
  * Lists events.
  *
- * Defaults to open events. Pass `closed: true` to list settled events.
+ * Defaults to open events. Pass `closed: true` for closed events or
+ * `closed: 'any'` for either state; no identifier filter is required.
+ * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+ * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+ * Arrays accept one or two values. Omitting `version` uses the current server
+ * default of CTF events (v1).
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -197,7 +211,9 @@ export const ListEventsError = makeErrorGuard(
 export function listEvents(
   client: BaseClient,
   request: ListEventsRequest = {},
+  options: RequestOptions = {},
 ): Paginated<Event[]> {
+  const requestOptions = parseRequestOptions(options);
   const {
     cursor: initialCursor,
     pageSize,
@@ -208,6 +224,8 @@ export function listEvents(
     (cursor) =>
       client.gamma
         .get('/events/keyset', {
+          schema: ListEventsKeysetResponseSchema,
+          ...requestOptions,
           params: toEventsSearchParams({
             ...query,
             pageSize,
@@ -215,8 +233,7 @@ export function listEvents(
               cursor === undefined ? undefined : toEventsCursor(cursor, query),
           }),
         })
-        .andThen(validateWith(ListEventsKeysetResponseSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: response.items,
           hasMore: response.nextCursor !== undefined,
           nextCursor:
@@ -240,12 +257,14 @@ function toEventsCursor(cursor: PaginationCursor, query: object) {
 }
 
 export type FetchEventError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -282,38 +301,38 @@ export const FetchEventError = makeErrorGuard(
 export async function fetchEvent(
   client: BaseClient,
   request: FetchEventRequest,
+  options: RequestOptions = {},
 ): Promise<Event> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchEventRequestSchema);
 
   if ('id' in params) {
-    return unwrap(
-      client.gamma
-        .get(`events/${params.id}`, {
-          params: toFetchEventByIdSearchParams(params),
-        })
-        .andThen(validateWith(EventSchema)),
-    );
+    return client.gamma.get(`events/${params.id}`, {
+      schema: EventSchema,
+      ...requestOptions,
+      params: toFetchEventByIdSearchParams(params),
+    });
   }
 
   const slug =
     'url' in params ? parsePolymarketSlugUrl(params.url, 'event') : params.slug;
 
-  return unwrap(
-    client.gamma
-      .get(`events/slug/${slug}`, {
-        params: toFetchEventBySlugSearchParams(params),
-      })
-      .andThen(validateWith(EventSchema)),
-  );
+  return client.gamma.get(`events/slug/${slug}`, {
+    schema: EventSchema,
+    ...requestOptions,
+    params: toFetchEventBySlugSearchParams(params),
+  });
 }
 
 export type FetchEventTagsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventTagsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -342,14 +361,15 @@ export const FetchEventTagsError = makeErrorGuard(
 export async function fetchEventTags(
   client: BaseClient,
   request: FetchEventTagsRequest,
+  options: RequestOptions = {},
 ): Promise<TagReference[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchEventTagsRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get(`events/${params.id}/tags`)
-      .andThen(validateWith(FetchEventTagsResponseSchema)),
-  );
+  return client.gamma.get(`events/${params.id}/tags`, {
+    ...requestOptions,
+    schema: FetchEventTagsResponseSchema,
+  });
 }
 
 const ResolutionConditionIdsSchema = z
@@ -409,12 +429,14 @@ export type FetchResolutionsRequest =
   | FetchResolutionsByEventRequest;
 
 export type FetchResolutionsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchResolutionsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -449,23 +471,23 @@ export const FetchResolutionsError = makeErrorGuard(
 export async function fetchResolutions(
   client: BaseClient,
   request: FetchResolutionsRequest,
+  options: RequestOptions = {},
 ): Promise<Resolution[]> {
+  const requestOptions = parseRequestOptions(options);
   const { conditionIds, eventIds, questionId } = parseUserInput(
     request,
     FetchResolutionsRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/resolutions', {
-        params: toDataSearchParams({
-          questionId,
-          condition: conditionIds,
-          eventId: eventIds,
-        }),
-      }),
-    ).andThen(validateWith(FetchResolutionsResponseSchema)),
-  );
+  return client.data.get('/v2/resolutions', {
+    schema: FetchResolutionsResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({
+      questionId,
+      condition: conditionIds,
+      eventId: eventIds,
+    }),
+  });
 }
 
 const FetchEventLiveVolumeRequestSchema = z.object({
@@ -480,12 +502,14 @@ export type FetchEventLiveVolumeRequest = z.input<
 >;
 
 export type FetchEventLiveVolumeError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchEventLiveVolumeError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -499,7 +523,7 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
  * Results contain one row per market, ordered by taker volume descending, and
  * a total across all returned markets. Volume is measured in shares. Event IDs
  * must be positive 32-bit integers. Transient rate limits are retried
- * automatically.
+ * by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -519,19 +543,19 @@ export const FetchEventLiveVolumeError = makeErrorGuard(
 export async function fetchEventLiveVolume(
   client: BaseClient,
   request: FetchEventLiveVolumeRequest,
+  options: RequestOptions = {},
 ): Promise<LiveVolume> {
+  const requestOptions = parseRequestOptions(options);
   const { eventIds } = parseUserInput(
     request,
     FetchEventLiveVolumeRequestSchema,
   );
 
-  return unwrap(
-    withRateLimitRetry(() =>
-      client.data.get('/v2/live-volume', {
-        params: toDataSearchParams({ eventId: eventIds }),
-      }),
-    ).andThen(validateWith(FetchEventLiveVolumeResponseSchema)),
-  );
+  return client.data.get('/v2/live-volume', {
+    schema: FetchEventLiveVolumeResponseSchema,
+    ...requestOptions,
+    params: toDataSearchParams({ eventId: eventIds }),
+  });
 }
 
 function toEventsSearchParams(params: ListEventsParams): URLSearchParams {

@@ -6,8 +6,11 @@ import {
   deriveOutcomePositionId,
   ThresholdSide,
 } from '@polymarket/bindings/protocol';
+import { invariant } from '@polymarket/types';
 import {
+  decodeErc20BalanceOfResult,
   decodeErc1155BalanceOfBatchResult,
+  erc20BalanceOfCall,
   erc1155BalanceOfBatchCall,
 } from '../abis';
 import type { BaseSecureClient } from '../clients';
@@ -73,29 +76,65 @@ export async function resolveBasketAmount(
   client: BaseSecureClient,
   positionIds: readonly PositionId[],
   requestedAmount: bigint | 'max',
+  options: { collateral?: boolean } = {},
 ): Promise<bigint> {
-  const balances = decodeErc1155BalanceOfBatchResult(
-    await client.rpc.ethCall(
-      erc1155BalanceOfBatchCall(
-        client.environment.contracts.positionManager,
-        client.account.wallet,
-        positionIds,
-      ),
-    ),
+  const basketCall = erc1155BalanceOfBatchCall(
+    client.environment.contracts.positionManager,
+    client.account.wallet,
+    positionIds,
   );
+  const results = await client.rpc.ethCallBatch(
+    options.collateral
+      ? [
+          basketCall,
+          erc20BalanceOfCall(
+            client.environment.contracts.collateralToken,
+            client.account.wallet,
+          ),
+        ]
+      : [basketCall],
+  );
+  const basketResult = results[0];
+  invariant(basketResult !== undefined, 'Expected a basket balance result');
+  const balances = [...decodeErc1155BalanceOfBatchResult(basketResult)];
 
   if (balances.length !== positionIds.length) {
     throw new UnexpectedResponseError('Expected one balance per position');
   }
 
+  const requiredAssets: string[] = [...positionIds];
+  if (options.collateral) {
+    const collateralResult = results[1];
+    invariant(
+      collateralResult !== undefined,
+      'Expected a collateral balance result',
+    );
+    balances.push(decodeErc20BalanceOfResult(collateralResult));
+    requiredAssets.push('pUSD');
+  }
+  return resolveAvailableAmount(
+    balances.map((balance, index) => ({
+      asset: requiredAssets[index] ?? 'position',
+      balance,
+    })),
+    requestedAmount,
+  );
+}
+
+/** Resolves an amount against every asset consumed by one atomic operation. */
+export function resolveAvailableAmount(
+  assets: readonly { asset: string; balance: bigint }[],
+  requestedAmount: bigint | 'max',
+): bigint {
+  const balances = assets.map(({ balance }) => balance);
   const maxAmount = balances.reduce((min, balance) =>
     balance < min ? balance : min,
   );
-  const limitingPositionId = positionIds[balances.indexOf(maxAmount)];
+  const limitingAsset = assets[balances.indexOf(maxAmount)]?.asset;
 
   if (maxAmount === 0n) {
     throw new UserInputError(
-      `You have no balance of required position ${limitingPositionId}`,
+      `You have no balance of required asset ${limitingAsset}`,
     );
   }
 
@@ -105,7 +144,7 @@ export async function resolveBasketAmount(
 
   if (requestedAmount > maxAmount) {
     throw new UserInputError(
-      `Requested amount ${requestedAmount} exceeds the available balance ${maxAmount} of position ${limitingPositionId}`,
+      `Requested amount ${requestedAmount} exceeds the available balance ${maxAmount} of asset ${limitingAsset}`,
     );
   }
 

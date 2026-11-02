@@ -205,3 +205,41 @@ function deriveConditionId(
     `${eventId}${conditionIndex.toString(16).padStart(4, '0')}`,
   );
 }
+
+/** A decoded module-4 position. Indices are ordinals, not scalar line values. */
+export type DecodedDirectionalInstrument = {
+  moduleId: 4;
+  eventId: DirectionalEventId;
+  conditionId: ConditionId;
+  bucketCount: number;
+} & (
+  | { kind: 'line'; index: number; side: 'above' | 'below' }
+  | { kind: 'bucket' | 'void'; index: number; side: 'yes' | 'no' }
+);
+
+/** Decodes a validated directional position into its instrument and economic side. */
+export function decodeDirectionalInstrument(
+  positionId: PositionId,
+): DecodedDirectionalInstrument {
+  const position = decodeDirectionalPositionId(positionId);
+  const base = {
+    moduleId: 4 as const,
+    eventId: position.eventId,
+    conditionId: position.conditionId,
+    bucketCount: position.bucketCount,
+  };
+  if ((position.conditionIndex & 0x8000) !== 0) {
+    return {
+      ...base,
+      kind: 'line',
+      index: position.conditionIndex & 0x7fff,
+      side: position.outcomeIndex === 0 ? 'above' : 'below',
+    };
+  }
+  return {
+    ...base,
+    kind: position.conditionIndex === position.bucketCount ? 'void' : 'bucket',
+    index: position.conditionIndex,
+    side: position.outcomeIndex === 0 ? 'yes' : 'no',
+  };
+}

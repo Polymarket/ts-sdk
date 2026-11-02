@@ -49,7 +49,7 @@ import {
   type RfqTrade,
 } from '@polymarket/bindings/combos';
 import type { EvmSignature } from '@polymarket/types';
-import { delay, PolymarketError, unwrap } from '@polymarket/types';
+import { delay, PolymarketError } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -57,6 +57,7 @@ import {
   ConnectionLostError,
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   SigningError,
   TimeoutError,
@@ -72,7 +73,7 @@ import {
   encodeExchangeOrderSide,
 } from '../exchange';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { resolveOrderIdentity, SignerType } from '../wallet';
 
 export {
@@ -476,19 +477,7 @@ export class RfqRequestRejectedError extends PolymarketError {
   }
 }
 
-type BuilderGatewayRequestError =
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError;
-
-function toRfqRequestRejection(
-  error: BuilderGatewayRequestError,
-):
-  | RateLimitError
-  | RfqRequestRejectedError
-  | TransportError
-  | UnexpectedResponseError {
+function toRfqRequestRejection(error: unknown): unknown {
   if (error instanceof RequestRejectedError) {
     return new RfqRequestRejectedError(error.message, {
       cause: error,
@@ -772,15 +761,15 @@ export async function requestComboQuote(
     signer_address: identity.signer,
   };
 
-  const response = await unwrap(
-    client.builderGateway
-      .post(BUILDER_RFQ_REQUESTS_PATH, {
-        json: request,
-        timeout: CREATE_QUOTE_TIMEOUT_MS,
-      })
-      .andThen(validateWith(BuilderRfqCreateResponseSchema))
-      .mapErr(toRfqRequestRejection),
-  );
+  const response = await client.builderGateway
+    .post(BUILDER_RFQ_REQUESTS_PATH, {
+      json: request,
+      timeout: CREATE_QUOTE_TIMEOUT_MS,
+      schema: BuilderRfqCreateResponseSchema,
+    })
+    .catch((error) => {
+      throw toRfqRequestRejection(error);
+    });
 
   if ('quote' in response) {
     assertBuilderRfqResponseMatchesRequest(response, request);
@@ -1080,40 +1069,43 @@ export async function acceptComboQuote(
   };
 
   function postAcceptance() {
-    return client.builderGateway
-      .post(
-        `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
-        { json: request, timeout: ACCEPT_QUOTE_TIMEOUT_MS },
-      )
-      .andThen(validateWith(BuilderRfqStatusResponseSchema));
+    return client.builderGateway.post(
+      `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
+      {
+        json: request,
+        timeout: ACCEPT_QUOTE_TIMEOUT_MS,
+        schema: BuilderRfqStatusResponseSchema,
+      },
+    );
   }
 
-  let accepted = await postAcceptance();
-
-  // Acceptance is idempotent server-side, so a single retry safely covers
-  // both an interrupted request and a response that could not be validated.
-  if (
-    accepted.isErr() &&
-    (accepted.error instanceof TransportError ||
-      accepted.error instanceof UnexpectedResponseError)
-  ) {
-    accepted = await postAcceptance();
-  }
-
-  if (accepted.isErr()) {
-    const expired = toAcceptanceExpiredResult(input.rfqId, accepted.error);
-
-    if (expired !== undefined) {
-      return expired;
+  let accepted: BuilderRfqStatusResponse;
+  try {
+    try {
+      accepted = await postAcceptance();
+    } catch (error) {
+      // Acceptance is idempotent server-side, so a single retry safely covers
+      // both an interrupted request and a response that could not be validated.
+      if (
+        !(
+          error instanceof TransportError ||
+          error instanceof UnexpectedResponseError
+        )
+      ) {
+        throw error;
+      }
+      accepted = await postAcceptance();
     }
-
-    throw toRfqRequestRejection(accepted.error);
+  } catch (error) {
+    const expired = toAcceptanceExpiredResult(input.rfqId, error);
+    if (expired !== undefined) return expired;
+    throw toRfqRequestRejection(error);
   }
 
-  let status = accepted.value;
+  let status = accepted;
   // Only the accept response carries the taker order hash; status polls do
   // not, so capture it before entering the poll loop.
-  const takerOrderHash = accepted.value.takerOrderHash;
+  const takerOrderHash = accepted.takerOrderHash;
   const deadline = Date.now() + ACCEPT_OUTCOME_TIMEOUT_MS;
 
   // The gateway holds the accept through maker last look but responds with
@@ -1152,7 +1144,7 @@ export async function acceptComboQuote(
 
 function toAcceptanceExpiredResult(
   rfqId: RfqId,
-  error: BuilderGatewayRequestError,
+  error: unknown,
 ): AcceptComboQuoteResult | undefined {
   if (
     error instanceof RequestRejectedError &&
@@ -1390,12 +1382,14 @@ const FetchRfqStatusParamsSchema = z.object({
 });
 
 export type FetchRfqStatusError =
+  | RequestAbortedError
   | RateLimitError
   | RfqRequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchRfqStatusError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RfqRequestRejectedError,
   TransportError,
@@ -1421,17 +1415,21 @@ export const FetchRfqStatusError = makeErrorGuard(
 export function fetchRfqStatus(
   client: BaseSecureClient,
   params: FetchRfqStatusParams,
+  options: RequestOptions = {},
 ): Promise<RfqStatusResult> {
+  const requestOptions = parseRequestOptions(options);
   assertCombosSupportedForAccount(client);
 
   const input = parseUserInput(params, FetchRfqStatusParamsSchema);
 
-  return unwrap(
-    client.builderGateway
-      .get(`${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`)
-      .andThen(validateWith(BuilderRfqStatusResponseSchema))
-      .mapErr(toRfqRequestRejection),
-  );
+  return client.builderGateway
+    .get(`${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`, {
+      ...requestOptions,
+      schema: BuilderRfqStatusResponseSchema,
+    })
+    .catch((error) => {
+      throw toRfqRequestRejection(error);
+    });
 }
 
 function assertCombosSupportedForAccount(client: BaseSecureClient): void {

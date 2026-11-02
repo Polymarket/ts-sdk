@@ -1,3 +1,10 @@
+import type { GatewayErrorCode } from '@polymarket/bindings';
+
+export {
+  type GatewayErrorCode,
+  GatewayKnownErrorCode,
+} from '@polymarket/bindings';
+
 import type { PerpsCancelOrderResult } from '@polymarket/bindings/perps';
 
 export {
@@ -93,6 +100,19 @@ export class TransportError extends PolymarketError {
 }
 
 /**
+ * Error thrown when a caller cancels a read through its AbortSignal.
+ *
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
+export class RequestAbortedError extends PolymarketError {
+  override name = 'RequestAbortedError' as const;
+
+  constructor(message: string, options: ErrorOptions = {}) {
+    super(message, options);
+  }
+}
+
+/**
  * WebSocket close codes defined by RFC 6455 and the IANA WebSocket Close Code
  * Number registry. Codes 4000-4999 are reserved for application use and are
  * intentionally not modeled here.
@@ -165,7 +185,7 @@ export type RequestRejectedErrorOptions = {
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  code?: string;
+  code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -183,14 +203,15 @@ export type RequestRejectedErrorOptions = {
  * rate limiting.
  */
 export class RequestRejectedError extends PolymarketError {
-  override name = 'RequestRejectedError' as const;
+  override name: 'RequestRejectedError' | 'OrderHeartbeatMismatchError' =
+    'RequestRejectedError';
 
   readonly status: number;
   /**
    * Machine-readable error code from the response body, when the service
    * provided one.
    */
-  readonly code?: string;
+  readonly code?: GatewayErrorCode;
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -211,6 +232,22 @@ export class RequestRejectedError extends PolymarketError {
     this.code = options.code;
     this.retryAfter = options.retryAfter;
     this.restriction = options.restriction;
+  }
+}
+
+/**
+ * An order heartbeat used a stale ID. Retry explicitly with heartbeatId and retain
+ * the new ID from the successful response. A rejected send does not refresh the deadline.
+ */
+export class OrderHeartbeatMismatchError extends RequestRejectedError {
+  override name = 'OrderHeartbeatMismatchError' as const;
+
+  /** Currently expected ID. It can be empty after a legacy heartbeat. */
+  readonly heartbeatId: string;
+
+  constructor(heartbeatId: string) {
+    super('Invalid Heartbeat ID', { status: 400 });
+    this.heartbeatId = heartbeatId;
   }
 }
 

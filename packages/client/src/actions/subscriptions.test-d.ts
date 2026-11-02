@@ -14,6 +14,7 @@ import type {
   StandardMarketEvent,
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
+import { UserOrderStatus } from '@polymarket/bindings/subscriptions';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
   ConnectionLostError,
@@ -26,6 +27,7 @@ import {
   createPublicClient,
   type EquityTwapPriceSubscription,
   KnownPriceSource,
+  PerpsKlineInterval,
   PriceProvider,
   type PriceSource,
   type PriceSubscriptionConfirmation,
@@ -49,6 +51,29 @@ import type {
 declare const secureClient: SecureClient;
 
 const ASSET_ID = toTokenId('123');
+
+describe('SecureClient.subscribe user order statuses', () => {
+  it('exposes cancellation reasons as template literals on delivered orders', async () => {
+    const handle = await secureClient.subscribe([{ topic: 'user' }]);
+    for await (const event of handle) {
+      expectTypeOf(event).toEqualTypeOf<UserEvent>();
+      if (event.type === 'order') {
+        expectTypeOf(event.payload.status).toEqualTypeOf<
+          UserOrderStatus | `CANCELED_${string}` | null | undefined
+        >();
+        expectTypeOf<'CANCELED_MARKET_RESOLVED'>().toExtend<
+          typeof event.payload.status
+        >();
+        expectTypeOf(UserOrderStatus.Invalid).toExtend<
+          typeof event.payload.status
+        >();
+        expectTypeOf<'NOT_A_STATUS'>().not.toExtend<
+          typeof event.payload.status
+        >();
+      }
+    }
+  });
+});
 
 describe('price subscription contracts', () => {
   it('exports provider selection only for the four vendor-neutral price topics', () => {
@@ -452,5 +477,68 @@ describe('PublicClient.subscribe', () => {
       expectTypeOf(event).toEqualTypeOf<StandardMarketEvent>();
       expectTypeOf<Extract<typeof event, UserEvent>>().toEqualTypeOf<never>();
     }
+  });
+});
+
+describe('Perps event horizon public subscription types', () => {
+  it('keeps precise requested market variants and event horizon metadata', () => {
+    async function consume(client: ClientExports.PublicClient) {
+      const handles = [
+        await client.subscribe([{ topic: 'perps.trades', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.bbo', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.book', instrumentId: 1 }]),
+        await client.subscribe([{ topic: 'perps.tickers' }]),
+        await client.subscribe([{ topic: 'perps.statistics' }]),
+        await client.subscribe([
+          {
+            topic: 'perps.candles',
+            instrumentId: 1,
+            interval: PerpsKlineInterval.OneMinute,
+          },
+        ]),
+      ] as const;
+      for (const handle of handles) {
+        for await (const event of handle) {
+          expectTypeOf(
+            event.eventTimestamp,
+          ).toEqualTypeOf<ClientExports.EpochMilliseconds | null>();
+          if (event.eventTimestamp !== null) {
+            expectTypeOf(
+              event.eventTimestamp,
+            ).toEqualTypeOf<ClientExports.EpochMilliseconds>();
+          } else {
+            expectTypeOf(event.eventTimestamp).toEqualTypeOf<null>();
+          }
+        }
+      }
+      const mixed = await client.subscribe([
+        { topic: 'perps.trades', instrumentId: 1 },
+        { topic: 'perps.book', instrumentId: 1 },
+      ]);
+      for await (const event of mixed) {
+        expectTypeOf(event).toEqualTypeOf<
+          BindingExports.PerpsTradeEvent | BindingExports.PerpsBookEvent
+        >();
+      }
+      for await (const event of handles[0]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsTradeEvent>();
+      }
+      for await (const event of handles[1]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsBboEvent>();
+      }
+      for await (const event of handles[2]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsBookEvent>();
+      }
+      for await (const event of handles[3]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsTickerEvent>();
+      }
+      for await (const event of handles[4]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsStatisticEvent>();
+      }
+      for await (const event of handles[5]) {
+        expectTypeOf(event).toEqualTypeOf<BindingExports.PerpsCandleEvent>();
+      }
+    }
+    void consume;
   });
 });

@@ -14,8 +14,16 @@ import {
   it,
   vi,
 } from 'vitest';
-import type { BaseClient } from '../clients';
-import { RequestRejectedError, SigningError, TransportError } from '../errors';
+import { z } from 'zod';
+import { type BaseClient, createPublicClient } from '../clients';
+import { production } from '../environments';
+import {
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+} from '../errors';
+import type { RequestOptions } from '../request-options';
 import { ServiceClient } from '../ServiceClient';
 import {
   listPerpsCandles,
@@ -57,10 +65,133 @@ describe('Perps actions', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.useRealTimers();
   });
 
   afterAll(() => {
     server.close();
+  });
+
+  it('allows a public read to take more than ten seconds when timeout is omitted', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+      return Response.json({ fee_schedule: [] });
+    });
+    const client = createPublicClient({ fetch });
+    const result = client.fetchPerpsFees();
+    await vi.advanceTimersByTimeAsync(20_000);
+    await expect(result).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('snapshots numeric and disabled timeouts at the public read boundary', async () => {
+    vi.useFakeTimers();
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Response.json({ fee_schedule: [] });
+    });
+    const client = createPublicClient({ fetch });
+    const options: RequestOptions = { timeout: 20, retries: 0 };
+    const timedOut = expect(
+      client.fetchPerpsFees(options),
+    ).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    options.timeout = false;
+    const disabled = client.fetchPerpsFees(options);
+    await vi.advanceTimersByTimeAsync(30_100);
+    await timedOut;
+    await expect(disabled).resolves.toEqual([]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    [20, 15],
+    [false, 30_100],
+    [undefined, 20_000],
+  ] as const)('retains the snapshotted timeout=%s for every public pagination request', async (timeout, delay) => {
+    vi.useFakeTimers();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const start = new URL(new Request(input).url).searchParams.get(
+        'start_timestamp',
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return Response.json(
+        start === '0'
+          ? { data: [candle(1000), candle(61_000)], more: true }
+          : { data: [candle(121_000)], more: false },
+      );
+    });
+    const client = createPublicClient({ fetch });
+    const options: RequestOptions = { timeout, retries: 0 };
+    const pages = client.listPerpsCandles(
+      {
+        end: 300_000,
+        instrumentId: 1,
+        interval: PerpsKlineInterval.OneMinute,
+        start: 0,
+      },
+      options,
+    );
+    options.timeout = 1;
+    const first = pages.firstPage();
+    await vi.advanceTimersByTimeAsync(delay);
+    const firstPage = await first;
+    expect(firstPage.items.map((item) => item.timestamp)).toEqual([
+      1000, 61_000,
+    ]);
+    const continuation = (async () => {
+      const timestamps: number[] = [];
+      for await (const page of pages.from(firstPage.nextCursor)) {
+        timestamps.push(...page.items.map((item) => item.timestamp));
+      }
+      return timestamps;
+    })();
+    await vi.advanceTimersByTimeAsync(delay);
+    expect(await continuation).toEqual([121_000]);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects malformed fee schedules even when shared options include a schema', async () => {
+    server.use(
+      http.get(`${production.perps.rest}/v1/info/fees`, () =>
+        HttpResponse.json({ feeSchedule: 'invalid fee table' }),
+      ),
+    );
+    const client = createPublicClient();
+    const options = {
+      signal: new AbortController().signal,
+      schema: z.object({ feeSchedule: z.string() }),
+    };
+
+    await expect(client.fetchPerpsFees(options)).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
+  });
+
+  it('keeps fee parsing and cancellation when shared options request raw responses', async () => {
+    server.use(
+      http.get(`${production.perps.rest}/v1/info/fees`, () =>
+        HttpResponse.json({ fee_schedule: [] }),
+      ),
+    );
+    const client = createPublicClient();
+    const controller = new AbortController();
+    const options = {
+      signal: controller.signal,
+      responseType: 'raw' as const,
+    };
+
+    await expect(client.fetchPerpsFees(options)).resolves.toEqual([]);
+
+    const reason = new Error('fee request no longer needed');
+    controller.abort(reason);
+    await expect(client.fetchPerpsFees(options)).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
   });
 
   it('continues candle pages from the next interval boundary', async () => {

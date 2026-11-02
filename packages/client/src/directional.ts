@@ -1,8 +1,11 @@
 import type { ConditionId, PositionId } from '@polymarket/bindings';
 import {
+  type DecodedDirectionalInstrument,
   type DirectionalEventId,
   DirectionalEventIdSchema,
+  DirectionalPositionIdSchema,
   decodeDirectionalEventId,
+  decodeDirectionalInstrument,
   deriveBucketConditionId,
   deriveOutcomePositionId,
   deriveThresholdConditionId,
@@ -10,6 +13,26 @@ import {
 import { z } from 'zod';
 import { makeErrorGuard, UserInputError } from './errors';
 import { parseUserInput } from './input';
+
+export type { DecodedDirectionalInstrument as DecodedPositionId } from '@polymarket/bindings/protocol';
+
+export type DecodePositionIdError = UserInputError;
+export const DecodePositionIdError = makeErrorGuard(UserInputError);
+
+/**
+ * Reads a directional position's event, instrument and side without a network request.
+ * Accepts decimal module-4 position IDs; rejects CTF and other modules.
+ * ABOVE is line YES and BELOW is line NO. The Void index equals bucketCount.
+ *
+ * @throws {@link DecodePositionIdError} Thrown when input is not a valid directional position ID.
+ */
+export function decodePositionId(
+  positionId: string,
+): DecodedDirectionalInstrument {
+  return decodeDirectionalInstrument(
+    parseUserInput(positionId, DirectionalPositionIdSchema),
+  );
+}
 
 /** Complementary YES/NO positions for a real bucket or the synthetic Void bucket. */
 export type DirectionalBucketPositions = {

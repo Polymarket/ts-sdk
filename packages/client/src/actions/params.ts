@@ -1,6 +1,8 @@
 import { EventIdSchema } from '@polymarket/bindings';
 import { z } from 'zod';
 
+export const ClosedFilterSchema = z.union([z.boolean(), z.literal('any')]);
+
 export type SearchParamPrimitive = boolean | number | string;
 
 export type SearchParamValue =

@@ -11,6 +11,11 @@ import {
 import { type EvmAddress, type HexString, invariant } from '@polymarket/types';
 import { AbiFunction, AbiParameters } from 'ox';
 import { makeErrorGuard, UserInputError } from './errors';
+import { parseUserInput } from './input';
+import {
+  ConvertInputSchema,
+  HorizontalOperationInputSchema,
+} from './neg-risk-input';
 import type { CanonicalComboLegs } from './protocol';
 import type { TransactionCall } from './types';
 
@@ -25,6 +30,9 @@ const ERC20_APPROVE_FUNCTION = AbiFunction.from(
 );
 const ERC20_ALLOWANCE_FUNCTION = AbiFunction.from(
   'function allowance(address owner, address spender) view returns (uint256)',
+);
+const ERC20_BALANCE_OF_FUNCTION = AbiFunction.from(
+  'function balanceOf(address owner) view returns (uint256)',
 );
 const ERC20_TRANSFER_FUNCTION = AbiFunction.from(
   'function transfer(address recipient, uint256 amount)',
@@ -62,11 +70,8 @@ const CTF_REDEEM_POSITIONS_FUNCTION = AbiFunction.from(
 const ROUTER_SPLIT_FUNCTION = AbiFunction.from(
   'function split(bytes31 conditionId, uint256 amount)',
 );
-const ROUTER_MERGE_FUNCTION = AbiFunction.from(
-  'function merge(bytes31 conditionId, uint256 amount)',
-);
-const ROUTER_REDEEM_FUNCTION = AbiFunction.from(
-  'function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount)',
+const ROUTER_CONVERT_FUNCTION = AbiFunction.from(
+  'function convert(bytes29 eventId, uint16 conditionIndex, uint256 amount)',
 );
 const ROUTER_HORIZONTAL_SPLIT_FUNCTION = AbiFunction.from(
   'function horizontalSplit(bytes29 eventId, uint256 amount)',
@@ -74,8 +79,11 @@ const ROUTER_HORIZONTAL_SPLIT_FUNCTION = AbiFunction.from(
 const ROUTER_HORIZONTAL_MERGE_FUNCTION = AbiFunction.from(
   'function horizontalMerge(bytes29 eventId, uint256 amount)',
 );
-const ROUTER_CONVERT_FUNCTION = AbiFunction.from(
-  'function convert(bytes29 eventId, uint16 conditionIndex, uint256 amount)',
+const ROUTER_MERGE_FUNCTION = AbiFunction.from(
+  'function merge(bytes31 conditionId, uint256 amount)',
+);
+const ROUTER_REDEEM_FUNCTION = AbiFunction.from(
+  'function redeem(bytes31 conditionId, uint256 outcomeIndex, uint256 amount)',
 );
 const ROUTER_COMPOSE_THRESHOLD_FUNCTION = AbiFunction.from(
   'function composeThreshold(bytes29 eventId, uint256 line, uint8 side, uint256 amount)',
@@ -145,6 +153,22 @@ export function erc20AllowanceCall(
 /** @internal */
 export function decodeErc20AllowanceResult(data: HexString): bigint {
   return AbiFunction.decodeResult(ERC20_ALLOWANCE_FUNCTION, data);
+}
+
+/** @internal */
+export function erc20BalanceOfCall(
+  tokenAddress: EvmAddress,
+  owner: EvmAddress,
+): TransactionCall {
+  return {
+    to: tokenAddress,
+    data: AbiFunction.encodeData(ERC20_BALANCE_OF_FUNCTION, [owner]),
+  };
+}
+
+/** @internal */
+export function decodeErc20BalanceOfResult(data: HexString): bigint {
+  return AbiFunction.decodeResult(ERC20_BALANCE_OF_FUNCTION, data);
 }
 
 /**
@@ -391,6 +415,90 @@ export function ctfRedeemPositionsCall(
   };
 }
 
+export type RouterConvertCallError = UserInputError;
+export const RouterConvertCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router conversion of NO into every other condition's YES.
+ * Includes Other unless converting NO(Other).
+ * Accepts a bytes29 or zero-padded bytes32 protocol event ID, an index from zero through
+ * the event arity (Other), and a positive uint256 amount in six-decimal base units.
+ * @throws {@link RouterConvertCallError} Thrown when input is invalid.
+ */
+export function routerConvertCall(
+  routerAddress: EvmAddress,
+  protocolEventId: string,
+  conditionIndex: number,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { protocolEventId, conditionIndex, amount },
+    ConvertInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_CONVERT_FUNCTION, [
+      params.protocolEventId,
+      params.conditionIndex,
+      params.amount,
+    ]),
+  };
+}
+
+export type RouterHorizontalSplitCallError = UserInputError;
+export const RouterHorizontalSplitCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router split of pUSD into YES for every condition, including Other.
+ * Accepts a bytes29 or zero-padded bytes32 protocol event ID and a positive uint256 amount
+ * in six-decimal base units.
+ * @throws {@link RouterHorizontalSplitCallError} Thrown when input is invalid.
+ */
+export function routerHorizontalSplitCall(
+  routerAddress: EvmAddress,
+  protocolEventId: string,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { protocolEventId, amount },
+    HorizontalOperationInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_SPLIT_FUNCTION, [
+      params.protocolEventId,
+      params.amount,
+    ]),
+  };
+}
+
+export type RouterHorizontalMergeCallError = UserInputError;
+export const RouterHorizontalMergeCallError = makeErrorGuard(UserInputError);
+
+/**
+ * Encodes a Router merge of equal YES amounts from every condition, including Other, into pUSD.
+ * Accepts a bytes29 or zero-padded bytes32 protocol event ID and a positive uint256 amount
+ * per condition in six-decimal base units.
+ * @throws {@link RouterHorizontalMergeCallError} Thrown when input is invalid.
+ */
+export function routerHorizontalMergeCall(
+  routerAddress: EvmAddress,
+  protocolEventId: string,
+  amount: bigint,
+): TransactionCall {
+  const params = parseUserInput(
+    { protocolEventId, amount },
+    HorizontalOperationInputSchema,
+  );
+  return {
+    to: routerAddress,
+    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_MERGE_FUNCTION, [
+      params.protocolEventId,
+      params.amount,
+    ]),
+  };
+}
+
 export type RouterSplitCallError = UserInputError;
 export const RouterSplitCallError = makeErrorGuard(UserInputError);
 
@@ -457,90 +565,6 @@ export function routerRedeemCall(
       normalizeProtocolV2ConditionId(conditionId),
       BigInt(expectProtocolV2OutcomeIndex(outcomeIndex)),
       expectUint256(amount, 'Redeem amount'),
-    ]),
-    to: routerAddress,
-  };
-}
-
-export type RouterHorizontalSplitCallError = UserInputError;
-export const RouterHorizontalSplitCallError = makeErrorGuard(UserInputError);
-
-/**
- * Creates a transaction call for Router `horizontalSplit(bytes29,uint256)`.
- * Covers every real bucket YES position and the Void YES position.
- *
- * @throws {@link RouterHorizontalSplitCallError}
- * Thrown when the event ID or amount is invalid.
- */
-export function routerHorizontalSplitCall(
-  routerAddress: EvmAddress,
-  eventId: DirectionalEventId,
-  amount: bigint,
-): TransactionCall {
-  return {
-    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_SPLIT_FUNCTION, [
-      normalizeProtocolV2EventId(eventId),
-      expectUint256(amount, 'Event split amount'),
-    ]),
-    to: routerAddress,
-  };
-}
-
-export type RouterHorizontalMergeCallError = UserInputError;
-export const RouterHorizontalMergeCallError = makeErrorGuard(UserInputError);
-
-/**
- * Creates a transaction call for Router `horizontalMerge(bytes29,uint256)`.
- * Covers every real bucket YES position and the Void YES position.
- *
- * @throws {@link RouterHorizontalMergeCallError}
- * Thrown when the event ID or amount is invalid.
- */
-export function routerHorizontalMergeCall(
-  routerAddress: EvmAddress,
-  eventId: DirectionalEventId,
-  amount: bigint,
-): TransactionCall {
-  return {
-    data: AbiFunction.encodeData(ROUTER_HORIZONTAL_MERGE_FUNCTION, [
-      normalizeProtocolV2EventId(eventId),
-      expectUint256(amount, 'Event merge amount'),
-    ]),
-    to: routerAddress,
-  };
-}
-
-export type RouterConvertCallError = UserInputError;
-export const RouterConvertCallError = makeErrorGuard(UserInputError);
-
-/**
- * Creates a transaction call for Router `convert(bytes29,uint16,uint256)`.
- * Converts one bucket NO, including Void NO, into every other bucket's YES.
- *
- * @throws {@link RouterConvertCallError}
- * Thrown when the event ID, condition index, or amount is invalid.
- */
-export function routerConvertCall(
-  routerAddress: EvmAddress,
-  eventId: DirectionalEventId,
-  conditionIndex: number,
-  amount: bigint,
-): TransactionCall {
-  if (
-    !Number.isInteger(conditionIndex) ||
-    conditionIndex < 0 ||
-    conditionIndex > 0xffff
-  ) {
-    throw new UserInputError(
-      'Condition index must be an integer in uint16 range',
-    );
-  }
-
-  return {
-    data: AbiFunction.encodeData(ROUTER_CONVERT_FUNCTION, [
-      normalizeProtocolV2EventId(eventId),
-      conditionIndex,
-      expectUint256(amount, 'Convert amount'),
     ]),
     to: routerAddress,
   };

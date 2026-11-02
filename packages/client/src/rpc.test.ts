@@ -1,8 +1,20 @@
 import { expectEvmAddress } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { RequestRejectedError, UnexpectedResponseError } from './errors';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import {
+  RequestAbortedError,
+  RequestRejectedError,
+  UnexpectedResponseError,
+} from './errors';
 import { JsonRpcClient } from './rpc';
 
 const root = 'http://localhost:4012';
@@ -15,10 +27,94 @@ describe('JsonRpcClient', () => {
 
   afterEach(() => {
     server.resetHandlers();
+    vi.useRealTimers();
   });
 
   afterAll(() => {
     server.close();
+  });
+
+  it.each([
+    'single',
+    'batch',
+    'estimate',
+  ] as const)('uses a 30-second default and explicit timeouts for %s RPC requests', async (mode) => {
+    vi.useFakeTimers();
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const request = { to, data: '0x1234' as const };
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Response.json(
+        mode !== 'batch'
+          ? { jsonrpc: '2.0', id: 1, result: '0xaaaa' }
+          : [
+              { jsonrpc: '2.0', id: 1, result: '0xaaaa' },
+              { jsonrpc: '2.0', id: 2, result: '0xbbbb' },
+            ],
+      );
+    });
+    const client = new JsonRpcClient({ url: root, fetch });
+    function run(timeout?: number | false) {
+      if (mode === 'estimate')
+        return client.ethEstimateGas(request, { timeout });
+      return mode === 'single'
+        ? client.ethCall(request, { timeout })
+        : client.ethCallBatch([request, request], { timeout });
+    }
+    const timedOut = expect(run(20)).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    const disabled = run(false);
+    const longer = run(60_000);
+    const defaultRequest = run();
+    let defaultSettled = false;
+    void defaultRequest.then(
+      () => {
+        defaultSettled = true;
+      },
+      () => {
+        defaultSettled = true;
+      },
+    );
+    const defaultTimeout = expect(defaultRequest).rejects.toMatchObject({
+      name: 'TransportError',
+      cause: { name: 'TimeoutError' },
+    });
+    await vi.advanceTimersByTimeAsync(29_999);
+    await timedOut;
+    expect(defaultSettled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await defaultTimeout;
+    expect(defaultSettled).toBe(true);
+    await vi.advanceTimersByTimeAsync(100);
+    const expected =
+      mode === 'estimate'
+        ? 0xaaaan
+        : mode === 'single'
+          ? '0xaaaa'
+          : ['0xaaaa', '0xbbbb'];
+    await expect(disabled).resolves.toEqual(expected);
+    await expect(longer).resolves.toEqual(expected);
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+
+  it('retains a disabled timeout when a rejected batch splits into single calls', async () => {
+    vi.useFakeTimers();
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const request = { to, data: '0x1234' as const };
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const body = await new Request(input).json();
+      await new Promise((resolve) => setTimeout(resolve, 30_100));
+      return Array.isArray(body)
+        ? new Response(null, { status: 500 })
+        : Response.json({ jsonrpc: '2.0', id: 1, result: '0xaaaa' });
+    });
+    const client = new JsonRpcClient({ url: root, fetch });
+    const result = client.ethCallBatch([request, request], { timeout: false });
+    await vi.advanceTimersByTimeAsync(60_200);
+    await expect(result).resolves.toEqual(['0xaaaa', '0xaaaa']);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it('performs eth_call requests', async () => {
@@ -180,6 +276,68 @@ describe('JsonRpcClient', () => {
         status: 200,
       }),
     );
+  });
+
+  it('splits a failed batch even when retries are disabled', async () => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    let requestCount = 0;
+    server.use(
+      http.post(root, () => {
+        requestCount += 1;
+        return new HttpResponse(null, { status: 503 });
+      }),
+    );
+    const client = new JsonRpcClient({ url: root });
+
+    await expect(
+      client.ethCallBatch([
+        { to, data: '0x11111111' },
+        { to, data: '0x22222222' },
+      ]),
+    ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 503 });
+    expect(requestCount).toBe(3);
+  });
+
+  it.each([
+    false,
+    true,
+  ])('preserves cancellation while parsing a response (batch: %s)', async (batch) => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const controller = new AbortController();
+    const reason = new Error('Query replaced');
+    const parsing = Promise.withResolvers<void>();
+    const body = Promise.withResolvers<unknown>();
+    const response = new Response();
+    vi.spyOn(response, 'json').mockImplementation(() => {
+      parsing.resolve();
+      return body.promise;
+    });
+    const fetch = vi.fn(async () => response);
+    const client = new JsonRpcClient({ url: root, fetch });
+    const operation = batch
+      ? client.ethCallBatch(
+          [
+            { to, data: '0x11111111' },
+            { to, data: '0x22222222' },
+          ],
+          { signal: controller.signal },
+        )
+      : client.ethCall(
+          { to, data: '0x11111111' },
+          { signal: controller.signal },
+        );
+    const rejected = expect(operation).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: reason,
+    });
+
+    await parsing.promise;
+    controller.abort(reason);
+    await rejected;
+    await expect(operation).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    // Late body failure remains observed after the caller stops awaiting it.
+    body.reject(new Error('Body stream closed'));
   });
 
   it('rejects malformed eth_call result data', async () => {

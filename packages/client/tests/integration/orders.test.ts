@@ -198,6 +198,38 @@ describe('Orders', { timeout: 60_000 }, () => {
       expect(order.builder).toBe(builderCode);
     });
 
+    it('keeps a protected BUY with an inexact amount within one tick of maxPrice', async ({
+      annotate,
+      environment,
+      randomEoaSigner,
+    }) => {
+      const yesTokenId = expectPresent(market.outcomes.yes.tokenId);
+      const tickSize = expectPresent(market.trading.minimumTickSize);
+      const maxPrice = Number((tickSize * 7).toFixed(4));
+      annotate(`Market ID: ${market.id}`);
+      annotate(`Token ID: ${yesTokenId}`);
+      annotate(`maxPrice: ${maxPrice}`);
+      const client = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        wallet: await randomEoaSigner.getAddress(),
+      });
+
+      const order = await client.createMarketOrder({
+        amount: 12.34,
+        assetId: yesTokenId,
+        maxPrice,
+        side: OrderSide.BUY,
+      });
+
+      // 12.34 never divides exactly by a price on the grid, so shares are
+      // floored and the implied bid lands at or just above maxPrice.
+      const implied = Number(order.makerAmount) / Number(order.takerAmount);
+      expect(Number(order.makerAmount)).toBe(12_340_000);
+      expect(implied).toBeGreaterThanOrEqual(maxPrice);
+      expect(implied).toBeLessThan(maxPrice + 0.0001);
+    });
+
     it('reports unknown builder codes as user input errors when resolving buy amounts against max spend', async ({
       annotate,
       secureClientWithDepositWallet,

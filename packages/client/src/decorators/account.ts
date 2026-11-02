@@ -48,6 +48,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 type DefaultAccountWallet<TRequest extends { user?: string }> = Prettify<
   Omit<TRequest, 'user'> & {
@@ -98,6 +99,12 @@ export type PublicAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+   * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+   * Keep the original filters and requested sort when resuming a cursor. If
+   * an older cursor is rejected with HTTP 400 because the ordering changed,
+   * discard it and explicitly fetch a new first page; the paginator does not
+   * restart the listing.
    * `title` filters by case-insensitive substring (max 200 Unicode characters).
    * `%` and `_` are wildcards. Blank input is ignored; other patterns are
    * preserved unchanged on every page, including cursor replay.
@@ -134,7 +141,10 @@ export type PublicAccountActions = Prettify<{
    * }
    * ```
    */
-  listPositions(request: ListPositionsRequest): Paginated<Position[]>;
+  listPositions(
+    request: ListPositionsRequest,
+    options?: RequestOptions,
+  ): Paginated<Position[]>;
   /**
    * Lists combo positions for a wallet.
    *
@@ -167,6 +177,7 @@ export type PublicAccountActions = Prettify<{
    */
   listComboPositions(
     request: ListComboPositionsRequest,
+    options?: RequestOptions,
   ): Paginated<ComboPosition[]>;
   /**
    * Fetches the total value for a wallet's positions.
@@ -188,6 +199,7 @@ export type PublicAccountActions = Prettify<{
    */
   fetchPortfolioValue(
     request: FetchPortfolioValueRequest,
+    options?: RequestOptions,
   ): Promise<PortfolioValue>;
   /**
    * Fetches one trader's standing on both the PnL and volume boards.
@@ -208,6 +220,7 @@ export type PublicAccountActions = Prettify<{
    */
   fetchTraderLeaderboardStanding(
     request: FetchTraderLeaderboardStandingRequest,
+    options?: RequestOptions,
   ): Promise<TraderLeaderboardStanding | null>;
   /**
    * Fetches profile and lifetime trading statistics for a wallet.
@@ -226,7 +239,10 @@ export type PublicAccountActions = Prettify<{
    * });
    * ```
    */
-  fetchUserStats(request: FetchUserStatsRequest): Promise<UserStats | null>;
+  fetchUserStats(
+    request: FetchUserStatsRequest,
+    options?: RequestOptions,
+  ): Promise<UserStats | null>;
   /**
    * Fetches a wallet's cumulative PnL series.
    *
@@ -246,7 +262,10 @@ export type PublicAccountActions = Prettify<{
    * });
    * ```
    */
-  fetchUserPnl(request: FetchUserPnlRequest): Promise<UserPnlSeries>;
+  fetchUserPnl(
+    request: FetchUserPnlRequest,
+    options?: RequestOptions,
+  ): Promise<UserPnlSeries>;
   /**
    * Fetches a wallet's trading volume for a time window.
    *
@@ -264,7 +283,10 @@ export type PublicAccountActions = Prettify<{
    * });
    * ```
    */
-  fetchUserVolume(request: FetchUserVolumeRequest): Promise<UserVolume>;
+  fetchUserVolume(
+    request: FetchUserVolumeRequest,
+    options?: RequestOptions,
+  ): Promise<UserVolume>;
   /**
    * Downloads an accounting snapshot archive for a wallet.
    *
@@ -280,16 +302,20 @@ export type PublicAccountActions = Prettify<{
    */
   downloadAccountingSnapshot(
     request: DownloadAccountingSnapshotRequest,
+    options?: RequestOptions,
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
+   * `isCombo` before using market-only metadata; a basket's outcome names its
+   * token side, not a selected leg.
    *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
    * serves the most recent three years; `window: 'full'` requests the complete
    * history. Window bounds accept Unix epoch seconds or `Date` values. Results
    * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
-   * transient rate limits are retried automatically.
+   * transient rate limits are retried by default.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.
@@ -323,7 +349,10 @@ export type PublicAccountActions = Prettify<{
    * }
    * ```
    */
-  listActivity(request: ListActivityRequest): Paginated<Activity[]>;
+  listActivity(
+    request: ListActivityRequest,
+    options?: RequestOptions,
+  ): Paginated<Activity[]>;
   /**
    * Lists combo lifecycle activity for a wallet.
    *
@@ -343,6 +372,7 @@ export type PublicAccountActions = Prettify<{
    */
   listComboActivity(
     request: ListComboActivityRequest,
+    options?: RequestOptions,
   ): Paginated<ComboActivity[]>;
 }>;
 
@@ -365,6 +395,12 @@ export type SecureAccountActions = Prettify<{
    *
    * `sortBy` defaults to `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for
    * `CLOSED`, and `CURRENT_VALUE` for the other statuses.
+   * For wallet-anchored `CLOSED` listings, `TOKENS`, `CURRENT_VALUE`, `PRICE`
+   * and `UNREALIZED_PNL` sort by realized PnL in the requested direction.
+   * Keep the original filters and requested sort when resuming a cursor. If
+   * an older cursor is rejected with HTTP 400 because the ordering changed,
+   * discard it and explicitly fetch a new first page; the paginator does not
+   * restart the listing.
    * `title` filters by case-insensitive substring (max 200 Unicode characters).
    * `%` and `_` are wildcards. Blank input is ignored; other patterns are
    * preserved unchanged on every page, including cursor replay.
@@ -382,7 +418,10 @@ export type SecureAccountActions = Prettify<{
    * const firstPage = await paginator.firstPage();
    * ```
    */
-  listPositions(request?: SecureListPositionsRequest): Paginated<Position[]>;
+  listPositions(
+    request?: SecureListPositionsRequest,
+    options?: RequestOptions,
+  ): Paginated<Position[]>;
   /**
    * Lists combo positions for a wallet.
    *
@@ -404,6 +443,7 @@ export type SecureAccountActions = Prettify<{
    */
   listComboPositions(
     request?: SecureListComboPositionsRequest,
+    options?: RequestOptions,
   ): Paginated<ComboPosition[]>;
   /**
    * Fetches the total value for a wallet's positions.
@@ -419,6 +459,7 @@ export type SecureAccountActions = Prettify<{
    */
   fetchPortfolioValue(
     request?: SecureFetchPortfolioValueRequest,
+    options?: RequestOptions,
   ): Promise<PortfolioValue>;
   /**
    * Fetches one trader's standing on both the PnL and volume boards.
@@ -439,6 +480,7 @@ export type SecureAccountActions = Prettify<{
    */
   fetchTraderLeaderboardStanding(
     request?: SecureFetchTraderLeaderboardStandingRequest,
+    options?: RequestOptions,
   ): Promise<TraderLeaderboardStanding | null>;
   /**
    * Fetches profile and lifetime trading statistics for a wallet.
@@ -453,6 +495,7 @@ export type SecureAccountActions = Prettify<{
    */
   fetchUserStats(
     request?: SecureFetchUserStatsRequest,
+    options?: RequestOptions,
   ): Promise<UserStats | null>;
   /**
    * Fetches the cumulative PnL series for a wallet.
@@ -463,7 +506,10 @@ export type SecureAccountActions = Prettify<{
    * @throws {@link FetchUserPnlError}
    * Thrown on failure.
    */
-  fetchUserPnl(request?: SecureFetchUserPnlRequest): Promise<UserPnlSeries>;
+  fetchUserPnl(
+    request?: SecureFetchUserPnlRequest,
+    options?: RequestOptions,
+  ): Promise<UserPnlSeries>;
   /**
    * Fetches trading volume for a wallet over a time window.
    *
@@ -474,7 +520,10 @@ export type SecureAccountActions = Prettify<{
    * @throws {@link FetchUserVolumeError}
    * Thrown on failure.
    */
-  fetchUserVolume(request?: SecureFetchUserVolumeRequest): Promise<UserVolume>;
+  fetchUserVolume(
+    request?: SecureFetchUserVolumeRequest,
+    options?: RequestOptions,
+  ): Promise<UserVolume>;
   /**
    * Downloads an accounting snapshot archive for a wallet.
    *
@@ -485,9 +534,13 @@ export type SecureAccountActions = Prettify<{
    */
   downloadAccountingSnapshot(
     request?: SecureDownloadAccountingSnapshotRequest,
+    options?: RequestOptions,
   ): Promise<Blob>;
   /**
    * Lists wallet activity.
+   * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
+   * `isCombo` before using market-only metadata; a basket's outcome names its
+   * token side, not a selected leg.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *
@@ -496,12 +549,15 @@ export type SecureAccountActions = Prettify<{
    * serves the most recent three years; `window: 'full'` requests the complete
    * history. Window bounds accept Unix epoch seconds or `Date` values. Results
    * are newest-first by default. `pageSize` defaults to 100 (max 1000), and
-   * transient rate limits are retried automatically.
+   * transient rate limits are retried by default.
    *
    * @throws {@link ListActivityError}
    * Thrown on failure.
    */
-  listActivity(request?: SecureListActivityRequest): Paginated<Activity[]>;
+  listActivity(
+    request?: SecureListActivityRequest,
+    options?: RequestOptions,
+  ): Paginated<Activity[]>;
   /**
    * Lists combo lifecycle activity for a wallet.
    *
@@ -512,6 +568,7 @@ export type SecureAccountActions = Prettify<{
    */
   listComboActivity(
     request?: SecureListComboActivityRequest,
+    options?: RequestOptions,
   ): Paginated<ComboActivity[]>;
   /**
    * Lists trades for the authenticated account across all pages.
@@ -546,7 +603,10 @@ export type SecureAccountActions = Prettify<{
    * }
    * ```
    */
-  listAccountTrades(request?: ListAccountTradesRequest): Paginated<ClobTrade[]>;
+  listAccountTrades(
+    request?: ListAccountTradesRequest,
+    options?: RequestOptions,
+  ): Paginated<ClobTrade[]>;
   /**
    * Fetches notifications for the authenticated account.
    * Notifications of a kind this SDK version does not recognize are omitted.
@@ -559,7 +619,7 @@ export type SecureAccountActions = Prettify<{
    * const notifications = await client.fetchNotifications();
    * ```
    */
-  fetchNotifications(): Promise<NotificationsResponse>;
+  fetchNotifications(options?: RequestOptions): Promise<NotificationsResponse>;
   /**
    * Drops notifications for the authenticated account.
    *
@@ -585,7 +645,7 @@ export type SecureAccountActions = Prettify<{
    * const closedOnly = await client.fetchClosedOnlyMode();
    * ```
    */
-  fetchClosedOnlyMode(): Promise<boolean>;
+  fetchClosedOnlyMode(options?: RequestOptions): Promise<boolean>;
 }>;
 
 function publicAccountActions(client: BaseClient): PublicAccountActions {
@@ -639,32 +699,58 @@ export function accountActions(
 
   return {
     ...actions,
-    listPositions: (request?: SecureListPositionsRequest) =>
-      listPositions(client, withAccountWallet(client, request)),
-    listComboPositions: (request?: SecureListComboPositionsRequest) =>
-      listComboPositions(client, withAccountWallet(client, request)),
-    fetchPortfolioValue: (request?: SecureFetchPortfolioValueRequest) =>
-      fetchPortfolioValue(client, withAccountWallet(client, request)),
+    listPositions: (
+      request?: SecureListPositionsRequest,
+      options?: RequestOptions,
+    ) => listPositions(client, withAccountWallet(client, request), options),
+    listComboPositions: (
+      request?: SecureListComboPositionsRequest,
+      options?: RequestOptions,
+    ) =>
+      listComboPositions(client, withAccountWallet(client, request), options),
+    fetchPortfolioValue: (
+      request?: SecureFetchPortfolioValueRequest,
+      options?: RequestOptions,
+    ) =>
+      fetchPortfolioValue(client, withAccountWallet(client, request), options),
     fetchTraderLeaderboardStanding: (
       request?: SecureFetchTraderLeaderboardStandingRequest,
+      options?: RequestOptions,
     ) =>
       fetchTraderLeaderboardStanding(
         client,
         withAccountWallet(client, request),
+        options,
       ),
-    fetchUserStats: (request?: SecureFetchUserStatsRequest) =>
-      fetchUserStats(client, withAccountWallet(client, request)),
-    fetchUserPnl: (request?: SecureFetchUserPnlRequest) =>
-      fetchUserPnl(client, withAccountWallet(client, request)),
-    fetchUserVolume: (request?: SecureFetchUserVolumeRequest) =>
-      fetchUserVolume(client, withAccountWallet(client, request)),
+    fetchUserStats: (
+      request?: SecureFetchUserStatsRequest,
+      options?: RequestOptions,
+    ) => fetchUserStats(client, withAccountWallet(client, request), options),
+    fetchUserPnl: (
+      request?: SecureFetchUserPnlRequest,
+      options?: RequestOptions,
+    ) => fetchUserPnl(client, withAccountWallet(client, request), options),
+    fetchUserVolume: (
+      request?: SecureFetchUserVolumeRequest,
+      options?: RequestOptions,
+    ) => fetchUserVolume(client, withAccountWallet(client, request), options),
     downloadAccountingSnapshot: (
       request?: SecureDownloadAccountingSnapshotRequest,
-    ) => downloadAccountingSnapshot(client, withAccountWallet(client, request)),
-    listActivity: (request?: SecureListActivityRequest) =>
-      listActivity(client, withAccountWallet(client, request)),
-    listComboActivity: (request?: SecureListComboActivityRequest) =>
-      listComboActivity(client, withAccountWallet(client, request)),
+      options?: RequestOptions,
+    ) =>
+      downloadAccountingSnapshot(
+        client,
+        withAccountWallet(client, request),
+        options,
+      ),
+    listActivity: (
+      request?: SecureListActivityRequest,
+      options?: RequestOptions,
+    ) => listActivity(client, withAccountWallet(client, request), options),
+    listComboActivity: (
+      request?: SecureListComboActivityRequest,
+      options?: RequestOptions,
+    ) => listComboActivity(client, withAccountWallet(client, request), options),
     listAccountTrades: listAccountTrades.bind(null, client),
     fetchNotifications: fetchNotifications.bind(null, client),
     dropNotifications: dropNotifications.bind(null, client),

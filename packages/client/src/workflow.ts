@@ -50,6 +50,21 @@ export type SignGaslessMessageRequest = {
   payload: HexString;
 };
 
+export type SendConvertTransactionRequest = {
+  kind: 'sendConvertTransaction';
+  request: SignerTransactionRequest;
+};
+
+export type SendHorizontalSplitTransactionRequest = {
+  kind: 'sendHorizontalSplitTransaction';
+  request: SignerTransactionRequest;
+};
+
+export type SendHorizontalMergeTransactionRequest = {
+  kind: 'sendHorizontalMergeTransaction';
+  request: SignerTransactionRequest;
+};
+
 export type SendSplitPositionTransactionRequest = {
   kind: 'sendSplitPositionTransaction';
   request: SignerTransactionRequest;
@@ -95,15 +110,15 @@ export type SendDecomposeThresholdTransactionRequest = {
   request: SignerTransactionRequest;
 };
 
-/** Request to submit an atomic splitDirectionalPositions transaction. */
-export type SendSplitDirectionalPositionsTransactionRequest = {
-  kind: 'sendSplitDirectionalPositionsTransaction';
+/** Request to submit an atomic splitDirectional transaction. */
+export type SendSplitDirectionalTransactionRequest = {
+  kind: 'sendSplitDirectionalTransaction';
   request: SignerTransactionRequest;
 };
 
-/** Request to submit an atomic mergeDirectionalPositions transaction. */
-export type SendMergeDirectionalPositionsTransactionRequest = {
-  kind: 'sendMergeDirectionalPositionsTransaction';
+/** Request to submit an atomic mergeDirectional transaction. */
+export type SendMergeDirectionalTransactionRequest = {
+  kind: 'sendMergeDirectionalTransaction';
   request: SignerTransactionRequest;
 };
 
@@ -145,6 +160,9 @@ export type CompleteWorkflowRequest =
   | SendPerpsDepositTransactionRequest
   | SignGaslessTypedDataRequest
   | SignGaslessMessageRequest
+  | SendConvertTransactionRequest
+  | SendHorizontalSplitTransactionRequest
+  | SendHorizontalMergeTransactionRequest
   | SendSplitPositionTransactionRequest
   | SendMergePositionsTransactionRequest
   | SendRedeemPositionsTransactionRequest
@@ -153,8 +171,8 @@ export type CompleteWorkflowRequest =
   | SendConvertPositionTransactionRequest
   | SendComposeThresholdTransactionRequest
   | SendDecomposeThresholdTransactionRequest
-  | SendSplitDirectionalPositionsTransactionRequest
-  | SendMergeDirectionalPositionsTransactionRequest
+  | SendSplitDirectionalTransactionRequest
+  | SendMergeDirectionalTransactionRequest
   | SignOrderRequest;
 
 export type CompleteWorkflowNext =
@@ -223,14 +241,17 @@ export function completeWith(signer: Signer): CompleteWith {
           case 'sendPerpsDepositTransaction':
           case 'sendMergePositionsTransaction':
           case 'sendRedeemPositionsTransaction':
+          case 'sendConvertTransaction':
+          case 'sendHorizontalSplitTransaction':
+          case 'sendHorizontalMergeTransaction':
           case 'sendSplitPositionTransaction':
           case 'sendSplitEventPositionsTransaction':
           case 'sendMergeEventPositionsTransaction':
           case 'sendConvertPositionTransaction':
           case 'sendComposeThresholdTransaction':
           case 'sendDecomposeThresholdTransaction':
-          case 'sendSplitDirectionalPositionsTransaction':
-          case 'sendMergeDirectionalPositionsTransaction':
+          case 'sendSplitDirectionalTransaction':
+          case 'sendMergeDirectionalTransaction':
             result = await workflow.next(
               await signer.sendTransaction(result.value.request),
             );

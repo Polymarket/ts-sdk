@@ -31,7 +31,6 @@ import {
   isHexString,
   type NonEmptyArray,
   type TxHash,
-  unwrap,
   ZERO_ADDRESS,
 } from '@polymarket/types';
 import { Bytes, Hash, TypedData as OxTypedData } from 'ox';
@@ -41,6 +40,7 @@ import type { BaseClient, BaseSecureClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TimeoutError,
   TransactionFailedError,
@@ -49,7 +49,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import type {
   TransactionCall,
   TransactionHandle,
@@ -114,12 +114,14 @@ export type FetchExecuteParamsRequest = z.input<
 >;
 
 export type FetchExecuteParamsError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchExecuteParamsError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -139,16 +141,16 @@ export const FetchExecuteParamsError = makeErrorGuard(
 export async function fetchExecuteParams(
   client: BaseClient,
   request: FetchExecuteParamsRequest,
+  options: RequestOptions = {},
 ): Promise<RelayerExecuteParams> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchExecuteParamsRequestSchema);
 
-  return unwrap(
-    client.relayer
-      .get('/v1/account/transactions/params', {
-        params: toSearchParams(params, { address: 'address', type: 'type' }),
-      })
-      .andThen(validateWith(RelayerExecuteParamsSchema)),
-  );
+  return client.relayer.get('/v1/account/transactions/params', {
+    ...requestOptions,
+    params: toSearchParams(params, { address: 'address', type: 'type' }),
+    schema: RelayerExecuteParamsSchema,
+  });
 }
 
 const FetchGaslessTransactionRequestSchema = z.object({
@@ -169,12 +171,14 @@ export type IsWalletDeployedRequest = z.input<
 >;
 
 export type IsWalletDeployedError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const IsWalletDeployedError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -204,36 +208,43 @@ export const IsWalletDeployedError = makeErrorGuard(
 export async function isWalletDeployed(
   client: BaseClient,
   request?: IsWalletDeployedRequest,
+  options: RequestOptions = {},
 ): Promise<boolean> {
-  const params = await resolveWalletDeploymentTarget(client, request);
+  const requestOptions = parseRequestOptions(options);
+  const params = await resolveWalletDeploymentTarget(
+    client,
+    request,
+    requestOptions,
+  );
 
   if (params.type === WalletType.EOA) {
     return false;
   }
 
-  return unwrap(
-    client.relayer
-      .get('/deployed', {
-        params: toSearchParams(
-          {
-            address: params.wallet,
-            type:
-              params.type === WalletType.DEPOSIT_WALLET
-                ? RelayerTransactionType.WALLET
-                : undefined,
-          },
-          { address: 'address', type: 'type' },
-        ),
-      })
-      .andThen(validateWith(RelayerDeployedResponseSchema))
-      .map(({ deployed }) => deployed),
-  );
+  return client.relayer
+    .get('/deployed', {
+      ...requestOptions,
+      params: toSearchParams(
+        {
+          address: params.wallet,
+          type:
+            params.type === WalletType.DEPOSIT_WALLET
+              ? RelayerTransactionType.WALLET
+              : undefined,
+        },
+        { address: 'address', type: 'type' },
+      ),
+      schema: RelayerDeployedResponseSchema,
+    })
+    .then(({ deployed }) => deployed);
 }
 
 async function resolveWalletDeploymentTarget(
   client: BaseClient,
   request: IsWalletDeployedRequest | undefined,
+  options: RequestOptions = {},
 ): Promise<z.output<typeof IsWalletDeployedRequestSchema>> {
+  const requestOptions = parseRequestOptions(options);
   if (request !== undefined) {
     return parseUserInput(request, IsWalletDeployedRequestSchema);
   }
@@ -256,6 +267,7 @@ async function resolveWalletDeploymentTarget(
       client.rpc,
       client.account.signer,
       client.environment.walletDerivation,
+      requestOptions,
     ),
     type: WalletType.DEPOSIT_WALLET,
   };
@@ -304,6 +316,22 @@ export async function deployDepositWallet(
   });
 }
 
+export type FetchGaslessTransactionError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchGaslessTransactionError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 /**
  * Fetches a submitted transaction.
  *
@@ -316,13 +344,14 @@ export async function deployDepositWallet(
 export async function fetchTransaction(
   client: BaseClient,
   request: FetchGaslessTransactionRequest,
+  options: RequestOptions = {},
 ): Promise<GaslessTransaction> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchGaslessTransactionRequestSchema);
 
-  return unwrap(
-    client.relayer
-      .get(`/v1/account/transactions/${params.transactionId}`)
-      .andThen(validateWith(GaslessTransactionSchema)),
+  return client.relayer.get(
+    `/v1/account/transactions/${params.transactionId}`,
+    { ...requestOptions, schema: GaslessTransactionSchema },
   );
 }
 
@@ -747,13 +776,10 @@ async function executeGasless(
 ): Promise<GaslessTransactionHandle> {
   const payload = parseUserInput(request, RelayerExecuteRequestSchema);
 
-  const response = await unwrap(
-    client.relayer
-      .post('/submit', {
-        json: payload,
-      })
-      .andThen(validateWith(RelayerExecuteResponseSchema)),
-  );
+  const response = await client.relayer.post('/submit', {
+    json: payload,
+    schema: RelayerExecuteResponseSchema,
+  });
 
   return new GaslessTransactionHandle(client, response);
 }

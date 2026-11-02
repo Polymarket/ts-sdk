@@ -41,7 +41,12 @@ export type {
   PriceSubscriptionConfirmation,
   SubscriptionHandle,
 } from '../actions';
-export { KnownPriceSource, PriceProvider, SubscribeError } from '../actions';
+export {
+  EquityMarketStatus,
+  KnownPriceSource,
+  PriceProvider,
+  SubscribeError,
+} from '../actions';
 
 export type PublicSubscriptionsActions = {
   /**

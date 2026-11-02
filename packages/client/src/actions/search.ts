@@ -12,6 +12,7 @@ import {
   makeErrorGuard,
   PaginationLimitError,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -25,7 +26,7 @@ import {
   type Paginated,
   paginate,
 } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 export enum SearchSort {
@@ -74,6 +75,7 @@ export type SearchResults = {
 };
 
 export type SearchError =
+  | RequestAbortedError
   | PaginationLimitError
   | RateLimitError
   | RequestRejectedError
@@ -81,6 +83,7 @@ export type SearchError =
   | UnexpectedResponseError
   | UserInputError;
 export const SearchError = makeErrorGuard(
+  RequestAbortedError,
   PaginationLimitError,
   RateLimitError,
   RequestRejectedError,
@@ -126,7 +129,9 @@ export const SearchError = makeErrorGuard(
 export function search(
   client: BaseClient,
   request: SearchRequest,
+  options: RequestOptions = {},
 ): Paginated<SearchResults> {
+  const requestOptions = parseRequestOptions(options);
   const { cursor, pageSize, ...params } = parseUserInput(
     request,
     SearchRequestSchema,
@@ -141,6 +146,8 @@ export function search(
 
       return client.gamma
         .get('/public-search', {
+          schema: PublicSearchResponseSchema,
+          ...requestOptions,
           params: toSearchParams(
             {
               ...params,
@@ -152,8 +159,7 @@ export function search(
             }),
           ),
         })
-        .andThen(validateWith(PublicSearchResponseSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: toSearchResults(response),
           hasMore: response.pagination?.hasMore ?? false,
           limitReached:

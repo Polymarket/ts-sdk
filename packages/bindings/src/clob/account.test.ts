@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { ClobTradeSchema, type OpenOrder, OpenOrderSchema } from './account';
+import {
+  ClobTradeSchema,
+  type OpenOrder,
+  OpenOrderSchema,
+  TotalUserEarningsResponseSchema,
+} from './account';
 
 const baseTrade = {
   asset_id: '1',
@@ -154,5 +159,30 @@ describe('OpenOrderSchema', () => {
 
     expect(order.createdAt).toBe('2025-01-01T00:00:00.000Z');
     expect(order.expiresAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+});
+
+describe('TotalUserEarningsResponseSchema', () => {
+  it('preserves sponsored breakdowns and legacy entries without inventing amounts', () => {
+    // Contract: rewards/pkg/model/user_earning.go, native/sponsored JSON numbers.
+    const base = {
+      asset_address: '0xUSDC',
+      asset_rate: 0.0001,
+      date: 1700000000000,
+      earnings: 12.5,
+      maker_address: '0xMAKER',
+    };
+    const [sponsored, legacy, zero] = TotalUserEarningsResponseSchema.parse([
+      { ...base, native_earnings: 10.25, sponsored_earnings: 2.25 },
+      base,
+      { ...base, native_earnings: 0, sponsored_earnings: 0 },
+    ]);
+    expect(sponsored?.earnings).toBe('12.5');
+    expect(sponsored?.nativeEarnings).toBe('10.25');
+    expect(sponsored?.sponsoredEarnings).toBe('2.25');
+    expect(legacy?.nativeEarnings).toBeUndefined();
+    expect(legacy?.sponsoredEarnings).toBeUndefined();
+    expect(zero?.nativeEarnings).toBe('0');
+    expect(zero?.sponsoredEarnings).toBe('0');
   });
 });
