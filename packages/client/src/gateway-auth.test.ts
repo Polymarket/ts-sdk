@@ -5,12 +5,18 @@ import { expectEvmAddress, expectEvmSignature } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import { login, migrateCredentials } from './actions';
-import { createPublicClient, createSecureClient } from './clients';
+import {
+  BasePublicClient,
+  BaseSecureClient,
+  createPublicClient,
+  createSecureClient,
+} from './clients';
 import type { ClientCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError, TransportError } from './errors';
 import { AuthSession } from './session';
 import type { Signer } from './types';
+import { deriveBeaconDepositWalletAddress } from './wallet';
 
 const address = expectEvmAddress('0x0000000000000000000000000000000000000001');
 const root = 'https://synthetic.invalid';
@@ -667,5 +673,418 @@ it.each([
   } finally {
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
+  }
+});
+
+describe('failed secure-client creation owns newly issued sessions', () => {
+  it.each([
+    'fresh',
+    'migrated',
+  ])('revokes a %s session rejected before client construction and preserves the identity error if logout fails', async (mode) => {
+    const pair = tokens();
+    const payload = JSON.parse(atob(pair.accessToken.split('.')[1] ?? ''));
+    payload.sub = '0x0000000000000000000000000000000000000002';
+    pair.accessToken = `test.${btoa(JSON.stringify(payload))}.test`;
+    const paths: string[] = [];
+    const changed = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path.endsWith('/challenge'))
+        return Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          typedData,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        });
+      if (path.endsWith('/logout')) {
+        expect(request.headers.get('authorization')).toBe(
+          `Bearer ${pair.accessToken}`,
+        );
+        return Response.json({ code: 'logout_unavailable' }, { status: 503 });
+      }
+      return Response.json(pair);
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        ...(mode === 'migrated' ? { credentials: l2Credentials } : {}),
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      message:
+        'Session identity does not match the requested signer and wallet.',
+    });
+    expect(paths.at(-1)).toBe('/v1/auth/logout');
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it('revokes a session when secure-client construction throws and preserves the original error', async () => {
+    const failure = new Error('construction failed');
+    vi.spyOn(
+      BasePublicClient.prototype,
+      'createAuthenticatedClient',
+    ).mockImplementation(() => {
+      throw failure;
+    });
+    const paths: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      paths.push(new URL(request.url).pathname);
+      return request.url.endsWith('/logout')
+        ? new Response(null, { status: 204 })
+        : Response.json(tokens());
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        credentials: l2Credentials,
+      }),
+    ).rejects.toBe(failure);
+    expect(paths).toEqual(['/v1/auth/migrate', '/v1/auth/logout']);
+  });
+
+  it.each([
+    'fresh',
+    'migrated',
+    'restored',
+  ])('cleans up a %s session when initial readiness fails', async (mode) => {
+    const paths: string[] = [];
+    const closed = vi.spyOn(AuthSession.prototype, 'close');
+    const changed = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path.endsWith('/challenge'))
+        return Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          typedData,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        });
+      if (path.endsWith('/refresh'))
+        return Response.json(
+          { code: 'refresh_rejected', message: 'Refresh rejected' },
+          { status: 401 },
+        );
+      if (path.endsWith('/logout')) return new Response(null, { status: 204 });
+      return Response.json(tokens(0, 20));
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        ...(mode === 'migrated'
+          ? { credentials: l2Credentials }
+          : mode === 'restored'
+            ? { credentials: saved(tokens()) }
+            : {}),
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'refresh_rejected' });
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(
+      mode === 'restored' ? 0 : 1,
+    );
+    expect(closed).toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'fresh',
+    'migrated',
+    'restored',
+  ])('does not persist a failed %s setup except caller-owned bearer rotations', async (mode) => {
+    const wallet = deriveBeaconDepositWalletAddress(
+      address,
+      environment.walletDerivation,
+    );
+    const initial = walletPair(wallet, 0, 20);
+    const rotated = walletPair(wallet, 1);
+    const paths: string[] = [];
+    const changed = vi.fn();
+    const closed = vi.spyOn(AuthSession.prototype, 'close');
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path.endsWith('/challenge'))
+        return Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          typedData,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        });
+      if (path.endsWith('/refresh')) return Response.json(rotated);
+      if (path.endsWith('/deployed'))
+        return Response.json(
+          { code: 'wallet_setup_failed', message: 'Wallet setup failed' },
+          { status: 401 },
+        );
+      if (path.endsWith('/logout')) {
+        expect(request.headers.get('authorization')).toBe(
+          `Bearer ${rotated.accessToken}`,
+        );
+        return Response.json({ code: 'logout_failed' }, { status: 503 });
+      }
+      return Response.json(initial);
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet,
+        ...(mode === 'migrated'
+          ? { credentials: l2Credentials }
+          : mode === 'restored'
+            ? { credentials: saved(initial) }
+            : {}),
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'wallet_setup_failed' });
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(
+      mode === 'restored' ? 0 : 1,
+    );
+    expect(closed).toHaveBeenCalled();
+    if (mode === 'restored')
+      expect(changed).toHaveBeenCalledExactlyOnceWith(saved(rotated));
+    else expect(changed).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'fresh',
+    'migrated',
+  ])('defers %s rotation persistence until setup succeeds then resumes normal notifications', async (mode) => {
+    const wallet = deriveBeaconDepositWalletAddress(
+      address,
+      environment.walletDerivation,
+    );
+    const initial = walletPair(wallet, 0, 20);
+    const rotated = walletPair(wallet, 1);
+    const later = walletPair(wallet, 2);
+    const following = walletPair(wallet, 3);
+    const deploymentStarted = Promise.withResolvers<void>();
+    const deployment = Promise.withResolvers<Response>();
+    const changed = vi.fn(() => {
+      if (mode === 'fresh') throw new Error('persistence failed synchronously');
+      return Promise.reject(new Error('persistence failed asynchronously'));
+    });
+    let refreshes = 0;
+    let deploymentAttempts = 0;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      if (path.endsWith('/challenge'))
+        return Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          typedData,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        });
+      if (path.endsWith('/refresh'))
+        return Response.json(
+          ++refreshes === 1 ? rotated : refreshes === 2 ? later : following,
+        );
+      if (path.endsWith('/deployed')) {
+        if (++deploymentAttempts === 1)
+          return Response.json(
+            { code: 'expired_access_token', message: 'Access expired' },
+            { status: 401 },
+          );
+        deploymentStarted.resolve();
+        return deployment.promise;
+      }
+      return Response.json(initial);
+    });
+    const pending = createSecureClient({
+      environment,
+      fetch,
+      signer: signer(),
+      wallet,
+      ...(mode === 'migrated' ? { credentials: l2Credentials } : {}),
+      onCredentialsChanged: changed,
+    });
+    await deploymentStarted.promise;
+    const callsBeforeSetup = changed.mock.calls.length;
+    deployment.resolve(Response.json({ deployed: true }));
+    const client = await pending;
+    try {
+      expect(callsBeforeSetup).toBe(0);
+      expect(changed).toHaveBeenCalledExactlyOnceWith(saved(later));
+      await client.session.refresh();
+      expect(changed).toHaveBeenLastCalledWith(saved(following));
+      expect(changed).toHaveBeenCalledTimes(2);
+    } finally {
+      client.closeAuthenticationSession();
+      await client.closeSubscriptions();
+    }
+  });
+
+  it.each([
+    'submit',
+    'wait',
+  ])('revokes the migrated session after an actual deployment %s failure', async (stage) => {
+    const wallet = deriveBeaconDepositWalletAddress(
+      address,
+      environment.walletDerivation,
+    );
+    const paths: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      const path = new URL(request.url).pathname;
+      paths.push(path);
+      if (path.endsWith('/deployed')) return Response.json({ deployed: false });
+      if (path.endsWith('/submit'))
+        return stage === 'submit'
+          ? Response.json(
+              { code: 'deployment_rejected', message: 'Deployment rejected' },
+              { status: 401 },
+            )
+          : Response.json({
+              state: 'STATE_NEW',
+              transactionID: 'failed-setup',
+              transactionHash: null,
+            });
+      if (path.endsWith('/transactions/failed-setup'))
+        return Response.json(
+          { code: 'deployment_rejected', message: 'Deployment rejected' },
+          { status: 401 },
+        );
+      if (path.endsWith('/logout')) return new Response(null, { status: 204 });
+      return Response.json(walletPair(wallet, 0));
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet,
+        credentials: l2Credentials,
+        apiKey: {
+          isBuilderKey: false,
+          supportGasless: true,
+          authorize: async () => ({}),
+        },
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'deployment_rejected' });
+    expect(paths).toContain('/submit');
+    if (stage === 'wait')
+      expect(paths).toContain('/v1/account/transactions/failed-setup');
+    expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);
+  });
+
+  it.each([
+    'migrated',
+    'restored',
+  ])('keeps the original %s failure when local subscription cleanup rejects', async (mode) => {
+    vi.spyOn(
+      BaseSecureClient.prototype,
+      'closeSubscriptions',
+    ).mockRejectedValue(new Error('cleanup failed'));
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/refresh'))
+        return Response.json(
+          { code: 'refresh_rejected', message: 'Refresh rejected' },
+          { status: 401 },
+        );
+      if (request.url.endsWith('/logout'))
+        return new Response(null, { status: 204 });
+      return Response.json(tokens(0, 20));
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        credentials: mode === 'migrated' ? l2Credentials : saved(tokens()),
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'refresh_rejected' });
+  });
+
+  it.each([
+    'fresh',
+    'migrated',
+  ])('does not revoke or notify when %s authentication is rejected', async (mode) => {
+    const paths: string[] = [];
+    const changed = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const path = new URL(new Request(input, init).url).pathname;
+      paths.push(path);
+      if (path.endsWith('/challenge'))
+        return Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          typedData,
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+        });
+      return Response.json({ code: 'auth_rejected' }, { status: 401 });
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        ...(mode === 'migrated' ? { credentials: l2Credentials } : {}),
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({ status: 401, code: 'auth_rejected' });
+    expect(paths.some((path) => path.endsWith('/logout'))).toBe(false);
+    expect(changed).not.toHaveBeenCalled();
+  });
+});
+
+function walletPair(wallet: string, sequence: number, seconds = 900) {
+  const pair = tokens(sequence, seconds);
+  const claims = JSON.parse(atob(pair.accessToken.split('.')[1] ?? ''));
+  claims.wallet = wallet;
+  claims.signature_type = 3;
+  pair.accessToken = `test.${btoa(JSON.stringify(claims))}.test`;
+  return pair;
+}
+
+it('observes failed local cleanup immediately while remote logout is pending', async () => {
+  const logoutStarted = Promise.withResolvers<void>();
+  const logout = Promise.withResolvers<Response>();
+  const client = await createSecureClient({
+    environment,
+    signer: signer(),
+    wallet: address,
+    credentials: l2Credentials,
+    fetch: async (input, init) => {
+      const request = new Request(input, init);
+      if (request.url.endsWith('/logout')) {
+        logoutStarted.resolve();
+        return logout.promise;
+      }
+      return Response.json(tokens());
+    },
+  });
+  vi.spyOn(client, 'closeSubscriptions').mockRejectedValue(
+    new Error('local close failed'),
+  );
+  const unhandled: unknown[] = [];
+  function observeUnhandled(reason: unknown) {
+    unhandled.push(reason);
+  }
+  process.on('unhandledRejection', observeUnhandled);
+  const ending = client.endAuthentication();
+  try {
+    await logoutStarted.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(unhandled).toEqual([]);
+  } finally {
+    logout.resolve(new Response(null, { status: 204 }));
+    await ending;
+    process.off('unhandledRejection', observeUnhandled);
   }
 });
