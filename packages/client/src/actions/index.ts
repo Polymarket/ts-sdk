@@ -1,13 +1,20 @@
 export * from './account';
 export * from './activity';
 export * from './approvals';
-export * from './auth';
 export * from './builders';
 export * from './clob';
 export * from './collateral-return';
 export * from './comments';
 export * from './events';
 export * from './gasless';
+export {
+  LoginError,
+  type LoginRequest,
+  login,
+  MigrateCredentialsError,
+  type MigrateCredentialsRequest,
+  migrateCredentials,
+} from './identity';
 export * from './leaderboards';
 export * from './market-clarifications';
 export * from './markets';

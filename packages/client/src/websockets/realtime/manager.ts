@@ -5,6 +5,7 @@ import type {
   PriceSubscription,
   SubscriptionHandle,
 } from '../../actions/subscriptions';
+import type { AuthSession } from '../../session';
 import type { WebSocketSubscriptionManager } from '../types';
 import { SocketPool } from './pool';
 
@@ -13,7 +14,8 @@ export type { SubscribeError } from '../../actions/subscriptions';
 export type RealtimeWebSocketManagerOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
+  session?: AuthSession;
 };
 
 /** @internal Manages authenticated realtime prices across shared connections. */
