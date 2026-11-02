@@ -69,6 +69,7 @@ export type {
   PriceSource,
 } from '@polymarket/bindings/subscriptions';
 export {
+  EquityMarketStatus,
   KnownPriceSource,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';

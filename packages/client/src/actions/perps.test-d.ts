@@ -1,7 +1,4 @@
-import {
-  type PerpsCredentials,
-  PerpsInstrumentCategory,
-} from '@polymarket/bindings/perps';
+import type { PerpsCredentials } from '@polymarket/bindings/perps';
 import { describe, expectTypeOf, it } from 'vitest';
 import type {
   ApprovePerpsBuilderFeeRequest,
@@ -34,6 +31,7 @@ import type {
   PerpsCancelOrderErrorCode,
   PerpsCancelOrderResult,
   PerpsCancelRetryOptions,
+  PerpsInstrumentCategory,
   PerpsInstrumentSettlement,
   PerpsInternalTransfer,
   PerpsInternalTransferId,
@@ -67,6 +65,7 @@ import {
   FetchPerpsTickerError,
   PerpsCancelRetryError,
   PerpsKnownCancelOrderErrorCode,
+  PerpsKnownInstrumentCategory,
   UpdatePerpsMarginError,
 } from '../index';
 import type {
@@ -294,9 +293,20 @@ describe('session builder consent', () => {
 });
 
 describe('FetchPerpsInstrumentsRequest', () => {
+  it('accepts pre-IPO and future category strings alongside the known enum', () => {
+    const known: FetchPerpsInstrumentsRequest = {
+      category: PerpsKnownInstrumentCategory.PreIpo,
+    };
+    const future: FetchPerpsInstrumentsRequest = {
+      category: 'future_category',
+    };
+    void known;
+    void future;
+  });
+
   it('allows current instrument filters', () => {
     const request: FetchPerpsInstrumentsRequest = {
-      category: PerpsInstrumentCategory.Crypto,
+      category: PerpsKnownInstrumentCategory.Crypto,
       instrumentId: 1,
     };
     void request;
@@ -304,7 +314,7 @@ describe('FetchPerpsInstrumentsRequest', () => {
 
   it('does not expose instrument type filtering', () => {
     const request: FetchPerpsInstrumentsRequest = {
-      category: PerpsInstrumentCategory.Crypto,
+      category: PerpsKnownInstrumentCategory.Crypto,
       // @ts-expect-error instrument type has no meaningful public filter today.
       instrumentType: 'perpetual',
     };
@@ -313,6 +323,27 @@ describe('FetchPerpsInstrumentsRequest', () => {
 });
 
 describe('public Perps exports', () => {
+  it('preserves resilient category types through public client reads', () => {
+    async function checkCategories(client: PublicClient) {
+      await client.fetchPerpsInstruments({
+        category: PerpsKnownInstrumentCategory.PreIpo,
+      });
+      const instruments = await client.fetchPerpsInstruments({
+        category: 'future_category',
+      });
+      const fees = await client.fetchPerpsFees();
+      for (const instrument of instruments) {
+        expectTypeOf(
+          instrument.category,
+        ).toEqualTypeOf<PerpsInstrumentCategory>();
+      }
+      for (const fee of fees) {
+        expectTypeOf(fee.category).toEqualTypeOf<PerpsInstrumentCategory>();
+      }
+    }
+    void checkCategories;
+  });
+
   it('exports Perps request types from the root entry point', () => {
     expectTypeOf<RootFetchPerpsInstrumentsRequest>().toEqualTypeOf<FetchPerpsInstrumentsRequest>();
     expectTypeOf<FetchPerpsTickerRequest>().toEqualTypeOf<{
