@@ -13,7 +13,7 @@ type SigningRoute = readonly [
 // Request bodies stay unchanged; authentication covers the service's canonical method and path.
 const SIGNING_ROUTES: readonly SigningRoute[] = [
   ['GET', '/v1/tokens', 'GET', '/v2/tokens', 'data', false],
-  ['GET', '/v1/comments/keyset', 'GET', '/comments/keyset', 'gamma', false],
+  ['GET', '/v1/comments', 'GET', '/comments/keyset', 'gamma', false],
   [
     'POST',
     '/v1/combos/builder/requests',
@@ -221,7 +221,7 @@ const SIGNING_ROUTES: readonly SigningRoute[] = [
     false,
   ],
   ['POST', '/v1/wallets/transactions', 'POST', '/submit', 'relayer', false],
-  ['POST', '/v1/trading/heartbeats', 'POST', '/heartbeats', 'clob', true],
+  ['POST', '/v1/trading/heartbeats', 'POST', '/v1/heartbeats', 'clob', true],
   ['POST', '/v1/orders', 'POST', '/order', 'clob', true],
   ['POST', '/v1/orders/batch', 'POST', '/orders', 'clob', true],
   ['DELETE', '/v1/orders/all', 'DELETE', '/cancel-all', 'clob', true],
@@ -253,6 +253,7 @@ export function predictionSigningRequest(request: ServiceRequest):
       l2: boolean;
     }
   | undefined {
+  const pathname = request.path.split('?')[0] ?? request.path;
   for (const [
     method,
     path,
@@ -263,7 +264,7 @@ export function predictionSigningRequest(request: ServiceRequest):
   ] of SIGNING_ROUTES) {
     if (method !== request.method) continue;
     const match = new RegExp(`^${path.replace(/\{[^}]+\}/g, '([^/]+)')}$`).exec(
-      request.path,
+      pathname,
     );
     if (match === null) continue;
     let index = 1;

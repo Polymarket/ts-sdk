@@ -4,8 +4,10 @@ Supported discovery, market data, trading, portfolio, wallet and combo actions u
 
 Builder and submission authorization covers the canonical service method, path and exact body, even when the gateway URL or method differs. Order payload owners are trading identities; bearer credentials never become order owners.
 
-Direct service transports remain available for compatibility; supplying L2 credentials to `createSecureClient` still produces a bearer session. Token references and both cursor-based and offset-based comment reads use Predictions. Standalone credential administration is no longer provided by the SDK. Perps and websocket transports keep their independent configuration and lifecycle. There is no automatic fallback after a dispatched request fails.
+Supplying L2 credentials to `createSecureClient` produces a bearer session. Token references and keyset comment reads use Predictions. Keyset comments use `/v1/comments`, which returns the cursor envelope. Comment reads requiring offset pagination (`holdersOnly`, `getPositions`, other sorts or saved offset cursors) retain the direct comments endpoint because the gateway has no equivalent. Accounting snapshot downloads also retain their direct endpoint because the gateway does not expose that archive. These choices are made before dispatch; there is no automatic fallback after a request fails.
+
+Standalone credential administration is no longer provided by the SDK. Perps and websocket transports keep their independent configuration and lifecycle.
 
 The gateway origin may include an application proxy prefix. Keep direct endpoint configurations consistent with that environment. Offline tests cover routing, authentication, signing, token rotation and cleanup; they do not prove deployment availability or browser network access.
 
-Routing assumes these API contracts are available in the configured gateway environment. Offline validation does not establish production deployment availability.
+Routing follows the gateway passthrough tables at `401aa24e` (2026-11-02). Existing CLOB and Data methods use their supported gateway routes; gateway-only endpoints without corresponding SDK methods are outside this change. Offline validation does not establish production deployment availability.
