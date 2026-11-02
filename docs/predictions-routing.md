@@ -11,3 +11,7 @@ Standalone credential administration is no longer provided by the SDK. Perps and
 The gateway origin may include an application proxy prefix. Keep direct endpoint configurations consistent with that environment. Offline tests cover routing, authentication, signing, token rotation and cleanup; they do not prove deployment availability or browser network access.
 
 Routing follows the gateway passthrough tables at `401aa24e` (2026-11-02). Existing CLOB and Data methods use their supported gateway routes; gateway-only endpoints without corresponding SDK methods are outside this change. Offline validation does not establish production deployment availability.
+
+## Heartbeat compatibility blocker
+
+`sendOrderHeartbeat` requires the V1 `{ heartbeat_id }` response and canonical signing path `/v1/heartbeats`. At `401aa24e`, the gateway still forwards `/v1/trading/heartbeats` to the legacy `/heartbeats` endpoint, which returns `{ status: "ok" }`. The gateway must expose the V1 heartbeat contract and preserve its signing path before this SDK workflow can work through Predictions. Passing offline SDK tests does not resolve that upstream mismatch.
