@@ -940,9 +940,11 @@ class BaseSecureClient<
     PublicClient<TPublicActions, TSecureActions>
   > {
     // Server-side revocation must not depend on local WebSocket cleanup.
-    const closingSubscriptions = this.closeSubscriptions();
-    const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
-    const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
+    const closingResources = Promise.allSettled([
+      this.closeSubscriptions(),
+      this.webSockets.perpsSession.shutdown(),
+      this.webSockets.rfqQuoter.shutdown(),
+    ]);
     const { apiKey, environment, onRateLimitUpdate, fetch, session, auth } =
       this.context;
     this.endAuthenticationLifecycle();
@@ -958,11 +960,7 @@ class BaseSecureClient<
     } finally {
       this.endAuthenticationLifecycle();
       session?.close();
-      await Promise.allSettled([
-        closingSubscriptions,
-        shuttingDownPerpsSessions,
-        shuttingDownRfqQuoter,
-      ]).then(() => undefined);
+      await closingResources;
     }
 
     const client = new BasePublicClient({
@@ -1271,60 +1269,91 @@ export async function createSecureClient(
             verificationToken: params.verificationToken,
           });
   }
-  const claims = accessTokenClaims(credentials.accessToken);
-  if (
-    !isSameEvmAddress(claims.sub, signerAddress) ||
-    (wallet !== undefined &&
-      (claims.wallet === undefined || !isSameEvmAddress(claims.wallet, wallet)))
-  )
-    throw new RequestRejectedError(
-      'Session identity does not match the requested signer and wallet.',
-      { status: 401 },
-    );
-  const account =
-    wallet === undefined
-      ? undefined
-      : resolveAccountIdentity(
-          client.environment,
-          signerAddress,
-          expectEvmAddress(wallet),
-        );
-  const secureClient = client.createAuthenticatedClient(
-    credentials,
-    account,
-    options.signer,
-    params.onCredentialsChanged,
-  );
-
+  let secureClient: SecureClient<PublicActions, SecureActions> | undefined;
+  let publishCredentialChanges = restored;
+  const { onCredentialsChanged } = params;
+  let pendingCredentials: BearerCredentials | undefined;
+  const notifyCredentialsChanged: CredentialsChanged = (next) => {
+    if (!publishCredentialChanges) {
+      pendingCredentials = next;
+      return;
+    }
+    return onCredentialsChanged?.(next);
+  };
   try {
+    const claims = accessTokenClaims(credentials.accessToken);
+    if (
+      !isSameEvmAddress(claims.sub, signerAddress) ||
+      (wallet !== undefined &&
+        (claims.wallet === undefined ||
+          !isSameEvmAddress(claims.wallet, wallet)))
+    )
+      throw new RequestRejectedError(
+        'Session identity does not match the requested signer and wallet.',
+        { status: 401 },
+      );
+    const account =
+      wallet === undefined
+        ? undefined
+        : resolveAccountIdentity(
+            client.environment,
+            signerAddress,
+            expectEvmAddress(wallet),
+          );
+
+    secureClient = client.createAuthenticatedClient(
+      credentials,
+      account,
+      options.signer,
+      notifyCredentialsChanged,
+    );
     if (restored) await secureClient.session.refresh();
     else await secureClient.session.ready();
     secureClient.session.start();
-    if (account === undefined) return secureClient;
-    if (secureClient.account.walletType === WalletType.EOA) {
-      return secureClient;
+    if (account !== undefined && account.walletType !== WalletType.EOA) {
+      const deployed = await isWalletDeployed(secureClient, {
+        wallet: account.wallet,
+        type: account.walletType,
+      });
+      if (!deployed) {
+        if (account.walletType === WalletType.DEPOSIT_WALLET)
+          await deployDefaultDepositWallet(secureClient);
+        else
+          throw new UserInputError(
+            `Wallet ${account.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
+          );
+      }
     }
-
-    const deployed = await isWalletDeployed(secureClient, {
-      wallet: secureClient.account.wallet,
-      type: secureClient.account.walletType,
-    });
-
-    if (deployed) {
-      return secureClient;
+    const initialRotation = pendingCredentials;
+    pendingCredentials = undefined;
+    publishCredentialChanges = true;
+    if (initialRotation !== undefined) {
+      // Match session notifications: persistence failures must not reject a usable client.
+      try {
+        void Promise.resolve(onCredentialsChanged?.(initialRotation)).catch(
+          () => undefined,
+        );
+      } catch {
+        /* documented policy */
+      }
     }
-
-    if (secureClient.account.walletType === WalletType.DEPOSIT_WALLET) {
-      await deployDefaultDepositWallet(secureClient);
-      return secureClient;
-    }
-
-    throw new UserInputError(
-      `Wallet ${secureClient.account.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
-    );
+    return secureClient;
   } catch (error) {
-    secureClient.closeAuthenticationSession();
-    await secureClient.closeSubscriptions();
+    try {
+      if (!restored) {
+        if (secureClient !== undefined) await secureClient.endAuthentication();
+        else
+          await client.auth.post('/v1/auth/logout', {
+            headers: { Authorization: `Bearer ${credentials.accessToken}` },
+            responseType: 'empty',
+          });
+      } else if (secureClient !== undefined) {
+        secureClient.closeAuthenticationSession();
+        await secureClient.closeSubscriptions();
+      }
+    } catch {
+      // Cleanup is best effort; retain the failure that prevented client creation.
+    }
     throw error;
   }
 }
