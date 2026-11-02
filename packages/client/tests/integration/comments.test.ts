@@ -149,7 +149,7 @@ describe('Comments', () => {
         input instanceof Request ? input.url : String(input),
       );
       expect(urls).toHaveLength(2);
-      expect(urls[0]).toContain('/comments/keyset?');
+      expect(urls[0]).toContain('/v1/comments?');
       expect(urls[0]).toContain('order=createdAt');
       expect(urls[0]).toContain('ascending=false');
       expect(urls[0]).toContain('limit=5');
@@ -177,7 +177,7 @@ describe('Comments', () => {
         input instanceof Request ? input.url : String(input),
       );
       expect(urls).toHaveLength(2);
-      expect(urls[0]).toContain('/comments/keyset?');
+      expect(urls[0]).toContain('/v1/comments?');
       expect(urls[0]).toContain('order=id');
       expect(urls[0]).toContain('ascending=true');
       expect(urls[1]).toContain('/comments?');

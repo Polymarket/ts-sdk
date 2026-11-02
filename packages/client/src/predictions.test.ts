@@ -28,6 +28,7 @@ const environment = forkEnvironmentConfig({
   clob: { rest: 'https://clob.invalid' },
   relayer: { rest: 'https://relayer.invalid' },
   data: { rest: 'https://data.invalid' },
+  gamma: { rest: 'https://gamma.invalid' },
 });
 const l2Credentials = {
   key: 'synthetic-order-owner',
@@ -380,8 +381,8 @@ it.each([
     );
     expect(seen.map((url) => url.pathname)).toEqual([
       '/v1/tokens',
-      '/v1/comments/keyset',
-      '/v1/comments/keyset',
+      '/v1/comments',
+      '/v1/comments',
     ]);
     expect(seen.map((url) => Object.fromEntries(url.searchParams))).toEqual([
       { token_id: '1,2' },
@@ -421,6 +422,14 @@ it.each([
     signingPath: '/balance-allowance/update',
     options: { params: new URLSearchParams({ asset_type: 'COLLATERAL' }) },
     query: '?asset_type=COLLATERAL',
+    body: undefined,
+  },
+  {
+    path: '/v1/me/balance-allowances/refresh?asset_type=CONDITIONAL&token_id=1',
+    method: 'GET',
+    signingPath: '/balance-allowance/update',
+    options: {},
+    query: '',
     body: undefined,
   },
   {
@@ -553,8 +562,12 @@ it.each([
 ] as const)('preserves routed heartbeat mismatch recovery from saved %s credentials', async (mechanism) => {
   const pair = tokens();
   let heartbeats = 0;
+  const authorize = vi.fn(async () => ({
+    'x-builder-proof': 'heartbeat-proof',
+  }));
   const client = await createSecureClient({
     ...secureOptions,
+    apiKey: { isBuilderKey: true, supportGasless: true, authorize },
     credentials: mechanism === 'l2' ? l2Credentials : saved(pair),
     fetch: async (input, init) => {
       const request = new Request(input, init);
@@ -572,6 +585,7 @@ it.each([
       );
     },
   });
+  authorize.mockClear();
   try {
     await expect(
       client.sendOrderHeartbeat({ heartbeatId: 'stale-id' }),
@@ -581,8 +595,102 @@ it.each([
       status: 400,
     });
     expect(heartbeats).toBe(1);
+    expect(authorize).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        method: 'POST',
+        path: '/v1/heartbeats',
+        body: '{"heartbeat_id":"stale-id"}',
+      }),
+      expect.anything(),
+    );
   } finally {
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
   }
+});
+
+it('signs public balance refreshes with an embedded query against the upstream GET route', async () => {
+  const authorize = vi.fn(async () => ({ 'x-builder-proof': 'balance-proof' }));
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    expect(request.url).toBe(
+      root +
+        '/v1/me/balance-allowances/refresh?asset_type=CONDITIONAL&token_id=1',
+    );
+    expect(request.method).toBe('POST');
+    expect(request.headers.get('x-builder-proof')).toBe('balance-proof');
+    return Response.json('accepted');
+  });
+  const client = createPublicClient({
+    environment,
+    fetch,
+    apiKey: { isBuilderKey: true, supportGasless: true, authorize },
+  });
+  await client.predictions.post(
+    '/v1/me/balance-allowances/refresh?asset_type=CONDITIONAL&token_id=1',
+  );
+  expect(authorize).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      method: 'GET',
+      path: '/balance-allowance/update',
+      body: undefined,
+    }),
+    expect.anything(),
+  );
+});
+
+it.each([
+  { holdersOnly: true },
+  { getPositions: true },
+])('preserves direct offset comment filters %j', async (filters) => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    expect(url.origin + url.pathname).toBe(
+      `${environment.gamma.rest}/comments`,
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      parent_entity_id: '123',
+      parent_entity_type: 'Event',
+      limit: '2',
+      offset: '0',
+      ...(filters.holdersOnly
+        ? { holders_only: 'true' }
+        : { get_positions: 'true' }),
+    });
+    return Response.json([]);
+  });
+  const client = createPublicClient({ environment, fetch });
+  await expect(
+    client
+      .listComments({
+        parentEntityId: '123',
+        parentEntityType: CommentParentEntityType.Event,
+        pageSize: 2,
+        ...filters,
+      })
+      .firstPage(),
+  ).resolves.toMatchObject({ items: [], hasMore: false });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('downloads the accounting archive from its direct Data route preserving query and binary content', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    expect(url.origin + url.pathname).toBe(
+      `${environment.data.rest}/v1/accounting/snapshot`,
+    );
+    expect(Object.fromEntries(url.searchParams)).toEqual({ user: address });
+    return new Response(new Uint8Array([80, 75, 3, 4]), {
+      headers: { 'content-type': 'application/zip' },
+    });
+  });
+  const client = createPublicClient({ environment, fetch });
+  const archive = await client.downloadAccountingSnapshot({ user: address });
+  expect(archive.type).toBe('application/zip');
+  expect(new Uint8Array(await archive.arrayBuffer())).toEqual(
+    new Uint8Array([80, 75, 3, 4]),
+  );
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
