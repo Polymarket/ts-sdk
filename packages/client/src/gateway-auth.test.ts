@@ -942,7 +942,7 @@ describe('failed secure-client creation owns newly issued sessions', () => {
       const path = new URL(request.url).pathname;
       paths.push(path);
       if (path.endsWith('/deployed')) return Response.json({ deployed: false });
-      if (path.endsWith('/submit'))
+      if (path === '/v1/wallets/transactions')
         return stage === 'submit'
           ? Response.json(
               { code: 'deployment_rejected', message: 'Deployment rejected' },
@@ -975,9 +975,9 @@ describe('failed secure-client creation owns newly issued sessions', () => {
         },
       }),
     ).rejects.toMatchObject({ status: 401, code: 'deployment_rejected' });
-    expect(paths).toContain('/submit');
+    expect(paths).toContain('/v1/wallets/transactions');
     if (stage === 'wait')
-      expect(paths).toContain('/v1/account/transactions/failed-setup');
+      expect(paths).toContain('/v1/wallets/transactions/failed-setup');
     expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);
   });
 
