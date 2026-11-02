@@ -590,31 +590,6 @@ describe('Portfolio', () => {
       );
     });
   });
-
-  describe('downloadAccountingSnapshot', () => {
-    it('downloads the accounting snapshot archive', async ({
-      publicClient,
-    }) => {
-      const result = await publicClient.downloadAccountingSnapshot({
-        user: TEST_USER,
-      });
-
-      expect(result).toBeInstanceOf(Blob);
-      expect(result.size).toBeGreaterThan(0);
-      expect(result.type).toBe('application/zip');
-    });
-
-    it('defaults secure clients to the authenticated wallet', async ({
-      secureClientWithDepositWallet,
-    }) => {
-      const result =
-        await secureClientWithDepositWallet.downloadAccountingSnapshot();
-
-      expect(result).toBeInstanceOf(Blob);
-      expect(result.size).toBeGreaterThan(0);
-      expect(result.type).toBe('application/zip');
-    });
-  });
 });
 
 function comboPositionRequests(
