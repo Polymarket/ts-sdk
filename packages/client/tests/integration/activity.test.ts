@@ -1,5 +1,6 @@
 import { ActivityType, ComboActivityType } from '@polymarket/client';
 import { expectPresent, isSameEvmAddress } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 import { expectNonEmptyPage, expectPageWindow } from './helpers';
 
@@ -37,6 +38,39 @@ describe('Activity', () => {
   });
 
   describe('listActivity', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it.for([
+      { filters: {}, expected: {} },
+      {
+        filters: { type: [ActivityType.TRADE, ActivityType.DEPOSIT] },
+        expected: { type: 'TRADE,DEPOSIT' },
+      },
+    ])('keeps deposits and withdrawals for filters $filters', async ({
+      filters,
+      expected,
+    }, { publicClient, environment }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient
+        .listActivity({ user: TEST_USER, pageSize: 1, ...filters })
+        .firstPage();
+
+      const [input] = expectPresent(fetchSpy.mock.calls[0]);
+      const url = new URL(input instanceof Request ? input.url : String(input));
+      expect(url.origin + url.pathname).toBe(
+        `${environment.predictions.rest}/v1/activity`,
+      );
+      expect(Object.fromEntries(url.searchParams)).toEqual({
+        user: TEST_USER,
+        exclude_deposits_withdrawals: 'false',
+        limit: '1',
+        ...expected,
+      });
+    });
+
     it('lists wallet activity', async ({ publicClient }) => {
       const result = await publicClient
         .listActivity({

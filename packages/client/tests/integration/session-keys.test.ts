@@ -103,8 +103,8 @@ describe('Session keys', { timeout: 600_000 }, () => {
 
       const originalFetch = globalThis.fetch;
       const revocationUrl = new URL(
-        '/v1/session-signers/revocations',
-        environment.relayer.rest,
+        '/v1/wallets/session-signers/revocations',
+        environment.predictions.rest,
       );
       let revocationTransaction: GaslessTransactionHandle | undefined;
       const sending = vi

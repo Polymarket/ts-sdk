@@ -66,7 +66,7 @@ export async function sendOrderHeartbeat(
     request,
     SendOrderHeartbeatRequestSchema,
   );
-  return client.predictions.post('/v1/trading/heartbeats', {
+  return client.secureClob.post('/v1/heartbeats', {
     schema: OrderHeartbeatSchema,
     json: { heartbeat_id: heartbeatId },
   });

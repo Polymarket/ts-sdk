@@ -78,7 +78,7 @@ describe('Search', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/public-search');
+        .filter((url) => url.pathname === '/v1/public-search');
 
       expect(requests).toHaveLength(1);
       expect(requests[0]?.searchParams.get('page')).toBe('100');
