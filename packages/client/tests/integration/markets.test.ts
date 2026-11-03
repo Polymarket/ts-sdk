@@ -405,7 +405,9 @@ describe('Markets', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .filter((url) => new URL(url).pathname === '/v1/pricing/history/aggregated')
+        .filter(
+          (url) => new URL(url).pathname === '/v1/pricing/history/aggregated',
+        )
         .map((url) => new URL(url));
 
       expect(requests).toHaveLength(2);
