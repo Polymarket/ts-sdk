@@ -315,7 +315,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
 
         expect(requestedUrls(fetchSpy)).toHaveLength(2);
-        expect(countRequests(fetchSpy, '/book')).toBe(2);
+        expect(countRequests(fetchSpy, '/v1/pricing/book')).toBe(2);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -345,8 +345,8 @@ describe('Orders', { timeout: 60_000 }, () => {
           client.createLimitOrder(request),
         ]);
 
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/0x')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -405,8 +405,8 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
         await client.createMarketOrder(request);
 
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/0x')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -437,7 +437,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
         await client.createMarketOrder(request);
 
-        expect(countRequests(fetchSpy, '/fees/builder-fees/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/fees/builder/')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }

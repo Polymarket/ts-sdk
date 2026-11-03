@@ -52,7 +52,7 @@ describe('token reference lookup', () => {
     expect(Array.isArray(references)).toBe(true);
     const [input] = fetch.mock.calls[0] ?? [];
     const url = new URL(input instanceof Request ? input.url : String(input));
-    expect(url.pathname).toBe('/v2/tokens');
+    expect(url.pathname).toBe('/v1/tokens');
     expect(url.searchParams.get('token_id')).toBe(`0,${'9'.repeat(78)}`);
     expect(url.searchParams.has('condition')).toBe(false);
   });

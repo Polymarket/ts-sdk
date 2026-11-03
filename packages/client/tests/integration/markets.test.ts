@@ -98,7 +98,7 @@ describe('Markets', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/markets/keyset');
+        .filter((url) => url.pathname === '/v1/markets');
       expect(urls).toHaveLength(2);
       for (const url of urls) {
         expect(url.searchParams.getAll('version')).toEqual(version);
@@ -307,7 +307,7 @@ describe('Markets', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .filter((url) => new URL(url).pathname === '/v2/holders')
+        .filter((url) => new URL(url).pathname === '/v1/markets/holders')
         .map((url) => new URL(url).searchParams);
 
       expect(requests).toHaveLength(2);
@@ -405,7 +405,7 @@ describe('Markets', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .filter((url) => new URL(url).pathname === '/v2/prices-history')
+        .filter((url) => new URL(url).pathname === '/v1/pricing/history/aggregated')
         .map((url) => new URL(url));
 
       expect(requests).toHaveLength(2);
@@ -439,7 +439,7 @@ describe('Markets', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .find((url) => new URL(url).pathname === '/v2/oi');
+        .find((url) => new URL(url).pathname === '/v1/markets/open-interest');
 
       expect(
         new URL(expectPresent(requestUrl)).searchParams.get('condition'),

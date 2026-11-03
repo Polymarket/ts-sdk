@@ -143,6 +143,23 @@ type DecoratorSecureActions<TDecorator extends ClientDecorator> =
     ? TSecureActions
     : never;
 
+/** Adds API-key headers to the Predictions operations that the key's credential family covers. */
+function authorizePredictionsRequest(
+  context: PublicContext,
+  request: ServiceRequest,
+): Promise<HeadersInit> {
+  const apiKey = context.apiKey;
+  const signing =
+    apiKey === undefined
+      ? undefined
+      : predictionSigningRequest(request, apiKey);
+  if (apiKey === undefined || signing === undefined) return Promise.resolve({});
+  return apiKey.authorize(signing, {
+    fetch: context.fetch,
+    signal: request.signal,
+  });
+}
+
 abstract class AbstractClient<TContext extends PublicContext> {
   // Keep the backing context off the public object shape so accidental
   // client logs do not print secure credentials.
@@ -259,13 +276,7 @@ abstract class AbstractClient<TContext extends PublicContext> {
   protected resolveRequestHeaders(
     request: ServiceRequest,
   ): Promise<HeadersInit> {
-    const canonical = predictionSigningRequest(request)?.request ?? request;
-    return (
-      this.context.apiKey?.authorize(canonical, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      }) ?? Promise.resolve({})
-    );
+    return authorizePredictionsRequest(this.context, request);
   }
 
   protected rememberDecorator(decorator: ClientDecorator): void {
@@ -652,26 +663,6 @@ class BaseSecureClient<
         root: config.environment.clob.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
-      combos: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.combos.collateralReturn.headers,
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveRelayerHeaders(request),
-          ),
-        root: config.environment.combos.collateralReturn.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      builderGateway: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.combos.builderGateway.headers,
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.#resolveBuilderGatewayHeaders(request),
-          ),
-        root: config.environment.combos.builderGateway.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
           headers: config.environment.clob.market.headers,
@@ -725,16 +716,9 @@ class BaseSecureClient<
     const context = request.path.startsWith('/v1/auth/')
       ? super.context
       : this.context;
-    const signing = predictionSigningRequest(request);
-    return this.resolveSecureHeaders(request, async () => {
-      const headers = new Headers(
-        await context.apiKey?.authorize(signing?.request ?? request, {
-          fetch: context.fetch,
-          signal: request.signal,
-        }),
-      );
-      return headers;
-    });
+    return this.resolveSecureHeaders(request, (request) =>
+      authorizePredictionsRequest(context, request),
+    );
   }
 
   protected async resolveSecureHeaders(
@@ -801,16 +785,6 @@ class BaseSecureClient<
   /** @internal */
   get secureClob(): ServiceClient {
     return this.context.secureClob;
-  }
-
-  /** @internal */
-  get combos(): ServiceClient {
-    return this.context.combos;
-  }
-
-  /** @internal */
-  get builderGateway(): ServiceClient {
-    return this.context.builderGateway;
   }
 
   /** @internal Shared managers for public and authenticated realtime subscriptions. */
@@ -949,20 +923,6 @@ class BaseSecureClient<
 
     return client as PublicClient<TPublicActions, TSecureActions>;
   }
-
-  // Builder gateway status reads authenticate with account headers only;
-  // builder headers are required on the mutating requests.
-  async #resolveBuilderGatewayHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return {};
-  }
 }
 
 type SecureContext = PublicContext & {
@@ -975,10 +935,6 @@ type SecureContext = PublicContext & {
   signer: Signer;
   /** @internal */
   secureClob: ServiceClient;
-  /** @internal */
-  combos: ServiceClient;
-  /** @internal */
-  builderGateway: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };
