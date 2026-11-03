@@ -625,8 +625,9 @@ class BaseSecureClient<
               }),
           })
         : undefined;
-    const ownedSecrets = () =>
-      Object.values(session?.credentials ?? l2Credentials ?? {});
+    function ownedSecrets(): string[] {
+      return Object.values(session?.credentials ?? l2Credentials ?? {});
+    }
     const protectedFetch = protectRequestErrors(
       config.fetch,
       false,
@@ -846,11 +847,6 @@ class BaseSecureClient<
    */
   get credentials(): BearerCredentials {
     return this.session.credentials;
-  }
-
-  /** @internal Gasless submissions accept a bearer session or submission credentials. */
-  override get supportsGasless(): boolean {
-    return super.supportsGasless || this.context.session !== undefined;
   }
 
   /** @internal */

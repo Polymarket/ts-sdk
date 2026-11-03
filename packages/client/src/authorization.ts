@@ -7,6 +7,7 @@ import {
 import { setNonBlockingTimeout } from '@polymarket/types';
 import { z } from 'zod';
 import {
+  makeErrorGuard,
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
@@ -205,6 +206,9 @@ const RemotePlatformApiKeyConfigSchema = z.object({
   submissionApiKey: DirectApiKeyAuthorizationSchema.optional(),
 });
 
+export type RemotePlatformApiKeyError = UserInputError;
+export const RemotePlatformApiKeyError = makeErrorGuard(UserInputError);
+
 /** Configures an application backend that proxies challenge creation only.
  * Your backend must authorize the caller and keep its Platform API Key private.
  * Signing, login, refresh and logout happen directly through the SDK.
@@ -213,7 +217,7 @@ const RemotePlatformApiKeyConfigSchema = z.object({
  * const apiKey = remotePlatformApiKey({ url: '/api/auth/challenge' });
  * const client = await createSecureClient({ signer, wallet, apiKey });
  * ```
- * @throws {@link UserInputError} Thrown for invalid configuration.
+ * @throws {@link RemotePlatformApiKeyError} Thrown for invalid configuration.
  */
 export function remotePlatformApiKey(
   config: RemotePlatformApiKeyConfig,

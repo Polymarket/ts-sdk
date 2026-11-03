@@ -363,9 +363,8 @@ describe('ServiceClient', () => {
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await result).toMatchObject({
         name: 'TransportError',
-        message: failure.message,
+        cause: failure,
       });
-      expect(await result).not.toHaveProperty('cause');
       expect(fetch).toHaveBeenCalledTimes(1);
     });
 

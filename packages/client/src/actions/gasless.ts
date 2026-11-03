@@ -305,7 +305,7 @@ export async function deployDepositWallet(
 ): Promise<TransactionHandle> {
   if (!client.supportsGasless)
     throw new UserInputError(
-      'Deposit Wallet deployment requires a bearer session or submission credentials.',
+      'Deposit Wallet deployment requires a builder or relayer API key in the client configuration.',
     );
 
   return executeGasless(client, {
@@ -420,7 +420,7 @@ export async function prepareGaslessTransaction(
 
   if (!client.supportsGasless)
     throw new UserInputError(
-      'Gasless transactions require a bearer session or submission credentials.',
+      'Gasless transactions require a builder or relayer API key in the client configuration.',
     );
   invariant(
     client.account.walletType === WalletType.GNOSIS_SAFE ||

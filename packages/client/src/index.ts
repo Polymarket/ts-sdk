@@ -62,6 +62,7 @@ export type {
   RemotePlatformApiKeyConfig,
 } from './authorization';
 export {
+  RemotePlatformApiKeyError,
   relayerApiKey,
   remoteBuilderSigning,
   remotePlatformApiKey,

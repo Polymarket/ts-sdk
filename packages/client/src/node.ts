@@ -92,12 +92,15 @@ export type PlatformApiKeyOptions = {
   submissionApiKey?: ApiKeyAuthorization;
 };
 
+export type PlatformApiKeyError = UserInputError;
+export const PlatformApiKeyError = makeErrorGuard(UserInputError);
+
 /** Configures a server-held application key. Import only from `@polymarket/client/node`.
  * @example
  * ```ts
  * const apiKey = platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!);
  * ```
- * @throws {@link UserInputError} Thrown for an invalid key.
+ * @throws {@link PlatformApiKeyError} Thrown for an invalid key.
  */
 export function platformApiKey(
   key: string,

@@ -21,7 +21,6 @@ import {
   remotePlatformApiKey,
 } from './authorization';
 import { createPublicClient, createSecureClient } from './clients';
-import { ClientCredentialsSchema } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { SigningError } from './errors';
 // biome-ignore lint/style/noRestrictedImports: This test exercises the server-only public adapter boundary.
@@ -260,49 +259,23 @@ describe('platform API key client workflow', () => {
 });
 
 describe('platform API-key compatibility', () => {
-  it.each([
-    'l2',
-    'bearer',
-  ] as const)('uses the bearer wallet submission path from saved %s credentials', async (mechanism) => {
-    const apiKey = platformApiKey(key);
-    expect(apiKey.supportGasless).toBe(false);
+  it('requires submission credentials for wallet submissions under a platform key', async () => {
     const walletSigner = signer();
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      const request = new Request(input, init);
-      if (
-        request.url === `${gateway}/v1/auth/refresh` ||
-        request.url === `${gateway}/v1/auth/migrate`
-      )
-        return Response.json(tokens());
-      if (request.url === `${environment.clob.rest}/auth/api-keys`) {
-        expect(request.headers.has('x-api-key')).toBe(false);
-        return Response.json({ apiKeys: [l2Credentials.key] });
-      }
-      expect(request.url).toBe(`${gateway}/v1/wallets/transactions`);
-      expect(request.headers.get('authorization')).toBe(
-        `Bearer ${tokens().accessToken}`,
-      );
-      expect(request.headers.get('x-api-key')).toBe(key);
-      expect(request.headers.has('poly_builder_signature')).toBe(false);
-      return Response.json({
-        state: 'STATE_NEW',
-        transactionID: 'synthetic-deployment',
-        transactionHash: null,
-      });
-    });
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(tokens()),
+    );
     const secure = await createSecureClient({
       ...secureOptions,
       fetch,
       signer: walletSigner,
-      apiKey,
-      credentials: mechanism === 'l2' ? l2Credentials : saved(tokens()),
+      apiKey: platformApiKey(key),
+      credentials: saved(tokens()),
     });
     fetch.mockClear();
-    expect(secure.supportsGasless).toBe(true);
-    await expect(deployDepositWallet(secure)).resolves.toMatchObject({
-      transactionHash: null,
+    await expect(deployDepositWallet(secure)).rejects.toMatchObject({
+      name: 'UserInputError',
     });
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
     secure.closeAuthenticationSession();
     await secure.closeSubscriptions();
@@ -577,58 +550,6 @@ it('redacts reflected platform and bearer secrets from authenticated HTTP errors
   }
 });
 
-it('preserves Headers-based builder/submission authorization alongside the platform key and keeps Perps/direct routing separate', async () => {
-  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-    const request = new Request(input, init);
-    if (request.url.endsWith('/challenge')) return Response.json(challenge);
-    if (request.url.endsWith('/login')) return Response.json(tokens());
-    if (request.url.startsWith(environment.perps.rest)) {
-      expect(request.headers.has('x-api-key')).toBe(false);
-      expect(request.headers.has('authorization')).toBe(false);
-    } else {
-      expect(request.headers.get('poly_builder_api_key')).toBe(
-        l2Credentials.key,
-      );
-      expect(request.headers.get('poly_builder_signature')).toBe(
-        'synthetic-proof',
-      );
-      expect(request.headers.get('authorization')).toBe(
-        `Bearer ${tokens().accessToken}`,
-      );
-      expect(request.headers.get('x-api-key')).toBe(
-        new URL(request.url).origin === new URL(gateway).origin ? key : null,
-      );
-      expect(await request.json()).toEqual({ signature });
-    }
-    return Response.json({ ok: true });
-  });
-  const directAuthorization = {
-    isBuilderKey: true,
-    supportGasless: true,
-    authorize: async () =>
-      new Headers({
-        POLY_BUILDER_API_KEY: l2Credentials.key,
-        POLY_BUILDER_SIGNATURE: 'synthetic-proof',
-      }),
-  };
-  const secure = await createSecureClient({
-    ...secureOptions,
-    fetch,
-    signer: signer(),
-    apiKey: platformApiKey(key, { submissionApiKey: directAuthorization }),
-  });
-  await secure.predictions.post('/v1/orders', { json: { signature } });
-  await secure.predictions.post('/v1/wallets/transactions', {
-    json: { signature },
-  });
-  await secure.builderGateway.post('/synthetic-builder', {
-    json: { signature },
-  });
-  await secure.perps.get('/public', { retries: 0 });
-  secure.session.close();
-  await secure.closeSubscriptions();
-});
-
 it('issues a platform-attributed challenge for a backend challenge proxy', async () => {
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const request = new Request(input, init);
@@ -775,14 +696,10 @@ it('retains signed order payloads, builder attribution and gasless deployment au
 });
 
 it.each([
-  ['l2', 'headers'],
-  ['bearer', 'headers'],
-  ['l2', 'response'],
-  ['bearer', 'response'],
-])('redacts active bearer credentials after restoring %s from a %s policy failure', async (mechanism, stage) => {
-  const credentials = ClientCredentialsSchema.parse(
-    mechanism === 'l2' ? l2Credentials : saved(tokens()),
-  );
+  'headers',
+  'response',
+])('redacts active bearer credentials from a %s policy failure', async (stage) => {
+  const credentials = saved(tokens());
   const values = Object.values(saved(tokens()));
   const message = values.join(' ');
   const fetch = vi.fn<typeof globalThis.fetch>(async () =>

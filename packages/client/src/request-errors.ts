@@ -60,7 +60,7 @@ export function redactRequestError(
 
 /** Keeps authentication material out of HTTP diagnostics; credentials remain with the caller. @internal */
 export function protectRequestErrors(
-  fetch: Fetch = globalThis.fetch,
+  fetch?: Fetch,
   sensitive = false,
   ownedSecrets: () => Iterable<string> = () => [],
 ): Fetch {
@@ -95,8 +95,12 @@ export function protectRequestErrors(
     }
     const authentication =
       sensitive || new URL(request.url).pathname.includes('/v1/auth/');
+    // A request without credentials keeps its upstream response and failure cause.
+    // The global fetch is read per request, so a later patch of it still applies.
+    const send = fetch ?? globalThis.fetch;
+    if (!authentication && ![...secrets].some(Boolean)) return send(request);
     try {
-      const response = await fetch(request);
+      const response = await send(request);
       if (response.ok) return response;
       const text = await response.clone().text();
       let body: unknown;

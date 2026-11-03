@@ -56,7 +56,7 @@ export type SessionKeyActions = {
    *
    * Returns once the session key is removed from the active-key registry and can
    * no longer be used. The on-chain transaction may still be pending.
-   * Requires a bearer session or submission credentials.
+   * Requires a builder or relayer API key in the client configuration.
    *
    * @example
    * ```ts

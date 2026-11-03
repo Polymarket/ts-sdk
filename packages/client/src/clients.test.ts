@@ -140,7 +140,7 @@ describe('predictions gateway service', () => {
         }),
       ).rejects.toMatchObject({
         name: TransportError.name,
-        message: failure.message,
+        cause: failure,
       });
       const request = requests.at(-1);
       expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
@@ -204,7 +204,7 @@ describe('predictions gateway service', () => {
       }),
     ).rejects.toMatchObject({
       name: TransportError.name,
-      message: failure.message,
+      cause: failure,
     });
     const request = fetch.mock.calls[0]?.[0] as Request;
     expect(request.url).toBe('https://api-defi-staging.polymarket.dev/ping');
@@ -603,7 +603,7 @@ describe('secure client gasless wallet setup', () => {
       publicClient.predictions.del('/cancel-all'),
     ).rejects.toMatchObject({
       name: TransportError.name,
-      message: failure.message,
+      cause: failure,
     });
     expect(gatewayRequests).toHaveLength(2);
     for (const request of gatewayRequests) {
