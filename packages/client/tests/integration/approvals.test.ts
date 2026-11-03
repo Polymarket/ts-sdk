@@ -64,7 +64,9 @@ describe('Approvals', () => {
         expect(requests).toHaveLength(1);
         const request = requests[0];
         expect(request?.method).toBe('GET');
-        expect(new URL(request?.url ?? '').pathname).toBe('/v1/wallets/approvals');
+        expect(new URL(request?.url ?? '').pathname).toBe(
+          '/v1/wallets/approvals',
+        );
         expect(new URL(request?.url ?? '').searchParams.get('user')).toBe(
           '0x00000000000000000000000000000000000000aa',
         );
