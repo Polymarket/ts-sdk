@@ -53,7 +53,7 @@ describe('Events', () => {
       const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
 
       expect(firstPage.items.length).toBeGreaterThan(0);
-      await expectPageWindow(paginator, firstPage, 99);
+      await expectPageWindow(paginator, firstPage, 19);
 
       for (const [input] of fetchSpy.mock.calls) {
         const url = new URL(
