@@ -84,7 +84,7 @@ describe('CLOB', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/rewards/markets/multi');
+        .filter((url) => url.pathname === '/v1/rewards/markets/multi');
       expect(urls).toHaveLength(2);
       for (const url of urls) {
         expect(url.searchParams.get('min_volume_24hr')).toBe('1');

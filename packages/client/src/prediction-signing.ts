@@ -1,291 +1,243 @@
 import type { ServiceRequest, ServiceRequestMethod } from './ServiceClient';
 
-type SigningService = 'clob' | 'relayer' | 'collateral' | 'data' | 'gamma';
+/**
+ * The upstream credential family that an API key signs for:
+ * builder keys sign trading requests, builder keys sign builder RFQ writes,
+ * and gasless-capable keys sign wallet requests.
+ */
+type SigningFamily = 'trading' | 'builder-rfq' | 'wallet';
 
-type SigningRoute = readonly [
-  ServiceRequestMethod,
-  string,
-  ServiceRequestMethod,
-  string,
-  SigningService,
-  boolean,
-];
-// Request bodies stay unchanged; authentication covers the service's canonical method and path.
-const SIGNING_ROUTES: readonly SigningRoute[] = [
-  ['GET', '/v1/tokens', 'GET', '/v2/tokens', 'data', false],
-  ['GET', '/v1/comments', 'GET', '/comments/keyset', 'gamma', false],
-  [
-    'POST',
-    '/v1/combos/builder/requests',
-    'POST',
-    '/v1/builder/rfq/requests',
-    'clob',
-    true,
-  ],
-  [
-    'POST',
-    '/v1/combos/builder/requests/{rfq_id}/accept',
-    'POST',
-    '/v1/builder/rfq/requests/{rfq_id}/accept',
-    'clob',
-    true,
-  ],
-  [
-    'GET',
-    '/v1/combos/builder/requests/{rfq_id}',
-    'GET',
-    '/v1/builder/rfq/requests/{rfq_id}',
-    'clob',
-    true,
-  ],
-  [
-    'GET',
-    '/v1/me/session-signers',
-    'GET',
-    '/v1/user/session-signers',
-    'clob',
-    true,
-  ],
-  [
-    'POST',
-    '/v1/wallets/session-signers/authorizations',
-    'POST',
-    '/v1/session-signers/authorizations',
-    'relayer',
-    true,
-  ],
-  [
-    'POST',
-    '/v1/wallets/session-signers/revocations',
-    'POST',
-    '/v1/session-signers/revocations',
-    'relayer',
-    true,
-  ],
+/** The API-key capabilities that select which credential families a key signs. */
+export type ApiKeyCapabilities = {
+  isBuilderKey: boolean;
+  supportGasless: boolean;
+};
 
-  [
-    'GET',
-    '/v1/me/trading-status',
-    'GET',
-    '/auth/ban-status/closed-only',
-    'clob',
-    true,
-  ],
-  ['GET', '/v1/me/orders', 'GET', '/data/orders', 'clob', true],
-  [
-    'GET',
-    '/v1/me/orders/{order_id}',
-    'GET',
-    '/data/order/{order_id}',
-    'clob',
-    true,
-  ],
-  ['GET', '/v1/me/trades', 'GET', '/data/trades', 'clob', true],
-  ['GET', '/v1/me/notifications', 'GET', '/notifications', 'clob', true],
-  ['DELETE', '/v1/me/notifications', 'DELETE', '/notifications', 'clob', true],
-  [
-    'GET',
-    '/v1/me/balance-allowances',
-    'GET',
-    '/balance-allowance',
-    'clob',
-    true,
-  ],
-  ['GET', '/v1/orders/scoring', 'GET', '/order-scoring', 'clob', true],
-  ['POST', '/v1/orders/scoring', 'POST', '/orders-scoring', 'clob', true],
-  ['GET', '/v1/rewards/user', 'GET', '/rewards/user', 'clob', true],
-  ['GET', '/v1/rewards/user/total', 'GET', '/rewards/user/total', 'clob', true],
-  [
-    'GET',
-    '/v1/rewards/user/markets',
-    'GET',
-    '/rewards/user/markets',
-    'clob',
-    true,
-  ],
-  [
-    'GET',
-    '/v1/rewards/user/percentages',
-    'GET',
-    '/rewards/user/percentages',
-    'clob',
-    true,
-  ],
-  ['GET', '/v1/builders/trades', 'GET', '/builder/trades', 'clob', false],
-  ['GET', '/v1/pricing/midpoint', 'GET', '/midpoint', 'clob', false],
-  ['POST', '/v1/pricing/midpoints', 'POST', '/midpoints', 'clob', false],
-  ['GET', '/v1/pricing/tick-size', 'GET', '/tick-size', 'clob', false],
-  ['GET', '/v1/trading/neg-risk', 'GET', '/neg-risk', 'clob', false],
-  [
-    'GET',
-    '/v1/trading/markets/token/{token_id}',
-    'GET',
-    '/markets-by-token/{token_id}',
-    'clob',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/trading/markets/{condition_id}',
-    'GET',
-    '/clob-markets/{condition_id}',
-    'clob',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/fees/builder/{code}',
-    'GET',
-    '/fees/builder-fees/{code}',
-    'clob',
-    false,
-  ],
-  ['GET', '/v1/pricing/price', 'GET', '/price', 'clob', false],
-  ['POST', '/v1/pricing/prices', 'POST', '/prices', 'clob', false],
-  ['GET', '/v1/pricing/book', 'GET', '/book', 'clob', false],
-  ['POST', '/v1/pricing/books', 'POST', '/books', 'clob', false],
-  ['GET', '/v1/pricing/spread', 'GET', '/spread', 'clob', false],
-  ['POST', '/v1/pricing/spreads', 'POST', '/spreads', 'clob', false],
-  [
-    'GET',
-    '/v1/pricing/last-trade-price',
-    'GET',
-    '/last-trade-price',
-    'clob',
-    false,
-  ],
-  [
-    'POST',
-    '/v1/pricing/last-trades-prices',
-    'POST',
-    '/last-trades-prices',
-    'clob',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/rewards/markets/current',
-    'GET',
-    '/rewards/markets/current',
-    'clob',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/rewards/markets/{condition_id}',
-    'GET',
-    '/rewards/markets/{condition_id}',
-    'clob',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/rewards/markets/multi',
-    'GET',
-    '/rewards/markets/multi',
-    'clob',
-    false,
-  ],
-  ['GET', '/v1/rebates/current', 'GET', '/rebates/current', 'clob', false],
-  [
-    'POST',
-    '/v1/wallets/collateral-return/plan',
-    'POST',
-    '/v1/collateral-return/plan',
-    'collateral',
-    false,
-  ],
-  [
-    'POST',
-    '/v1/wallets/collateral-return/submit',
-    'POST',
-    '/v1/collateral-return/submit',
-    'collateral',
-    false,
-  ],
-  [
-    'GET',
-    '/v1/wallets/execute-params',
-    'GET',
-    '/v1/account/transactions/params',
-    'relayer',
-    false,
-  ],
-  ['GET', '/v1/wallets/deployed', 'GET', '/deployed', 'relayer', false],
-  [
-    'GET',
-    '/v1/wallets/transactions/{id}',
-    'GET',
-    '/v1/account/transactions/{id}',
-    'relayer',
-    false,
-  ],
-  ['POST', '/v1/wallets/transactions', 'POST', '/submit', 'relayer', false],
-  ['POST', '/v1/trading/heartbeats', 'POST', '/v1/heartbeats', 'clob', true],
-  ['POST', '/v1/orders', 'POST', '/order', 'clob', true],
-  ['POST', '/v1/orders/batch', 'POST', '/orders', 'clob', true],
-  ['DELETE', '/v1/orders/all', 'DELETE', '/cancel-all', 'clob', true],
-  [
-    'DELETE',
-    '/v1/orders/by-market',
-    'DELETE',
-    '/cancel-market-orders',
-    'clob',
-    true,
-  ],
-  ['DELETE', '/v1/orders', 'DELETE', '/order', 'clob', true],
-  ['DELETE', '/v1/orders/batch', 'DELETE', '/orders', 'clob', true],
-  [
-    'POST',
-    '/v1/me/balance-allowances/refresh',
-    'GET',
-    '/balance-allowance/update',
-    'clob',
-    true,
-  ],
-];
+type SigningRoute = {
+  method: ServiceRequestMethod;
+  pattern: RegExp;
+  signingMethod: ServiceRequestMethod;
+  signingPath: string;
+  family: SigningFamily;
+};
 
-/** Resolve authentication against the canonical upstream request without changing the dispatched URL. @internal */
-export function predictionSigningRequest(request: ServiceRequest):
-  | {
-      request: ServiceRequest;
-      kind: SigningService;
-      l2: boolean;
-    }
-  | undefined {
-  const pathname = request.path.split('?')[0] ?? request.path;
-  for (const [
+function route(
+  method: ServiceRequestMethod,
+  path: string,
+  signingPath: string,
+  family: SigningFamily,
+  signingMethod: ServiceRequestMethod = method,
+): SigningRoute {
+  return {
     method,
-    path,
+    pattern: new RegExp(`^${path.replace(/\{[^}]+\}/g, '([^/]+)')}$`),
     signingMethod,
     signingPath,
-    kind,
-    l2,
-  ] of SIGNING_ROUTES) {
-    if (method !== request.method) continue;
-    const match = new RegExp(`^${path.replace(/\{[^}]+\}/g, '([^/]+)')}$`).exec(
-      pathname,
-    );
+    family,
+  };
+}
+
+// Request bodies stay unchanged. Signatures cover the upstream method and path.
+const SIGNING_ROUTES: readonly SigningRoute[] = [
+  route(
+    'GET',
+    '/v1/me/trading-status',
+    '/auth/ban-status/closed-only',
+    'trading',
+  ),
+  route('GET', '/v1/me/orders', '/data/orders', 'trading'),
+  route('GET', '/v1/me/orders/{order_id}', '/data/order/{order_id}', 'trading'),
+  route('GET', '/v1/me/trades', '/data/trades', 'trading'),
+  route('GET', '/v1/me/notifications', '/notifications', 'trading'),
+  route('DELETE', '/v1/me/notifications', '/notifications', 'trading'),
+  route('GET', '/v1/me/balance-allowances', '/balance-allowance', 'trading'),
+  route(
+    'POST',
+    '/v1/me/balance-allowances/refresh',
+    '/balance-allowance/update',
+    'trading',
+    'GET',
+  ),
+  route('GET', '/v1/me/session-signers', '/v1/user/session-signers', 'trading'),
+  route('GET', '/v1/orders/scoring', '/order-scoring', 'trading'),
+  route('POST', '/v1/orders/scoring', '/orders-scoring', 'trading'),
+  route('GET', '/v1/rewards/user', '/rewards/user', 'trading'),
+  route('GET', '/v1/rewards/user/total', '/rewards/user/total', 'trading'),
+  route('GET', '/v1/rewards/user/markets', '/rewards/user/markets', 'trading'),
+  route(
+    'GET',
+    '/v1/rewards/user/percentages',
+    '/rewards/user/percentages',
+    'trading',
+  ),
+  route('GET', '/v1/builders/trades', '/builder/trades', 'trading'),
+  route('GET', '/v1/pricing/midpoint', '/midpoint', 'trading'),
+  route('POST', '/v1/pricing/midpoints', '/midpoints', 'trading'),
+  route('GET', '/v1/pricing/tick-size', '/tick-size', 'trading'),
+  route('GET', '/v1/trading/neg-risk', '/neg-risk', 'trading'),
+  route(
+    'GET',
+    '/v1/trading/markets/token/{token_id}',
+    '/markets-by-token/{token_id}',
+    'trading',
+  ),
+  route(
+    'GET',
+    '/v1/trading/markets/{condition_id}',
+    '/clob-markets/{condition_id}',
+    'trading',
+  ),
+  route(
+    'GET',
+    '/v1/fees/builder/{code}',
+    '/fees/builder-fees/{code}',
+    'trading',
+  ),
+  route('GET', '/v1/pricing/price', '/price', 'trading'),
+  route('POST', '/v1/pricing/prices', '/prices', 'trading'),
+  route('GET', '/v1/pricing/book', '/book', 'trading'),
+  route('POST', '/v1/pricing/books', '/books', 'trading'),
+  route('GET', '/v1/pricing/spread', '/spread', 'trading'),
+  route('POST', '/v1/pricing/spreads', '/spreads', 'trading'),
+  route('GET', '/v1/pricing/last-trade-price', '/last-trade-price', 'trading'),
+  route(
+    'POST',
+    '/v1/pricing/last-trades-prices',
+    '/last-trades-prices',
+    'trading',
+  ),
+  route(
+    'GET',
+    '/v1/rewards/markets/current',
+    '/rewards/markets/current',
+    'trading',
+  ),
+  route(
+    'GET',
+    '/v1/rewards/markets/multi',
+    '/rewards/markets/multi',
+    'trading',
+  ),
+  route(
+    'GET',
+    '/v1/rewards/markets/{condition_id}',
+    '/rewards/markets/{condition_id}',
+    'trading',
+  ),
+  route('GET', '/v1/rebates/current', '/rebates/current', 'trading'),
+  route('POST', '/v1/orders', '/order', 'trading'),
+  route('POST', '/v1/orders/batch', '/orders', 'trading'),
+  route('DELETE', '/v1/orders', '/order', 'trading'),
+  route('DELETE', '/v1/orders/batch', '/orders', 'trading'),
+  route('DELETE', '/v1/orders/all', '/cancel-all', 'trading'),
+  route('DELETE', '/v1/orders/by-market', '/cancel-market-orders', 'trading'),
+  route(
+    'POST',
+    '/v1/combos/builder/requests',
+    '/v1/builder/rfq/requests',
+    'builder-rfq',
+  ),
+  route(
+    'POST',
+    '/v1/combos/builder/requests/{rfq_id}/accept',
+    '/v1/builder/rfq/requests/{rfq_id}/accept',
+    'builder-rfq',
+  ),
+  route(
+    'GET',
+    '/v1/combos/builder/requests/{rfq_id}',
+    '/v1/builder/rfq/requests/{rfq_id}',
+    'builder-rfq',
+  ),
+  route(
+    'POST',
+    '/v1/wallets/session-signers/authorizations',
+    '/v1/session-signers/authorizations',
+    'wallet',
+  ),
+  route(
+    'POST',
+    '/v1/wallets/session-signers/revocations',
+    '/v1/session-signers/revocations',
+    'wallet',
+  ),
+  route(
+    'POST',
+    '/v1/wallets/collateral-return/plan',
+    '/v1/collateral-return/plan',
+    'wallet',
+  ),
+  route(
+    'POST',
+    '/v1/wallets/collateral-return/submit',
+    '/v1/collateral-return/submit',
+    'wallet',
+  ),
+  route(
+    'GET',
+    '/v1/wallets/execute-params',
+    '/v1/account/transactions/params',
+    'wallet',
+  ),
+  route('GET', '/v1/wallets/deployed', '/deployed', 'wallet'),
+  route(
+    'GET',
+    '/v1/wallets/transactions/{id}',
+    '/v1/account/transactions/{id}',
+    'wallet',
+  ),
+  route('POST', '/v1/wallets/transactions', '/submit', 'wallet'),
+];
+
+function signs(
+  capabilities: ApiKeyCapabilities,
+  family: SigningFamily,
+  method: ServiceRequestMethod,
+): boolean {
+  switch (family) {
+    case 'trading':
+      return capabilities.isBuilderKey;
+    case 'builder-rfq':
+      return capabilities.isBuilderKey && method !== 'GET';
+    case 'wallet':
+      return capabilities.supportGasless;
+  }
+}
+
+/**
+ * Returns the upstream request that an API key signs for a Predictions
+ * request, or `undefined` when the key adds no headers to that operation.
+ * The dispatched URL, method and body stay unchanged.
+ * @internal
+ */
+export function predictionSigningRequest(
+  request: ServiceRequest,
+  capabilities: ApiKeyCapabilities,
+): ServiceRequest | undefined {
+  const pathname = request.path.split('?')[0] ?? request.path;
+  for (const signing of SIGNING_ROUTES) {
+    if (signing.method !== request.method) continue;
+    const match = signing.pattern.exec(pathname);
     if (match === null) continue;
+    if (!signs(capabilities, signing.family, request.method)) return undefined;
     let index = 1;
-    const canonicalPath = signingPath.replace(
+    const signingPath = signing.signingPath.replace(
       /\{[^}]+\}/g,
       () => match[index++] ?? '',
     );
-    const canonical = {
-      ...request,
-      method: signingMethod,
-      path: canonicalPath,
-    };
-    if (kind === 'collateral' && path.endsWith('/submit')) {
-      // Submission authorization covers the nested transaction sent to the relayer.
+    if (signingPath === '/v1/collateral-return/submit') {
+      // The service forwards the envelope to the wallet relay, which checks the signature.
       const payload = JSON.parse(request.body ?? '{}') as {
         envelope?: unknown;
       };
-      canonical.path = '/submit';
-      canonical.body = JSON.stringify(payload.envelope);
+      return {
+        ...request,
+        method: signing.signingMethod,
+        path: '/submit',
+        body: JSON.stringify(payload.envelope),
+      };
     }
-    return { request: canonical, kind, l2 };
+    return { ...request, method: signing.signingMethod, path: signingPath };
   }
   return undefined;
 }
