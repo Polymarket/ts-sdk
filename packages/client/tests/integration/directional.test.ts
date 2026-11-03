@@ -113,12 +113,61 @@ describe('Directional staging round trip', () => {
       expect(baseline.positions).toEqual(ids.map(() => 0n));
       expect(baseline.collateral).toBeGreaterThanOrEqual(2n * amount);
 
+      const otherEvent = deriveDirectionalThresholdPositions({
+        eventId: `${decoded.eventId.slice(0, 4)}${decoded.eventId[4] === '0' ? '1' : '0'}${decoded.eventId.slice(5)}`,
+        line: highLine,
+      });
+      const invalidPairs: readonly (readonly [string, string])[] = [
+        [low.abovePositionId, high.abovePositionId],
+        [low.belowPositionId, high.belowPositionId],
+        [high.abovePositionId, low.belowPositionId],
+        [low.abovePositionId, low.belowPositionId],
+        [low.abovePositionId, otherEvent.belowPositionId],
+        [middle.yesPositionId, high.belowPositionId],
+        [low.abovePositionId, voidPosition.yesPositionId],
+        ['', high.belowPositionId],
+        [low.abovePositionId, 'not-a-position-id'],
+        ['123', high.belowPositionId],
+      ];
+      for (const [positionIdA, positionIdB] of invalidPairs) {
+        await expect(
+          client.mergeDirectional(positionIdA, positionIdB),
+        ).rejects.toBeInstanceOf(UserInputError);
+        await expect(
+          client.splitDirectional(positionIdB, positionIdA),
+        ).rejects.toBeInstanceOf(UserInputError);
+      }
+      for (const invalidAmount of [0n, -1n, 1n << 256n]) {
+        await expect(
+          client.mergeDirectional(
+            low.abovePositionId,
+            high.belowPositionId,
+            invalidAmount,
+          ),
+        ).rejects.toBeInstanceOf(UserInputError);
+        await expect(
+          client.splitDirectional(
+            high.belowPositionId,
+            low.abovePositionId,
+            invalidAmount,
+          ),
+        ).rejects.toBeInstanceOf(UserInputError);
+      }
       await expect(
-        client.mergeDirectional({
-          eventId,
-          lowLine: highLine,
-          highLine: lowLine,
-        }),
+        client.mergeDirectional(
+          low.abovePositionId,
+          high.belowPositionId,
+          // @ts-expect-error JavaScript callers must also receive input validation for numeric amounts.
+          1,
+        ),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        client.splitDirectional(
+          high.belowPositionId,
+          low.abovePositionId,
+          // @ts-expect-error JavaScript callers must also receive input validation for numeric amounts.
+          1,
+        ),
       ).rejects.toBeInstanceOf(UserInputError);
       await client.setupTradingApprovals();
       // Deterministic inventory setup isolates Router and wallet execution from order-book availability.
@@ -128,8 +177,11 @@ describe('Directional staging round trip', () => {
       await (
         await client.splitPosition({ conditionId: high.conditionId, amount })
       ).wait();
-      const pair = { eventId, lowLine, highLine };
-      const merge = await client.mergeDirectional(pair);
+      // Swapping the wings must preserve the same pair; omitted amount uses its full balance.
+      const merge = await client.mergeDirectional(
+        high.belowPositionId,
+        low.abovePositionId,
+      );
       const outcome = await merge.wait();
       annotate(
         `DCR merge: ${outcome.transactionHash}; wallet: ${client.account.wallet}`,
@@ -183,8 +235,13 @@ describe('Directional staging round trip', () => {
       } catch (error) {
         errors.push(error);
       }
-      // Only reverse a confirmed merge. Explicit amounts keep cleanup bounded to this test's inventory.
-      await (await client.splitDirectional(pair)).wait();
+      // Only reverse a confirmed merge. The zero-inventory baseline bounds 'max' to this test's inventory.
+      const split = await client.splitDirectional(
+        low.abovePositionId,
+        high.belowPositionId,
+        'max',
+      );
+      await split.wait();
       expect(await balances(client, ids)).toEqual({
         collateral: baseline.collateral - 2n * amount,
         positions: [amount, amount, amount, amount, 0n, 0n],

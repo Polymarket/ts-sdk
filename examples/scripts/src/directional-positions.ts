@@ -16,3 +16,11 @@ console.table([
   decodePositionId(low.abovePositionId),
   decodePositionId(high.belowPositionId),
 ]);
+
+// With a configured, funded client, merge these wings after they settle:
+// const merge = await client.mergeDirectional(low.abovePositionId, high.belowPositionId);
+// await merge.wait();
+// Reverse one pair using the same IDs in either order (six-decimal base units):
+// const split = await client.splitDirectional(high.belowPositionId, low.abovePositionId, 1_000_000n);
+// await split.wait();
+// Omitted amount or 'max' uses fresh maximum balances. This example stays offline.

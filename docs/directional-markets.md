@@ -11,25 +11,35 @@ Orders take each outcome's `positionId` as their `assetId`. Buy YES on the lower
 line and NO on the higher line, then wait for both fills to settle **on chain**.
 Order acceptance or a matched fill alone does not establish wallet balances.
 
+After settlement, discover pairs from the authenticated wallet and select one:
+
 ```ts
-import { decodePositionId } from '@polymarket/client';
-
-const low = decodePositionId(yesLowPositionId);
-const high = decodePositionId(noHighPositionId);
-if (low.kind !== 'line' || low.side !== 'above' ||
-    high.kind !== 'line' || high.side !== 'below' ||
-    low.eventId !== high.eventId || low.index >= high.index) {
-  throw new Error('Expected ABOVE(low) and BELOW(high) in the same event');
-}
-
 await client.setupTradingApprovals();
-const pair = { eventId: low.eventId, lowLine: low.index, highLine: high.index };
-const transaction = await client.mergeDirectional(pair);
+const pairs = await client.findDirectionalPairs();
+console.table(pairs);
+
+// Choose one candidate after inspecting its amount and expectedPusd.
+const selected = pairs[0];
+if (!selected) throw new Error('No mergeable directional pair found');
+
+const transaction = await client.mergeDirectional(
+  selected.abovePositionId,
+  selected.belowPositionId,
+  selected.amount,
+);
 const outcome = await transaction.wait();
 console.log(outcome.transactionHash);
 ```
 
-The decoder uses local bit math and accepts decimal module-4 position IDs. It
+Both methods take two position IDs and an optional amount:
+`mergeDirectional(positionIdA, positionIdB, amount?)` and
+`splitDirectional(positionIdA, positionIdB, amount?)`. The IDs may be passed in
+**either order**. They must identify ABOVE on a lower line and BELOW on a higher
+line in the same directional event. The SDK decodes the event and boundaries
+locally and rejects invalid pairs before signing; callers need no event ID,
+line indices or market metadata lookup.
+
+`decodePositionId` uses local bit math and accepts decimal module-4 position IDs. It
 returns `{ moduleId, eventId, bucketCount, kind, index, side, conditionId }`.
 It rejects CTF and other modules rather than interpreting hashes as directional
 instruments. `kind` is `line`, `bucket` or `void`; line indices are **ordinal
@@ -55,17 +65,23 @@ Both methods accept `amount?: bigint | 'max'`, in six-decimal base units:
 To reverse a known merge, use its explicit amount so other inventory is untouched:
 
 ```ts
-const split = await client.splitDirectional({ ...pair, amount: 1_000_000n });
+const split = await client.splitDirectional(
+  selected.abovePositionId,
+  selected.belowPositionId,
+  selected.amount,
+);
 await split.wait();
 ```
 
 `client.findDirectionalPairs({ eventId })` optionally narrows discovery to one
 protocol event; omit the request to scan this account. It scans indexed holdings
-and refreshes candidate balances on chain. Each result has `amount` and
-`expectedPusd` in base units and can supply the parameters to `mergeDirectional`.
+and refreshes candidate balances on chain. Each result includes the two position
+IDs plus `amount` and `expectedPusd` in base units. Pass the IDs and chosen amount
+as separate arguments to `mergeDirectional`.
 Overlapping pairs share inventory: do not add their amounts or treat the result
 as a batch execution plan. Unindexed positions cannot be discovered this way;
-an explicitly known pair can still be merged using local IDs and wallet balances.
+an explicitly known pair can still be merged using its position IDs and wallet
+balances. Discovery may need a retry while newly settled holdings are indexing.
 
 ## Wallets and approvals
 
@@ -81,6 +97,8 @@ An EOA signer must use the same chain and RPC as the SDK environment; for a
 staging fork, pass that transport to `privateKey(key, { chain, transport })`.
 
 For custom signing, each operation exposes a `prepare*` action and bound method.
+`prepareMergeDirectional` and `prepareSplitDirectional` accept the same two
+position IDs, in either order, and optional amount as their execution methods.
 Preparing reads balances where needed, but does not sign or submit until its
 workflow is advanced. Router calldata builders are also exported. The wallet
 batch transport alone does **not** establish server selector acceptance, policy
@@ -166,11 +184,16 @@ Complete these launch checks in staging, in order:
    and eligible bucket/line redemptions. Confirm portfolio visibility and the
    agreed PnL policy with the data owners.
 
-As of 2 November 2026, the linked testing thread reports threshold trading after
-manually enabling its book, followed by a deployed test fix. That evidence does
-not establish normal book activation or DCR wallet execution. This cloud session
-has no staging credentials/VNet RPC, no VPN, and its allowed hosts exclude the
-staging `polymarket.sh` endpoints. Live staging execution remains unverified.
+As of 3 November 2026, the Deposit Wallet merge/reverse flow has completed on
+staging with the earlier event/line signature, including restored inventory.
+The positional-signature rerun passed invalid-input checks but stopped while
+seeding line inventory: the staging relayer returned `context deadline exceeded`
+on submission, before the directional merge. Subsequent reads found zero in all
+six tracked position balances. The refactored round trip remains unverified.
+The configured staging `/v2/activity` and `/v2/positions` routes previously returned
+404, so activity and portfolio acceptance also remain unverified. The linked
+trading discussion reports threshold trading after manually enabling its book;
+it does not establish normal book activation or all wallet execution paths.
 
 Directional integration into `planCollateralReturn` / `executeCollateralReturnPlan`
 is P2 and remains deferred, as specified. Pair discovery is read-only and does

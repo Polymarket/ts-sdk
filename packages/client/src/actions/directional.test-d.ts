@@ -1,13 +1,13 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import {
+  type MergeDirectionalWorkflow,
   type PrepareComposeThresholdRequest,
   type PrepareConvertPositionRequest,
   type PrepareDecomposeThresholdRequest,
-  type PrepareMergeDirectionalRequest,
   type PrepareMergeEventPositionsRequest,
-  type PrepareSplitDirectionalRequest,
   type PrepareSplitEventPositionsRequest,
   type SecureWalletActions,
+  type SplitDirectionalWorkflow,
   ThresholdSide,
   type TransactionHandle,
 } from '../index';
@@ -29,25 +29,11 @@ describe('directional public input types', () => {
     void eventMerge;
     void conversion;
 
-    const split = {
-      eventId,
-      lowLine: 1,
-      highLine: 3,
-      amount: 1n,
-    } satisfies PrepareSplitDirectionalRequest;
-    const maximumSplit = {
-      eventId,
-      lowLine: 1,
-      highLine: 3,
-      amount: 'max',
-    } satisfies PrepareSplitDirectionalRequest;
     const invalidEventSplit = {
       eventId,
       // @ts-expect-error Splitting a complete event requires an explicit collateral amount.
       amount: 'max',
     } satisfies PrepareSplitEventPositionsRequest;
-    void split;
-    void maximumSplit;
     void invalidEventSplit;
   });
 
@@ -99,18 +85,6 @@ describe('directional wallet method types', () => {
         side: ThresholdSide.Below,
         amount: 'max',
       };
-      const directionalSplit: PrepareSplitDirectionalRequest = {
-        eventId,
-        lowLine: 1,
-        highLine: 3,
-        amount: 1n,
-      };
-      const directionalMerge: PrepareMergeDirectionalRequest = {
-        eventId,
-        lowLine: 1,
-        highLine: 3,
-        amount: 'max',
-      };
 
       expectTypeOf(client.splitEventPositions(eventSplit)).toEqualTypeOf<
         Promise<TransactionHandle>
@@ -127,12 +101,63 @@ describe('directional wallet method types', () => {
       expectTypeOf(client.decomposeThreshold(threshold)).toEqualTypeOf<
         Promise<TransactionHandle>
       >();
-      expectTypeOf(client.splitDirectional(directionalSplit)).toEqualTypeOf<
+      expectTypeOf(client.splitDirectional('123', '456', 1n)).toEqualTypeOf<
         Promise<TransactionHandle>
       >();
-      expectTypeOf(client.mergeDirectional(directionalMerge)).toEqualTypeOf<
+      expectTypeOf(client.mergeDirectional('123', '456', 'max')).toEqualTypeOf<
         Promise<TransactionHandle>
       >();
+    }
+    expectTypeOf(consume).toBeFunction();
+  });
+
+  it('accepts two plain position IDs in either order with optional base-unit amounts', () => {
+    function consume(
+      client: SecureWalletActions,
+      positionIdA: string,
+      positionIdB: string,
+    ) {
+      expectTypeOf(
+        client.mergeDirectional(positionIdA, positionIdB),
+      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      expectTypeOf(
+        client.splitDirectional(positionIdB, positionIdA),
+      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      expectTypeOf(
+        client.mergeDirectional(positionIdB, positionIdA, 1_000_000n),
+      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      expectTypeOf(
+        client.splitDirectional(positionIdA, positionIdB, 'max'),
+      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      expectTypeOf(
+        client.prepareMergeDirectional(positionIdA, positionIdB),
+      ).toEqualTypeOf<Promise<MergeDirectionalWorkflow>>();
+      expectTypeOf(
+        client.prepareMergeDirectional(positionIdB, positionIdA, 'max'),
+      ).toEqualTypeOf<Promise<MergeDirectionalWorkflow>>();
+      expectTypeOf(
+        client.prepareSplitDirectional(positionIdB, positionIdA, 1n),
+      ).toEqualTypeOf<Promise<SplitDirectionalWorkflow>>();
+      expectTypeOf(
+        client.prepareSplitDirectional(positionIdA, positionIdB),
+      ).toEqualTypeOf<Promise<SplitDirectionalWorkflow>>();
+
+      // @ts-expect-error Both position IDs are required.
+      client.mergeDirectional(positionIdA);
+      // @ts-expect-error Both position IDs are required.
+      client.splitDirectional(positionIdA);
+      // @ts-expect-error Amounts use bigint base units, never a number.
+      client.mergeDirectional(positionIdA, positionIdB, 1);
+      // @ts-expect-error Amounts use bigint base units, never a number.
+      client.splitDirectional(positionIdA, positionIdB, 1);
+      // @ts-expect-error The event/line request object has been replaced by two position IDs.
+      client.mergeDirectional({ eventId, lowLine: 1, highLine: 3 });
+      // @ts-expect-error The event/line request object has been replaced by two position IDs.
+      client.splitDirectional({ eventId, lowLine: 1, highLine: 3 });
+      // @ts-expect-error Custom signing also requires two position IDs.
+      client.prepareMergeDirectional({ eventId, lowLine: 1, highLine: 3 });
+      // @ts-expect-error Custom signing also requires bigint base units.
+      client.prepareSplitDirectional(positionIdA, positionIdB, '1');
     }
     expectTypeOf(consume).toBeFunction();
   });

@@ -2,7 +2,9 @@ import { WalletType } from '@polymarket/bindings/gamma';
 import {
   type DirectionalEventId,
   DirectionalEventIdSchema,
+  DirectionalPositionIdSchema,
   decodeDirectionalEventId,
+  decodeDirectionalInstrument,
   deriveThresholdPositionId,
   ThresholdSide,
   ThresholdSideSchema,
@@ -69,30 +71,60 @@ const ThresholdRequestSchema = z
       });
     }
   });
-const DirectionalLinesRequestSchema = z
+const DirectionalPairSchema = z
   .object({
-    eventId: DirectionalEventIdSchema,
-    lowLine: ThresholdLineSchema,
-    highLine: ThresholdLineSchema,
-    metadata: GaslessTransactionMetadataSchema.optional(),
+    positionIdA: DirectionalPositionIdSchema.transform(
+      decodeDirectionalInstrument,
+    ),
+    positionIdB: DirectionalPositionIdSchema.transform(
+      decodeDirectionalInstrument,
+    ),
+    amount: z
+      .union([
+        z
+          .bigint()
+          .positive()
+          .max((1n << 256n) - 1n),
+        z.literal('max'),
+      ])
+      .default('max'),
   })
   .superRefine((params, ctx) => {
+    const a = params.positionIdA;
+    const b = params.positionIdB;
     if (
-      params.highLine >= decodeDirectionalEventId(params.eventId).bucketCount
+      a.kind !== 'line' ||
+      b.kind !== 'line' ||
+      a.eventId !== b.eventId ||
+      a.side === b.side
     ) {
       ctx.addIssue({
         code: 'custom',
-        path: ['highLine'],
-        message: 'Expected a line below the real-bucket count',
+        path: ['positionIdB'],
+        message:
+          'Expected ABOVE and BELOW threshold positions in the same directional event',
       });
+      return;
     }
-    if (params.lowLine >= params.highLine) {
+    const above = a.side === 'above' ? a : b;
+    const below = a.side === 'below' ? a : b;
+    if (above.index >= below.index) {
       ctx.addIssue({
         code: 'custom',
-        path: ['lowLine'],
-        message: 'Expected lowLine to be strictly less than highLine',
+        path: ['positionIdB'],
+        message: 'Expected ABOVE on a lower threshold than BELOW',
       });
     }
+  })
+  .transform(({ positionIdA: a, positionIdB: b, amount }) => {
+    const above = a.side === 'above' ? a : b;
+    const below = a.side === 'below' ? a : b;
+    return {
+      eventId: above.eventId,
+      lowLine: above.index,
+      highLine: below.index,
+      amount,
+    };
   });
 
 export type ComposeThresholdWorkflowRequest =
@@ -418,35 +450,6 @@ export type SplitDirectionalWorkflow = AsyncGenerator<
   EvmAddress | EvmSignature | TransactionHandle
 >;
 
-/**
- * Parameters for preparing a directional position split.
- */
-export type PrepareSplitDirectionalRequest = {
-  /** Protocol event ID of a directional event. Not the numeric ID of an `Event`. */
-  eventId: string | DirectionalEventId;
-  /** Lower ordinal line; must be at least 1 and below highLine. */
-  lowLine: number;
-  /** Higher ordinal line; must be below the real-bucket count. */
-  highLine: number;
-  /** Six-decimal base units per pair. Omit or use 'max' for the minimum of pUSD and every middle-bucket balance. */
-  amount?: bigint | 'max';
-  /** Optional transaction metadata. */
-  metadata?: string;
-};
-
-const PrepareSplitDirectionalRequestSchema =
-  DirectionalLinesRequestSchema.safeExtend({
-    amount: z
-      .union([
-        z
-          .bigint()
-          .positive()
-          .max((1n << 256n) - 1n),
-        z.literal('max'),
-      ])
-      .default('max'),
-  }) satisfies z.ZodType<PrepareSplitDirectionalRequest>;
-
 export type PrepareSplitDirectionalError =
   | RateLimitError
   | RequestRejectedError
@@ -467,7 +470,8 @@ export const PrepareSplitDirectionalError = makeErrorGuard(
  *
  * Consumes the amount of collateral and each real bucket YES in [lowLine,
  * highLine). Omitted amount or 'max' uses the fresh minimum of pUSD and all
- * required bucket balances. Lines are ordinal indices; they are not scalar values. The
+ * required bucket balances. The input IDs may be in either order and identify
+ * ABOVE on a lower threshold and BELOW on a higher threshold in the same event. The
  * workflow submits one atomic transaction. Confirm through the returned
  * handle's `wait()`.
  *
@@ -476,23 +480,25 @@ export const PrepareSplitDirectionalError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const workflow = await prepareSplitDirectional(client, {
- *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
- *   lowLine: 1,
- *   highLine: 3,
- *   amount: 1_000_000n,
- * });
+ * const workflow = await prepareSplitDirectional(client, positionIdA, positionIdB, 1_000_000n);
  * ```
+ *
+ * @param amount - Six-decimal bigint base units per pair; omitted or 'max' uses the available maximum.
  *
  * @throws {@link PrepareSplitDirectionalError}
  * Thrown on failure.
  */
 export async function prepareSplitDirectional(
   client: BaseSecureClient,
-  request: PrepareSplitDirectionalRequest,
+  positionIdA: string,
+  positionIdB: string,
+  amount?: bigint | 'max',
 ): Promise<SplitDirectionalWorkflow> {
-  const params = parseUserInput(request, PrepareSplitDirectionalRequestSchema);
-  const amount = await resolveBasketAmount(
+  const params = parseUserInput(
+    { positionIdA, positionIdB, amount },
+    DirectionalPairSchema,
+  );
+  const resolvedAmount = await resolveBasketAmount(
     client,
     bucketRangePositionIds(params.eventId, params.lowLine, params.highLine),
     params.amount,
@@ -503,7 +509,7 @@ export async function prepareSplitDirectional(
     params.eventId,
     params.lowLine,
     params.highLine,
-    amount,
+    resolvedAmount,
   );
 
   return async function* (): SplitDirectionalWorkflow {
@@ -516,9 +522,7 @@ export async function prepareSplitDirectional(
     }
     return yield* await prepareGaslessTransaction(client, {
       calls: [call],
-      metadata:
-        params.metadata ??
-        `Split ${amount} collateral and middle-bucket positions between lines ${params.lowLine} and ${params.highLine} of event ${params.eventId}`,
+      metadata: `Split ${resolvedAmount} collateral and middle-bucket positions between lines ${params.lowLine} and ${params.highLine} of event ${params.eventId}`,
     });
   }.call(null);
 }
@@ -547,7 +551,8 @@ export const SplitDirectionalError = makeErrorGuard(
  *
  * Consumes the amount of collateral and each real bucket YES in [lowLine,
  * highLine). Omitted amount or 'max' uses the fresh minimum of pUSD and all
- * required bucket balances. Lines are ordinal indices; they are not scalar values. Uses
+ * required bucket balances. The input IDs may be in either order and identify
+ * ABOVE on a lower threshold and BELOW on a higher threshold in the same event. Uses
  * existing trading approvals; call `setupTradingApprovals()` when needed.
  * Confirmation stays explicit through the returned handle's `wait()`.
  *
@@ -556,23 +561,22 @@ export const SplitDirectionalError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const handle = await splitDirectional(client, {
- *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
- *   lowLine: 1,
- *   highLine: 3,
- *   amount: 1_000_000n,
- * });
+ * const handle = await splitDirectional(client, positionIdA, positionIdB, 1_000_000n);
  * await handle.wait();
  * ```
+ *
+ * @param amount - Six-decimal bigint base units per pair; omitted or 'max' uses the available maximum.
  *
  * @throws {@link SplitDirectionalError}
  * Thrown on failure.
  */
 export function splitDirectional(
   client: BaseSecureClient,
-  request: PrepareSplitDirectionalRequest,
+  positionIdA: string,
+  positionIdB: string,
+  amount?: bigint | 'max',
 ): Promise<TransactionHandle> {
-  return prepareSplitDirectional(client, request).then(
+  return prepareSplitDirectional(client, positionIdA, positionIdB, amount).then(
     completeWith(client.signer),
   );
 }
@@ -586,35 +590,6 @@ export type MergeDirectionalWorkflow = AsyncGenerator<
   TransactionHandle,
   EvmAddress | EvmSignature | TransactionHandle
 >;
-
-/**
- * Parameters for preparing a directional position merge.
- */
-export type PrepareMergeDirectionalRequest = {
-  /** Protocol event ID of a directional event. Not the numeric ID of an `Event`. */
-  eventId: string | DirectionalEventId;
-  /** Lower ordinal line; must be at least 1 and below highLine. */
-  lowLine: number;
-  /** Higher ordinal line; must be below the real-bucket count. */
-  highLine: number;
-  /** Six-decimal base units per pair. Omit or use 'max' for the fresh minimum of both threshold balances. */
-  amount?: bigint | 'max';
-  /** Optional transaction metadata. */
-  metadata?: string;
-};
-
-const PrepareMergeDirectionalRequestSchema =
-  DirectionalLinesRequestSchema.safeExtend({
-    amount: z
-      .union([
-        z
-          .bigint()
-          .positive()
-          .max((1n << 256n) - 1n),
-        z.literal('max'),
-      ])
-      .default('max'),
-  }) satisfies z.ZodType<PrepareMergeDirectionalRequest>;
 
 export type PrepareMergeDirectionalError =
   | RateLimitError
@@ -635,7 +610,9 @@ export const PrepareMergeDirectionalError = makeErrorGuard(
  * collateral and middle-bucket YES positions.
  *
  * Returns the amount of collateral and each real bucket YES in [lowLine,
- * highLine). Omitted amount or 'max' uses the fresh minimum of the two threshold balances. The
+ * highLine). The input IDs may be in either order and must identify ABOVE on a
+ * lower threshold and BELOW on a higher threshold in the same event. Omitted
+ * amount or 'max' uses the fresh minimum of the two threshold balances. The
  * workflow submits one atomic transaction. Confirm through the returned
  * handle's `wait()`.
  *
@@ -644,22 +621,24 @@ export const PrepareMergeDirectionalError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const workflow = await prepareMergeDirectional(client, {
- *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
- *   lowLine: 1,
- *   highLine: 3,
- *   amount: 'max',
- * });
+ * const workflow = await prepareMergeDirectional(client, positionIdA, positionIdB, 1_000_000n);
  * ```
+ *
+ * @param amount - Six-decimal bigint base units per pair; omitted or 'max' uses the available maximum.
  *
  * @throws {@link PrepareMergeDirectionalError}
  * Thrown on failure.
  */
 export async function prepareMergeDirectional(
   client: BaseSecureClient,
-  request: PrepareMergeDirectionalRequest,
+  positionIdA: string,
+  positionIdB: string,
+  amount?: bigint | 'max',
 ): Promise<MergeDirectionalWorkflow> {
-  const params = parseUserInput(request, PrepareMergeDirectionalRequestSchema);
+  const params = parseUserInput(
+    { positionIdA, positionIdB, amount },
+    DirectionalPairSchema,
+  );
   const abovePositionId = deriveThresholdPositionId(
     params.eventId,
     params.lowLine,
@@ -670,7 +649,7 @@ export async function prepareMergeDirectional(
     params.highLine,
     ThresholdSide.Below,
   );
-  const amount = await resolveBasketAmount(
+  const resolvedAmount = await resolveBasketAmount(
     client,
     [abovePositionId, belowPositionId],
     params.amount,
@@ -680,7 +659,7 @@ export async function prepareMergeDirectional(
     params.eventId,
     params.lowLine,
     params.highLine,
-    amount,
+    resolvedAmount,
   );
 
   return async function* (): MergeDirectionalWorkflow {
@@ -693,9 +672,7 @@ export async function prepareMergeDirectional(
     }
     return yield* await prepareGaslessTransaction(client, {
       calls: [call],
-      metadata:
-        params.metadata ??
-        `Merge ${amount} threshold positions between lines ${params.lowLine} and ${params.highLine} of event ${params.eventId}`,
+      metadata: `Merge ${resolvedAmount} threshold positions between lines ${params.lowLine} and ${params.highLine} of event ${params.eventId}`,
     });
   }.call(null);
 }
@@ -723,7 +700,9 @@ export const MergeDirectionalError = makeErrorGuard(
  * YES positions.
  *
  * Returns the amount of collateral and each real bucket YES in [lowLine,
- * highLine). Omitted amount or 'max' uses the fresh minimum of the two threshold balances. Uses
+ * highLine). The input IDs may be in either order and must identify ABOVE on a
+ * lower threshold and BELOW on a higher threshold in the same event. Omitted
+ * amount or 'max' uses the fresh minimum of the two threshold balances. Uses
  * existing trading approvals; call `setupTradingApprovals()` when needed.
  * Confirmation stays explicit through the returned handle's `wait()`.
  *
@@ -732,23 +711,22 @@ export const MergeDirectionalError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const handle = await mergeDirectional(client, {
- *   eventId: '0x0400112233445566778899aabbccddeeff000400000000000000000000',
- *   lowLine: 1,
- *   highLine: 3,
- *   amount: 'max',
- * });
+ * const handle = await mergeDirectional(client, positionIdA, positionIdB, 1_000_000n);
  * await handle.wait();
  * ```
+ *
+ * @param amount - Six-decimal bigint base units per pair; omitted or 'max' uses the available maximum.
  *
  * @throws {@link MergeDirectionalError}
  * Thrown on failure.
  */
 export function mergeDirectional(
   client: BaseSecureClient,
-  request: PrepareMergeDirectionalRequest,
+  positionIdA: string,
+  positionIdB: string,
+  amount?: bigint | 'max',
 ): Promise<TransactionHandle> {
-  return prepareMergeDirectional(client, request).then(
+  return prepareMergeDirectional(client, positionIdA, positionIdB, amount).then(
     completeWith(client.signer),
   );
 }

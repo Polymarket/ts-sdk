@@ -167,15 +167,30 @@ import { ResultAsync, ok } from "neverthrow";
 After ABOVE on a lower line and BELOW on a higher line settle in your wallet:
 
 ```ts
-const pair = { eventId, lowLine: 2, highLine: 4 };
 await client.setupTradingApprovals();
-await (await client.mergeDirectional(pair)).wait();
+const pairs = await client.findDirectionalPairs();
+const selected = pairs[0]; // User or agent chooses a candidate.
+if (!selected) throw new Error('No mergeable directional pair found');
+await (
+  await client.mergeDirectional(
+    selected.abovePositionId,
+    selected.belowPositionId,
+    selected.amount,
+  )
+).wait();
 ```
 
-The default amount is the smaller on-chain balance. Each pair returns 1 pUSD
-and YES positions on the middle buckets. Reverse with `splitDirectional`, which
-requires pUSD plus those buckets. `decodePositionId` reads the event and line
-locally; `findDirectionalPairs` discovers pairs in this account's indexed holdings.
+Both `mergeDirectional(positionIdA, positionIdB, amount?)` and
+`splitDirectional(positionIdA, positionIdB, amount?)` accept the position IDs in
+either order. They must identify ABOVE on a lower line and BELOW on a higher
+line in the same event. Amounts are bigint values in six-decimal base units;
+omitting the amount or passing `'max'` uses fresh maximum balances.
+
+Each merged pair returns 1 pUSD and YES positions on the middle buckets. Reverse
+with `splitDirectional` using the same IDs and explicit merged amount; it consumes
+pUSD plus those buckets. Pair discovery scans this account's indexed holdings
+and refreshes balances on chain. Candidates may overlap: choose a pair and
+refresh discovery after execution rather than treating all results as a batch.
 
 See the [directional integration guide](../../docs/directional-markets.md) for
 wallet setup, inventory operations, data semantics and staging acceptance checks.

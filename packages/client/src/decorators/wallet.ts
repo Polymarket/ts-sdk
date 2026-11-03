@@ -35,11 +35,9 @@ import {
   type PrepareErc1155ApprovalForAllRequest,
   type PrepareHorizontalMergeRequest,
   type PrepareHorizontalSplitRequest,
-  type PrepareMergeDirectionalRequest,
   type PrepareMergeEventPositionsRequest,
   type PrepareMergePositionsRequest,
   type PrepareRedeemPositionsRequest,
-  type PrepareSplitDirectionalRequest,
   type PrepareSplitEventPositionsRequest,
   type PrepareSplitPositionRequest,
   planCollateralReturn,
@@ -123,19 +121,27 @@ export type SecureWalletActions = {
   ): Promise<DecomposeThresholdWorkflow>;
   /**
    * Prepares the signing steps for {@link SecureWalletActions.splitDirectional | splitDirectional}.
+   * Accepts threshold position IDs in either order. Amount uses six-decimal
+   * bigint base units; omitted or 'max' uses available collateral and bucket balances.
    * Does not submit until the workflow is advanced.
    * @throws {@link PrepareSplitDirectionalError} Thrown on failure, including while advancing the workflow.
    */
   prepareSplitDirectional(
-    request: PrepareSplitDirectionalRequest,
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
   ): Promise<SplitDirectionalWorkflow>;
   /**
    * Prepares the signing steps for {@link SecureWalletActions.mergeDirectional | mergeDirectional}.
+   * Accepts threshold position IDs in either order. Amount uses six-decimal
+   * bigint base units; omitted or 'max' uses the minimum held threshold balance.
    * Does not submit until the workflow is advanced.
    * @throws {@link PrepareMergeDirectionalError} Thrown on failure, including while advancing the workflow.
    */
   prepareMergeDirectional(
-    request: PrepareMergeDirectionalRequest,
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
   ): Promise<MergeDirectionalWorkflow>;
   /**
    * Prepares the signing steps for {@link SecureWalletActions.splitEventPositions | splitEventPositions}.
@@ -573,19 +579,16 @@ export type SecureWalletActions = {
    *
    * Consumes `amount` of collateral and of each real bucket YES position in
    * `[lowLine, highLine)`. Omit amount or use 'max' for the minimum of
-   * pUSD and every required bucket balance. Lines are ordinal bucket boundaries.
+   * pUSD and every required bucket balance. Amounts use six-decimal bigint base units.
+   * The two position IDs may be in either order; they must identify ABOVE on a
+   * lower threshold and BELOW on a higher threshold in the same directional event.
    *
    * @throws {@link SplitDirectionalError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const handle = await client.splitDirectional({
-   *   amount: 1_000_000n,
-   *   eventId: '0x04…',
-   *   highLine: 3,
-   *   lowLine: 1,
-   * });
+   * const handle = await client.splitDirectional(positionIdA, positionIdB, 1_000_000n);
    *
    * const outcome = await handle.wait();
    *
@@ -593,7 +596,9 @@ export type SecureWalletActions = {
    * ```
    */
   splitDirectional(
-    request: PrepareSplitDirectionalRequest,
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
   ): Promise<TransactionHandle>;
   /**
    * Merges ABOVE at `lowLine` and BELOW at `highLine` into collateral and
@@ -601,19 +606,16 @@ export type SecureWalletActions = {
    *
    * Returns `amount` of collateral and of each real bucket YES position in
    * `[lowLine, highLine)`. Omit amount or use `'max'` to merge the minimum held balance of
-   * the two threshold positions.
+   * the two threshold positions. Amounts use six-decimal bigint base units.
+   * The two position IDs may be in either order; they must identify ABOVE on a
+   * lower threshold and BELOW on a higher threshold in the same directional event.
    *
    * @throws {@link MergeDirectionalError}
    * Thrown on failure.
    *
    * @example
    * ```ts
-   * const handle = await client.mergeDirectional({
-   *   amount: 'max',
-   *   eventId: '0x04…',
-   *   highLine: 3,
-   *   lowLine: 1,
-   * });
+   * const handle = await client.mergeDirectional(positionIdA, positionIdB, 1_000_000n);
    *
    * const outcome = await handle.wait();
    *
@@ -621,7 +623,9 @@ export type SecureWalletActions = {
    * ```
    */
   mergeDirectional(
-    request: PrepareMergeDirectionalRequest,
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
   ): Promise<TransactionHandle>;
   /**
    * Plans a collateral return for the authenticated account.
@@ -766,9 +770,7 @@ export type {
   PrepareDecomposeThresholdRequest,
   PrepareHorizontalMergeRequest,
   PrepareHorizontalSplitRequest,
-  PrepareMergeDirectionalRequest,
   PrepareMergeEventPositionsRequest,
-  PrepareSplitDirectionalRequest,
   PrepareSplitEventPositionsRequest,
   SplitDirectionalWorkflow,
   SplitEventPositionsWorkflow,
