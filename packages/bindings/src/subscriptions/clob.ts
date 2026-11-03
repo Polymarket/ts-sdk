@@ -34,23 +34,31 @@ const NormalizedOrderSideSchema: z.ZodType<OrderSide> = z.preprocess(
 
 export { TradeStatus } from '../shared';
 
-export enum UserOrderStatus {
+/** Known user order statuses; see {@link UserOrderStatus} for the full status type. */
+export enum KnownUserOrderStatus {
   Live = 'LIVE',
   Matched = 'MATCHED',
   Delayed = 'DELAYED',
   Unmatched = 'UNMATCHED',
   Canceled = 'CANCELED',
+  CanceledMarketResolved = 'CANCELED_MARKET_RESOLVED',
+  CanceledNotEnoughBalance = 'CANCELED_NOT_ENOUGH_BALANCE',
+  CanceledMarketNotFound = 'CANCELED_MARKET_NOT_FOUND',
+  CanceledExpiredOrder = 'CANCELED_EXPIRED_ORDER',
+  CanceledOrderTimedOut = 'CANCELED_ORDER_TIMED_OUT',
   Invalid = 'INVALID',
 }
 
-export type CanceledWithReasonStatus = `CANCELED_${string}`;
+/**
+ * A user order status. Known statuses are enumerated in
+ * {@link KnownUserOrderStatus}; cancellation reasons and newly introduced
+ * statuses flow through as plain strings.
+ */
+export type UserOrderStatus = KnownUserOrderStatus | (string & {});
 
-const UserOrderStatusSchema = z.union([
-  z.enum(UserOrderStatus),
-  z.custom<CanceledWithReasonStatus>(
-    (value) => typeof value === 'string' && value.startsWith('CANCELED_'),
-  ),
-]);
+const UserOrderStatusSchema = z
+  .string()
+  .transform((value): UserOrderStatus => value);
 
 const OrderBookLevelSchema = z.object({
   price: DecimalStringSchema,
@@ -600,7 +608,7 @@ export type UserOrderEvent = {
     createdAt: IsoDateTimeString | null | undefined;
     expiresAt: IsoDateTimeString | null | undefined;
     orderType: OrderType | null | undefined;
-    status?: UserOrderStatus | CanceledWithReasonStatus | null;
+    status?: UserOrderStatus | null;
     makerAddress: string | null | undefined;
     timestamp: EpochMilliseconds;
   };

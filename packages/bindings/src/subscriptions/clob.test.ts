@@ -31,10 +31,13 @@ describe('UserEventSchema', () => {
     expect(result.data?.payload).toMatchObject({ status });
   });
 
-  it('still rejects an unknown order status', () => {
-    const result = UserEventSchema.safeParse(orderCancellation('NOT_A_STATUS'));
+  it('preserves future order statuses', () => {
+    const result = UserEventSchema.safeParse(
+      orderCancellation('FUTURE_STATUS'),
+    );
 
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.data?.payload).toMatchObject({ status: 'FUTURE_STATUS' });
   });
 
   it('accepts short trade statuses from the user websocket and normalizes them', () => {
