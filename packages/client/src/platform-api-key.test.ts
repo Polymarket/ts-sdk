@@ -480,7 +480,7 @@ it('preserves sanitized SigningError from submission authorization', async () =>
       isBuilderKey: true,
       supportGasless: true,
       authorize: async (request) => {
-        if (request.path === '/private')
+        if (request.path === '/data/orders')
           throw new SigningError(`Signing failed for ${pair.accessToken}`, {
             cause: new Error(pair.refreshToken),
           });
@@ -490,7 +490,7 @@ it('preserves sanitized SigningError from submission authorization', async () =>
   });
   try {
     const error = await client.predictions
-      .get('/private')
+      .get('/v1/me/orders')
       .catch((failure: unknown) => failure);
     expect(error).toBeInstanceOf(SigningError);
     expect(error).toMatchObject({ message: 'Signing failed for [REDACTED]' });
@@ -714,7 +714,7 @@ it.each([
       isBuilderKey: true,
       supportGasless: true,
       authorize: async (request) => {
-        if (request.path === '/private' && stage === 'headers')
+        if (request.path === '/data/orders' && stage === 'headers')
           throw new Error(message);
         return {};
       },
@@ -731,7 +731,7 @@ it.each([
   });
   try {
     const error = await client.predictions
-      .get('/private')
+      .get('/v1/me/orders')
       .catch((failure: unknown) => failure);
     expect(error).toMatchObject({
       name: stage === 'headers' ? 'TransportError' : 'RequestRejectedError',
