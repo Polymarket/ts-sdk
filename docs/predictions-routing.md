@@ -18,7 +18,6 @@ The signature covers the upstream method, path and exact body, even when the gat
 The following actions keep their direct endpoints because the gateway has no equivalent operation:
 
 - Comment reads that need offset pagination: `holdersOnly`, `getPositions`, other sorts, or saved offset cursors. Keyset comments use `/v1/comments`, which returns the cursor envelope.
-- Accounting snapshot downloads.
 - `sendOrderHeartbeat`. It requires the V1 `{ heartbeat_id }` contract at `/v1/heartbeats`, but the gateway forwards `/v1/trading/heartbeats` to the legacy `/heartbeats` endpoint, which answers `{ status: "ok" }`. The action moves to the gateway once that operation serves the V1 contract.
 
 The SDK chooses the route before dispatch. It does not fall back to another endpoint after a request fails.
