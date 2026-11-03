@@ -244,6 +244,189 @@ describe('ClobUserWebSocketManager', () => {
     });
   });
 
+  it('delivers both redemption kinds with ordinary neighbors in a mixed batch', async () => {
+    const combo = `0x03${'ab'.repeat(30)}`;
+    const connection = captureConnection(server, clobUser);
+    const handle = await manager.subscribe({
+      topic: 'user',
+      markets: [MARKET_A, combo],
+    });
+    const received = (async () => {
+      const events = [];
+      for await (const event of handle) {
+        events.push(event);
+        if (events.length === 3) break;
+      }
+      return events;
+    })();
+    const redemption = {
+      event_type: 'auto_redeem',
+      owner: 'test-owner',
+      proxy_wallet: `0x${'1'.repeat(40)}`,
+      txn_hash: `0x${'2'.repeat(64)}`,
+      condition_id: MARKET_A,
+      amount: '1.25',
+      question: '',
+      image: '',
+      slug: '',
+      neg_risk: false,
+      timestamp: '1700000000000',
+      position_id: '',
+      outcome_index: 0,
+      legs: 0,
+    };
+    await connection.send([
+      { event_type: 'future_event' },
+      { ...redemption, condition_id: MARKET_B },
+      redemption,
+      {
+        ...redemption,
+        event_type: 'combo_auto_redeem',
+        condition_id: combo,
+        position_id: '123',
+        outcome_index: 1,
+        legs: 2,
+      },
+      { ...redemption, amount: false },
+      {
+        event_type: 'order',
+        id: 'order-a',
+        owner: 'test-owner',
+        market: MARKET_A,
+        asset_id: '123',
+        side: 'BUY',
+        original_size: '1',
+        size_matched: '0',
+        price: '0.5',
+        type: 'PLACEMENT',
+        timestamp: '1700000000000',
+      },
+    ]);
+    const events = await received;
+    expect(events.map((event) => event.type)).toEqual([
+      'auto_redeem',
+      'combo_auto_redeem',
+      'order',
+    ]);
+    expect(events[0]?.payload).toMatchObject({
+      wallet: redemption.proxy_wallet,
+      transactionHash: redemption.txn_hash,
+      conditionId: MARKET_A,
+      amount: '1.25',
+      timestamp: 1700000000000,
+      negRisk: false,
+      owner: 'test-owner',
+    });
+    expect(events[1]?.payload).toMatchObject({
+      conditionId: combo,
+      positionId: '123',
+      outcomeIndex: 1,
+      legs: 2,
+      amount: '1.25',
+      question: null,
+      image: null,
+      slug: null,
+    });
+  });
+
+  it.each([
+    { suffix: '', uppercase: false },
+    { suffix: '', uppercase: true },
+    { suffix: '00', uppercase: false },
+    { suffix: '01', uppercase: true },
+  ])('matches Combo filter "$suffix" (upper: $uppercase)', async ({
+    suffix,
+    uppercase,
+  }) => {
+    const combo = `0x03${'cd'.repeat(30)}`;
+    const wireId = `${combo}${suffix}`;
+    const requestedId = uppercase ? wireId.toUpperCase() : wireId;
+    const otherSpelling = suffix === '' ? `${combo}00` : combo;
+    function orderFrame(market: string) {
+      return {
+        asset_id: 'token-a',
+        event_type: 'order',
+        id: 'order-a',
+        market,
+        original_size: '1',
+        owner: 'test-owner',
+        price: '0.5',
+        side: 'BUY',
+        size_matched: '0',
+        timestamp: '1',
+        type: 'PLACEMENT',
+      };
+    }
+    function tradeFrame(market: string) {
+      return {
+        asset_id: 'token-a',
+        event_type: 'trade',
+        fee_rate_bps: '0',
+        id: 'trade-a',
+        market,
+        owner: 'test-owner',
+        price: '0.5',
+        side: 'BUY',
+        size: '1',
+        status: 'MATCHED',
+        taker_order_id: 'order-a',
+        timestamp: '1710000000000',
+        type: 'TRADE',
+      };
+    }
+    const redemption = {
+      event_type: 'combo_auto_redeem',
+      owner: 'test-owner',
+      proxy_wallet: `0x${'1'.repeat(40)}`,
+      txn_hash: `0x${'2'.repeat(64)}`,
+      condition_id: wireId,
+      amount: '1.25',
+      question: '',
+      image: '',
+      slug: '',
+      neg_risk: false,
+      timestamp: '1700000000000',
+      position_id: '123',
+      outcome_index: 1,
+      legs: 2,
+    };
+    const connection = captureConnection(server, clobUser);
+    const handle = await manager.subscribe({
+      topic: 'user',
+      markets: [requestedId],
+    });
+    const received = (async () => {
+      const events = [];
+      for await (const event of handle) {
+        events.push(event);
+        if (events.length === 3) break;
+      }
+      return events;
+    })();
+
+    await connection.send([
+      orderFrame(otherSpelling),
+      tradeFrame(otherSpelling),
+      { ...redemption, condition_id: `0x03${'ab'.repeat(30)}${suffix}` },
+      orderFrame(wireId),
+      tradeFrame(wireId),
+      redemption,
+    ]);
+
+    const events = await received;
+    const delivered = events.map((event) => [
+      event.type,
+      event.payload.conditionId,
+    ]);
+    // Ordinary events match the filter as spelled, ignoring case; Combo
+    // redemptions match any spelling of the canonical Combo condition ID.
+    expect(delivered).toEqual([
+      ['order', wireId],
+      ['trade', wireId],
+      ['combo_auto_redeem', combo],
+    ]);
+  });
+
   it('drops unknown frames without closing the shared socket', async () => {
     await expectDropsUnknownFrame({
       expectedEvent: { topic: 'user', type: 'order' },

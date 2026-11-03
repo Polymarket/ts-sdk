@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import {
   ClobAssetIdSchema,
+  type ComboConditionId,
+  ComboConditionIdSchema,
   type ConditionId,
   ConditionIdSchema,
   type DecimalString,
@@ -8,6 +10,8 @@ import {
   type EpochMilliseconds,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  type EvmAddress,
+  EvmAddressSchema,
   emptyStringToNull,
   type IsoDateTimeString,
   OptionalDecimalStringSchema,
@@ -16,9 +20,12 @@ import {
   type OrderType,
   OrderTypeSchema,
   type PositionId,
+  PositionIdSchema,
   type TokenId,
   type TradeStatus,
   TradeStatusSchema,
+  type TxHash,
+  TxHashSchema,
   toIsoDateTimeString,
 } from '../shared';
 
@@ -791,9 +798,158 @@ export const MarketEventSchema = z.discriminatedUnion('event_type', [
 
 export type MarketEvent = StandardMarketEvent | CustomMarketEvent;
 
+const AutoRedeemPayloadSchema = z.object({
+  owner: z.string(),
+  proxy_wallet: EvmAddressSchema,
+  txn_hash: TxHashSchema,
+  amount: DecimalStringSchema,
+  condition_id: ConditionIdSchema,
+  question: z.preprocess(emptyStringToNull, z.string().nullable()),
+  image: z.preprocess(emptyStringToNull, z.string().nullable()),
+  slug: z.preprocess(emptyStringToNull, z.string().nullable()),
+  neg_risk: z.boolean(),
+  timestamp: EpochMillisecondsStringSchema,
+});
+
+export const UserAutoRedeemEventSchema = AutoRedeemPayloadSchema.extend({
+  event_type: z.literal('auto_redeem'),
+}).transform(
+  ({
+    event_type,
+    proxy_wallet,
+    txn_hash,
+    condition_id,
+    neg_risk,
+    ...rest
+  }) => ({
+    // Normalize to a consistent event envelope: `topic`, `type`, and `payload`.
+    topic: 'user' as const,
+    type: event_type,
+    payload: {
+      ...rest,
+      wallet: proxy_wallet,
+      transactionHash: txn_hash,
+      conditionId: condition_id,
+      negRisk: neg_risk,
+    },
+  }),
+) satisfies z.ZodType<UserAutoRedeemEvent>;
+
+/** Automatic redemption of a resolved position. */
+export type UserAutoRedeemEvent = {
+  topic: 'user';
+  type: 'auto_redeem';
+  payload: {
+    /** Owner reported for this user event. */
+    owner: string;
+    /** Wallet whose resolved position was redeemed. */
+    wallet: EvmAddress;
+    /** Hash of the redemption transaction. */
+    transactionHash: TxHash;
+    /** Condition ID of the resolved market. */
+    conditionId: ConditionId;
+    /** Proceeds paid out as a decimal string, in collateral units. */
+    amount: DecimalString;
+    /** Question of the resolved market, or `null` when not reported. */
+    question: string | null;
+    /** Image URL of the resolved market, or `null` when not reported. */
+    image: string | null;
+    /** URL slug of the resolved market, or `null` when not reported. */
+    slug: string | null;
+    /** Whether the resolved market is negative-risk. */
+    negRisk: boolean;
+    /** Redemption time in epoch milliseconds. */
+    timestamp: EpochMilliseconds;
+  };
+};
+
+export const UserComboAutoRedeemEventSchema = AutoRedeemPayloadSchema.extend({
+  event_type: z.literal('combo_auto_redeem'),
+  condition_id: ComboConditionIdSchema,
+  position_id: PositionIdSchema,
+  outcome_index: z.number().int().nonnegative(),
+  legs: z.number().int().nonnegative(),
+}).transform(
+  ({
+    event_type,
+    proxy_wallet,
+    txn_hash,
+    condition_id,
+    neg_risk,
+    position_id,
+    outcome_index,
+    ...rest
+  }) => ({
+    // Normalize to a consistent event envelope: `topic`, `type`, and `payload`.
+    topic: 'user' as const,
+    type: event_type,
+    payload: {
+      ...rest,
+      wallet: proxy_wallet,
+      transactionHash: txn_hash,
+      conditionId: condition_id,
+      negRisk: neg_risk,
+      positionId: position_id,
+      outcomeIndex: outcome_index,
+    },
+  }),
+) satisfies z.ZodType<UserComboAutoRedeemEvent>;
+
+/** Automatic redemption of a resolved Combo position. */
+export type UserComboAutoRedeemEvent = {
+  topic: 'user';
+  type: 'combo_auto_redeem';
+  payload: {
+    /** Owner reported for this user event. */
+    owner: string;
+    /** Wallet whose resolved Combo position was redeemed. */
+    wallet: EvmAddress;
+    /** Hash of the redemption transaction. */
+    transactionHash: TxHash;
+    /** Canonical Combo condition ID of the redeemed basket. */
+    conditionId: ComboConditionId;
+    /** Position ID of the redeemed basket token. */
+    positionId: PositionId;
+    /** Basket token side index of the redeemed position. */
+    outcomeIndex: number;
+    /** Number of legs in the redeemed Combo. */
+    legs: number;
+    /** Proceeds paid out as a decimal string, in collateral units. */
+    amount: DecimalString;
+    /**
+     * Question describing the Combo market as reported, or `null` when not
+     * reported. Combo redemptions may leave it empty.
+     */
+    question: string | null;
+    /**
+     * Image URL describing the Combo market as reported, or `null` when not
+     * reported. Combo redemptions may leave it empty.
+     */
+    image: string | null;
+    /**
+     * URL slug describing the Combo market as reported, or `null` when not
+     * reported. Combo redemptions may leave it empty.
+     */
+    slug: string | null;
+    /**
+     * Negative-risk flag describing the Combo market as reported. It does not
+     * describe the individual legs.
+     */
+    negRisk: boolean;
+    /** Redemption time in epoch milliseconds. */
+    timestamp: EpochMilliseconds;
+  };
+};
+
 export const UserEventSchema = z.discriminatedUnion('event_type', [
   UserOrderEventSchema,
   UserTradeEventSchema,
+  UserAutoRedeemEventSchema,
+  UserComboAutoRedeemEventSchema,
 ]) satisfies z.ZodType<UserEvent>;
 
-export type UserEvent = UserOrderEvent | UserTradeEvent;
+export type UserEvent =
+  | UserOrderEvent
+  | UserTradeEvent
+  | UserAutoRedeemEvent
+  | UserComboAutoRedeemEvent;
