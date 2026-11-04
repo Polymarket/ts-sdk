@@ -21,12 +21,7 @@ import {
   type TxHash,
   TxHashSchema,
 } from '../shared';
-import {
-  ActivityType,
-  ActivityTypeSchema,
-  type TipSide,
-  TipSideSchema,
-} from './common';
+import { ActivityType, type TipSide, TipSideSchema } from './common';
 import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
 
@@ -312,6 +307,29 @@ export type TipActivity = ActivityBase & {
   side: TipSide | null;
 };
 
+/**
+ * An activity whose type this SDK version does not enumerate yet. `type` is
+ * `undefined` so narrowing on {@link ActivityType} members keeps working;
+ * `rawType` carries the type as served.
+ */
+export type UnknownActivity = ActivityBase & {
+  type: undefined;
+  /** The served activity type, not yet enumerated in {@link ActivityType}. */
+  rawType: string;
+  /** The activity amount in USD. */
+  amount: DecimalString;
+  /** Condition id of the related market, when available. */
+  conditionId?: ConditionId;
+  /** Human-readable title of the related market or event, when available. */
+  title?: string;
+  /** URL slug of the related market or event, when available. */
+  slug?: string;
+  /** Icon URL for the related market or event, when available. */
+  icon: string | null;
+  /** URL slug of the related event, when available. */
+  eventSlug?: string;
+};
+
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -326,7 +344,8 @@ export type Activity =
   | DepositActivity
   | WithdrawalActivity
   | TakerRebateActivity
-  | TipActivity;
+  | TipActivity
+  | UnknownActivity;
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -505,7 +524,10 @@ const RawActivitySchema = z
       (value) => (value === '' ? undefined : value),
       ConditionIdSchema.optional(),
     ),
-    type: ActivityTypeSchema,
+    // New activity types ship independently of SDK releases. Types missing
+    // from ActivityType normalize to UnknownActivity instead of failing the
+    // page.
+    type: z.string().min(1),
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
     transaction_hash: TxHashSchema,
@@ -677,6 +699,18 @@ function normalizeActivity(activity: RawActivity): Activity {
           activity.side === undefined
             ? null
             : TipSideSchema.parse(activity.side),
+      };
+    default:
+      return {
+        ...base,
+        type: undefined,
+        rawType: activity.type,
+        amount: activity.usdc_size,
+        conditionId: activity.condition_id,
+        title: activity.title,
+        slug: activity.slug,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
       };
   }
 }

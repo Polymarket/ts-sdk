@@ -169,6 +169,42 @@ describe('TradeSchema', () => {
   });
 });
 
+describe('UnknownActivity', () => {
+  it('keeps a page parseable when it holds a type the SDK does not enumerate', () => {
+    const page = ListActivityResponseSchema.parse({
+      data: [
+        activityRow({ type: ActivityType.DEPOSIT, usdc_size: 10 }),
+        activityRow({
+          type: 'DIRECTIONAL_SPLIT',
+          usdc_size: 25,
+          title: 'Bitcoin price on Friday',
+          slug: 'bitcoin-price-on-friday',
+          event_slug: 'bitcoin-price-on-friday',
+        }),
+      ],
+      pagination: {
+        limit: 2,
+        offset: 0,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+
+    expect(page.items[1]).toEqual(
+      expect.objectContaining({
+        type: undefined,
+        rawType: 'DIRECTIONAL_SPLIT',
+        amount: '25',
+        title: 'Bitcoin price on Friday',
+        slug: 'bitcoin-price-on-friday',
+        eventSlug: 'bitcoin-price-on-friday',
+        conditionId: undefined,
+        icon: null,
+      }),
+    );
+  });
+});
+
 describe('TipActivity', () => {
   it('normalizes the IN/OUT direction the wire serves on tip rows', () => {
     const tip = ActivitySchema.parse(

@@ -86,6 +86,9 @@ describe('public activity result types', () => {
         expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
         expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
       }
+      if (activity.type === undefined) {
+        expectTypeOf(activity.rawType).toEqualTypeOf<string>();
+      }
     }
   });
 });
