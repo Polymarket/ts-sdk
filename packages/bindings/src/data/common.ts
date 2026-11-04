@@ -22,6 +22,14 @@ export enum ActivityType {
   TAKER_REBATE = 'TAKER_REBATE',
   /** A user-to-user tip, served in the feed like every other type. */
   TIP = 'TIP',
+  /** Collateral and range-event buckets split into two line positions. */
+  DIRECTIONAL_SPLIT = 'DIRECTIONAL_SPLIT',
+  /** Two range-event line positions merged into collateral and buckets. */
+  DIRECTIONAL_MERGE = 'DIRECTIONAL_MERGE',
+  /** Range-event buckets composed into one line position. */
+  THRESHOLD_COMPOSE = 'THRESHOLD_COMPOSE',
+  /** A range-event line position decomposed into buckets. */
+  THRESHOLD_DECOMPOSE = 'THRESHOLD_DECOMPOSE',
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);

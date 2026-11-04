@@ -175,7 +175,7 @@ describe('UnknownActivity', () => {
       data: [
         activityRow({ type: ActivityType.DEPOSIT, usdc_size: 10 }),
         activityRow({
-          type: 'DIRECTIONAL_SPLIT',
+          type: 'NEW_ACTIVITY_TYPE',
           usdc_size: 25,
           title: 'Bitcoin price on Friday',
           slug: 'bitcoin-price-on-friday',
@@ -193,7 +193,7 @@ describe('UnknownActivity', () => {
     expect(page.items[1]).toEqual(
       expect.objectContaining({
         type: undefined,
-        rawType: 'DIRECTIONAL_SPLIT',
+        rawType: 'NEW_ACTIVITY_TYPE',
         amount: '25',
         title: 'Bitcoin price on Friday',
         slug: 'bitcoin-price-on-friday',
@@ -202,6 +202,80 @@ describe('UnknownActivity', () => {
         icon: null,
       }),
     );
+  });
+});
+
+describe('Range-event activity', () => {
+  it.each([
+    ActivityType.DIRECTIONAL_SPLIT,
+    ActivityType.DIRECTIONAL_MERGE,
+  ])('parses %s as an event-level row', (type) => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type,
+        usdc_size: 25,
+        title: 'Bitcoin price on Friday',
+        slug: 'bitcoin-price-on-friday',
+        event_slug: 'bitcoin-price-on-friday',
+      }),
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        type,
+        amount: '25',
+        title: 'Bitcoin price on Friday',
+        icon: null,
+        eventSlug: 'bitcoin-price-on-friday',
+      }),
+    );
+    expect(activity).not.toHaveProperty('conditionId');
+  });
+
+  it.each([
+    ActivityType.THRESHOLD_COMPOSE,
+    ActivityType.THRESHOLD_DECOMPOSE,
+  ])('parses %s with the line market and side', (type) => {
+    const conditionId = `0x${'d'.repeat(64)}`;
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type,
+        usdc_size: 4,
+        condition_id: conditionId,
+        title: 'Bitcoin above $100k on Friday?',
+        slug: 'bitcoin-above-100k-on-friday',
+        event_slug: 'bitcoin-price-on-friday',
+        outcome: 'Yes',
+        outcome_index: 0,
+      }),
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        type,
+        conditionId,
+        amount: '4',
+        title: 'Bitcoin above $100k on Friday?',
+        slug: 'bitcoin-above-100k-on-friday',
+        eventSlug: 'bitcoin-price-on-friday',
+        outcome: 'Yes',
+        outcomeIndex: 0,
+      }),
+    );
+  });
+
+  it('rejects a threshold row without its line market', () => {
+    expect(() =>
+      ActivitySchema.parse(
+        activityRow({
+          type: ActivityType.THRESHOLD_COMPOSE,
+          title: 'Bitcoin above $100k on Friday?',
+          slug: 'bitcoin-above-100k-on-friday',
+          event_slug: 'bitcoin-price-on-friday',
+          outcome: 'Yes',
+        }),
+      ),
+    ).toThrow('condition_id');
   });
 });
 

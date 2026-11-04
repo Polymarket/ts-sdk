@@ -308,6 +308,86 @@ export type TipActivity = ActivityBase & {
 };
 
 /**
+ * Collateral plus the range-event buckets between two lines split into ABOVE
+ * the lower line and BELOW the higher one. The row belongs to the whole event,
+ * not one market.
+ */
+export type DirectionalSplitActivity = ActivityBase & {
+  /** A range-event directional split. */
+  type: 'DIRECTIONAL_SPLIT';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event. */
+  title: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event. */
+  eventSlug: string;
+};
+
+/**
+ * ABOVE and BELOW line positions merged back into collateral plus the
+ * range-event buckets between the two lines. The row belongs to the whole
+ * event, not one market.
+ */
+export type DirectionalMergeActivity = ActivityBase & {
+  /** A range-event directional merge. */
+  type: 'DIRECTIONAL_MERGE';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event. */
+  title: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event. */
+  eventSlug: string;
+};
+
+/** Range-event buckets composed into one line position. */
+export type ThresholdComposeActivity = ActivityBase & {
+  /** A range-event threshold compose. */
+  type: 'THRESHOLD_COMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** The composed amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the line's market. */
+  title: string;
+  /** URL slug of the line's market. */
+  slug: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line. */
+  eventSlug: string;
+  /** Label of the line side. */
+  outcome: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
+};
+
+/** A range-event line position decomposed back into buckets. */
+export type ThresholdDecomposeActivity = ActivityBase & {
+  /** A range-event threshold decompose. */
+  type: 'THRESHOLD_DECOMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** The decomposed amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the line's market. */
+  title: string;
+  /** URL slug of the line's market. */
+  slug: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line. */
+  eventSlug: string;
+  /** Label of the line side. */
+  outcome: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
+};
+
+/**
  * An activity whose type this SDK version does not enumerate yet. `type` is
  * `undefined` so narrowing on {@link ActivityType} members keeps working;
  * `rawType` carries the type as served.
@@ -345,6 +425,10 @@ export type Activity =
   | WithdrawalActivity
   | TakerRebateActivity
   | TipActivity
+  | DirectionalSplitActivity
+  | DirectionalMergeActivity
+  | ThresholdComposeActivity
+  | ThresholdDecomposeActivity
   | UnknownActivity;
 
 type ComboActivityBase = {
@@ -699,6 +783,30 @@ function normalizeActivity(activity: RawActivity): Activity {
           activity.side === undefined
             ? null
             : TipSideSchema.parse(activity.side),
+      };
+    case ActivityType.DIRECTIONAL_SPLIT:
+    case ActivityType.DIRECTIONAL_MERGE:
+      return {
+        ...base,
+        type: activity.type,
+        amount: activity.usdc_size,
+        title: expectPresent(activity.title, 'title'),
+        icon: activity.icon ?? null,
+        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+      };
+    case ActivityType.THRESHOLD_COMPOSE:
+    case ActivityType.THRESHOLD_DECOMPOSE:
+      return {
+        ...base,
+        type: activity.type,
+        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        amount: activity.usdc_size,
+        title: expectPresent(activity.title, 'title'),
+        slug: expectPresent(activity.slug, 'slug'),
+        icon: activity.icon ?? null,
+        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+        outcome: expectPresent(activity.outcome, 'outcome'),
+        outcomeIndex: activity.outcome_index,
       };
     default:
       return {
