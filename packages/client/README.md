@@ -192,6 +192,34 @@ pUSD plus those buckets. Pair discovery scans this account's indexed holdings
 and refreshes balances on chain. Candidates may overlap: choose a pair and
 refresh discovery after execution rather than treating all results as a batch.
 
+To inspect this wallet's middle-bucket YES holdings before restoring threshold
+positions:
+
+```ts
+const buckets = await client.findDirectionalBuckets();
+console.table(buckets);
+const bucket = buckets[0]; // Choose after inspecting balance and requiredPusd.
+if (!bucket) throw new Error('No splittable directional bucket found');
+await client.setupTradingApprovals();
+await (
+  await client.splitDirectional(
+    bucket.abovePositionId,
+    bucket.belowPositionId,
+    bucket.balance,
+  )
+).wait();
+```
+
+`findDirectionalBuckets(request?, options?)` optionally accepts `{ eventId }`
+and request options. Each result includes the bucket's position ID, protocol event
+ID and index, the two threshold position IDs, and bigint `balance` and
+`requiredPusd` in six-decimal base units. `requiredPusd` equals the full bucket
+balance; discovery does not read pUSD or check affordability. It returns only
+positive middle-bucket YES holdings (indices `1..B-2`), ranked by descending balance
+with deterministic event/index ties. Execution checks collateral. Contiguous ranges
+can share collateral, so singleton requirements should not be summed as an
+optimal total cost.
+
 For the whole authenticated wallet, these methods discover inventory, execute
 sequentially and wait for each transaction:
 

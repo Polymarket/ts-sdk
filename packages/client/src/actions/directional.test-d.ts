@@ -1,12 +1,15 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import {
+  type DirectionalBucketHolding,
   type DirectionalBulkResult,
+  type FindDirectionalBucketsRequest,
   type MergeDirectionalWorkflow,
   type PrepareComposeThresholdRequest,
   type PrepareConvertPositionRequest,
   type PrepareDecomposeThresholdRequest,
   type PrepareMergeEventPositionsRequest,
   type PrepareSplitEventPositionsRequest,
+  type RequestOptions,
   type SecureWalletActions,
   type SplitDirectionalWorkflow,
   ThresholdSide,
@@ -66,6 +69,50 @@ describe('directional public input types', () => {
 });
 
 describe('directional wallet method types', () => {
+  it('discovers bucket holdings with an optional event filter and trailing read options', () => {
+    function consume(
+      client: SecureWalletActions,
+      plainEventId: string,
+      bucket: DirectionalBucketHolding,
+    ) {
+      const request = {
+        eventId: plainEventId,
+      } satisfies FindDirectionalBucketsRequest;
+      const options = {
+        signal: new AbortController().signal,
+        retries: 0,
+        timeout: 1_000,
+      } satisfies RequestOptions;
+      expectTypeOf(client.findDirectionalBuckets()).toEqualTypeOf<
+        Promise<DirectionalBucketHolding[]>
+      >();
+      expectTypeOf(
+        client.findDirectionalBuckets(request, options),
+      ).toEqualTypeOf<Promise<DirectionalBucketHolding[]>>();
+      expectTypeOf(
+        client.findDirectionalBuckets(undefined, options),
+      ).toEqualTypeOf<Promise<DirectionalBucketHolding[]>>();
+      expectTypeOf(client.findDirectionalBuckets).parameters.toEqualTypeOf<
+        [request?: FindDirectionalBucketsRequest, options?: RequestOptions]
+      >();
+      expectTypeOf(bucket.positionId).toMatchTypeOf<string>();
+      expectTypeOf(bucket.eventId).toMatchTypeOf<string>();
+      expectTypeOf(bucket.bucketIndex).toEqualTypeOf<number>();
+      expectTypeOf(bucket.balance).toEqualTypeOf<bigint>();
+      expectTypeOf(bucket.requiredPusd).toEqualTypeOf<bigint>();
+      expectTypeOf(
+        client.splitDirectional(
+          bucket.abovePositionId,
+          bucket.belowPositionId,
+          bucket.balance,
+        ),
+      ).toEqualTypeOf<Promise<TransactionHandle>>();
+      // @ts-expect-error An event filter accepts the plain string identifier, never a numeric catalog event ID.
+      client.findDirectionalBuckets({ eventId: 123 });
+    }
+    expectTypeOf(consume).toBeFunction();
+  });
+
   it('returns a transaction handle from each method', () => {
     function consume(client: SecureWalletActions) {
       const eventSplit: PrepareSplitEventPositionsRequest = {

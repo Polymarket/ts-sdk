@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  directionalBucketsFromHoldings,
   directionalPairsFromHoldings,
   directionalSplitPairsFromHoldings,
 } from './actions/directional-pairs';
@@ -15,6 +16,125 @@ import { isV2PositionId } from './protocol';
 const EVENT = '0x0400112233445566778899aabbccddeeff000400000000000000000102';
 
 describe('directional position derivation', () => {
+  it('maps positive middle-bucket YES balances to singleton split wings without a collateral cap', () => {
+    const bucket1 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 1,
+    });
+    const bucket2 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 2,
+    });
+    const line1 = deriveDirectionalThresholdPositions({
+      eventId: EVENT,
+      line: 1,
+    });
+    const line2 = deriveDirectionalThresholdPositions({
+      eventId: EVENT,
+      line: 2,
+    });
+    const line3 = deriveDirectionalThresholdPositions({
+      eventId: EVENT,
+      line: 3,
+    });
+    expect(
+      directionalBucketsFromHoldings([
+        { positionId: bucket1.yesPositionId, balance: 3_000_000n },
+        { positionId: bucket2.yesPositionId, balance: 8_000_000n },
+      ]),
+    ).toEqual([
+      {
+        positionId: bucket2.yesPositionId,
+        eventId: EVENT,
+        bucketIndex: 2,
+        balance: 8_000_000n,
+        requiredPusd: 8_000_000n,
+        abovePositionId: line2.abovePositionId,
+        belowPositionId: line3.belowPositionId,
+      },
+      {
+        positionId: bucket1.yesPositionId,
+        eventId: EVENT,
+        bucketIndex: 1,
+        balance: 3_000_000n,
+        requiredPusd: 3_000_000n,
+        abovePositionId: line1.abovePositionId,
+        belowPositionId: line2.belowPositionId,
+      },
+    ]);
+  });
+
+  it('excludes outer buckets, Void, wrong sides, thresholds and empty balances from bucket discovery', () => {
+    const bucket0 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 0,
+    });
+    const bucket1 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 1,
+    });
+    const bucket2 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 2,
+    });
+    const lastBucket = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 3,
+    });
+    const voidPosition = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 4,
+    });
+    const line = deriveDirectionalThresholdPositions({
+      eventId: EVENT,
+      line: 1,
+    });
+    const twoBucketEvent = EVENT.replace('0004', '0002');
+    const twoBucketLast = deriveDirectionalBucketPositions({
+      eventId: twoBucketEvent,
+      bucketIndex: 1,
+    });
+    expect(
+      directionalBucketsFromHoldings([
+        ...[
+          bucket0.yesPositionId,
+          bucket1.noPositionId,
+          lastBucket.yesPositionId,
+          voidPosition.yesPositionId,
+          line.abovePositionId,
+          line.belowPositionId,
+          twoBucketLast.yesPositionId,
+        ].map((positionId) => ({ positionId, balance: 5n })),
+        { positionId: bucket1.yesPositionId, balance: 0n },
+        { positionId: bucket2.yesPositionId, balance: -1n },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('orders equal bucket balances by event and bucket index independently of holdings order', () => {
+    const otherEvent = `0x040111${EVENT.slice(8)}`;
+    const buckets = [
+      deriveDirectionalBucketPositions({ eventId: otherEvent, bucketIndex: 1 }),
+      deriveDirectionalBucketPositions({ eventId: EVENT, bucketIndex: 2 }),
+      deriveDirectionalBucketPositions({ eventId: EVENT, bucketIndex: 1 }),
+    ];
+    const holdings = buckets.map((bucket) => ({
+      positionId: bucket.yesPositionId,
+      balance: 5n,
+    }));
+    const found = directionalBucketsFromHoldings(holdings);
+    expect(
+      found.map(({ eventId, bucketIndex }) => ({ eventId, bucketIndex })),
+    ).toEqual([
+      { eventId: EVENT, bucketIndex: 1 },
+      { eventId: EVENT, bucketIndex: 2 },
+      { eventId: otherEvent, bucketIndex: 1 },
+    ]);
+    expect(directionalBucketsFromHoldings([...holdings].reverse())).toEqual(
+      found,
+    );
+  });
+
   it('finds only same-event ABOVE-low / BELOW-high pairs and sizes each independently', () => {
     const low = deriveDirectionalThresholdPositions({
       eventId: EVENT,

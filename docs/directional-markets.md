@@ -83,6 +83,44 @@ as a batch execution plan. Unindexed positions cannot be discovered this way;
 an explicitly known pair can still be merged using its position IDs and wallet
 balances. Discovery may need a retry while newly settled holdings are indexing.
 
+## Discover buckets to split
+
+`client.findDirectionalBuckets(request?, options?)` discovers this wallet's
+indexed middle-bucket YES holdings and refreshes their balances on chain.
+Pass `{ eventId }` to restrict discovery to one protocol event, or omit the
+request to scan all events. The optional second argument accepts request options.
+
+```ts
+const buckets = await client.findDirectionalBuckets();
+console.table(buckets);
+
+const bucket = buckets[0]; // Inspect its balance and requiredPusd before choosing.
+if (!bucket) throw new Error('No splittable directional bucket found');
+await client.setupTradingApprovals();
+const transaction = await client.splitDirectional(
+  bucket.abovePositionId,
+  bucket.belowPositionId,
+  bucket.balance,
+);
+await transaction.wait();
+```
+
+Each `DirectionalBucketHolding` contains `positionId`, `eventId`,
+`bucketIndex`, `balance`, `requiredPusd`, `abovePositionId` and
+`belowPositionId`. The two threshold IDs describe a split consuming that single
+bucket. Both `balance` and `requiredPusd` are bigint values in six-decimal base
+units; `requiredPusd` equals the full bucket balance. Results rank by descending
+balance with deterministic event/index tie-breaking.
+
+Discovery only returns positive YES balances at middle-bucket indices
+`1..B-2`. Outer buckets, bucket NO and Void cannot be used for this single-bucket
+split and are omitted. It does not read the wallet's pUSD balance or filter by
+affordability: execution checks actual pUSD and bucket balances before signing.
+Unindexed holdings cannot be discovered. Contiguous bucket ranges can share one
+collateral requirement, so summing singleton `requiredPusd` values does not give
+an optimal global split cost. Wallet-wide split execution independently discovers
+ranges and checks collateral as described below.
+
 ## Process the wallet's directional inventory
 
 To process the authenticated wallet without selecting individual pairs, set up

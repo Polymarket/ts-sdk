@@ -224,6 +224,32 @@ describe('Directional staging round trip', () => {
             (position) => position.assetId === middle.yesPositionId,
           ),
         ).toBe(true);
+        const rpcReads = vi.spyOn(client.rpc, 'ethCall');
+        try {
+          const buckets = await client.findDirectionalBuckets({
+            eventId: decoded.eventId,
+          });
+          expect(buckets).toContainEqual({
+            positionId: middle.yesPositionId,
+            eventId: decoded.eventId,
+            bucketIndex: lowLine,
+            balance: amount,
+            requiredPusd: amount,
+            abovePositionId: low.abovePositionId,
+            belowPositionId: high.belowPositionId,
+          });
+          const targets = rpcReads.mock.calls.map(([call]) =>
+            call.to.toLowerCase(),
+          );
+          expect(targets).toContain(
+            environment.contracts.positionManager.toLowerCase(),
+          );
+          expect(targets).not.toContain(
+            environment.contracts.collateralToken.toLowerCase(),
+          );
+        } finally {
+          rpcReads.mockRestore();
+        }
         const metadata = await client
           .listMarkets({ positionIds: [middle.yesPositionId], closed: 'any' })
           .firstPage();

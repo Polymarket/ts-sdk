@@ -16,9 +16,13 @@ export {
   splitAllUserPositionsDirectional,
 } from './directional-bulk';
 export {
+  type DirectionalBucketHolding,
   type DirectionalPair,
+  FindDirectionalBucketsError,
+  type FindDirectionalBucketsRequest,
   FindDirectionalPairsError,
   type FindDirectionalPairsRequest,
+  findDirectionalBuckets,
   findDirectionalPairs,
 } from './directional-pairs';
 export * from './event-positions';

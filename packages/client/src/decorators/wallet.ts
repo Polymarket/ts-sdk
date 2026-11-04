@@ -9,14 +9,17 @@ import {
   convert,
   convertPosition,
   type DecomposeThresholdWorkflow,
+  type DirectionalBucketHolding,
   type DirectionalBulkResult,
   type DirectionalPair,
   decomposeThreshold,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
   type FetchTradingApprovalsStateRequest,
+  type FindDirectionalBucketsRequest,
   type FindDirectionalPairsRequest,
   fetchTradingApprovalsState,
+  findDirectionalBuckets,
   findDirectionalPairs,
   type HorizontalMergeWorkflow,
   type HorizontalSplitWorkflow,
@@ -116,6 +119,17 @@ export type SecureWalletActions = {
    * Operational failures are reported in the returned errors array.
    */
   splitAllUserPositionsDirectional(): Promise<DirectionalBulkResult>;
+  /**
+   * Finds indexed middle-bucket YES holdings with fresh balances and the pUSD
+   * needed to split each full holding into adjacent threshold wings.
+   * Ranks by balance descending. Does not read or filter by wallet pUSD balance.
+   * Only indexed positive splittable bucket YES holdings are returned.
+   * @throws {@link FindDirectionalBucketsError} Thrown on invalid input, read failure or incomplete pagination.
+   */
+  findDirectionalBuckets(
+    request?: FindDirectionalBucketsRequest,
+    options?: RequestOptions,
+  ): Promise<DirectionalBucketHolding[]>;
   /**
    * Finds collateral-return pairs in this wallet's indexed holdings, with fresh on-chain balances.
    * Pairs may overlap; their amounts cannot be added into an execution plan.
@@ -755,6 +769,7 @@ export function walletActions(
     convertPosition: convertPosition.bind(null, client),
     composeThreshold: composeThreshold.bind(null, client),
     decomposeThreshold: decomposeThreshold.bind(null, client),
+    findDirectionalBuckets: findDirectionalBuckets.bind(null, client),
     findDirectionalPairs: findDirectionalPairs.bind(null, client),
     mergeAllUserPositionsDirectional: mergeAllUserPositionsDirectional.bind(
       null,
@@ -783,11 +798,13 @@ export type {
   ConvertPositionWorkflow,
   ConvertWorkflow,
   DecomposeThresholdWorkflow,
+  DirectionalBucketHolding,
   DirectionalPair,
   Erc20TradingApproval,
   Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
   FetchTradingApprovalsStateRequest,
+  FindDirectionalBucketsRequest,
   FindDirectionalPairsRequest,
   HorizontalMergeWorkflow,
   HorizontalSplitWorkflow,
@@ -822,6 +839,7 @@ export {
   type DirectionalBulkResult,
   ExecuteCollateralReturnPlanError,
   FetchTradingApprovalsStateError,
+  FindDirectionalBucketsError,
   FindDirectionalPairsError,
   HorizontalMergeError,
   HorizontalSplitError,

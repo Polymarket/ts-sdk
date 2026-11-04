@@ -26,6 +26,7 @@ import {
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { listPositions } from './portfolio';
 
 /** An independently mergeable pair, sized in six-decimal base units. */
@@ -85,6 +86,122 @@ export async function findDirectionalPairs(
   );
 }
 
+/** A held middle-bucket YES position and the threshold wings it can restore. */
+export type DirectionalBucketHolding = {
+  positionId: PositionId;
+  eventId: DirectionalEventId;
+  bucketIndex: number;
+  /** Fresh on-chain bucket balance, in six-decimal base units. */
+  balance: bigint;
+  /** pUSD needed to split the full balance; not capped by the wallet's collateral. */
+  requiredPusd: bigint;
+  abovePositionId: PositionId;
+  belowPositionId: PositionId;
+};
+
+export type FindDirectionalBucketsRequest = {
+  /** Optional protocol event ID, distinct from a catalog event ID. */
+  eventId?: string;
+};
+
+const FindDirectionalBucketsRequestSchema = z.object({
+  eventId: DirectionalEventIdSchema.optional(),
+});
+
+export type FindDirectionalBucketsError =
+  | PaginationLimitError
+  | RateLimitError
+  | RequestAbortedError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FindDirectionalBucketsError = makeErrorGuard(
+  PaginationLimitError,
+  RateLimitError,
+  RequestAbortedError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Finds this wallet's indexed middle-bucket YES holdings, with fresh on-chain
+ * balances. Excludes NO, Void, outer buckets and zero balances. Ranks holdings
+ * by descending balance, then event and bucket index. Unindexed holdings cannot
+ * be discovered. No transactions are submitted and no pUSD balance is read.
+ *
+ * Each result describes splitting that single bucket's entire balance into its
+ * adjacent threshold wings. All amounts use six-decimal bigint base units.
+ * requiredPusd reports the cost without checking affordability; split execution
+ * validates the current collateral balance. Contiguous buckets can also be split
+ * together, so per-bucket costs are not an optimal combined allocation.
+ *
+ * @example
+ * ```ts
+ * const buckets = await client.findDirectionalBuckets();
+ * console.table(buckets);
+ * ```
+ * @throws {@link FindDirectionalBucketsError} Thrown on invalid input, read failure or incomplete pagination.
+ */
+export async function findDirectionalBuckets(
+  client: BaseSecureClient,
+  request: FindDirectionalBucketsRequest = {},
+  options: RequestOptions = {},
+): Promise<DirectionalBucketHolding[]> {
+  const params = parseUserInput(request, FindDirectionalBucketsRequestSchema);
+  const requestOptions = parseRequestOptions(options);
+  return directionalBucketsFromHoldings(
+    await readDirectionalHoldings(
+      client,
+      'bucket',
+      params.eventId,
+      requestOptions,
+    ),
+  );
+}
+
+/** Describes singleton splits from held bucket inventory without reading collateral. @internal */
+export function directionalBucketsFromHoldings(
+  holdings: readonly DirectionalHolding[],
+): DirectionalBucketHolding[] {
+  const buckets: DirectionalBucketHolding[] = [];
+  for (const holding of holdings) {
+    const position = decodeDirectionalInstrument(holding.positionId);
+    if (
+      position.kind !== 'bucket' ||
+      position.side !== 'yes' ||
+      position.index < 1 ||
+      position.index >= position.bucketCount - 1 ||
+      holding.balance <= 0n
+    )
+      continue;
+    buckets.push({
+      positionId: holding.positionId,
+      eventId: position.eventId,
+      bucketIndex: position.index,
+      balance: holding.balance,
+      requiredPusd: holding.balance,
+      abovePositionId: deriveThresholdPositionId(
+        position.eventId,
+        position.index,
+        ThresholdSide.Above,
+      ),
+      belowPositionId: deriveThresholdPositionId(
+        position.eventId,
+        position.index + 1,
+        ThresholdSide.Below,
+      ),
+    });
+  }
+  return buckets.sort((a, b) => {
+    if (a.balance !== b.balance) return a.balance > b.balance ? -1 : 1;
+    if (a.eventId !== b.eventId) return a.eventId < b.eventId ? -1 : 1;
+    return a.bucketIndex - b.bucketIndex;
+  });
+}
+
 /** @internal */
 export type DirectionalSplitPair = {
   eventId: DirectionalEventId;
@@ -122,11 +239,16 @@ async function readDirectionalHoldings(
   client: BaseSecureClient,
   kind: 'line' | 'bucket',
   eventId?: DirectionalEventId,
+  options: RequestOptions = {},
 ): Promise<DirectionalHolding[]> {
   const ids = new Set<PositionId>();
-  for await (const page of listPositions(client, {
-    user: client.account.wallet,
-  })) {
+  for await (const page of listPositions(
+    client,
+    {
+      user: client.account.wallet,
+    },
+    options,
+  )) {
     for (const holding of page.items) {
       const parsed = DirectionalPositionIdSchema.safeParse(holding.assetId);
       if (!parsed.success) continue;
@@ -155,6 +277,7 @@ async function readDirectionalHoldings(
           client.account.wallet,
           chunk,
         ),
+        options,
       ),
     );
     if (balances.length !== chunk.length)
