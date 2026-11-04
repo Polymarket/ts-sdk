@@ -48,7 +48,6 @@ import {
   EpochSecondsLikeSchema,
   TimeWindowSchema,
   toDataSearchParams,
-  toLegacyDataSearchParams,
 } from './params';
 
 export {
@@ -695,65 +694,5 @@ export async function fetchUserVolume(
     schema: FetchUserVolumeResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({ ...params, ...window }),
-  });
-}
-
-const DownloadAccountingSnapshotRequestSchema = z.object({
-  user: z.string(),
-});
-
-export type DownloadAccountingSnapshotRequest = z.input<
-  typeof DownloadAccountingSnapshotRequestSchema
->;
-
-export type DownloadAccountingSnapshotError =
-  | RequestAbortedError
-  | RateLimitError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const DownloadAccountingSnapshotError = makeErrorGuard(
-  RequestAbortedError,
-  RateLimitError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-/**
- * Downloads an accounting snapshot archive for a wallet.
- *
- * @remarks
- * This is a low-level function. Most SDK consumers should prefer the client instance API.
- *
- * @throws {@link DownloadAccountingSnapshotError}
- * Thrown on failure.
- *
- * @example
- * ```ts
- * const snapshot = await downloadAccountingSnapshot(client, {
- *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
- * });
- *
- * // snapshot === Blob
- * ```
- */
-export async function downloadAccountingSnapshot(
-  client: BaseClient,
-  request: DownloadAccountingSnapshotRequest,
-  options: RequestOptions = {},
-): Promise<Blob> {
-  const requestOptions = parseRequestOptions(options);
-  const params = parseUserInput(
-    request,
-    DownloadAccountingSnapshotRequestSchema,
-  );
-
-  return client.data.get('/v1/accounting/snapshot', {
-    responseType: 'blob',
-    ...requestOptions,
-    params: toLegacyDataSearchParams(params),
   });
 }
