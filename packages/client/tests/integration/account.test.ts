@@ -4,6 +4,19 @@ import { fetchBalanceAllowance } from '@polymarket/client/actions';
 import { describe, expect, it } from './fixtures';
 
 describe('Account', () => {
+  describe('fetchRateLimitTier', () => {
+    it('fetches the authenticated signer tier', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      const tier = await secureClientWithDepositWallet.fetchRateLimitTier({
+        retries: 0,
+      });
+      expect(typeof tier.tier).toBe('string');
+      expect(Number.isInteger(tier.period)).toBe(true);
+      expect(typeof tier.tierDetails.orderRatePerSec).toBe('number');
+      expect(typeof tier.tierDetails.allowNegative).toBe('boolean');
+    });
+  });
   describe('fetchClosedOnlyMode', () => {
     it('fetches closed-only mode', async ({
       secureClientWithDepositWallet,

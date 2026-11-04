@@ -8,7 +8,10 @@ import {
   type SecureClient,
   type SecureClientOptions,
 } from './clients';
-import { ServiceClient as RootServiceClient } from './index';
+import {
+  type RateLimitTier,
+  ServiceClient as RootServiceClient,
+} from './index';
 import type { ServiceClient } from './ServiceClient';
 
 declare const publicClient: PublicClient;
@@ -107,4 +110,11 @@ describe('predictions service types', () => {
     // @ts-expect-error The root entry point exports ServiceClient as a type only.
     new RootServiceClient({ root: 'https://example.com' });
   });
+});
+
+it('exposes the authenticated signer tier only on secure clients', () => {
+  expectTypeOf(
+    secureClient.fetchRateLimitTier({ retries: 0, timeout: 1000 }),
+  ).toEqualTypeOf<Promise<RateLimitTier>>();
+  expectTypeOf<PublicClient>().not.toHaveProperty('fetchRateLimitTier');
 });

@@ -19,6 +19,8 @@ import {
   OrderScoringResponseSchema,
   type OrdersScoringResponse,
   OrdersScoringResponseSchema,
+  type RateLimitTier,
+  RateLimitTierSchema,
   type RewardsPercentages,
   RewardsPercentagesSchema,
   type TotalUserEarning,
@@ -46,6 +48,50 @@ import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { toSignatureType } from '../wallet';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
+
+export type FetchRateLimitTierError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const FetchRateLimitTierError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Fetches the trading rate-limit tier assigned to the authenticated signer.
+ * Volume changes can take up to three hours to appear after a tier refresh.
+ *
+ * @remarks
+ * This is a low-level function. Most SDK consumers should prefer the client instance API.
+ *
+ * @throws {@link FetchRateLimitTierError}
+ *
+ * @example
+ * ```ts
+ * const tier = await fetchRateLimitTier(client);
+ * console.log(tier.tier, tier.tierDetails.orderRatePerSec);
+ * ```
+ */
+export async function fetchRateLimitTier(
+  client: BaseSecureClient,
+  options: RequestOptions = {},
+): Promise<RateLimitTier> {
+  const requestOptions = parseRequestOptions(options);
+  return client.secureClob.get('/v1/user/rate-limit-tier', {
+    ...requestOptions,
+    schema: RateLimitTierSchema,
+  });
+}
 
 export type FetchClosedOnlyModeError =
   | RequestAbortedError
