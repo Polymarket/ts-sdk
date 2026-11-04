@@ -8,6 +8,8 @@ export * from './collateral-return';
 export * from './comments';
 export * from './directional';
 export {
+  type DirectionalBulkFailure,
+  type DirectionalBulkResult,
   MergeAllUserPositionsDirectionalError,
   mergeAllUserPositionsDirectional,
   SplitAllUserPositionsDirectionalError,

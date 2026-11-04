@@ -92,15 +92,25 @@ approvals and call either bulk method:
 await client.setupTradingApprovals();
 
 const merged = await client.mergeAllUserPositionsDirectional();
-console.table(merged.map(outcome => ({ transactionHash: outcome.transactionHash })));
-
-const split = await client.splitAllUserPositionsDirectional();
-console.table(split.map(outcome => ({ transactionHash: outcome.transactionHash })));
+console.table(merged.outcomes);
+console.log(merged.errors);
 ```
 
-Both methods take no arguments and return `Promise<TransactionOutcome[]>`.
-They wait for every transaction themselves; no additional `wait()` is needed.
-An empty array means there was no eligible inventory to process.
+To restore threshold positions from bucket inventory instead:
+
+```ts
+const split = await client.splitAllUserPositionsDirectional();
+console.table(split.outcomes);
+console.log(split.errors);
+```
+
+Both methods take no arguments and return `Promise<DirectionalBulkResult>`:
+`{ outcomes, errors }`. The `outcomes` array contains confirmed transactions;
+`errors` records discovery, preparation, submission, confirmation and limit failures with the
+original error and, for execution failures, the pair and amount being processed.
+Known transaction identifiers are included when available. No additional
+`wait()` is needed. An empty `outcomes` array alone does not prove the wallet
+has no eligible inventory: inspect `errors` for an interrupted run.
 
 `mergeAllUserPositionsDirectional()` discovers pairs from this wallet's indexed
 holdings, refreshes balances on chain, chooses the pair returning the most
@@ -115,12 +125,27 @@ threshold pair. It waits and repeats discovery until no eligible range or
 collateral remains. It does not replay a previous merge history or guarantee
 that a bulk merge followed by a bulk split restores the original holdings.
 
-Both flows execute sequentially and are not atomic across transactions. They
-stop on the first error; previously confirmed transactions remain in effect.
-Their greedy choices are not guaranteed to find a globally optimal inventory
+Both flows execute sequentially and are not atomic across transactions. Their
+greedy choices are not guaranteed to find a globally optimal inventory
 allocation. Unindexed holdings cannot be discovered, and indexing lag may leave
 newly settled inventory for a later call. Approvals remain the caller's
 responsibility.
+
+Transient discovery, preparation and confirmation reads receive up to three total attempts
+with backoff. Confirmation retries use the same transaction handle; the method
+never resubmits a transaction to recover from an uncertain confirmation.
+Definite preflight or submission rejections and confirmed transaction failures
+are recorded; the failed pair is excluded and processing continues with other
+candidates, including overlapping pairs. A run stops after 25 failed pairs to
+bound repeated failures.
+
+An ambiguous submission error or unresolved confirmation pauses further
+mutations and returns the partial result. Persistent discovery failures and
+cancelled signing also return the accumulated outcomes and errors. Previously
+confirmed transactions remain in effect. When a run pauses or reaches its
+failure limit, the summary does not claim all eligible inventory was processed.
+Inspect the recorded transaction identifiers and reconcile uncertain execution
+before starting another run.
 
 ## Wallets and approvals
 

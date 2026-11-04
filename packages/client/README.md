@@ -198,22 +198,40 @@ sequentially and wait for each transaction:
 ```ts
 await client.setupTradingApprovals();
 const merged = await client.mergeAllUserPositionsDirectional();
-const split = await client.splitAllUserPositionsDirectional();
-console.table(merged.map(outcome => ({ transactionHash: outcome.transactionHash })));
-console.table(split.map(outcome => ({ transactionHash: outcome.transactionHash })));
+console.table(merged.outcomes);
+console.log(merged.errors);
 ```
 
-Both take no arguments and return `TransactionOutcome[]`, or an empty array when
-nothing is eligible. Merge repeatedly chooses the pair returning the most
-collateral and merges its maximum amount. Split independently discovers
+To restore threshold positions from bucket inventory instead:
+
+```ts
+const split = await client.splitAllUserPositionsDirectional();
+console.table(split.outcomes);
+console.log(split.errors);
+```
+
+Both take no arguments and return `{ outcomes, errors }` as a
+`DirectionalBulkResult`. Outcomes are confirmed transactions; errors retain
+failure details and known transaction identifiers. Merge repeatedly chooses
+the pair returning the most collateral and merges its maximum amount. Split
+independently discovers
 contiguous middle-bucket YES ranges and spends available pUSD to restore
 threshold pairs, choosing the largest feasible amount and then the widest
 range when amounts tie. Each flow refreshes discovery after confirmation.
 
 These flows depend on indexed holdings, use greedy allocation and are not
 atomic or guaranteed to find a global optimum. Split does not replay merge
-history. They stop on the first error; previously confirmed transactions remain
-in effect. The caller must set up approvals first.
+history. Definite pair failures are recorded and skipped while other candidates
+continue, up to 25 failed pairs. Transient discovery, preparation and confirmation reads have
+up to three total attempts with backoff; confirmation retries use the same
+handle without resubmitting transactions.
+
+Ambiguous submission or unresolved confirmation pauses further mutations and
+returns the partial summary. Persistent discovery failures and cancelled signing
+also return accumulated outcomes and errors. Previously confirmed transactions
+remain in effect. Inspect errors and reconcile uncertain transactions before
+rerunning; an interrupted summary does not mean all inventory was processed.
+The caller must set up approvals first.
 
 See the [directional integration guide](../../docs/directional-markets.md) for
 wallet setup, inventory operations, data semantics and staging acceptance checks.

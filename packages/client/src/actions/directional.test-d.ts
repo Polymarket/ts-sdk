@@ -1,5 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import {
+  type DirectionalBulkResult,
   type MergeDirectionalWorkflow,
   type PrepareComposeThresholdRequest,
   type PrepareConvertPositionRequest,
@@ -10,7 +11,6 @@ import {
   type SplitDirectionalWorkflow,
   ThresholdSide,
   type TransactionHandle,
-  type TransactionOutcome,
 } from '../index';
 
 const eventId = '0x0400112233445566778899aabbccddeeff000400000000000000000000';
@@ -163,13 +163,13 @@ describe('directional wallet method types', () => {
     expectTypeOf(consume).toBeFunction();
   });
 
-  it('processes directional wallet inventory without arguments and returns confirmed outcomes', () => {
+  it('processes directional wallet inventory without arguments and returns outcomes and errors', () => {
     function consume(client: SecureWalletActions) {
       expectTypeOf(client.mergeAllUserPositionsDirectional()).toEqualTypeOf<
-        Promise<TransactionOutcome[]>
+        Promise<DirectionalBulkResult>
       >();
       expectTypeOf(client.splitAllUserPositionsDirectional()).toEqualTypeOf<
-        Promise<TransactionOutcome[]>
+        Promise<DirectionalBulkResult>
       >();
       expectTypeOf(
         client.mergeAllUserPositionsDirectional,

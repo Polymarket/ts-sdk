@@ -98,6 +98,7 @@ export type DirectionalSplitPair = {
 /** @internal */
 export async function findDirectionalSplitPairs(
   client: BaseSecureClient,
+  excludedPairs: ReadonlySet<string> = new Set(),
 ): Promise<DirectionalSplitPair[]> {
   const [holdings, collateral] = await Promise.all([
     readDirectionalHoldings(client, 'bucket'),
@@ -111,6 +112,7 @@ export async function findDirectionalSplitPairs(
   return directionalSplitPairsFromHoldings(
     holdings,
     decodeErc20BalanceOfResult(collateral),
+    excludedPairs,
   );
 }
 
@@ -208,10 +210,12 @@ export function directionalPairsFromHoldings(
 export function directionalSplitPairsFromHoldings(
   holdings: readonly DirectionalHolding[],
   collateral: bigint,
+  excludedPairs: ReadonlySet<string> = new Set(),
 ): DirectionalSplitPair[] {
   if (collateral <= 0n) return [];
   const events = new Map<DirectionalEventId, Map<number, bigint>>();
   let maximumAmount = 0n;
+  const amounts = new Set<bigint>();
   for (const holding of holdings) {
     const position = decodeDirectionalInstrument(holding.positionId);
     if (
@@ -230,47 +234,88 @@ export function directionalSplitPairsFromHoldings(
     buckets.set(position.index, holding.balance);
     const amount = holding.balance < collateral ? holding.balance : collateral;
     if (amount > maximumAmount) maximumAmount = amount;
+    if (excludedPairs.size > 0) amounts.add(amount);
   }
 
-  let best: DirectionalSplitPair | undefined;
-  for (const [eventId, buckets] of events) {
-    for (const [lowLine, balance] of buckets) {
-      if (
-        balance < maximumAmount ||
-        (buckets.get(lowLine - 1) ?? 0n) >= maximumAmount
-      )
-        continue;
-      // A single bucket establishes the best feasible amount. Only maximal runs
-      // at that amount can win the widest-range tie break, so scan each run once.
-      let highLine = lowLine + 1;
-      while ((buckets.get(highLine) ?? 0n) >= maximumAmount) highLine++;
-      const candidate: DirectionalSplitPair = {
-        eventId,
-        lowLine,
-        highLine,
-        abovePositionId: deriveThresholdPositionId(
-          eventId,
-          lowLine,
-          ThresholdSide.Above,
-        ),
-        belowPositionId: deriveThresholdPositionId(
-          eventId,
-          highLine,
-          ThresholdSide.Below,
-        ),
-        amount: maximumAmount,
-      };
-      if (!best || compareDirectionalPairs(candidate, best) < 0) {
-        best = candidate;
+  const levels =
+    excludedPairs.size > 0
+      ? [...amounts].sort((first, second) =>
+          first > second ? -1 : first < second ? 1 : 0,
+        )
+      : [maximumAmount];
+  for (const amount of levels) {
+    let best: DirectionalPairRange | undefined;
+    const candidates: DirectionalPairRange[] = [];
+    const queued = new Set<string>();
+    for (const [eventId, buckets] of events) {
+      for (const [lowLine, balance] of buckets) {
+        if (balance < amount || (buckets.get(lowLine - 1) ?? 0n) >= amount)
+          continue;
+        // At each feasible amount, a maximal contiguous run dominates its
+        // subranges until that exact pair is excluded.
+        let highLine = lowLine + 1;
+        while ((buckets.get(highLine) ?? 0n) >= amount) highLine++;
+        const candidate = { eventId, lowLine, highLine, amount };
+        if (!best || compareDirectionalPairs(candidate, best) < 0)
+          best = candidate;
+        if (excludedPairs.size > 0) {
+          candidates.push(candidate);
+          queued.add(`${eventId}:${lowLine}:${highLine}`);
+        }
+      }
+    }
+    if (excludedPairs.size === 0) return best ? [splitPairFromRange(best)] : [];
+    while (candidates.length > 0) {
+      candidates.sort(compareDirectionalPairs);
+      const candidate = candidates.shift();
+      if (!candidate) break;
+      const pair = splitPairFromRange(candidate);
+      if (!excludedPairs.has(`${pair.abovePositionId}:${pair.belowPositionId}`))
+        return [pair];
+      // Excluding one pair preserves smaller overlapping ranges. Expand only
+      // excluded winners, so live holdings never generate every possible range.
+      if (candidate.highLine - candidate.lowLine <= 1) continue;
+      for (const child of [
+        { ...candidate, lowLine: candidate.lowLine + 1 },
+        { ...candidate, highLine: candidate.highLine - 1 },
+      ]) {
+        const key = `${child.eventId}:${child.lowLine}:${child.highLine}`;
+        if (!queued.has(key)) {
+          queued.add(key);
+          candidates.push(child);
+        }
       }
     }
   }
-  return best ? [best] : [];
+  return [];
+}
+
+type DirectionalPairRange = {
+  eventId: DirectionalEventId;
+  lowLine: number;
+  highLine: number;
+  amount: bigint;
+};
+
+function splitPairFromRange(range: DirectionalPairRange): DirectionalSplitPair {
+  return {
+    ...range,
+    abovePositionId: deriveThresholdPositionId(
+      range.eventId,
+      range.lowLine,
+      ThresholdSide.Above,
+    ),
+    belowPositionId: deriveThresholdPositionId(
+      range.eventId,
+      range.highLine,
+      ThresholdSide.Below,
+    ),
+  };
 }
 
 function compareDirectionalPairs(
-  first: DirectionalSplitPair,
-  second: DirectionalSplitPair,
+  first: DirectionalPairRange,
+  second: DirectionalPairRange,
 ): number {
   if (first.amount !== second.amount)
     return first.amount > second.amount ? -1 : 1;

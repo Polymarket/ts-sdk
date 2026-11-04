@@ -268,6 +268,40 @@ describe('directional position derivation', () => {
             ({ lowLine, highLine, amount }) => ({ lowLine, highLine, amount }),
           ),
         ).toEqual(reference.slice(0, 1));
+        const key = (range: { lowLine: number; highLine: number }) => {
+          const above = deriveDirectionalThresholdPositions({
+            eventId,
+            line: range.lowLine,
+          }).abovePositionId;
+          const below = deriveDirectionalThresholdPositions({
+            eventId,
+            line: range.highLine,
+          }).belowPositionId;
+          return `${above}:${below}`;
+        };
+        for (const excluded of [
+          reference.slice(0, 1),
+          reference.slice(0, 3),
+          reference.filter((_, index) => index % 2 === 0),
+          reference,
+        ]) {
+          const excludedPairs = new Set(excluded.map(key));
+          expect(
+            directionalSplitPairsFromHoldings(
+              holdings,
+              collateral,
+              excludedPairs,
+            ).map(({ lowLine, highLine, amount }) => ({
+              lowLine,
+              highLine,
+              amount,
+            })),
+          ).toEqual(
+            reference
+              .filter((range) => !excludedPairs.has(key(range)))
+              .slice(0, 1),
+          );
+        }
       }
     }
   });
@@ -288,6 +322,68 @@ describe('directional position derivation', () => {
     const pairs = directionalSplitPairsFromHoldings(holdings, 3n);
     expect(pairs).toHaveLength(1);
     expect(pairs[0]).toMatchObject({ lowLine: 1, highLine: 5_001, amount: 3n });
+    const best = pairs[0];
+    expect(best).toBeDefined();
+    if (!best) throw new Error('Expected a split candidate');
+    const fallback = directionalSplitPairsFromHoldings(
+      holdings,
+      3n,
+      new Set([`${best.abovePositionId}:${best.belowPositionId}`]),
+    );
+    expect(fallback).toHaveLength(1);
+    expect(fallback[0]).toMatchObject({
+      lowLine: 1,
+      highLine: 5_000,
+      amount: 3n,
+    });
+  });
+
+  it('excludes exact failed pairs while preserving overlapping inventory and lower-amount events', () => {
+    const otherEvent = `0x040111${EVENT.slice(8)}`;
+    const bucket1 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 1,
+    });
+    const bucket2 = deriveDirectionalBucketPositions({
+      eventId: EVENT,
+      bucketIndex: 2,
+    });
+    const other = deriveDirectionalBucketPositions({
+      eventId: otherEvent,
+      bucketIndex: 1,
+    });
+    const holdings = [
+      { positionId: bucket1.yesPositionId, balance: 8n },
+      { positionId: bucket2.yesPositionId, balance: 8n },
+      { positionId: other.yesPositionId, balance: 3n },
+    ];
+    const excluded = new Set<string>();
+    const selected = [];
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const pair = directionalSplitPairsFromHoldings(
+        holdings,
+        20n,
+        excluded,
+      )[0];
+      expect(pair).toBeDefined();
+      if (!pair) throw new Error('Expected a remaining split candidate');
+      selected.push({
+        eventId: pair.eventId,
+        lowLine: pair.lowLine,
+        highLine: pair.highLine,
+        amount: pair.amount,
+      });
+      excluded.add(`${pair.abovePositionId}:${pair.belowPositionId}`);
+    }
+    expect(selected).toEqual([
+      { eventId: EVENT, lowLine: 1, highLine: 3, amount: 8n },
+      { eventId: EVENT, lowLine: 1, highLine: 2, amount: 8n },
+      { eventId: EVENT, lowLine: 2, highLine: 3, amount: 8n },
+      { eventId: otherEvent, lowLine: 1, highLine: 2, amount: 3n },
+    ]);
+    expect(directionalSplitPairsFromHoldings(holdings, 20n, excluded)).toEqual(
+      [],
+    );
   });
   it('decodes usable line indices and economic sides, including Void', () => {
     const low = deriveDirectionalThresholdPositions({
