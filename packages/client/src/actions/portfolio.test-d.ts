@@ -86,6 +86,29 @@ describe('public activity result types', () => {
         expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
         expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
       }
+      if (
+        activity.type === ActivityType.DIRECTIONAL_SPLIT ||
+        activity.type === ActivityType.DIRECTIONAL_MERGE
+      ) {
+        expectTypeOf(activity.pairs).toEqualTypeOf<DecimalString>();
+        expectTypeOf(activity.amount).toEqualTypeOf<DecimalString>();
+        expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
+        expectTypeOf(activity.eventSlug).toEqualTypeOf<string | undefined>();
+        // @ts-expect-error A range-event row has no single market.
+        void activity.conditionId;
+      }
+      if (
+        activity.type === ActivityType.THRESHOLD_COMPOSE ||
+        activity.type === ActivityType.THRESHOLD_DECOMPOSE
+      ) {
+        expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
+        expectTypeOf(activity.shares).toEqualTypeOf<DecimalString>();
+        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
+        expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
+      }
+      if (activity.type === undefined) {
+        expectTypeOf(activity.rawType).toEqualTypeOf<string>();
+      }
     }
   });
 });

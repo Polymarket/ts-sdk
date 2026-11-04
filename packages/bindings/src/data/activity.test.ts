@@ -6,6 +6,12 @@ import {
 } from './activity';
 import { ActivityType } from './common';
 
+// Module-4 event identity from the /v2 activity contract: bytes29 event id,
+// and the line-4 threshold condition (ABOVE/BELOW 9.5 in the six-bucket ladder).
+const directionalEventId =
+  '0x044f3ac2e5a585735d4292855e9eb6b238000600000000000000000000';
+const thresholdConditionId = `${directionalEventId}8004`;
+
 function activityRow(overrides: Record<string, unknown>) {
   return {
     proxy_wallet: `0x${'1'.repeat(40)}`,
@@ -166,6 +172,203 @@ describe('TradeSchema', () => {
     };
 
     expect(TradeSchema.parse(row).outcomeIndex).toBe(0);
+  });
+});
+
+describe('UnknownActivity', () => {
+  it('keeps a page parseable when it holds a type the SDK does not enumerate', () => {
+    const page = ListActivityResponseSchema.parse({
+      data: [
+        activityRow({ type: ActivityType.DEPOSIT, usdc_size: 10 }),
+        activityRow({
+          type: 'NEW_ACTIVITY_TYPE',
+          usdc_size: 25,
+          title: 'Bitcoin price on Friday',
+          slug: 'bitcoin-price-on-friday',
+          event_slug: 'bitcoin-price-on-friday',
+        }),
+      ],
+      pagination: {
+        limit: 2,
+        offset: 0,
+        has_more: false,
+        next_cursor: null,
+      },
+    });
+
+    expect(page.items[1]).toEqual(
+      expect.objectContaining({
+        type: undefined,
+        rawType: 'NEW_ACTIVITY_TYPE',
+        amount: '25',
+        title: 'Bitcoin price on Friday',
+        slug: 'bitcoin-price-on-friday',
+        eventSlug: 'bitcoin-price-on-friday',
+        conditionId: undefined,
+        icon: null,
+      }),
+    );
+  });
+
+  it('does not treat a 29-byte event id as a market condition', () => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: 'FUTURE_EVENT',
+        condition_id: directionalEventId,
+        usdc_size: 1,
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: undefined,
+      rawType: 'FUTURE_EVENT',
+      amount: '1',
+    });
+    expect(activity).toHaveProperty('conditionId', undefined);
+  });
+});
+
+describe('Range-event activity', () => {
+  it.each([
+    ActivityType.DIRECTIONAL_SPLIT,
+    ActivityType.DIRECTIONAL_MERGE,
+  ])('parses %s as an event-level row', (type) => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type,
+        condition_id: directionalEventId,
+        size: 10,
+        usdc_size: 10,
+        title: 'CeeDee Lamb receiving TDs',
+        slug: '',
+        event_slug: 'ceedee-lamb-receiving-tds',
+        outcome: '',
+        outcome_index: 999,
+      }),
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        type,
+        pairs: '10',
+        amount: '10',
+        title: 'CeeDee Lamb receiving TDs',
+        icon: null,
+        eventSlug: 'ceedee-lamb-receiving-tds',
+      }),
+    );
+    expect(activity).not.toHaveProperty('conditionId');
+    expect(activity).not.toHaveProperty('outcomeIndex');
+  });
+
+  it.each([
+    directionalEventId,
+    `${directionalEventId}000000`,
+  ])('accepts a directional event id %s on the wire', (conditionId) => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.DIRECTIONAL_MERGE,
+        condition_id: conditionId,
+        size: 2,
+        usdc_size: 2,
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: ActivityType.DIRECTIONAL_MERGE,
+      pairs: '2',
+      amount: '2',
+    });
+    expect(activity).not.toHaveProperty('conditionId');
+  });
+
+  it('keeps sparse event metadata when Gamma has not listed the event', () => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.DIRECTIONAL_SPLIT,
+        condition_id: directionalEventId,
+        size: 1,
+        usdc_size: 1,
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: ActivityType.DIRECTIONAL_SPLIT,
+      pairs: '1',
+      amount: '1',
+      title: undefined,
+      eventSlug: undefined,
+      icon: null,
+    });
+  });
+
+  it.each([
+    [ActivityType.THRESHOLD_COMPOSE, 0, 'Yes'],
+    [ActivityType.THRESHOLD_DECOMPOSE, 1, 'No'],
+  ] as const)('parses %s with the line market and side', (type, outcomeIndex, outcome) => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type,
+        condition_id: thresholdConditionId,
+        size: 12.5,
+        usdc_size: 0,
+        title: 'CeeDee Lamb over 9.5 TDs',
+        slug: 'ceedee-lamb-over-9-5-tds',
+        event_slug: 'ceedee-lamb-receiving-tds',
+        outcome,
+        outcome_index: outcomeIndex,
+      }),
+    );
+
+    expect(activity).toEqual(
+      expect.objectContaining({
+        type,
+        conditionId: thresholdConditionId,
+        shares: '12.5',
+        amount: '0',
+        title: 'CeeDee Lamb over 9.5 TDs',
+        slug: 'ceedee-lamb-over-9-5-tds',
+        eventSlug: 'ceedee-lamb-receiving-tds',
+        outcome,
+        outcomeIndex,
+      }),
+    );
+  });
+
+  it('keeps sparse threshold labels when Gamma has not listed the line', () => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.THRESHOLD_COMPOSE,
+        condition_id: thresholdConditionId,
+        size: 4,
+        usdc_size: 0,
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: ActivityType.THRESHOLD_COMPOSE,
+      conditionId: thresholdConditionId,
+      shares: '4',
+      amount: '0',
+      title: undefined,
+      slug: undefined,
+      eventSlug: undefined,
+      outcome: undefined,
+      outcomeIndex: undefined,
+    });
+  });
+
+  it('rejects a threshold row without its line market', () => {
+    expect(() =>
+      ActivitySchema.parse(
+        activityRow({
+          type: ActivityType.THRESHOLD_COMPOSE,
+          size: 4,
+          usdc_size: 0,
+          outcome: 'Yes',
+        }),
+      ),
+    ).toThrow('condition_id');
   });
 });
 

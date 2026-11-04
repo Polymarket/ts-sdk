@@ -289,6 +289,9 @@ export type PublicAccountActions = Prettify<{
    * `isCombo` before using market-only metadata; a basket's outcome names its
    * token side, not a selected leg.
    *
+   * Types this SDK version does not enumerate yet return as `UnknownActivity`,
+   * with `type: undefined` and the served type in `rawType`.
+   *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
    * serves the most recent three years; `window: 'full'` requests the complete
@@ -510,6 +513,9 @@ export type SecureAccountActions = Prettify<{
    * token side, not a selected leg.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
+   *
+   * Types this SDK version does not enumerate yet return as `UnknownActivity`,
+   * with `type: undefined` and the served type in `rawType`.
    *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`

@@ -21,12 +21,7 @@ import {
   type TxHash,
   TxHashSchema,
 } from '../shared';
-import {
-  ActivityType,
-  ActivityTypeSchema,
-  type TipSide,
-  TipSideSchema,
-} from './common';
+import { ActivityType, type TipSide, TipSideSchema } from './common';
 import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
 
@@ -312,6 +307,117 @@ export type TipActivity = ActivityBase & {
   side: TipSide | null;
 };
 
+/**
+ * Collateral plus the range-event buckets between two lines split into ABOVE
+ * the lower line and BELOW the higher one. The row belongs to the whole event,
+ * not one market.
+ */
+export type DirectionalSplitActivity = ActivityBase & {
+  /** A range-event directional split. */
+  type: ActivityType.DIRECTIONAL_SPLIT;
+  /** Number of pairs split. */
+  pairs: DecimalString;
+  /** The collateral amount paid in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
+};
+
+/**
+ * ABOVE and BELOW line positions merged back into collateral plus the
+ * range-event buckets between the two lines. The row belongs to the whole
+ * event, not one market.
+ */
+export type DirectionalMergeActivity = ActivityBase & {
+  /** A range-event directional merge. */
+  type: ActivityType.DIRECTIONAL_MERGE;
+  /** Number of pairs merged. */
+  pairs: DecimalString;
+  /** The collateral amount returned in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
+};
+
+/** Range-event buckets composed into one line position. */
+export type ThresholdComposeActivity = ActivityBase & {
+  /** A range-event threshold compose. */
+  type: ActivityType.THRESHOLD_COMPOSE;
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of shares composed. */
+  shares: DecimalString;
+  /** Always zero; no collateral moves. */
+  amount: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side: 0 is ABOVE (Yes), 1 is BELOW (No). */
+  outcomeIndex?: number;
+};
+
+/** A range-event line position decomposed back into buckets. */
+export type ThresholdDecomposeActivity = ActivityBase & {
+  /** A range-event threshold decompose. */
+  type: ActivityType.THRESHOLD_DECOMPOSE;
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of shares decomposed. */
+  shares: DecimalString;
+  /** Always zero; no collateral moves. */
+  amount: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side: 0 is ABOVE (Yes), 1 is BELOW (No). */
+  outcomeIndex?: number;
+};
+
+/**
+ * An activity whose type this SDK version does not enumerate yet. `type` is
+ * `undefined` so narrowing on {@link ActivityType} members keeps working;
+ * `rawType` carries the type as served.
+ */
+export type UnknownActivity = ActivityBase & {
+  type: undefined;
+  /** The served activity type, not yet enumerated in {@link ActivityType}. */
+  rawType: string;
+  /** The activity amount in USD. */
+  amount: DecimalString;
+  /** Condition id of the related market, when available. */
+  conditionId?: ConditionId;
+  /** Human-readable title of the related market or event, when available. */
+  title?: string;
+  /** URL slug of the related market or event, when available. */
+  slug?: string;
+  /** Icon URL for the related market or event, when available. */
+  icon: string | null;
+  /** URL slug of the related event, when available. */
+  eventSlug?: string;
+};
+
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -326,7 +432,12 @@ export type Activity =
   | DepositActivity
   | WithdrawalActivity
   | TakerRebateActivity
-  | TipActivity;
+  | TipActivity
+  | DirectionalSplitActivity
+  | DirectionalMergeActivity
+  | ThresholdComposeActivity
+  | ThresholdDecomposeActivity
+  | UnknownActivity;
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -503,9 +614,15 @@ const RawActivitySchema = z
     timestamp: EpochSecondsToMillisecondsSchema,
     condition_id: z.preprocess(
       (value) => (value === '' ? undefined : value),
-      ConditionIdSchema.optional(),
+      // Directional rows key on a 29-byte event id; threshold and market
+      // rows use a 31- or 32-byte condition id. Validate the shape the
+      // variant actually needs during normalization.
+      z.string().min(1).optional(),
     ),
-    type: ActivityTypeSchema,
+    // New activity types ship independently of SDK releases. Types missing
+    // from ActivityType normalize to UnknownActivity instead of failing the
+    // page.
+    type: z.string().min(1),
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
     transaction_hash: TxHashSchema,
@@ -637,7 +754,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: activity.type,
         isCombo: false,
-        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        conditionId: expectConditionId(activity.condition_id),
         amount: activity.usdc_size,
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
@@ -648,7 +765,7 @@ function normalizeActivity(activity: RawActivity): Activity {
       return {
         ...base,
         type: activity.type,
-        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        conditionId: expectConditionId(activity.condition_id),
         amount: activity.usdc_size,
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
@@ -678,6 +795,34 @@ function normalizeActivity(activity: RawActivity): Activity {
             ? null
             : TipSideSchema.parse(activity.side),
       };
+    case ActivityType.DIRECTIONAL_SPLIT:
+    case ActivityType.DIRECTIONAL_MERGE:
+      return {
+        ...base,
+        type: activity.type,
+        pairs: activity.size,
+        amount: activity.usdc_size,
+        title: activity.title,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+      };
+    case ActivityType.THRESHOLD_COMPOSE:
+    case ActivityType.THRESHOLD_DECOMPOSE:
+      return {
+        ...base,
+        type: activity.type,
+        conditionId: expectConditionId(activity.condition_id),
+        shares: activity.size,
+        amount: activity.usdc_size,
+        title: activity.title,
+        slug: activity.slug,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+        outcome: activity.outcome,
+        outcomeIndex: activity.outcome_index,
+      };
+    default:
+      return normalizeUnknownActivity(activity, base);
   }
 }
 
@@ -701,7 +846,7 @@ function normalizeTradeActivity(
       ...trade,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        expectPresent(activity.condition_id, 'condition_id'),
+        expectConditionId(activity.condition_id),
       ),
       positionId: PositionIdSchema.parse(
         expectPresent(activity.token_id, 'token_id'),
@@ -716,7 +861,7 @@ function normalizeTradeActivity(
   return {
     ...trade,
     isCombo: false,
-    conditionId: expectPresent(activity.condition_id, 'condition_id'),
+    conditionId: expectConditionId(activity.condition_id),
     assetId,
     tokenId: assetId,
     outcome: expectPresent(activity.outcome, 'outcome'),
@@ -745,7 +890,7 @@ function normalizeRedeemActivity(
       ...redemption,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        expectPresent(activity.condition_id, 'condition_id'),
+        expectConditionId(activity.condition_id),
       ),
     };
   }
@@ -754,7 +899,7 @@ function normalizeRedeemActivity(
     ...redemption,
     isCombo: false,
     title: expectPresent(activity.title, 'title'),
-    conditionId: expectPresent(activity.condition_id, 'condition_id'),
+    conditionId: expectConditionId(activity.condition_id),
     slug: expectPresent(activity.slug, 'slug'),
     eventSlug: expectPresent(activity.event_slug, 'event_slug'),
   };
@@ -771,6 +916,29 @@ function normalizeActivityBase(activity: RawActivity): ActivityBase {
     profileImage: activity.profile_image ?? null,
     profileImageOptimized: activity.profile_image_optimized ?? null,
   };
+}
+
+function normalizeUnknownActivity(
+  activity: RawActivity,
+  base: ActivityBase,
+): UnknownActivity {
+  const condition = ConditionIdSchema.safeParse(activity.condition_id);
+
+  return {
+    ...base,
+    type: undefined,
+    rawType: activity.type,
+    amount: activity.usdc_size,
+    conditionId: condition.success ? condition.data : undefined,
+    title: activity.title,
+    slug: activity.slug,
+    icon: activity.icon ?? null,
+    eventSlug: activity.event_slug,
+  };
+}
+
+function expectConditionId(value: string | undefined): ConditionId {
+  return ConditionIdSchema.parse(expectPresent(value, 'condition_id'));
 }
 
 function expectPresent<T>(value: T | null | undefined, field: string): T {

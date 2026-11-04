@@ -54,6 +54,24 @@ describe('Activity actions', () => {
       },
     ]);
   });
+
+  it('encodes range-event types in the type filter', async () => {
+    const requests = interceptActivityRequests();
+
+    await listActivity(createClient(), {
+      user,
+      type: [
+        ActivityType.DIRECTIONAL_SPLIT,
+        ActivityType.DIRECTIONAL_MERGE,
+        ActivityType.THRESHOLD_COMPOSE,
+        ActivityType.THRESHOLD_DECOMPOSE,
+      ],
+    }).firstPage();
+
+    expect(requests[0]?.get('type')).toBe(
+      'DIRECTIONAL_SPLIT,DIRECTIONAL_MERGE,THRESHOLD_COMPOSE,THRESHOLD_DECOMPOSE',
+    );
+  });
 });
 
 function interceptActivityRequests(): URLSearchParams[] {
