@@ -33,8 +33,6 @@ import {
   fetchTraderLeaderboardStanding,
 } from '../actions/leaderboards';
 import {
-  type DownloadAccountingSnapshotRequest,
-  downloadAccountingSnapshot,
   type FetchPortfolioValueRequest,
   type FetchUserPnlRequest,
   type FetchUserStatsRequest,
@@ -745,7 +743,6 @@ export type { ComboPositionStatusFilter } from '../actions/portfolio';
 export {
   ComboPositionSortBy,
   ComboPositionStatus,
-  DownloadAccountingSnapshotError,
   FetchPortfolioValueError,
   FetchUserPnlError,
   FetchUserStatsError,
