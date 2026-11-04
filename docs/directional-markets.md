@@ -83,6 +83,45 @@ as a batch execution plan. Unindexed positions cannot be discovered this way;
 an explicitly known pair can still be merged using its position IDs and wallet
 balances. Discovery may need a retry while newly settled holdings are indexing.
 
+## Process the wallet's directional inventory
+
+To process the authenticated wallet without selecting individual pairs, set up
+approvals and call either bulk method:
+
+```ts
+await client.setupTradingApprovals();
+
+const merged = await client.mergeAllUserPositionsDirectional();
+console.table(merged.map(outcome => ({ transactionHash: outcome.transactionHash })));
+
+const split = await client.splitAllUserPositionsDirectional();
+console.table(split.map(outcome => ({ transactionHash: outcome.transactionHash })));
+```
+
+Both methods take no arguments and return `Promise<TransactionOutcome[]>`.
+They wait for every transaction themselves; no additional `wait()` is needed.
+An empty array means there was no eligible inventory to process.
+
+`mergeAllUserPositionsDirectional()` discovers pairs from this wallet's indexed
+holdings, refreshes balances on chain, chooses the pair returning the most
+collateral, merges its maximum available amount and waits for confirmation.
+It then discovers pairs again until none remain.
+
+`splitAllUserPositionsDirectional()` independently discovers contiguous ranges
+of indexed middle-bucket YES holdings and refreshes their balances and the
+wallet's pUSD balance. It chooses the largest feasible amount, preferring the
+widest range when amounts tie, then spends pUSD and those buckets to restore a
+threshold pair. It waits and repeats discovery until no eligible range or
+collateral remains. It does not replay a previous merge history or guarantee
+that a bulk merge followed by a bulk split restores the original holdings.
+
+Both flows execute sequentially and are not atomic across transactions. They
+stop on the first error; previously confirmed transactions remain in effect.
+Their greedy choices are not guaranteed to find a globally optimal inventory
+allocation. Unindexed holdings cannot be discovered, and indexing lag may leave
+newly settled inventory for a later call. Approvals remain the caller's
+responsibility.
+
 ## Wallets and approvals
 
 Deposit Wallet, Safe and Proxy use their existing atomic wallet-batch path.

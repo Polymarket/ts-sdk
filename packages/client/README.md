@@ -192,6 +192,29 @@ pUSD plus those buckets. Pair discovery scans this account's indexed holdings
 and refreshes balances on chain. Candidates may overlap: choose a pair and
 refresh discovery after execution rather than treating all results as a batch.
 
+For the whole authenticated wallet, these methods discover inventory, execute
+sequentially and wait for each transaction:
+
+```ts
+await client.setupTradingApprovals();
+const merged = await client.mergeAllUserPositionsDirectional();
+const split = await client.splitAllUserPositionsDirectional();
+console.table(merged.map(outcome => ({ transactionHash: outcome.transactionHash })));
+console.table(split.map(outcome => ({ transactionHash: outcome.transactionHash })));
+```
+
+Both take no arguments and return `TransactionOutcome[]`, or an empty array when
+nothing is eligible. Merge repeatedly chooses the pair returning the most
+collateral and merges its maximum amount. Split independently discovers
+contiguous middle-bucket YES ranges and spends available pUSD to restore
+threshold pairs, choosing the largest feasible amount and then the widest
+range when amounts tie. Each flow refreshes discovery after confirmation.
+
+These flows depend on indexed holdings, use greedy allocation and are not
+atomic or guaranteed to find a global optimum. Split does not replay merge
+history. They stop on the first error; previously confirmed transactions remain
+in effect. The caller must set up approvals first.
+
 See the [directional integration guide](../../docs/directional-markets.md) for
 wallet setup, inventory operations, data semantics and staging acceptance checks.
 

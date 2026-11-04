@@ -23,6 +23,7 @@ import {
   horizontalSplit,
   type MergeDirectionalWorkflow,
   type MergeEventPositionsWorkflow,
+  mergeAllUserPositionsDirectional,
   mergeDirectional,
   mergeEventPositions,
   mergePositions,
@@ -55,6 +56,7 @@ import {
   type SplitDirectionalWorkflow,
   type SplitEventPositionsWorkflow,
   setupTradingApprovals,
+  splitAllUserPositionsDirectional,
   splitDirectional,
   splitEventPositions,
   splitPosition,
@@ -67,7 +69,7 @@ import type {
   BaseSecureClient,
 } from '../clients';
 import type { RequestOptions } from '../request-options';
-import type { TransactionHandle } from '../types';
+import type { TransactionHandle, TransactionOutcome } from '../types';
 
 export type PublicWalletActions = {
   /**
@@ -94,6 +96,23 @@ export type PublicWalletActions = {
 };
 
 export type SecureWalletActions = {
+  /**
+   * Returns collateral from indexed threshold holdings, choosing the largest
+   * return first. Confirms each merge and rediscovers before the next.
+   * Uses existing approvals. Greedy selection does not guarantee a global optimum.
+   * On failure, stops; earlier confirmed transactions remain effective.
+   * @throws {@link MergeAllUserPositionsDirectionalError} Thrown on discovery or execution failure.
+   */
+  mergeAllUserPositionsDirectional(): Promise<TransactionOutcome[]>;
+  /**
+   * Spends available collateral and indexed middle-bucket YES holdings to restore
+   * threshold pairs. Chooses the largest feasible amount, widest range on ties,
+   * confirms each split, then rediscovers until inventory or collateral is exhausted.
+   * Uses existing approvals. Does not reconstruct a particular previous merge.
+   * On failure, stops; earlier confirmed transactions remain effective.
+   * @throws {@link SplitAllUserPositionsDirectionalError} Thrown on discovery or execution failure.
+   */
+  splitAllUserPositionsDirectional(): Promise<TransactionOutcome[]>;
   /**
    * Finds collateral-return pairs in this wallet's indexed holdings, with fresh on-chain balances.
    * Pairs may overlap; their amounts cannot be added into an execution plan.
@@ -734,6 +753,14 @@ export function walletActions(
     composeThreshold: composeThreshold.bind(null, client),
     decomposeThreshold: decomposeThreshold.bind(null, client),
     findDirectionalPairs: findDirectionalPairs.bind(null, client),
+    mergeAllUserPositionsDirectional: mergeAllUserPositionsDirectional.bind(
+      null,
+      client,
+    ),
+    splitAllUserPositionsDirectional: splitAllUserPositionsDirectional.bind(
+      null,
+      client,
+    ),
     splitDirectional: splitDirectional.bind(null, client),
     mergeDirectional: mergeDirectional.bind(null, client),
     planCollateralReturn: planCollateralReturn.bind(null, client),
@@ -793,6 +820,7 @@ export {
   FindDirectionalPairsError,
   HorizontalMergeError,
   HorizontalSplitError,
+  MergeAllUserPositionsDirectionalError,
   MergeDirectionalError,
   MergeEventPositionsError,
   MergePositionsError,
@@ -809,6 +837,7 @@ export {
   PrepareSplitEventPositionsError,
   RedeemPositionsError,
   SetupTradingApprovalsError,
+  SplitAllUserPositionsDirectionalError,
   SplitDirectionalError,
   SplitEventPositionsError,
   SplitPositionError,

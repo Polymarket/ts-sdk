@@ -10,6 +10,7 @@ import {
   type SplitDirectionalWorkflow,
   ThresholdSide,
   type TransactionHandle,
+  type TransactionOutcome,
 } from '../index';
 
 const eventId = '0x0400112233445566778899aabbccddeeff000400000000000000000000';
@@ -158,6 +159,29 @@ describe('directional wallet method types', () => {
       client.prepareMergeDirectional({ eventId, lowLine: 1, highLine: 3 });
       // @ts-expect-error Custom signing also requires bigint base units.
       client.prepareSplitDirectional(positionIdA, positionIdB, '1');
+    }
+    expectTypeOf(consume).toBeFunction();
+  });
+
+  it('processes directional wallet inventory without arguments and returns confirmed outcomes', () => {
+    function consume(client: SecureWalletActions) {
+      expectTypeOf(client.mergeAllUserPositionsDirectional()).toEqualTypeOf<
+        Promise<TransactionOutcome[]>
+      >();
+      expectTypeOf(client.splitAllUserPositionsDirectional()).toEqualTypeOf<
+        Promise<TransactionOutcome[]>
+      >();
+      expectTypeOf(
+        client.mergeAllUserPositionsDirectional,
+      ).parameters.toEqualTypeOf<[]>();
+      expectTypeOf(
+        client.splitAllUserPositionsDirectional,
+      ).parameters.toEqualTypeOf<[]>();
+
+      // @ts-expect-error Wallet-wide merge discovers its own positions and accepts no arguments.
+      client.mergeAllUserPositionsDirectional({ eventId });
+      // @ts-expect-error Wallet-wide split discovers its own inventory and accepts no arguments.
+      client.splitAllUserPositionsDirectional('123', '456', 'max');
     }
     expectTypeOf(consume).toBeFunction();
   });

@@ -8,6 +8,12 @@ export * from './collateral-return';
 export * from './comments';
 export * from './directional';
 export {
+  MergeAllUserPositionsDirectionalError,
+  mergeAllUserPositionsDirectional,
+  SplitAllUserPositionsDirectionalError,
+  splitAllUserPositionsDirectional,
+} from './directional-bulk';
+export {
   type DirectionalPair,
   FindDirectionalPairsError,
   type FindDirectionalPairsRequest,
