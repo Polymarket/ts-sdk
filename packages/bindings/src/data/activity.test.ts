@@ -210,11 +210,14 @@ describe('UnknownActivity', () => {
     );
   });
 
-  it('does not treat a 29-byte event id as a market condition', () => {
+  it.each([
+    directionalEventId,
+    `${directionalEventId}000000`,
+  ])('does not treat event id %s as a market condition', (conditionId) => {
     const activity = ActivitySchema.parse(
       activityRow({
         type: 'FUTURE_EVENT',
-        condition_id: directionalEventId,
+        condition_id: conditionId,
         usdc_size: 1,
       }),
     );
@@ -225,6 +228,23 @@ describe('UnknownActivity', () => {
       amount: '1',
     });
     expect(activity).toHaveProperty('conditionId', undefined);
+  });
+
+  it('keeps a 31-byte market condition on an unknown row', () => {
+    const conditionId = `0x${'a'.repeat(62)}`;
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: 'FUTURE_EVENT',
+        condition_id: conditionId,
+        usdc_size: 1,
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: undefined,
+      rawType: 'FUTURE_EVENT',
+      conditionId,
+    });
   });
 });
 

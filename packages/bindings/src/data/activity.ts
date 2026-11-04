@@ -922,19 +922,34 @@ function normalizeUnknownActivity(
   activity: RawActivity,
   base: ActivityBase,
 ): UnknownActivity {
-  const condition = ConditionIdSchema.safeParse(activity.condition_id);
-
   return {
     ...base,
     type: undefined,
     rawType: activity.type,
     amount: activity.usdc_size,
-    conditionId: condition.success ? condition.data : undefined,
+    conditionId: parseOptionalMarketConditionId(activity.condition_id),
     title: activity.title,
     slug: activity.slug,
     icon: activity.icon ?? null,
     eventSlug: activity.event_slug,
   };
+}
+
+function parseOptionalMarketConditionId(
+  value: string | undefined,
+): ConditionId | undefined {
+  // Event-level rows key on a 29-byte id, or the same id zero-padded to
+  // 32 bytes. Those are not market conditions.
+  if (
+    value === undefined ||
+    value.length === 60 ||
+    (value.length === 66 && value.endsWith('000000'))
+  ) {
+    return undefined;
+  }
+
+  const condition = ConditionIdSchema.safeParse(value);
+  return condition.success ? condition.data : undefined;
 }
 
 function expectConditionId(value: string | undefined): ConditionId {
