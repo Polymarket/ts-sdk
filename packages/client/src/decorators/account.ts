@@ -81,8 +81,6 @@ export type SecureFetchUserStatsRequest =
   DefaultAccountWallet<FetchUserStatsRequest>;
 export type SecureFetchUserVolumeRequest =
   DefaultAccountWallet<FetchUserVolumeRequest>;
-export type SecureDownloadAccountingSnapshotRequest =
-  DefaultAccountWallet<DownloadAccountingSnapshotRequest>;
 export type SecureListActivityRequest =
   DefaultAccountWallet<ListActivityRequest>;
 export type SecureListComboActivityRequest =
@@ -293,23 +291,6 @@ export type PublicAccountActions = Prettify<{
     request: FetchUserVolumeRequest,
     options?: RequestOptions,
   ): Promise<UserVolume>;
-  /**
-   * Downloads an accounting snapshot archive for a wallet.
-   *
-   * @throws {@link DownloadAccountingSnapshotError}
-   * Thrown on failure.
-   *
-   * @example
-   * ```ts
-   * const snapshot = await client.downloadAccountingSnapshot({
-   *   user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b',
-   * });
-   * ```
-   */
-  downloadAccountingSnapshot(
-    request: DownloadAccountingSnapshotRequest,
-    options?: RequestOptions,
-  ): Promise<Blob>;
   /**
    * Lists wallet activity.
    * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
@@ -531,18 +512,6 @@ export type SecureAccountActions = Prettify<{
     options?: RequestOptions,
   ): Promise<UserVolume>;
   /**
-   * Downloads an accounting snapshot archive for a wallet.
-   *
-   * Defaults to the authenticated account's wallet when `user` is omitted.
-   *
-   * @throws {@link DownloadAccountingSnapshotError}
-   * Thrown on failure.
-   */
-  downloadAccountingSnapshot(
-    request?: SecureDownloadAccountingSnapshotRequest,
-    options?: RequestOptions,
-  ): Promise<Blob>;
-  /**
    * Lists wallet activity.
    * Trades and redemptions expose available token outcomes. Narrow splits, merges and redemptions on
    * `isCombo` before using market-only metadata; a basket's outcome names its
@@ -666,7 +635,6 @@ function publicAccountActions(client: BaseClient): PublicAccountActions {
     fetchUserStats: fetchUserStats.bind(null, client),
     fetchUserPnl: fetchUserPnl.bind(null, client),
     fetchUserVolume: fetchUserVolume.bind(null, client),
-    downloadAccountingSnapshot: downloadAccountingSnapshot.bind(null, client),
     listActivity: listActivity.bind(null, client),
     listComboActivity: listComboActivity.bind(null, client),
   };
@@ -740,15 +708,6 @@ export function accountActions(
       request?: SecureFetchUserVolumeRequest,
       options?: RequestOptions,
     ) => fetchUserVolume(client, withAccountWallet(client, request), options),
-    downloadAccountingSnapshot: (
-      request?: SecureDownloadAccountingSnapshotRequest,
-      options?: RequestOptions,
-    ) =>
-      downloadAccountingSnapshot(
-        client,
-        withAccountWallet(client, request),
-        options,
-      ),
     listActivity: (
       request?: SecureListActivityRequest,
       options?: RequestOptions,

@@ -1,5 +1,32 @@
 # @polymarket/client
 
+## 0.16.0
+
+### Minor Changes
+
+- bca3482: **Breaking:** Remove `downloadAccountingSnapshot` from public and secure clients and the standalone action, along with `DownloadAccountingSnapshotRequest`, `SecureDownloadAccountingSnapshotRequest`, and `DownloadAccountingSnapshotError`. The accounting snapshot route is scheduled for retirement with Data API v1 and has no V2 replacement. Remove calls to this download; the existing portfolio, position, and activity reads do not provide an equivalent ZIP/CSV export.
+
+## 0.15.0
+
+### Minor Changes
+
+- fd96979: Add `trading.takerDelayMs` for the taker delay in milliseconds. Deprecate `trading.secondsDelay` in favor of `trading.takerDelayMs`.
+
+### Patch Changes
+
+- c97b958: Round protected market BUY shares down so orders can match at `maxPrice` without increasing the signed spend. Validate the final fee-adjusted amounts against the finest supported price tick, refreshing market metadata once before rejecting an amount that cannot safely preserve the price bound.
+
+  Export `MINIMUM_TICK_SIZE_VALUE` from `@polymarket/bindings` next to the tick-size schema.
+
+- 33c249a: Accept the `pre_ipo` Perps instrument category and preserve future category strings in instrument reads, category filters, and fee schedules so new categories cannot invalidate entire responses. Expose optional, nullable instrument fee overrides and funding multipliers with normalized field names.
+
+  The experimental category enum is now `PerpsKnownInstrumentCategory`: replace `PerpsInstrumentCategory.Crypto` with `PerpsKnownInstrumentCategory.Crypto` (and likewise for other members). `PerpsInstrumentCategory` is the resilient type for known enum members and future category strings.
+
+- Updated dependencies [c97b958]
+- Updated dependencies [33c249a]
+- Updated dependencies [fd96979]
+  - @polymarket/bindings@0.15.0
+
 ## 0.14.0
 
 ### Minor Changes
