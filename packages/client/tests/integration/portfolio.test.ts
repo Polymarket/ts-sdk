@@ -47,12 +47,12 @@ describe('Portfolio', () => {
       });
 
       expect(value.wallet).toBe(TEST_USER);
-      const positionsRequests = dataRequests(fetchSpy, '/v2/positions');
+      const positionsRequests = dataRequests(fetchSpy, '/v1/positions');
       expect(positionsRequests).toHaveLength(2);
       for (const request of positionsRequests) {
         expect(request.get('condition_id')).toBe(canonicalId);
       }
-      const valueRequests = dataRequests(fetchSpy, '/v2/value');
+      const valueRequests = dataRequests(fetchSpy, '/v1/portfolio/value');
       expect(valueRequests).toHaveLength(1);
       expect(valueRequests[0]?.get('condition')).toBe(canonicalId);
     });
@@ -105,7 +105,7 @@ describe('Portfolio', () => {
         ).toBe(true);
         break;
       }
-      const requests = dataRequests(fetchSpy, '/v2/positions');
+      const requests = dataRequests(fetchSpy, '/v1/positions');
       expect(requests).toHaveLength(2);
       expect(requests[0]?.get('title')).toBe(title);
       expect(requests[1]?.get('title')).toBe(title);
@@ -123,7 +123,7 @@ describe('Portfolio', () => {
       await publicClient
         .listPositions({ user: TEST_USER, title: ' '.repeat(201), pageSize: 1 })
         .firstPage();
-      const requests = dataRequests(fetchSpy, '/v2/positions');
+      const requests = dataRequests(fetchSpy, '/v1/positions');
       expect(requests).toHaveLength(2);
       expect(requests[0]?.get('title')).toBe(title);
       expect(requests[1]?.has('title')).toBe(false);
@@ -197,7 +197,7 @@ describe('Portfolio', () => {
         }
 
         expect(pageCount).toBe(2);
-        const requests = dataRequests(fetchSpy, '/v2/positions');
+        const requests = dataRequests(fetchSpy, '/v1/positions');
         expect(requests).toHaveLength(2);
         for (const request of requests) {
           expect(request.get('sort_by')).toBe('PRICE');
@@ -437,7 +437,7 @@ describe('Portfolio', () => {
         conditionIds: [TEST_CONDITION_ID],
       });
 
-      const [request] = dataRequests(fetchSpy, '/v2/value');
+      const [request] = dataRequests(fetchSpy, '/v1/portfolio/value');
       expect(request?.get('condition')).toBe(TEST_CONDITION_ID);
       expect(request?.has('condition_id')).toBe(false);
       expect(request?.has('market')).toBe(false);
@@ -503,7 +503,7 @@ describe('Portfolio', () => {
 
       await secureClientWithDepositWallet.fetchUserStats();
 
-      const [request] = dataRequests(fetchSpy, '/v2/user-stats');
+      const [request] = dataRequests(fetchSpy, '/v1/portfolio/stats');
       expect(request?.get('user')).toSatisfy(
         (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );
@@ -548,7 +548,7 @@ describe('Portfolio', () => {
         interval: UserPnlInterval.OneDay,
       });
 
-      const [request] = dataRequests(fetchSpy, '/v2/user-pnl');
+      const [request] = dataRequests(fetchSpy, '/v1/portfolio/pnl');
       expect(request?.get('user')).toSatisfy(
         (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );
@@ -571,7 +571,7 @@ describe('Portfolio', () => {
         tradeCount: expect.any(Number),
       });
 
-      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
+      const [request] = dataRequests(fetchSpy, '/v1/portfolio/volume');
       expect(request?.get('start')).toBe('1788134400');
       expect(request?.get('end')).toBe('1788220800');
     });
@@ -584,7 +584,7 @@ describe('Portfolio', () => {
 
       await secureClientWithDepositWallet.fetchUserVolume();
 
-      const [request] = dataRequests(fetchSpy, '/v2/user-volume');
+      const [request] = dataRequests(fetchSpy, '/v1/portfolio/volume');
       expect(request?.get('user')).toSatisfy(
         (user) => user !== null && isSameEvmAddress(user, depositWalletAddress),
       );
@@ -595,7 +595,7 @@ describe('Portfolio', () => {
 function comboPositionRequests(
   fetchSpy: MockInstance<typeof fetch>,
 ): URLSearchParams[] {
-  return dataRequests(fetchSpy, '/v2/positions/combos');
+  return dataRequests(fetchSpy, '/v1/positions/combos');
 }
 
 function dataRequests(

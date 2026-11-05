@@ -281,6 +281,8 @@ function fetchCommentsOffsetPage(
   options: RequestOptions = {},
 ): Promise<Page<Comment[]>> {
   const requestOptions = parseRequestOptions(options);
+  // The gateway's comments listing supports keyset pagination only. Keep
+  // legacy cursor and filter combinations on the compatible offset endpoint.
   return client.gamma
     .get('/comments', {
       schema: ListCommentsResponseSchema,
@@ -331,8 +333,8 @@ function fetchCommentsKeysetPage(
   options: RequestOptions = {},
 ): Promise<Page<Comment[]>> {
   const requestOptions = parseRequestOptions(options);
-  return client.gamma
-    .get('/comments/keyset', {
+  return client.predictions
+    .get('/v1/comments', {
       schema: ListCommentsKeysetResponseSchema,
       ...requestOptions,
       params: toSearchParams(
@@ -400,7 +402,7 @@ export async function fetchCommentsById(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchCommentsByIdRequestSchema);
 
-  return client.gamma.get(`comments/${params.id}`, {
+  return client.predictions.get(`/v1/comments/${params.id}`, {
     schema: ListCommentsResponseSchema,
     ...requestOptions,
     params: toSearchParams(
@@ -494,8 +496,8 @@ export function listCommentsByUserAddress(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize, COMMENT_CURSOR_LIMITS);
 
-    return client.gamma
-      .get(`comments/user_address/${address}`, {
+    return client.predictions
+      .get(`/v1/users/${address}/comments`, {
         schema: ListCommentsResponseSchema,
         ...requestOptions,
         params: toSearchParams(
