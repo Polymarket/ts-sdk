@@ -9,6 +9,7 @@ import type {
   PublicClient,
   RedeemActivity,
   SplitActivity,
+  TipSide,
 } from '../index';
 import { ActivityType } from '../index';
 import type { ListComboPositionsRequest } from './portfolio';
@@ -90,7 +91,7 @@ describe('public activity result types', () => {
         activity.type === ActivityType.DIRECTIONAL_SPLIT ||
         activity.type === ActivityType.DIRECTIONAL_MERGE
       ) {
-        expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
+        expectTypeOf(activity.eventSlug).toEqualTypeOf<string | undefined>();
         // @ts-expect-error A range-event row has no single market.
         void activity.conditionId;
       }
@@ -99,10 +100,22 @@ describe('public activity result types', () => {
         activity.type === ActivityType.THRESHOLD_DECOMPOSE
       ) {
         expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
-        expectTypeOf(activity.outcome).toEqualTypeOf<string>();
+        expectTypeOf(activity.shares).toEqualTypeOf<DecimalString>();
+        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
+        // @ts-expect-error No collateral moves, so there is no USD amount.
+        void activity.amount;
       }
       if (activity.type === undefined) {
         expectTypeOf(activity.rawType).toEqualTypeOf<string>();
+        expectTypeOf(activity.isCombo).toEqualTypeOf<boolean>();
+      }
+      switch (activity.type) {
+        case ActivityType.TIP:
+          expectTypeOf(activity.side).toEqualTypeOf<TipSide | null>();
+          break;
+        case undefined:
+          expectTypeOf(activity.rawType).toEqualTypeOf<string>();
+          break;
       }
     }
   });

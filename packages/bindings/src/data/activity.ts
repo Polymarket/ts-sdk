@@ -317,12 +317,12 @@ export type DirectionalSplitActivity = ActivityBase & {
   type: 'DIRECTIONAL_SPLIT';
   /** The collateral amount in USD. */
   amount: DecimalString;
-  /** Human-readable title of the range event. */
-  title: string;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
   /** Icon URL for the range event, when available. */
   icon: string | null;
-  /** URL slug of the range event. */
-  eventSlug: string;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
 };
 
 /**
@@ -335,81 +335,70 @@ export type DirectionalMergeActivity = ActivityBase & {
   type: 'DIRECTIONAL_MERGE';
   /** The collateral amount in USD. */
   amount: DecimalString;
-  /** Human-readable title of the range event. */
-  title: string;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
   /** Icon URL for the range event, when available. */
   icon: string | null;
-  /** URL slug of the range event. */
-  eventSlug: string;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
 };
 
-/** Range-event buckets composed into one line position. */
+/**
+ * Range-event buckets composed into one line position. No collateral moves, so
+ * the row reports shares instead of a USD amount.
+ */
 export type ThresholdComposeActivity = ActivityBase & {
   /** A range-event threshold compose. */
   type: 'THRESHOLD_COMPOSE';
   /** Condition id of the line's market. */
   conditionId: ConditionId;
-  /** The composed amount in USD. */
-  amount: DecimalString;
-  /** Human-readable title of the line's market. */
-  title: string;
-  /** URL slug of the line's market. */
-  slug: string;
+  /** Number of line-position shares composed. */
+  shares: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
   /** Icon URL for the line's market, when available. */
   icon: string | null;
-  /** URL slug of the range event containing the line. */
-  eventSlug: string;
-  /** Label of the line side. */
-  outcome: string;
-  /** Index of the line side in the market's outcome list, when known. */
-  outcomeIndex?: number;
-};
-
-/** A range-event line position decomposed back into buckets. */
-export type ThresholdDecomposeActivity = ActivityBase & {
-  /** A range-event threshold decompose. */
-  type: 'THRESHOLD_DECOMPOSE';
-  /** Condition id of the line's market. */
-  conditionId: ConditionId;
-  /** The decomposed amount in USD. */
-  amount: DecimalString;
-  /** Human-readable title of the line's market. */
-  title: string;
-  /** URL slug of the line's market. */
-  slug: string;
-  /** Icon URL for the line's market, when available. */
-  icon: string | null;
-  /** URL slug of the range event containing the line. */
-  eventSlug: string;
-  /** Label of the line side. */
-  outcome: string;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
   /** Index of the line side in the market's outcome list, when known. */
   outcomeIndex?: number;
 };
 
 /**
- * An activity whose type this SDK version does not enumerate yet. `type` is
- * `undefined` so narrowing on {@link ActivityType} members keeps working;
- * `rawType` carries the type as served.
+ * A range-event line position decomposed back into buckets. No collateral
+ * moves, so the row reports shares instead of a USD amount.
  */
-export type UnknownActivity = ActivityBase & {
-  type: undefined;
-  /** The served activity type, not yet enumerated in {@link ActivityType}. */
-  rawType: string;
-  /** The activity amount in USD. */
-  amount: DecimalString;
-  /** Condition id of the related market, when available. */
-  conditionId?: ConditionId;
-  /** Human-readable title of the related market or event, when available. */
+export type ThresholdDecomposeActivity = ActivityBase & {
+  /** A range-event threshold decompose. */
+  type: 'THRESHOLD_DECOMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of line-position shares decomposed. */
+  shares: DecimalString;
+  /** Human-readable title of the line's market, when available. */
   title?: string;
-  /** URL slug of the related market or event, when available. */
+  /** URL slug of the line's market, when available. */
   slug?: string;
-  /** Icon URL for the related market or event, when available. */
+  /** Icon URL for the line's market, when available. */
   icon: string | null;
-  /** URL slug of the related event, when available. */
+  /** URL slug of the range event containing the line, when available. */
   eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
 };
 
+/**
+ * Wallet account history. New activity types can appear before this SDK
+ * version lists them in {@link ActivityType}. Those rows have `type: undefined`
+ * and carry the served type in `rawType`, so a switch over `type` needs an
+ * `undefined` or `default` branch.
+ */
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -429,7 +418,29 @@ export type Activity =
   | DirectionalMergeActivity
   | ThresholdComposeActivity
   | ThresholdDecomposeActivity
-  | UnknownActivity;
+  | (ActivityBase & {
+      /** Not a type this SDK version lists in {@link ActivityType}. */
+      type: undefined;
+      /** The activity type as served. */
+      rawType: string;
+      /**
+       * Whether the row belongs to a Combo. When true, `conditionId` is the
+       * Combo's condition id and the market metadata does not apply.
+       */
+      isCombo: boolean;
+      /** The activity amount in USD. */
+      amount: DecimalString;
+      /** Condition id of the related market or Combo, when available. */
+      conditionId?: ConditionId;
+      /** Human-readable title of the related market or event, when available. */
+      title?: string;
+      /** URL slug of the related market or event, when available. */
+      slug?: string;
+      /** Icon URL for the related market or event, when available. */
+      icon: string | null;
+      /** URL slug of the related event, when available. */
+      eventSlug?: string;
+    });
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -608,8 +619,8 @@ const RawActivitySchema = z
       (value) => (value === '' ? undefined : value),
       ConditionIdSchema.optional(),
     ),
-    // New activity types ship independently of SDK releases. Types missing
-    // from ActivityType normalize to UnknownActivity instead of failing the
+    // New activity types ship independently of SDK releases. Rows with types
+    // missing from ActivityType keep `type: undefined` instead of failing the
     // page.
     type: z.string().min(1),
     size: DecimalishSchema,
@@ -790,9 +801,9 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: activity.type,
         amount: activity.usdc_size,
-        title: expectPresent(activity.title, 'title'),
+        title: activity.title,
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
+        eventSlug: activity.event_slug,
       };
     case ActivityType.THRESHOLD_COMPOSE:
     case ActivityType.THRESHOLD_DECOMPOSE:
@@ -800,12 +811,12 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: activity.type,
         conditionId: expectPresent(activity.condition_id, 'condition_id'),
-        amount: activity.usdc_size,
-        title: expectPresent(activity.title, 'title'),
-        slug: expectPresent(activity.slug, 'slug'),
+        shares: activity.size,
+        title: activity.title,
+        slug: activity.slug,
         icon: activity.icon ?? null,
-        eventSlug: expectPresent(activity.event_slug, 'event_slug'),
-        outcome: expectPresent(activity.outcome, 'outcome'),
+        eventSlug: activity.event_slug,
+        outcome: activity.outcome,
         outcomeIndex: activity.outcome_index,
       };
     default:
@@ -813,6 +824,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: undefined,
         rawType: activity.type,
+        isCombo: activity.is_combo === true,
         amount: activity.usdc_size,
         conditionId: activity.condition_id,
         title: activity.title,

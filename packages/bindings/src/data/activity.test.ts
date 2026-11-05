@@ -169,8 +169,8 @@ describe('TradeSchema', () => {
   });
 });
 
-describe('UnknownActivity', () => {
-  it('keeps a page parseable when it holds a type the SDK does not enumerate', () => {
+describe('Activity rows with unlisted types', () => {
+  it('keeps a page parseable when it holds a type the SDK does not list', () => {
     const page = ListActivityResponseSchema.parse({
       data: [
         activityRow({ type: ActivityType.DEPOSIT, usdc_size: 10 }),
@@ -181,9 +181,15 @@ describe('UnknownActivity', () => {
           slug: 'bitcoin-price-on-friday',
           event_slug: 'bitcoin-price-on-friday',
         }),
+        activityRow({
+          type: 'NEW_COMBO_ACTIVITY_TYPE',
+          is_combo: true,
+          condition_id: comboConditionId,
+          usdc_size: 3,
+        }),
       ],
       pagination: {
-        limit: 2,
+        limit: 3,
         offset: 0,
         has_more: false,
         next_cursor: null,
@@ -194,12 +200,22 @@ describe('UnknownActivity', () => {
       expect.objectContaining({
         type: undefined,
         rawType: 'NEW_ACTIVITY_TYPE',
+        isCombo: false,
         amount: '25',
         title: 'Bitcoin price on Friday',
         slug: 'bitcoin-price-on-friday',
         eventSlug: 'bitcoin-price-on-friday',
         conditionId: undefined,
         icon: null,
+      }),
+    );
+    expect(page.items[2]).toEqual(
+      expect.objectContaining({
+        type: undefined,
+        rawType: 'NEW_COMBO_ACTIVITY_TYPE',
+        isCombo: true,
+        conditionId: comboConditionId,
+        amount: '3',
       }),
     );
   });
@@ -235,12 +251,15 @@ describe('Range-event activity', () => {
   it.each([
     ActivityType.THRESHOLD_COMPOSE,
     ActivityType.THRESHOLD_DECOMPOSE,
-  ])('parses %s with the line market and side', (type) => {
+  ])('parses %s with the line market, side and shares', (type) => {
     const conditionId = `0x${'d'.repeat(64)}`;
+    // Served like indexer vector v13_threshold_compose_module4_line: the
+    // moved line tokens in size, no collateral in usdc_size.
     const activity = ActivitySchema.parse(
       activityRow({
         type,
-        usdc_size: 4,
+        size: 100,
+        usdc_size: 0,
         condition_id: conditionId,
         title: 'Bitcoin above $100k on Friday?',
         slug: 'bitcoin-above-100k-on-friday',
@@ -254,12 +273,47 @@ describe('Range-event activity', () => {
       expect.objectContaining({
         type,
         conditionId,
-        amount: '4',
+        shares: '100',
         title: 'Bitcoin above $100k on Friday?',
         slug: 'bitcoin-above-100k-on-friday',
         eventSlug: 'bitcoin-price-on-friday',
         outcome: 'Yes',
         outcomeIndex: 0,
+      }),
+    );
+    expect(activity).not.toHaveProperty('amount');
+  });
+
+  it('keeps range-event rows without display metadata', () => {
+    const conditionId = `0x${'d'.repeat(64)}`;
+
+    expect(
+      ActivitySchema.parse(
+        activityRow({ type: ActivityType.DIRECTIONAL_SPLIT, usdc_size: 25 }),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        type: ActivityType.DIRECTIONAL_SPLIT,
+        title: undefined,
+        eventSlug: undefined,
+      }),
+    );
+    expect(
+      ActivitySchema.parse(
+        activityRow({
+          type: ActivityType.THRESHOLD_DECOMPOSE,
+          size: 4,
+          condition_id: conditionId,
+        }),
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        type: ActivityType.THRESHOLD_DECOMPOSE,
+        conditionId,
+        title: undefined,
+        slug: undefined,
+        eventSlug: undefined,
+        outcome: undefined,
       }),
     );
   });

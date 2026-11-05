@@ -2,9 +2,9 @@ import { z } from 'zod';
 import { type ConditionId, ConditionIdSchema, toConditionId } from '../shared';
 
 /**
- * Activity types known to this SDK version. New types can appear in the
- * activity feed before a release enumerates them; those rows parse as
- * `UnknownActivity` instead of failing the page.
+ * Activity types this SDK version lists. New types can appear in the activity
+ * feed before a release lists them. Those rows keep `type: undefined` and
+ * carry the served type in `rawType`.
  */
 export enum ActivityType {
   TRADE = 'TRADE',
