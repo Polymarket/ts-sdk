@@ -8,6 +8,17 @@ import type {
 } from '@polymarket/bindings/clob';
 import type { TxHash } from '@polymarket/types';
 import {
+  type FetchOrderRequest,
+  fetchOrder,
+  type ListOpenOrdersRequest,
+  listOpenOrders,
+} from '../actions/account';
+import {
+  type SendOrderHeartbeatRequest,
+  sendOrderHeartbeat,
+} from '../actions/order-heartbeats';
+import type { SignedOrder } from '../actions/orders';
+import {
   type CancelMarketOrdersRequest,
   type CancelOrderRequest,
   type CancelOrdersRequest,
@@ -17,10 +28,6 @@ import {
   cancelOrders,
   createLimitOrder,
   createMarketOrder,
-  type FetchOrderRequest,
-  fetchOrder,
-  type ListOpenOrdersRequest,
-  listOpenOrders,
   type PostOrdersRequest,
   type PrepareLimitOrderRequest,
   type PrepareMarketOrderRequest,
@@ -28,17 +35,14 @@ import {
   placeMarketOrder,
   postOrder,
   postOrders,
-  type SendOrderHeartbeatRequest,
-  sendOrderHeartbeat,
   type WaitForOrderFillSettlementRequest,
   waitForOrderFillSettlement,
-} from '../actions';
-import type { SignedOrder } from '../actions/orders';
+} from '../actions/orders';
 import type { BaseSecureClient } from '../clients';
 import type { Paginated } from '../pagination';
 import type { RequestOptions } from '../request-options';
 
-export type { OrderSignature, SignedOrder } from '../actions';
+export type { OrderSignature, SignedOrder } from '../actions/orders';
 
 export type SecureTradingActions = {
   /**
@@ -401,6 +405,11 @@ export function tradingActions(client: BaseSecureClient): SecureTradingActions {
   };
 }
 
+export { FetchOrderError, ListOpenOrdersError } from '../actions/account';
+export {
+  SendOrderHeartbeatError,
+  type SendOrderHeartbeatRequest,
+} from '../actions/order-heartbeats';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on SecureTradingActions.
@@ -411,13 +420,9 @@ export {
   CancelOrdersError,
   CreateLimitOrderError,
   CreateMarketOrderError,
-  FetchOrderError,
-  ListOpenOrdersError,
   PlaceLimitOrderError,
   PlaceMarketOrderError,
   PostOrderError,
   PostOrdersError,
-  SendOrderHeartbeatError,
-  type SendOrderHeartbeatRequest,
   WaitForOrderFillSettlementError,
-} from '../actions';
+} from '../actions/orders';

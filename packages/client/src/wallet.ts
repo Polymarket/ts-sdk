@@ -12,7 +12,10 @@ import {
   type SessionSignerSignature,
   ZERO_ADDRESS,
 } from '@polymarket/types';
-import { AbiParameters, Bytes, ContractAddress, Hash } from 'ox';
+import * as AbiParameters from 'ox/AbiParameters';
+import * as Bytes from 'ox/Bytes';
+import * as ContractAddress from 'ox/ContractAddress';
+import * as Hash from 'ox/Hash';
 import type { EnvironmentConfig, WalletDerivationConfig } from './environments';
 import type { RequestOptions } from './request-options';
 import type { JsonRpcClient } from './rpc';

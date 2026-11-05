@@ -82,7 +82,7 @@ describe('price subscription contracts', () => {
       .toHaveProperty('provider')
       .toEqualTypeOf<PriceSource | undefined>();
     expectTypeOf<PriceProvider>().toEqualTypeOf<
-      PriceProvider.Pyth | PriceProvider.Chainlink
+      PriceProvider.Pyth | PriceProvider.Chainlink | PriceProvider.Binance
     >();
     expectTypeOf<KnownPriceSource.Massive>().not.toExtend<PriceProvider>();
     expectTypeOf<ClientExports.CryptoPriceSubscription>()
