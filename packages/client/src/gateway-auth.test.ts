@@ -14,6 +14,7 @@ import {
 import type { ClientCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError, TransportError } from './errors';
+import { protectRequestErrors } from './request-errors';
 import { AuthSession } from './session';
 import type { Signer } from './types';
 import { deriveBeaconDepositWalletAddress } from './wallet';
@@ -621,6 +622,29 @@ it.each([
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
   }
+});
+
+it.each([
+  [new Error('offline failure'), 'Authentication transport failed.'],
+  [
+    new Error('offline failure: synthetic-secret'),
+    'Authentication transport failed.',
+  ],
+  [
+    new TransportError('offline failure: synthetic-secret'),
+    'offline failure: [REDACTED]',
+  ],
+])('preserves the sensitive fallback for %s', async (error, message) => {
+  const fetch = protectRequestErrors(async () => {
+    throw error;
+  }, true);
+  await expect(
+    fetch(
+      new Request('https://offline.invalid/private', {
+        headers: { 'x-api-key': 'synthetic-secret' },
+      }),
+    ),
+  ).rejects.toMatchObject({ name: 'TransportError', message });
 });
 
 it.each([
