@@ -50,6 +50,10 @@ export {
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 export type * from '@polymarket/bindings/relayer';
+export type {
+  AuthenticatedServiceClient,
+  AuthenticatedServiceClientConfig,
+} from './AuthenticatedServiceClient';
 export * from './abis';
 export { SearchSort } from './actions';
 export type {
