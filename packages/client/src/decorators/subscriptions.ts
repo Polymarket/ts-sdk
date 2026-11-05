@@ -89,6 +89,8 @@ export type SecureSubscriptionsActions = {
    * including omission, use separate connections, even if they serve the same source.
    * An optional `onSubscribed` callback reports the provider the server confirms,
    * on acceptance and after every reconnect.
+   * `PriceProvider.Binance` requests Binance USDT spot closes under USD symbols
+   * on `prices.crypto`; on other price topics it falls back to the default.
    * Event `seq` values are scoped to one channel on one WebSocket connection
    * and reset after reconnecting. Subscriptions with more than 64 filters use
    * multiple connections, so their sequence values may interleave.

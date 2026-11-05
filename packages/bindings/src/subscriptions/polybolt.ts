@@ -27,6 +27,7 @@ export type RealtimeErrorCode = RealtimeKnownErrorCode | (string & {});
 
 /** Known sources reported by realtime price events. */
 export enum KnownPriceSource {
+  Binance = 'binance',
   Pyth = 'pyth',
   Chainlink = 'chainlink',
   Massive = 'massive',
@@ -67,6 +68,8 @@ export enum PolyboltChannel {
 
 /** A provider that can be requested for a price subscription. */
 export enum PriceProvider {
+  /** Binance USDT spot closes under USD symbols; served on crypto spot only. */
+  Binance = 'binance',
   Chainlink = 'chainlink',
   Pyth = 'pyth',
 }

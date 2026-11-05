@@ -258,6 +258,7 @@ describe('price channel lifecycle', () => {
     undefined,
     PriceProvider.Pyth,
     PriceProvider.Chainlink,
+    PriceProvider.Binance,
   ])('requested provider %s', (provider) => {
     it.each([
       {
