@@ -25,6 +25,17 @@ enum PriceEventType {
 }
 const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
   z.strictObject({
+    topic: z.literal('prices.polymarket'),
+    assetIds: z
+      .array(
+        z
+          .string()
+          .regex(/^[0-9]+$/)
+          .transform((assetId) => assetId.replace(/^0+(?=\d)/, '')),
+      )
+      .min(1),
+  }),
+  z.strictObject({
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
     provider: z.enum(PriceProvider).optional(),

@@ -294,15 +294,24 @@ export class PriceSession {
     for (const state of this.#keys.values()) {
       const subscription = state.subscription;
       if (subscription.topic !== event.topic) continue;
-      const payload = event.payload;
-      if (payload.symbol.toLowerCase() !== subscription.symbol) continue;
-      if (
-        (subscription.topic === 'prices.crypto.twap' ||
-          subscription.topic === 'prices.equity.twap') &&
-        (!('windowSeconds' in payload) ||
-          payload.windowSeconds !== subscription.windowSeconds)
-      )
-        continue;
+      if (subscription.topic === 'prices.polymarket') {
+        if (
+          event.topic !== 'prices.polymarket' ||
+          event.payload.assetId !== subscription.assetId
+        )
+          continue;
+      } else {
+        if (event.topic === 'prices.polymarket') continue;
+        const payload = event.payload;
+        if (payload.symbol.toLowerCase() !== subscription.symbol) continue;
+        if (
+          (subscription.topic === 'prices.crypto.twap' ||
+            subscription.topic === 'prices.equity.twap') &&
+          (!('windowSeconds' in payload) ||
+            payload.windowSeconds !== subscription.windowSeconds)
+        )
+          continue;
+      }
       state.snapshot = refreshSnapshot(state.snapshot, event);
       for (const listener of state.listeners) listener.event(event);
     }
@@ -435,27 +444,36 @@ function refreshSnapshot(
   event: PriceEvent,
 ): PriceEvent | undefined {
   if (event.type === 'subscribe') return event;
+  if (event.topic === 'prices.polymarket')
+    return {
+      ...event,
+      type: 'subscribe',
+      payload: { assetId: event.payload.assetId, data: [event.payload] },
+    };
+  const historySnapshot =
+    previous?.topic === 'prices.polymarket' ? undefined : previous;
   const { symbol, source, timestamp, value } = event.payload;
   const history =
-    previous?.type === 'subscribe' && previous.payload.source === source
-      ? previous.payload.data
+    historySnapshot?.type === 'subscribe' &&
+    historySnapshot.payload.source === source
+      ? historySnapshot.payload.data
       : [];
   if ((history.at(-1)?.timestamp ?? 0) > timestamp) {
     // Equity spot clocks can deliver a status on a price older than history.
     if (
-      previous?.type === 'subscribe' &&
-      previous.topic === 'prices.equity' &&
+      historySnapshot?.type === 'subscribe' &&
+      historySnapshot.topic === 'prices.equity' &&
       event.topic === 'prices.equity' &&
       event.payload.marketStatus !== undefined
     )
       return {
-        ...previous,
+        ...historySnapshot,
         payload: {
-          ...previous.payload,
+          ...historySnapshot.payload,
           marketStatus: event.payload.marketStatus,
         },
       };
-    return previous;
+    return historySnapshot;
   }
   const data = [
     ...history.filter(

@@ -37,7 +37,7 @@ type PendingOp = {
 export type PolyboltConnectionOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
 };
 
 /** @internal Adapts price operations and events to the PolyBolt wire protocol. */
@@ -51,6 +51,7 @@ export class PolyboltConnection implements PriceSessionConnection {
   readonly #pending = new Map<string, PendingOp>();
   #events: PriceSessionEvents | undefined;
   #requestId = 0;
+  #bboSnapshots: string[] = [];
   #lastSent = 0;
   #generation = 0;
 
@@ -80,6 +81,7 @@ export class PolyboltConnection implements PriceSessionConnection {
   }
 
   async authorize(): Promise<void> {
+    if (this.#options.credentials === undefined) return;
     const { key, secret, passphrase } = this.#options.credentials;
     await this.#request(
       { op: 'auth', auth: { apiKey: key, secret, passphrase } },
@@ -211,11 +213,15 @@ export class PolyboltConnection implements PriceSessionConnection {
           if (index < 0 || pending.channels[index] !== channel) return;
           pending.channels[index] = undefined;
           const subscription = pending.subscriptions[index];
-          if (op === PolyboltAckOp.Subscribed && subscription !== undefined)
-            this.#events?.subscribed(subscription, {
-              symbol: subscription.symbol,
-              provider,
-            });
+          if (op === PolyboltAckOp.Subscribed && subscription !== undefined) {
+            if (subscription.topic === 'prices.polymarket')
+              this.#bboSnapshots.push(subscription.assetId);
+            else
+              this.#events?.subscribed(subscription, {
+                symbol: subscription.symbol,
+                provider,
+              });
+          }
           if (
             pending.channels.some(
               (pendingChannel) => pendingChannel !== undefined,
@@ -231,12 +237,19 @@ export class PolyboltConnection implements PriceSessionConnection {
     }
     const envelope = PolyboltEnvelopeSchema.safeParse(message);
     if (!envelope.success) return;
-    const event = parsePolyboltEvent(envelope.data);
+    // Cold snapshots omit the asset; correlate with the ordered subscription acknowledgements.
+    const snapshotAssetId =
+      envelope.data.channel === PolyboltChannel.Polymarket &&
+      envelope.data.snapshot
+        ? this.#bboSnapshots.shift()
+        : undefined;
+    const event = parsePolyboltEvent(envelope.data, snapshotAssetId);
     if (event !== undefined) this.#events?.event(event);
     if ((envelope.data.dropped ?? 0) > 0) this.#events?.dropped();
   }
 
   #cancel(error: Error): void {
+    this.#bboSnapshots = [];
     for (const pending of this.#pending.values()) {
       clearTimeout(pending.sendTimer);
       clearTimeout(pending.timer);
@@ -255,6 +268,11 @@ export class PolyboltConnection implements PriceSessionConnection {
 
 function toWireSubscription(subscription: PriceKey): PolyboltSubscription {
   switch (subscription.topic) {
+    case 'prices.polymarket':
+      return {
+        channel: PolyboltChannel.Polymarket,
+        filter: { asset_id: subscription.assetId },
+      };
     case 'prices.crypto':
       return {
         channel: PolyboltChannel.Crypto,
