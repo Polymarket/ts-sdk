@@ -295,6 +295,11 @@ export type PublicAccountActions = Prettify<{
    * `isCombo` before using market-only metadata; a basket's outcome names its
    * token side, not a selected leg.
    *
+   * Rows with a type this SDK version does not list yet carry only the shared
+   * account fields and an `OpaqueActivityType`, so switches over `type` need a
+   * `default` branch. `activity.type` is not assignable to `string`. Read
+   * the served type with `String(activity.type)`.
+   *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
    * serves the most recent three years; `window: 'full'` requests the complete
@@ -516,6 +521,11 @@ export type SecureAccountActions = Prettify<{
    * token side, not a selected leg.
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
+   *
+   * Rows with a type this SDK version does not list yet carry only the shared
+   * account fields and an `OpaqueActivityType`, so switches over `type` need a
+   * `default` branch. `activity.type` is not assignable to `string`. Read
+   * the served type with `String(activity.type)`.
    *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
