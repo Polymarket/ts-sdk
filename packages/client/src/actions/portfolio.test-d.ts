@@ -73,10 +73,12 @@ describe('public activity result types', () => {
             void activity.slug;
           }
         } else {
-          expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
-          expectTypeOf(activity.title).toEqualTypeOf<string>();
-          expectTypeOf(activity.slug).toEqualTypeOf<string>();
-          expectTypeOf(activity.eventSlug).toEqualTypeOf<string>();
+          expectTypeOf(activity.conditionId).toEqualTypeOf<
+            ConditionId | undefined
+          >();
+          expectTypeOf(activity.title).toEqualTypeOf<string | undefined>();
+          expectTypeOf(activity.slug).toEqualTypeOf<string | undefined>();
+          expectTypeOf(activity.eventSlug).toEqualTypeOf<string | undefined>();
         }
       }
       if (
