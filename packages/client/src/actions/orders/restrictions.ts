@@ -29,6 +29,9 @@ export function mapTradingRestrictionError(
 
   return new RequestRejectedError(error.message, {
     cause: error,
+    retryable: error.retryable,
+    traceId: error.traceId,
+    parameter: error.parameter,
     ...(error.code !== undefined ? { code: error.code } : {}),
     restriction,
     ...(error.retryAfter !== undefined ? { retryAfter: error.retryAfter } : {}),
