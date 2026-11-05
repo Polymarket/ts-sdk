@@ -37,10 +37,6 @@
     "./viem": {
       "types": "./dist/viem.d.ts",
       "default": "./dist/viem.js"
-    },
-    "./hmac": {
-      "types": "./dist/hmac.d.ts",
-      "default": "./dist/hmac.js"
     }
   },
   "typesVersions": {
@@ -59,9 +55,6 @@
       ],
       "viem": [
         "./dist/viem.d.ts"
-      ],
-      "hmac": [
-        "./dist/hmac.d.ts"
       ]
     }
   },

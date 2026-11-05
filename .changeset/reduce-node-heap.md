@@ -3,12 +3,10 @@
 '@polymarket/bindings': patch
 ---
 
-Reduce Node.js startup allocations with supported ox namespace imports, narrower
-internal action imports, and a patched Zod minimum of 4.6.7. Update the workspace
-lock to address GHSA-mrhx-c7xc-m3w5 and reject oversized constrained collections
-before validating their elements. Invalid union input remains rejected, while
-diagnostics follow the branch selected by Zod.
+Reduce retained heap after importing `@polymarket/client` by about 20%.
+Require `zod@^4.6.7` to address GHSA-mrhx-c7xc-m3w5.
 
-Add `@polymarket/client/hmac` for using the existing WebCrypto signing helper
-without loading client actions and response schemas. Existing entry points and
-root exports remain available.
+Input that exceeds a collection limit, such as more than 15 orders in
+`postOrders`, now fails on the limit alone, without per-item errors. When
+invalid input is closest to one accepted shape, `UserInputError` now lists
+only that shape's issues.
