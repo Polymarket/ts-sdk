@@ -3,7 +3,11 @@ import {
   ApprovalStandard,
   type ApprovalsSnapshot,
 } from '@polymarket/bindings/data';
-import type { EvmAddress } from '@polymarket/types';
+import type { EvmAddress, HexString } from '@polymarket/types';
+import {
+  decodeErc20AllowanceResult,
+  decodeErc1155IsApprovedForAllResult,
+} from '../abis';
 import { UnexpectedResponseError } from '../errors';
 import type { TradingApprovalRequirements } from './approvals';
 
@@ -70,4 +74,35 @@ export function resolveIndexedTradingApprovals(
       return !row.approved;
     }),
   };
+}
+
+/** Resolves ordered RPC allowance and operator results against SDK requirements. */
+export function resolveRpcTradingApprovals(
+  results: readonly HexString[],
+  required: TradingApprovalRequirements,
+): TradingApprovalRequirements {
+  const erc20Results = results.slice(0, required.erc20.length);
+  const erc1155Results = results.slice(required.erc20.length);
+
+  try {
+    return {
+      erc20: required.erc20.filter((approval, index) => {
+        const allowance = decodeErc20AllowanceResult(
+          erc20Results[index] as HexString,
+        );
+        return allowance < approval.amount;
+      }),
+      erc1155: required.erc1155.filter((_, index) => {
+        const approved = decodeErc1155IsApprovedForAllResult(
+          erc1155Results[index] as HexString,
+        );
+        return !approved;
+      }),
+    };
+  } catch (error) {
+    throw new UnexpectedResponseError(
+      'Expected JSON-RPC approval checks to return ABI-encoded values',
+      { cause: error },
+    );
+  }
 }
