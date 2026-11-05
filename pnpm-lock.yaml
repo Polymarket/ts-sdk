@@ -43,7 +43,7 @@ importers:
         version: link:../../packages/client
       viem:
         specifier: ^2.46.3
-        version: 2.47.10(typescript@6.0.2)(zod@4.3.6)
+        version: 2.47.10(typescript@6.0.2)(zod@4.6.7)
     devDependencies:
       tsx:
         specifier: ^4.20.3
@@ -58,8 +58,8 @@ importers:
         specifier: workspace:*
         version: link:../types
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       tsup:
         specifier: ^8.5.1
@@ -90,14 +90,14 @@ importers:
         version: 1.14.3
       ox:
         specifier: ^0.14.16
-        version: 0.14.16(typescript@6.0.2)(zod@4.3.6)
+        version: 0.14.16(typescript@6.0.2)(zod@4.6.7)
       zod:
-        specifier: ^4.3.6
-        version: 4.3.6
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@privy-io/node':
         specifier: ^0.15.0
-        version: 0.15.0(viem@2.47.10(typescript@6.0.2)(zod@4.3.6))
+        version: 0.15.0(viem@2.47.10(typescript@6.0.2)(zod@4.6.7))
       ethers-v5:
         specifier: npm:ethers@^5.8.0
         version: ethers@5.8.0
@@ -109,7 +109,7 @@ importers:
         version: 6.0.2
       viem:
         specifier: ^2.46.3
-        version: 2.47.10(typescript@6.0.2)(zod@4.3.6)
+        version: 2.47.10(typescript@6.0.2)(zod@4.6.7)
 
   packages/types:
     dependencies:
@@ -2138,8 +2138,8 @@ packages:
     resolution: {integrity: sha512-U/PBtDf35ff0D8X8D0jfdzHYEPFxAI7jJlxZXwCSez5M3190m+QobIfh+sWDWSHMCWWJN2AWamkegn6vr6YBTw==}
     engines: {node: '>=18'}
 
-  zod@4.3.6:
-    resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+  zod@4.6.7:
+    resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
 
 snapshots:
 
@@ -2880,7 +2880,7 @@ snapshots:
 
   '@oxc-project/types@0.122.0': {}
 
-  '@privy-io/node@0.15.0(viem@2.47.10(typescript@6.0.2)(zod@4.3.6))':
+  '@privy-io/node@0.15.0(viem@2.47.10(typescript@6.0.2)(zod@4.6.7))':
     dependencies:
       '@hpke/chacha20poly1305': 1.8.0
       '@hpke/core': 1.9.0
@@ -2892,7 +2892,7 @@ snapshots:
       lru-cache: 11.2.7
       svix: 1.90.0
     optionalDependencies:
-      viem: 2.47.10(typescript@6.0.2)(zod@4.3.6)
+      viem: 2.47.10(typescript@6.0.2)(zod@4.6.7)
 
   '@rolldown/binding-android-arm64@1.0.0-rc.12':
     optional: true
@@ -3099,10 +3099,10 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  abitype@1.2.3(typescript@6.0.2)(zod@4.3.6):
+  abitype@1.2.3(typescript@6.0.2)(zod@4.6.7):
     optionalDependencies:
       typescript: 6.0.2
-      zod: 4.3.6
+      zod: 4.6.7
 
   abort-error@1.0.2: {}
 
@@ -3631,7 +3631,7 @@ snapshots:
 
   outvariant@1.4.3: {}
 
-  ox@0.14.16(typescript@6.0.2)(zod@4.3.6):
+  ox@0.14.16(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -3639,14 +3639,14 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@6.0.2)(zod@4.3.6)
+      abitype: 1.2.3(typescript@6.0.2)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 6.0.2
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.7(typescript@6.0.2)(zod@4.3.6):
+  ox@0.14.7(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -3654,7 +3654,7 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@6.0.2)(zod@4.3.6)
+      abitype: 1.2.3(typescript@6.0.2)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 6.0.2
@@ -3980,15 +3980,15 @@ snapshots:
 
   uuid@10.0.0: {}
 
-  viem@2.47.10(typescript@6.0.2)(zod@4.3.6):
+  viem@2.47.10(typescript@6.0.2)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@6.0.2)(zod@4.3.6)
+      abitype: 1.2.3(typescript@6.0.2)(zod@4.6.7)
       isows: 1.0.7(ws@8.18.3)
-      ox: 0.14.7(typescript@6.0.2)(zod@4.3.6)
+      ox: 0.14.7(typescript@6.0.2)(zod@4.6.7)
       ws: 8.18.3
     optionalDependencies:
       typescript: 6.0.2
@@ -4078,4 +4078,4 @@ snapshots:
 
   yoctocolors-cjs@2.1.3: {}
 
-  zod@4.3.6: {}
+  zod@4.6.7: {}

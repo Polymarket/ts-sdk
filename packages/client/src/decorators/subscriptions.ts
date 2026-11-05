@@ -4,7 +4,7 @@ import {
   type SecureSubscriptionSpec,
   type SubscriptionHandle,
   subscribe,
-} from '../actions';
+} from '../actions/subscriptions';
 import type {
   BaseClient,
   BasePublicClient,
@@ -40,13 +40,13 @@ export type {
   PriceSubscription,
   PriceSubscriptionConfirmation,
   SubscriptionHandle,
-} from '../actions';
+} from '../actions/subscriptions';
 export {
   EquityMarketStatus,
   KnownPriceSource,
   PriceProvider,
   SubscribeError,
-} from '../actions';
+} from '../actions/subscriptions';
 
 export type PublicSubscriptionsActions = {
   /**

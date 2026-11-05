@@ -17,29 +17,35 @@ import type { Prettify } from '@polymarket/types';
 import {
   type DropNotificationsRequest,
   dropNotifications,
-  type FetchPortfolioValueRequest,
+  fetchClosedOnlyMode,
+  fetchNotifications,
+  type ListAccountTradesRequest,
+  listAccountTrades,
+} from '../actions/account';
+import {
+  type ListActivityRequest,
+  type ListComboActivityRequest,
+  listActivity,
+  listComboActivity,
+} from '../actions/activity';
+import {
   type FetchTraderLeaderboardStandingRequest,
+  fetchTraderLeaderboardStanding,
+} from '../actions/leaderboards';
+import {
+  type FetchPortfolioValueRequest,
   type FetchUserPnlRequest,
   type FetchUserStatsRequest,
   type FetchUserVolumeRequest,
-  fetchClosedOnlyMode,
-  fetchNotifications,
   fetchPortfolioValue,
-  fetchTraderLeaderboardStanding,
   fetchUserPnl,
   fetchUserStats,
   fetchUserVolume,
-  type ListAccountTradesRequest,
-  type ListActivityRequest,
-  type ListComboActivityRequest,
   type ListComboPositionsRequest,
   type ListPositionsRequest,
-  listAccountTrades,
-  listActivity,
-  listComboActivity,
   listComboPositions,
   listPositions,
-} from '../actions';
+} from '../actions/portfolio';
 import type {
   BaseClient,
   BasePublicClient,
@@ -715,34 +721,34 @@ export function accountActions(
   };
 }
 
-// Error unions and runtime `isError` guards for every action bound above.
-// Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on PublicAccountActions / SecureAccountActions.
 export {
   DropNotificationsError,
   FetchClosedOnlyModeError,
   FetchNotificationsError,
-  FetchPortfolioValueError,
-  FetchTraderLeaderboardStandingError,
-  FetchUserPnlError,
-  FetchUserStatsError,
-  FetchUserVolumeError,
   ListAccountTradesError,
-  ListActivityError,
-  ListComboActivityError,
-  ListComboPositionsError,
-  ListPositionsError,
-} from '../actions';
+} from '../actions/account';
 export {
   ComboActivityType,
+  ListActivityError,
+  ListComboActivityError,
   SortDirection,
   TipSide,
   TradeFilterType,
 } from '../actions/activity';
+export { FetchTraderLeaderboardStandingError } from '../actions/leaderboards';
 export type { ComboPositionStatusFilter } from '../actions/portfolio';
+// Error unions and runtime `isError` guards for every action bound above.
+// Surfaced at the root entry point through `export * from './decorators'`.
+// Keep this list in sync with the methods on PublicAccountActions / SecureAccountActions.
 export {
   ComboPositionSortBy,
   ComboPositionStatus,
+  FetchPortfolioValueError,
+  FetchUserPnlError,
+  FetchUserStatsError,
+  FetchUserVolumeError,
+  ListComboPositionsError,
+  ListPositionsError,
   PositionFilterType,
   PositionSortBy,
   PositionStatus,

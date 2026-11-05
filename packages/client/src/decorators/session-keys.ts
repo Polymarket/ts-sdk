@@ -6,7 +6,7 @@ import {
   type RevokeSessionKeyRequest,
   revokeSessionKey,
   type SessionKey,
-} from '../actions';
+} from '../actions/session-keys';
 import type { BaseSecureClient } from '../clients';
 import type { RequestOptions } from '../request-options';
 
@@ -85,10 +85,10 @@ export type {
   RevokeSessionKeyRequest,
   SessionKey,
   SessionKeyScope,
-} from '../actions';
+} from '../actions/session-keys';
 export {
   AuthorizeSessionKeyError,
   FetchSessionKeysError,
   RevokeSessionKeyError,
   SessionKeyKnownScope,
-} from '../actions';
+} from '../actions/session-keys';
