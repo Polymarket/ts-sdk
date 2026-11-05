@@ -1,5 +1,7 @@
+import type { BearerCredentials } from '@polymarket/bindings';
 import { describe, expectTypeOf, it } from 'vitest';
 import { z } from 'zod';
+import type { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 import {
   createPublicClient,
   createSecureClient,
@@ -10,10 +12,12 @@ import {
 } from './clients';
 import { ServiceClient as RootServiceClient } from './index';
 import type { ServiceClient } from './ServiceClient';
+import type { Signer } from './types';
 
 declare const publicClient: PublicClient;
 declare const secureClient: SecureClient;
 declare const secureOptions: SecureClientOptions;
+declare const signer: Signer;
 
 it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.listTrades(
@@ -39,11 +43,51 @@ it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.predictions.del('/mutation', { retries: 5 });
 });
 
+it('accepts plain bearer or L2 input and exposes bearer credentials', () => {
+  createSecureClient({
+    signer,
+    credentials: { accessToken: 'a', refreshToken: 'r' },
+  });
+  createSecureClient({
+    signer,
+    credentials: { key: 'k', secret: 's', passphrase: 'p' },
+  });
+  const stored: object = { accessToken: 'a', refreshToken: 'r' };
+  createSecureClient({ signer, credentials: stored });
+  expectTypeOf(publicClient.login({ signer })).toEqualTypeOf<
+    Promise<BearerCredentials>
+  >();
+  expectTypeOf(
+    publicClient.migrateCredentials({
+      signer: '0x0000000000000000000000000000000000000001',
+      credentials: { key: 'k', secret: 's', passphrase: 'p' },
+    }),
+  ).toEqualTypeOf<Promise<BearerCredentials>>();
+  expectTypeOf(secureClient.credentials).toEqualTypeOf<BearerCredentials>();
+  createSecureClient({
+    signer,
+    onCredentialsChanged(credentials) {
+      expectTypeOf(credentials).toEqualTypeOf<BearerCredentials>();
+    },
+  });
+  createSecureClient({
+    signer,
+    async onCredentialsChanged(credentials) {
+      expectTypeOf(credentials).toEqualTypeOf<BearerCredentials>();
+    },
+  });
+  expectTypeOf(secureClient.credentials.accessToken).toEqualTypeOf<string>();
+  expectTypeOf(secureClient.credentials.refreshToken).toEqualTypeOf<string>();
+  expectTypeOf(secureClient.credentials).not.toHaveProperty('type');
+});
+
 describe('predictions service types', () => {
   it('exposes the same precise Promise service on public and secure clients', () => {
     const schema = z.object({ count: z.string().transform(Number) });
     expectTypeOf(publicClient.predictions).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(secureClient.predictions).toEqualTypeOf<ServiceClient>();
+    expectTypeOf(
+      secureClient.predictions,
+    ).toEqualTypeOf<AuthenticatedServiceClient>();
     expectTypeOf(
       publicClient.predictions.get('/reserved', { schema }),
     ).toEqualTypeOf<Promise<{ count: number }>>();

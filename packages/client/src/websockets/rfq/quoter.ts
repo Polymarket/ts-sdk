@@ -23,10 +23,21 @@ import {
   RfqConfirmationRejectedError,
   RfqQuoteRejectedError,
 } from '../../actions/rfq';
-import { ConnectionLostError, TransportError } from '../../errors';
+import {
+  ConnectionLostError,
+  RequestRejectedError,
+  TransportError,
+  UserInputError,
+} from '../../errors';
+import type { AuthSession } from '../../session';
 import type { Signer } from '../../types';
 import type { AccountIdentity } from '../../wallet';
-import { type WebSocketCloseInfo, WebSocketConnection } from '../lifecycle';
+import { SocketAuthentication } from '../authentication';
+import {
+  ReconnectScheduler,
+  type WebSocketCloseInfo,
+  WebSocketConnection,
+} from '../lifecycle';
 import {
   type RfqEventController,
   toConfirmationAck,
@@ -50,9 +61,10 @@ const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
 
 export type RfqQuoterWebSocketManagerOptions = {
-  account: AccountIdentity;
+  account: AccountIdentity | undefined;
   chainId: number;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
+  session?: AuthSession;
   exchange: EvmAddress;
   headers?: Record<string, string>;
   signer: Signer;
@@ -60,9 +72,10 @@ export type RfqQuoterWebSocketManagerOptions = {
 };
 
 export class RfqQuoterWebSocketManager {
-  readonly #account: AccountIdentity;
+  readonly #account: AccountIdentity | undefined;
   readonly #chainId: number;
-  readonly #credentials: ApiKeyCreds;
+  readonly #credentials: ApiKeyCreds | undefined;
+  readonly #sessionAuth: AuthSession | undefined;
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
   readonly #signer: Signer;
@@ -76,6 +89,7 @@ export class RfqQuoterWebSocketManager {
     this.#account = options.account;
     this.#chainId = options.chainId;
     this.#credentials = options.credentials;
+    this.#sessionAuth = options.session;
     this.#exchange = options.exchange;
     this.#headers = options.headers;
     this.#signer = options.signer;
@@ -93,10 +107,16 @@ export class RfqQuoterWebSocketManager {
     }
     if (this.#connecting !== undefined) return this.#connecting;
 
+    if (this.#account === undefined)
+      throw new UserInputError(
+        'This session has no wallet. Authenticate with a wallet to use RFQ.',
+      );
+
     const session = new RfqWebSocketSession({
       account: this.#account,
       chainId: this.#chainId,
       credentials: this.#credentials,
+      session: this.#sessionAuth,
       exchange: this.#exchange,
       headers: this.#headers,
       onClose: () => this.#clearSession(session),
@@ -162,7 +182,8 @@ export class RfqQuoterWebSocketManager {
 type RfqWebSocketSessionConfig = {
   account: AccountIdentity;
   chainId: number;
-  credentials: ApiKeyCreds;
+  credentials?: ApiKeyCreds;
+  session?: AuthSession;
   exchange: EvmAddress;
   headers?: Record<string, string>;
   onClose: () => void;
@@ -173,27 +194,53 @@ type RfqWebSocketSessionConfig = {
 class RfqWebSocketSession implements RfqSession, RfqEventController {
   readonly #account: AccountIdentity;
   readonly #chainId: number;
-  readonly #credentials: ApiKeyCreds;
+  readonly #credentials: ApiKeyCreds | undefined;
+  readonly #sessionAuth: AuthSession | undefined;
   readonly #exchange: EvmAddress;
   readonly #headers: Record<string, string> | undefined;
   readonly #onClose: () => void;
   readonly #signer: Signer;
   readonly #url: string;
-  readonly #connection = new WebSocketConnection();
+  readonly #connection = new WebSocketConnection({
+    connectTimeoutMs: 10_000,
+    closeTimeoutMs: 1_000,
+  });
+  readonly #reconnect = new ReconnectScheduler();
   readonly #queue: Pushable<RfqEvent> = pushable({ objectMode: true });
   readonly #pending = new PendingResponses(ACK_TIMEOUT_MS);
   #closing: Promise<void> | undefined;
   #auth: PendingResponse<void> | undefined;
+  #authentication: SocketAuthentication | undefined;
+  #authenticated = false;
+  #authToken: string | undefined;
 
   constructor(options: RfqWebSocketSessionConfig) {
     this.#account = options.account;
     this.#chainId = options.chainId;
     this.#credentials = options.credentials;
+    this.#sessionAuth = options.session;
     this.#exchange = options.exchange;
     this.#headers = options.headers;
     this.#onClose = options.onClose;
     this.#signer = options.signer;
     this.#url = options.url;
+    if (options.session !== undefined)
+      this.#authentication = new SocketAuthentication({
+        session: options.session,
+        authenticate: (token) => this.#renew(token),
+        expired: () => {
+          this.#authentication?.stop();
+          void this.#connection.close().then(() =>
+            this.#handleConnectionLost({
+              code: 1008,
+              reason: 'authentication expired',
+            }),
+          );
+        },
+        fail: (error) => {
+          void this.#fail(error);
+        },
+      });
   }
 
   get closed(): boolean {
@@ -201,6 +248,8 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   }
 
   async connect(): Promise<void> {
+    await this.#authentication?.prepare();
+    if (this.closed) throw new TransportError('RFQ session is closed.');
     const auth = createPending<void>();
     this.#auth = auth;
     const authTimeout = setNonBlockingTimeout(() => {
@@ -217,19 +266,46 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
         url: this.#url,
       });
       await auth.promise;
+      if (this.closed || !this.#authenticated)
+        throw new TransportError('RFQ authentication was cancelled.');
+      this.#reconnect.resetBackoff();
+      if (this.#authToken !== undefined)
+        this.#authentication?.accepted(this.#authToken);
+    } catch (error) {
+      // A maker may keep public feeds after rejected initial JWT authentication.
+      if (
+        !(
+          this.#sessionAuth !== undefined &&
+          error instanceof RequestRejectedError
+        )
+      )
+        throw error;
     } finally {
       clearTimeout(authTimeout);
       this.#auth = undefined;
     }
   }
 
+  #assertAuthorized(): void {
+    this.#sessionAuth?.assertActive();
+    if (this.#sessionAuth !== undefined && !this.#authenticated)
+      throw new RequestRejectedError(
+        'RFQ protected operations require authentication.',
+        { status: 401 },
+      );
+  }
+
   async #send(message: RfqQuoterOutboundMessage): Promise<void> {
+    this.#assertAuthorized();
     if (!this.#connection.send(message)) {
       throw new TransportError('RFQ quoter websocket is not open.');
     }
   }
 
   async close(): Promise<void> {
+    this.#authenticated = false;
+    this.#reconnect.stop();
+    this.#authentication?.stop();
     if (this.#closing === undefined) {
       this.#closing = this.#shutdown();
     }
@@ -256,6 +332,9 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   }
 
   async #shutdownWithError(error: Error): Promise<void> {
+    this.#authenticated = false;
+    this.#reconnect.stop();
+    this.#authentication?.stop();
     this.#failPending(error);
     this.#queue.end(error);
     await this.#connection.close();
@@ -268,7 +347,33 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
   }
 
   #sendAuthMessage(): void {
-    this.#connection.send(createAuthMessage(this.#account, this.#credentials));
+    if (this.#sessionAuth !== undefined) {
+      this.#authToken = this.#sessionAuth.credentials.accessToken;
+      this.#connection.send({
+        type: 'auth',
+        auth: { accessToken: this.#authToken },
+      });
+    } else if (this.#credentials !== undefined)
+      this.#connection.send(
+        createAuthMessage(this.#account, this.#credentials),
+      );
+  }
+
+  async #renew(accessToken: string): Promise<void> {
+    const auth = createPending<void>();
+    this.#auth = auth;
+    const timer = setNonBlockingTimeout(
+      () => auth.reject(new TransportError('RFQ renewal timed out.')),
+      10_000,
+    );
+    try {
+      if (!this.#connection.send({ type: 'auth', auth: { accessToken } }))
+        throw new TransportError('RFQ connection is not open.');
+      await auth.promise;
+    } finally {
+      clearTimeout(timer);
+      this.#auth = undefined;
+    }
   }
 
   #handleMessage(rawMessage: unknown): void {
@@ -317,18 +422,40 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
 
   #handleAuthMessage(message: { error?: string; success: boolean }): void {
     if (message.success === true) {
+      this.#authenticated = true;
       this.#auth?.resolve(undefined);
       return;
     }
     this.#auth?.reject(
-      new TransportError(`RFQ quoter authentication failed: ${message.error}`),
+      new RequestRejectedError('RFQ quoter authentication failed.', {
+        status: 401,
+        code:
+          message.error === 'auth_unavailable'
+            ? 'auth_unavailable'
+            : 'auth_invalid',
+      }),
     );
   }
 
   #handleConnectionLost(info: WebSocketCloseInfo): void {
-    void this.#fail(
-      new ConnectionLostError('RFQ quoter connection lost.', info),
-    );
+    this.#authentication?.stop();
+    this.#authenticated = false;
+    const error = new ConnectionLostError('RFQ quoter connection lost.', {
+      code: info.code,
+      reason: 'Connection closed.',
+    });
+    this.#failPending(error); // Pending trading commands are never replayed.
+    if (
+      this.#sessionAuth === undefined ||
+      (info.code === 1008 && info.reason !== 'authentication expired')
+    ) {
+      void this.#fail(error);
+      return;
+    }
+    this.#reconnect.schedule({
+      shouldReconnect: () => !this.closed,
+      reconnect: () => this.connect(),
+    });
   }
 
   // Unsupported RFQ_ERROR request types are ignored for forward compatibility.
@@ -391,6 +518,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     request: RfqQuoteRequest,
     response: RfqQuoteResponse,
   ): Promise<RfqQuoteReference> {
+    this.#assertAuthorized();
     const parsedResponse = parseRfqQuoteResponse(response);
     const quote = await createRfqQuote({
       account: this.#account,
