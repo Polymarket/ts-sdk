@@ -181,43 +181,28 @@ describe('Activity rows with unlisted types', () => {
           slug: 'bitcoin-price-on-friday',
           event_slug: 'bitcoin-price-on-friday',
         }),
-        activityRow({
-          type: 'NEW_COMBO_ACTIVITY_TYPE',
-          is_combo: true,
-          condition_id: comboConditionId,
-          usdc_size: 3,
-        }),
       ],
       pagination: {
-        limit: 3,
+        limit: 2,
         offset: 0,
         has_more: false,
         next_cursor: null,
       },
     });
 
-    expect(page.items[1]).toEqual(
-      expect.objectContaining({
-        type: undefined,
-        rawType: 'NEW_ACTIVITY_TYPE',
-        isCombo: false,
-        amount: '25',
-        title: 'Bitcoin price on Friday',
-        slug: 'bitcoin-price-on-friday',
-        eventSlug: 'bitcoin-price-on-friday',
-        conditionId: undefined,
-        icon: null,
-      }),
-    );
-    expect(page.items[2]).toEqual(
-      expect.objectContaining({
-        type: undefined,
-        rawType: 'NEW_COMBO_ACTIVITY_TYPE',
-        isCombo: true,
-        conditionId: comboConditionId,
-        amount: '3',
-      }),
-    );
+    // Only the shared account fields survive; the served type stays as-is at
+    // runtime behind the opaque type.
+    expect(page.items[1]).toEqual({
+      wallet: `0x${'1'.repeat(40)}`,
+      timestamp: 1_700_000_000_000,
+      transactionHash: `0x${'b'.repeat(64)}`,
+      name: null,
+      pseudonym: null,
+      bio: null,
+      profileImage: null,
+      profileImageOptimized: null,
+      type: 'NEW_ACTIVITY_TYPE',
+    });
   });
 });
 

@@ -217,8 +217,9 @@ export const ListActivityError = makeErrorGuard(
  * `isCombo` before using market-only metadata; a basket's outcome names its
  * token side, not a selected leg.
  *
- * Rows with a type this SDK version does not list yet have `type: undefined`
- * and the served type in `rawType`.
+ * Rows with a type this SDK version does not list yet carry only the shared
+ * account fields and an `OpaqueActivityType`, so switches over `type` need a
+ * `default` branch.
  *
  * Every activity type the service serves is included by default — deposits
  * and withdrawals are not filtered out; use the `type` filter to narrow

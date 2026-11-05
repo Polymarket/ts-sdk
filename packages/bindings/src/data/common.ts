@@ -3,8 +3,8 @@ import { type ConditionId, ConditionIdSchema, toConditionId } from '../shared';
 
 /**
  * Activity types this SDK version lists. New types can appear in the activity
- * feed before a release lists them. Those rows keep `type: undefined` and
- * carry the served type in `rawType`.
+ * feed before a release lists them. Those rows have an
+ * {@link OpaqueActivityType}.
  */
 export enum ActivityType {
   TRADE = 'TRADE',
@@ -33,6 +33,19 @@ export enum ActivityType {
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);
+
+declare const opaqueActivityType: unique symbol;
+
+/**
+ * The type of an activity this SDK version does not list in
+ * {@link ActivityType}. It never overlaps a listed type, so comparing
+ * `activity.type` with an {@link ActivityType} member still narrows the row.
+ * At runtime it holds the type as served, so do not narrow on
+ * `typeof activity.type`.
+ */
+export type OpaqueActivityType = {
+  readonly [opaqueActivityType]: 'OpaqueActivityType';
+};
 
 /** Direction of a TIP from the row wallet's perspective. */
 export enum TipSide {

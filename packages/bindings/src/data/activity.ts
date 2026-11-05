@@ -21,7 +21,12 @@ import {
   type TxHash,
   TxHashSchema,
 } from '../shared';
-import { ActivityType, type TipSide, TipSideSchema } from './common';
+import {
+  ActivityType,
+  type OpaqueActivityType,
+  type TipSide,
+  TipSideSchema,
+} from './common';
 import { dataPageSchema } from './envelope';
 import { type ComboPositionLeg, ComboPositionLegSchema } from './portfolio';
 
@@ -395,9 +400,9 @@ export type ThresholdDecomposeActivity = ActivityBase & {
 
 /**
  * Wallet account history. New activity types can appear before this SDK
- * version lists them in {@link ActivityType}. Those rows have `type: undefined`
- * and carry the served type in `rawType`, so a switch over `type` needs an
- * `undefined` or `default` branch.
+ * version lists them in {@link ActivityType}. Those rows carry only the shared
+ * account fields and an {@link OpaqueActivityType}, so a switch over `type`
+ * needs a `default` branch.
  */
 export type Activity =
   | TradeActivity
@@ -419,27 +424,8 @@ export type Activity =
   | ThresholdComposeActivity
   | ThresholdDecomposeActivity
   | (ActivityBase & {
-      /** Not a type this SDK version lists in {@link ActivityType}. */
-      type: undefined;
-      /** The activity type as served. */
-      rawType: string;
-      /**
-       * Whether the row belongs to a Combo. When true, `conditionId` is the
-       * Combo's condition id and the market metadata does not apply.
-       */
-      isCombo: boolean;
-      /** The activity amount in USD. */
-      amount: DecimalString;
-      /** Condition id of the related market or Combo, when available. */
-      conditionId?: ConditionId;
-      /** Human-readable title of the related market or event, when available. */
-      title?: string;
-      /** URL slug of the related market or event, when available. */
-      slug?: string;
-      /** Icon URL for the related market or event, when available. */
-      icon: string | null;
-      /** URL slug of the related event, when available. */
-      eventSlug?: string;
+      /** A type this SDK version does not list in {@link ActivityType}. */
+      type: OpaqueActivityType;
     });
 
 type ComboActivityBase = {
@@ -620,8 +606,8 @@ const RawActivitySchema = z
       ConditionIdSchema.optional(),
     ),
     // New activity types ship independently of SDK releases. Rows with types
-    // missing from ActivityType keep `type: undefined` instead of failing the
-    // page.
+    // missing from ActivityType parse with an opaque type instead of failing
+    // the page.
     type: z.string().min(1),
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
@@ -822,15 +808,9 @@ function normalizeActivity(activity: RawActivity): Activity {
     default:
       return {
         ...base,
-        type: undefined,
-        rawType: activity.type,
-        isCombo: activity.is_combo === true,
-        amount: activity.usdc_size,
-        conditionId: activity.condition_id,
-        title: activity.title,
-        slug: activity.slug,
-        icon: activity.icon ?? null,
-        eventSlug: activity.event_slug,
+        // The served string stays at runtime; the opaque type keeps it from
+        // overlapping the listed variants.
+        type: activity.type as unknown as OpaqueActivityType,
       };
   }
 }
