@@ -3,6 +3,7 @@ import {
   ClobTradeSchema,
   type OpenOrder,
   OpenOrderSchema,
+  RateLimitTierSchema,
   TotalUserEarningsResponseSchema,
 } from './account';
 
@@ -184,5 +185,55 @@ describe('TotalUserEarningsResponseSchema', () => {
     expect(legacy?.sponsoredEarnings).toBeUndefined();
     expect(zero?.nativeEarnings).toBe('0');
     expect(zero?.sponsoredEarnings).toBe('0');
+  });
+});
+
+describe('RateLimitTierSchema', () => {
+  const tierDetails = {
+    name: 'future-tier',
+    volume_threshold: 500000,
+    cancel_rate_per_sec: 800,
+    order_rate_per_sec: 400,
+    order_burst: 600,
+    cancel_burst: 1200,
+    allow_negative: false,
+  };
+
+  it('normalizes settings and preserves decimal volume without number conversion', () => {
+    expect(
+      RateLimitTierSchema.parse({
+        tier: 'future-tier',
+        period: 30,
+        usdc_volume: '9007199254740993.67',
+        next_tier_threshold: 2500000,
+        tier_details: tierDetails,
+      }),
+    ).toEqual({
+      tier: 'future-tier',
+      period: 30,
+      usdcVolume: '9007199254740993.67',
+      nextTierThreshold: 2500000,
+      tierDetails: {
+        name: 'future-tier',
+        volumeThreshold: 500000,
+        cancelRatePerSec: 800,
+        orderRatePerSec: 400,
+        orderBurst: 600,
+        cancelBurst: 1200,
+        allowNegative: false,
+      },
+    });
+  });
+
+  it('accepts tiers without volume or a next threshold and retains zero settings', () => {
+    const tier = RateLimitTierSchema.parse({
+      tier: 'standard',
+      period: 30,
+      tier_details: { ...tierDetails, volume_threshold: 0 },
+    });
+    expect(tier.usdcVolume).toBeUndefined();
+    expect(tier.nextTierThreshold).toBeUndefined();
+    expect(tier.tierDetails.volumeThreshold).toBe(0);
+    expect(tier.tierDetails.allowNegative).toBe(false);
   });
 });

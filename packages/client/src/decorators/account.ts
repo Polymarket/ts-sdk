@@ -1,6 +1,7 @@
 import type {
   ClobTrade,
   NotificationsResponse,
+  RateLimitTier,
 } from '@polymarket/bindings/clob';
 import type {
   Activity,
@@ -25,6 +26,7 @@ import {
   fetchClosedOnlyMode,
   fetchNotifications,
   fetchPortfolioValue,
+  fetchRateLimitTier,
   fetchTraderLeaderboardStanding,
   fetchUserPnl,
   fetchUserStats,
@@ -602,6 +604,20 @@ export type SecureAccountActions = Prettify<{
    */
   dropNotifications(request: DropNotificationsRequest): Promise<void>;
   /**
+   * Fetches the trading rate-limit tier assigned to this client's signer.
+   * Volume changes can take up to three hours to appear after a tier refresh.
+   *
+   * @throws {@link FetchRateLimitTierError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const tier = await client.fetchRateLimitTier();
+   * console.log(tier.tier, tier.tierDetails.orderRatePerSec);
+   * ```
+   */
+  fetchRateLimitTier(options?: RequestOptions): Promise<RateLimitTier>;
+  /**
    * Fetches whether the account is restricted to closed-only trading.
    *
    * @throws {@link FetchClosedOnlyModeError}
@@ -712,6 +728,7 @@ export function accountActions(
     fetchNotifications: fetchNotifications.bind(null, client),
     dropNotifications: dropNotifications.bind(null, client),
     fetchClosedOnlyMode: fetchClosedOnlyMode.bind(null, client),
+    fetchRateLimitTier: fetchRateLimitTier.bind(null, client),
   };
 }
 
@@ -723,6 +740,7 @@ export {
   FetchClosedOnlyModeError,
   FetchNotificationsError,
   FetchPortfolioValueError,
+  FetchRateLimitTierError,
   FetchTraderLeaderboardStandingError,
   FetchUserPnlError,
   FetchUserStatsError,

@@ -43,6 +43,51 @@ export const ClosedOnlyModeSchema = z
 
 export type ClosedOnlyMode = z.infer<typeof ClosedOnlyModeSchema>;
 
+/** Trading throughput and burst settings for a rate-limit tier. */
+export const RateLimitTierDetailsSchema = z
+  .object({
+    name: z.string(),
+    volume_threshold: z.number().int(),
+    cancel_rate_per_sec: z.number().int(),
+    order_rate_per_sec: z.number().int(),
+    order_burst: z.number().int(),
+    cancel_burst: z.number().int(),
+    allow_negative: z.boolean(),
+  })
+  .transform((value) => ({
+    name: value.name,
+    volumeThreshold: value.volume_threshold,
+    cancelRatePerSec: value.cancel_rate_per_sec,
+    orderRatePerSec: value.order_rate_per_sec,
+    orderBurst: value.order_burst,
+    cancelBurst: value.cancel_burst,
+    allowNegative: value.allow_negative,
+  }));
+
+export type RateLimitTierDetails = z.infer<typeof RateLimitTierDetailsSchema>;
+
+/** Trading rate-limit tier currently assigned to the authenticated signer. */
+export const RateLimitTierSchema = z
+  .object({
+    tier: z.string(),
+    usdc_volume: DecimalStringSchema.optional(),
+    next_tier_threshold: z.number().int().optional(),
+    period: z.number().int(),
+    tier_details: RateLimitTierDetailsSchema,
+  })
+  .transform((value) => ({
+    tier: value.tier,
+    /** Trailing USDC volume; omitted below the lowest paid tier. */
+    usdcVolume: value.usdc_volume,
+    /** USDC needed for the next tier; omitted at the top or for manually assigned tiers. */
+    nextTierThreshold: value.next_tier_threshold,
+    /** Length of the trailing volume window, in days. */
+    period: value.period,
+    tierDetails: value.tier_details,
+  }));
+
+export type RateLimitTier = z.infer<typeof RateLimitTierSchema>;
+
 export type OpenOrder = {
   id: string;
   /** Exchange asset identifier for a CTF token or Polymarket V2 position. */
