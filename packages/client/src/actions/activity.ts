@@ -219,7 +219,8 @@ export const ListActivityError = makeErrorGuard(
  *
  * Rows with a type this SDK version does not list yet carry only the shared
  * account fields and an `OpaqueActivityType`, so switches over `type` need a
- * `default` branch.
+ * `default` branch. `activity.type` is not assignable to `string`. Read
+ * the served type with `String(activity.type)`.
  *
  * Every activity type the service serves is included by default — deposits
  * and withdrawals are not filtered out; use the `type` filter to narrow

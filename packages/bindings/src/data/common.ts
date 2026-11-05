@@ -42,6 +42,19 @@ declare const opaqueActivityType: unique symbol;
  * `activity.type` with an {@link ActivityType} member still narrows the row.
  * At runtime it holds the type as served, so do not narrow on
  * `typeof activity.type`.
+ *
+ * Because of this type, `activity.type` is not assignable to `string` and
+ * cannot index a record. Read the served type with `String(activity.type)`.
+ *
+ * @example
+ * ```ts
+ * const labels: Partial<Record<string, string>> = {
+ *   [ActivityType.TRADE]: 'Trade',
+ * };
+ *
+ * // Before: labels[activity.type]
+ * const label = labels[String(activity.type)] ?? 'Other';
+ * ```
  */
 export type OpaqueActivityType = {
   readonly [opaqueActivityType]: 'OpaqueActivityType';
