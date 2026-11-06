@@ -4,6 +4,7 @@ import {
   type OpenOrder,
   OpenOrderSchema,
   TotalUserEarningsResponseSchema,
+  WalletOpenOrdersPageSchema,
 } from './account';
 
 const baseTrade = {
@@ -36,6 +37,64 @@ const baseTrade = {
   trader_side: 'TAKER',
   transaction_hash: `0x${'dd'.repeat(32)}`,
 };
+
+describe('WalletOpenOrdersPageSchema', () => {
+  it('preserves signer identity and redacted ownership without legacy order fields', () => {
+    const order = {
+      id: 'order-1',
+      asset_id: '1',
+      market: `0x${'cc'.repeat(32)}`,
+      maker_address: `0x${'aa'.repeat(20)}`,
+      signer_address: `0x${'bb'.repeat(20)}`,
+      side: 'BUY',
+      price: '0.05',
+      original_size: '10',
+      size_matched: '5',
+      outcome: 'Yes',
+      order_type: 'GTC',
+      status: 'LIVE',
+      created_at: 1735689600,
+      expiration: '0',
+    };
+    const page = WalletOpenOrdersPageSchema.parse({
+      data: [
+        order,
+        { ...order, owner: '' },
+        { ...order, owner: null },
+        { ...order, owner: 'caller-key' },
+      ],
+      next_cursor: 'continue',
+    });
+
+    expect(page.nextCursor).toBe('continue');
+    expect(page.data.map((item) => item.owner)).toEqual([
+      null,
+      null,
+      null,
+      'caller-key',
+    ]);
+    expect(page.data[0]).toMatchObject({
+      signerAddress: order.signer_address,
+      makerAddress: order.maker_address,
+      assetId: '1',
+      conditionId: order.market,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      price: '0.05',
+      originalSize: '10',
+      sizeMatched: '5',
+    });
+    expect(page.data[0]).not.toHaveProperty('expiresAt');
+  });
+
+  it('preserves continuation on an empty page and accepts an empty final cursor', () => {
+    expect(
+      WalletOpenOrdersPageSchema.parse({ data: [], next_cursor: 'continue' }),
+    ).toEqual({ data: [], nextCursor: 'continue' });
+    expect(
+      WalletOpenOrdersPageSchema.parse({ data: [], next_cursor: '' }),
+    ).toEqual({ data: [], nextCursor: '' });
+  });
+});
 
 describe('ClobTradeSchema', () => {
   it.each([

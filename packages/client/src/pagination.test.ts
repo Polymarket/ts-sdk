@@ -22,6 +22,22 @@ import { assertNotAborted } from './request-options';
 const LIMITS = { maxOffset: 200, maxPageSize: 100 };
 
 describe('paginate', () => {
+  it('continues through empty pages while a cursor remains', async () => {
+    const nextCursor = toPaginationCursor('next');
+    const requested: (string | undefined)[] = [];
+    const paginator = paginate<number[]>((cursor) => {
+      requested.push(cursor);
+      return Promise.resolve(
+        cursor === undefined
+          ? { items: [], hasMore: true, nextCursor }
+          : { items: [1], hasMore: false },
+      );
+    });
+    const items: number[] = [];
+    for await (const page of paginator) items.push(...page.items);
+    expect(items).toEqual([1]);
+    expect(requested).toEqual([undefined, nextCursor]);
+  });
   it('retains cancellation across continuations without fetching another page', async () => {
     const controller = new AbortController();
     const fetchPage = vi.fn(() =>

@@ -1,4 +1,5 @@
 import {
+  EvmAddressSchema,
   PaginationCursorSchema,
   toPaginationCursor,
 } from '@polymarket/bindings';
@@ -27,7 +28,10 @@ import {
   UserEarningsPageSchema,
   type UserRewardsEarning,
   UserRewardsEarningsPageSchema,
+  type WalletOpenOrder,
+  WalletOpenOrdersPageSchema,
 } from '@polymarket/bindings/clob';
+import { WalletType } from '@polymarket/bindings/gamma';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -205,6 +209,92 @@ export function listOpenOrders(
               : toPaginationCursor(response.nextCursor),
         })),
     cursor,
+  );
+}
+
+/** Filters for open orders across the authenticated Deposit Wallet. */
+export type ListWalletOpenOrdersRequest = {
+  assetId?: string;
+  market?: string;
+  /** Restrict results to these signer addresses. At most 50 addresses. */
+  sessionKeys?: string[];
+  cursor?: string;
+};
+
+const ListWalletOpenOrdersRequestSchema = z
+  .object({
+    assetId: z.string().optional(),
+    market: z.string().optional(),
+    sessionKeys: z.array(EvmAddressSchema).max(50).optional(),
+    cursor: PaginationCursorSchema.optional(),
+  })
+  .default({});
+
+export type ListWalletOpenOrdersError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListWalletOpenOrdersError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists open orders across the Deposit Wallet, including other signers' orders.
+ * Owners and non-revoked session signers can read this collection.
+ * Pages can be empty while more results remain; iteration follows the cursor.
+ * @throws {@link ListWalletOpenOrdersError} Thrown on failure.
+ * @example
+ * ```ts
+ * for await (const page of listWalletOpenOrders(client, { sessionKeys: [sessionAddress] })) {
+ *   for (const order of page.items) console.log(order.id, order.signerAddress);
+ * }
+ * ```
+ */
+export function listWalletOpenOrders(
+  client: BaseSecureClient,
+  request?: ListWalletOpenOrdersRequest,
+  options: RequestOptions = {},
+): Paginated<WalletOpenOrder[]> {
+  if (client.account.walletType !== WalletType.DEPOSIT_WALLET) {
+    throw new UserInputError('Wallet-wide orders require a Deposit Wallet.');
+  }
+  const params = parseUserInput(request, ListWalletOpenOrdersRequestSchema);
+  const requestOptions = parseRequestOptions(options);
+  return paginate(
+    (cursor) =>
+      client.secureClob
+        .get('/data/wallet-open-orders', {
+          ...requestOptions,
+          schema: WalletOpenOrdersPageSchema,
+          params: toSearchParams(
+            {
+              assetId: params.assetId,
+              market: params.market,
+              sessionKeys: params.sessionKeys,
+              cursor,
+            },
+            snakeCase({ assetId: 'asset_id' }),
+          ),
+        })
+        .then((response) => ({
+          items: response.data,
+          hasMore: response.nextCursor !== '',
+          nextCursor:
+            response.nextCursor === ''
+              ? undefined
+              : toPaginationCursor(response.nextCursor),
+        })),
+    params.cursor,
   );
 }
 
