@@ -4,13 +4,66 @@ import type {
   PositionId,
   TokenId,
 } from '@polymarket/bindings';
+import { ConditionIdSchema } from '@polymarket/bindings';
 import { type Market, ProtocolVersion } from '@polymarket/bindings/gamma';
+import {
+  DirectionalConditionIdSchema,
+  deriveOutcomePositionId,
+} from '@polymarket/bindings/protocol';
 import { isPresent } from '@polymarket/types';
+import { z } from 'zod';
 import { UnexpectedResponseError } from '../errors';
+import { isV2ConditionId } from '../protocol';
 
 export enum PositionProtocol {
   CTF = 'ctf',
   V2 = 'v2',
+}
+
+function isDirectionalConditionId(conditionId: ConditionId): boolean {
+  return (
+    isV2ConditionId(conditionId) && conditionId.toLowerCase().startsWith('0x04')
+  );
+}
+
+// Legacy IDs are full-width hashes outside the reserved V2 namespace, so a
+// legacy hash with a 0x04 prefix stays on the existing path. Directional
+// conditions are validated and normalized to bytes31; every other condition ID
+// is parsed exactly as before.
+export const PositionConditionIdSchema = z.union([
+  ConditionIdSchema.refine(isDirectionalConditionId)
+    .transform(String)
+    .pipe(DirectionalConditionIdSchema),
+  ConditionIdSchema.refine(
+    (conditionId) => !isDirectionalConditionId(conditionId),
+  ),
+]);
+
+export type DirectionalConditionPositionContext = {
+  protocol: PositionProtocol.V2;
+  conditionId: ConditionId;
+  outcomeIds: [yes: PositionId, no: PositionId];
+};
+
+/**
+ * Resolves a directional condition parsed by {@link PositionConditionIdSchema}
+ * without a market listing. Returns `undefined` for every other condition.
+ */
+export function resolveDirectionalConditionPositionContext(
+  conditionId: ConditionId,
+): DirectionalConditionPositionContext | undefined {
+  if (conditionId.length !== 64 || !conditionId.startsWith('0x04')) {
+    return undefined;
+  }
+
+  return {
+    protocol: PositionProtocol.V2,
+    conditionId,
+    outcomeIds: [
+      deriveOutcomePositionId(conditionId, 0),
+      deriveOutcomePositionId(conditionId, 1),
+    ],
+  };
 }
 
 type MarketPositionContextBase = {

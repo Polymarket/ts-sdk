@@ -49,6 +49,8 @@ export {
   PerpsSortDirection,
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
+export type * from '@polymarket/bindings/protocol';
+export { ThresholdSide } from '@polymarket/bindings/protocol';
 export type * from '@polymarket/bindings/relayer';
 export * from './abis';
 export { SearchSort } from './actions/search';
@@ -65,6 +67,7 @@ export {
   SetupGaslessWalletError,
 } from './clients';
 export * from './decorators';
+export * from './directional';
 export * from './environments';
 export * from './errors';
 export * from './hmac';
