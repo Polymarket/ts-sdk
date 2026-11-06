@@ -28,6 +28,7 @@ import {
 import { parseUserInput } from '../input';
 import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { listPositions } from './portfolio';
+import { readPositionBalances } from './position-baskets';
 
 /** An independently mergeable pair, sized in six-decimal base units. */
 export type DirectionalPair = {
@@ -267,10 +268,8 @@ async function readDirectionalHoldings(
       );
   }
   const candidates = [...ids];
-  const holdings: DirectionalHolding[] = [];
-  for (let start = 0; start < candidates.length; start += 200) {
-    const chunk = candidates.slice(start, start + 200);
-    const balances = decodeErc1155BalanceOfBatchResult(
+  const balances = await readPositionBalances(candidates, async (chunk) =>
+    decodeErc1155BalanceOfBatchResult(
       await client.rpc.ethCall(
         erc1155BalanceOfBatchCall(
           client.environment.contracts.positionManager,
@@ -279,16 +278,13 @@ async function readDirectionalHoldings(
         ),
         options,
       ),
-    );
-    if (balances.length !== chunk.length)
-      throw new UnexpectedResponseError(
-        'Expected one balance per directional position',
-      );
-    for (const [index, positionId] of chunk.entries()) {
-      const balance = balances[index];
-      if (balance !== undefined && balance > 0n)
-        holdings.push({ positionId, balance });
-    }
+    ),
+  );
+  const holdings: DirectionalHolding[] = [];
+  for (const [index, positionId] of candidates.entries()) {
+    const balance = balances[index];
+    if (balance !== undefined && balance > 0n)
+      holdings.push({ positionId, balance });
   }
   return holdings;
 }

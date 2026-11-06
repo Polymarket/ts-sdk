@@ -6,7 +6,6 @@ import {
   deriveOutcomePositionId,
   ThresholdSide,
 } from '@polymarket/bindings/protocol';
-import { invariant } from '@polymarket/types';
 import {
   decodeErc20BalanceOfResult,
   decodeErc1155BalanceOfBatchResult,
@@ -78,38 +77,32 @@ export async function resolveBasketAmount(
   requestedAmount: bigint | 'max',
   options: { collateral?: boolean } = {},
 ): Promise<bigint> {
-  const basketCall = erc1155BalanceOfBatchCall(
-    client.environment.contracts.positionManager,
-    client.account.wallet,
-    positionIds,
-  );
-  const results = await client.rpc.ethCallBatch(
-    options.collateral
-      ? [
-          basketCall,
-          erc20BalanceOfCall(
-            client.environment.contracts.collateralToken,
+  const [balances, collateralBalance] = await Promise.all([
+    readPositionBalances(positionIds, async (chunk) =>
+      decodeErc1155BalanceOfBatchResult(
+        await client.rpc.ethCall(
+          erc1155BalanceOfBatchCall(
+            client.environment.contracts.positionManager,
             client.account.wallet,
+            chunk,
           ),
-        ]
-      : [basketCall],
-  );
-  const basketResult = results[0];
-  invariant(basketResult !== undefined, 'Expected a basket balance result');
-  const balances = [...decodeErc1155BalanceOfBatchResult(basketResult)];
-
-  if (balances.length !== positionIds.length) {
-    throw new UnexpectedResponseError('Expected one balance per position');
-  }
-
+        ),
+      ),
+    ),
+    options.collateral
+      ? client.rpc
+          .ethCall(
+            erc20BalanceOfCall(
+              client.environment.contracts.collateralToken,
+              client.account.wallet,
+            ),
+          )
+          .then(decodeErc20BalanceOfResult)
+      : undefined,
+  ]);
   const requiredAssets: string[] = [...positionIds];
-  if (options.collateral) {
-    const collateralResult = results[1];
-    invariant(
-      collateralResult !== undefined,
-      'Expected a collateral balance result',
-    );
-    balances.push(decodeErc20BalanceOfResult(collateralResult));
+  if (collateralBalance !== undefined) {
+    balances.push(collateralBalance);
     requiredAssets.push('pUSD');
   }
   return resolveAvailableAmount(
@@ -119,6 +112,27 @@ export async function resolveBasketAmount(
     })),
     requestedAmount,
   );
+}
+
+/**
+ * Reads position balances in bounded calls, preserving position order.
+ * Each response must cover its whole chunk before an amount can be resolved.
+ * @internal
+ */
+export async function readPositionBalances(
+  positionIds: readonly PositionId[],
+  read: (chunk: readonly PositionId[]) => Promise<readonly bigint[]>,
+): Promise<bigint[]> {
+  const balances: bigint[] = [];
+  for (let start = 0; start < positionIds.length; start += 200) {
+    const chunk = positionIds.slice(start, start + 200);
+    const chunkBalances = await read(chunk);
+    if (chunkBalances.length !== chunk.length) {
+      throw new UnexpectedResponseError('Expected one balance per position');
+    }
+    balances.push(...chunkBalances);
+  }
+  return balances;
 }
 
 /** Resolves an amount against every asset consumed by one atomic operation. */
