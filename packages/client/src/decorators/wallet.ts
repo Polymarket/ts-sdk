@@ -1,72 +1,88 @@
 import {
   approveErc20,
   approveErc1155ForAll,
+  type FetchTradingApprovalsStateRequest,
+  fetchTradingApprovalsState,
+  type PrepareErc20ApprovalRequest,
+  type PrepareErc1155ApprovalForAllRequest,
+  setupTradingApprovals,
+  type TradingApprovalsState,
+} from '../actions/approvals';
+import {
   type CollateralReturnPlanResponse,
-  type ComposeThresholdWorkflow,
-  type ConvertPositionWorkflow,
-  type ConvertWorkflow,
-  composeThreshold,
-  convert,
-  convertPosition,
-  type DecomposeThresholdWorkflow,
-  type DirectionalBucketHolding,
-  type DirectionalBulkResult,
-  type DirectionalPair,
-  decomposeThreshold,
   type ExecuteCollateralReturnPlanRequest,
   executeCollateralReturnPlan,
-  type FetchTradingApprovalsStateRequest,
+  planCollateralReturn,
+} from '../actions/collateral-return';
+import {
+  type ComposeThresholdWorkflow,
+  composeThreshold,
+  type DecomposeThresholdWorkflow,
+  decomposeThreshold,
+  type MergeDirectionalWorkflow,
+  mergeDirectional,
+  type PrepareComposeThresholdRequest,
+  type PrepareDecomposeThresholdRequest,
+  prepareComposeThreshold,
+  prepareDecomposeThreshold,
+  prepareMergeDirectional,
+  prepareSplitDirectional,
+  type SplitDirectionalWorkflow,
+  splitDirectional,
+} from '../actions/directional';
+import {
+  type DirectionalBulkResult,
+  mergeAllUserPositionsDirectional,
+  splitAllUserPositionsDirectional,
+} from '../actions/directional-bulk';
+import {
+  type DirectionalBucketHolding,
+  type DirectionalPair,
   type FindDirectionalBucketsRequest,
   type FindDirectionalPairsRequest,
-  fetchTradingApprovalsState,
   findDirectionalBuckets,
   findDirectionalPairs,
+} from '../actions/directional-pairs';
+import {
+  type ConvertPositionWorkflow,
+  convertPosition,
+  type MergeEventPositionsWorkflow,
+  mergeEventPositions,
+  type PrepareConvertPositionRequest,
+  type PrepareMergeEventPositionsRequest,
+  type PrepareSplitEventPositionsRequest,
+  prepareConvertPosition,
+  prepareMergeEventPositions,
+  prepareSplitEventPositions,
+  type SplitEventPositionsWorkflow,
+  splitEventPositions,
+} from '../actions/event-positions';
+import {
+  type ConvertWorkflow,
+  convert,
   type HorizontalMergeWorkflow,
   type HorizontalSplitWorkflow,
   horizontalMerge,
   horizontalSplit,
-  type MergeDirectionalWorkflow,
-  type MergeEventPositionsWorkflow,
-  mergeAllUserPositionsDirectional,
-  mergeDirectional,
-  mergeEventPositions,
-  mergePositions,
-  type PrepareComposeThresholdRequest,
-  type PrepareConvertPositionRequest,
   type PrepareConvertRequest,
-  type PrepareDecomposeThresholdRequest,
-  type PrepareErc20ApprovalRequest,
-  type PrepareErc20TransferRequest,
-  type PrepareErc1155ApprovalForAllRequest,
   type PrepareHorizontalMergeRequest,
   type PrepareHorizontalSplitRequest,
-  type PrepareMergeEventPositionsRequest,
-  type PrepareMergePositionsRequest,
-  type PrepareRedeemPositionsRequest,
-  type PrepareSplitEventPositionsRequest,
-  type PrepareSplitPositionRequest,
-  planCollateralReturn,
-  prepareComposeThreshold,
   prepareConvert,
-  prepareConvertPosition,
-  prepareDecomposeThreshold,
   prepareHorizontalMerge,
   prepareHorizontalSplit,
-  prepareMergeDirectional,
-  prepareMergeEventPositions,
-  prepareSplitDirectional,
-  prepareSplitEventPositions,
+} from '../actions/neg-risk';
+import {
+  mergePositions,
+  type PrepareMergePositionsRequest,
+  type PrepareRedeemPositionsRequest,
+  type PrepareSplitPositionRequest,
   redeemPositions,
-  type SplitDirectionalWorkflow,
-  type SplitEventPositionsWorkflow,
-  setupTradingApprovals,
-  splitAllUserPositionsDirectional,
-  splitDirectional,
-  splitEventPositions,
   splitPosition,
-  type TradingApprovalsState,
+} from '../actions/positions';
+import {
+  type PrepareErc20TransferRequest,
   transferErc20,
-} from '../actions';
+} from '../actions/transfers';
 import type {
   BaseClient,
   BasePublicClient,
@@ -786,6 +802,22 @@ export function walletActions(
   };
 }
 
+export type {
+  Erc20TradingApproval,
+  Erc1155TradingApproval,
+  FetchTradingApprovalsStateRequest,
+  TradingApprovalRequirements,
+  TradingApprovalsState,
+} from '../actions/approvals';
+// Error unions and runtime `isError` guards for every action bound above.
+// Surfaced at the root entry point through `export * from './decorators'`.
+// Keep this list in sync with the methods on SecureWalletActions.
+export {
+  ApproveErc20Error,
+  ApproveErc1155ForAllError,
+  FetchTradingApprovalsStateError,
+  SetupTradingApprovalsError,
+} from '../actions/approvals';
 // Public collateral-return model types surfaced alongside the bound methods.
 export type {
   CollateralReturnOperation,
@@ -794,75 +826,83 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
-  ComposeThresholdWorkflow,
-  ConvertPositionWorkflow,
-  ConvertWorkflow,
-  DecomposeThresholdWorkflow,
-  DirectionalBucketHolding,
-  DirectionalPair,
-  Erc20TradingApproval,
-  Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
-  FetchTradingApprovalsStateRequest,
-  FindDirectionalBucketsRequest,
-  FindDirectionalPairsRequest,
-  HorizontalMergeWorkflow,
-  HorizontalSplitWorkflow,
-  MergeDirectionalWorkflow,
-  MergeEventPositionsWorkflow,
-  NegRiskWorkflow,
-  PrepareComposeThresholdRequest,
-  PrepareConvertPositionRequest,
-  PrepareConvertRequest,
-  PrepareDecomposeThresholdRequest,
-  PrepareHorizontalMergeRequest,
-  PrepareHorizontalSplitRequest,
-  PrepareMergeEventPositionsRequest,
-  PrepareSplitEventPositionsRequest,
-  SplitDirectionalWorkflow,
-  SplitEventPositionsWorkflow,
-  TradingApprovalRequirements,
-  TradingApprovalsState,
-} from '../actions';
-// Error unions and runtime `isError` guards for every action bound above.
-// Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on SecureWalletActions.
+} from '../actions/collateral-return';
 export {
-  ApproveErc20Error,
-  ApproveErc1155ForAllError,
   CollateralReturnKnownOperationKind,
+  ExecuteCollateralReturnPlanError,
+  PlanCollateralReturnError,
+} from '../actions/collateral-return';
+export type {
+  ComposeThresholdWorkflow,
+  DecomposeThresholdWorkflow,
+  MergeDirectionalWorkflow,
+  PrepareComposeThresholdRequest,
+  PrepareDecomposeThresholdRequest,
+  SplitDirectionalWorkflow,
+} from '../actions/directional';
+export {
   ComposeThresholdError,
-  ConvertError,
-  ConvertPositionError,
   DecomposeThresholdError,
+  MergeDirectionalError,
+  PrepareComposeThresholdError,
+  PrepareDecomposeThresholdError,
+  PrepareMergeDirectionalError,
+  PrepareSplitDirectionalError,
+  SplitDirectionalError,
+} from '../actions/directional';
+export {
   type DirectionalBulkFailure,
   type DirectionalBulkResult,
-  ExecuteCollateralReturnPlanError,
-  FetchTradingApprovalsStateError,
+  MergeAllUserPositionsDirectionalError,
+  SplitAllUserPositionsDirectionalError,
+} from '../actions/directional-bulk';
+export type {
+  DirectionalBucketHolding,
+  DirectionalPair,
+  FindDirectionalBucketsRequest,
+  FindDirectionalPairsRequest,
+} from '../actions/directional-pairs';
+export {
   FindDirectionalBucketsError,
   FindDirectionalPairsError,
+} from '../actions/directional-pairs';
+export type {
+  ConvertPositionWorkflow,
+  MergeEventPositionsWorkflow,
+  PrepareConvertPositionRequest,
+  PrepareMergeEventPositionsRequest,
+  PrepareSplitEventPositionsRequest,
+  SplitEventPositionsWorkflow,
+} from '../actions/event-positions';
+export {
+  ConvertPositionError,
+  MergeEventPositionsError,
+  PrepareConvertPositionError,
+  PrepareMergeEventPositionsError,
+  PrepareSplitEventPositionsError,
+  SplitEventPositionsError,
+} from '../actions/event-positions';
+export type {
+  ConvertWorkflow,
+  HorizontalMergeWorkflow,
+  HorizontalSplitWorkflow,
+  NegRiskWorkflow,
+  PrepareConvertRequest,
+  PrepareHorizontalMergeRequest,
+  PrepareHorizontalSplitRequest,
+} from '../actions/neg-risk';
+export {
+  ConvertError,
   HorizontalMergeError,
   HorizontalSplitError,
-  MergeAllUserPositionsDirectionalError,
-  MergeDirectionalError,
-  MergeEventPositionsError,
-  MergePositionsError,
-  PlanCollateralReturnError,
-  PrepareComposeThresholdError,
   PrepareConvertError,
-  PrepareConvertPositionError,
-  PrepareDecomposeThresholdError,
   PrepareHorizontalMergeError,
   PrepareHorizontalSplitError,
-  PrepareMergeDirectionalError,
-  PrepareMergeEventPositionsError,
-  PrepareSplitDirectionalError,
-  PrepareSplitEventPositionsError,
+} from '../actions/neg-risk';
+export {
+  MergePositionsError,
   RedeemPositionsError,
-  SetupTradingApprovalsError,
-  SplitAllUserPositionsDirectionalError,
-  SplitDirectionalError,
-  SplitEventPositionsError,
   SplitPositionError,
-  TransferErc20Error,
-} from '../actions';
+} from '../actions/positions';
+export { TransferErc20Error } from '../actions/transfers';

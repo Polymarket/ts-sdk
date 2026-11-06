@@ -1,6 +1,6 @@
 {
   "name": "@polymarket/bindings",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Internal package. Contains generated bindings for the Polymarket API. Not intended for direct use.",
   "repository": {
     "type": "git",
@@ -85,7 +85,7 @@
   "sideEffects": false,
   "dependencies": {
     "@polymarket/types": "workspace:*",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "scripts": {
     "build": "tsup",

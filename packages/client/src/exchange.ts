@@ -8,7 +8,9 @@ import {
   expectHexString,
   type HexString,
 } from '@polymarket/types';
-import { AbiParameters, Bytes, Hash } from 'ox';
+import * as AbiParameters from 'ox/AbiParameters';
+import * as Bytes from 'ox/Bytes';
+import * as Hash from 'ox/Hash';
 import type { TypedDataField, TypedDataPayload } from './types';
 
 const PROTOCOL_NAME = 'Polymarket CTF Exchange';

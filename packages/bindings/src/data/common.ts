@@ -2,14 +2,15 @@ import { z } from 'zod';
 import { DirectionalConditionIdSchema } from '../protocol';
 import { type ConditionId, ConditionIdSchema, toConditionId } from '../shared';
 
+/**
+ * Activity types this SDK version lists. New types can appear in the activity
+ * feed before a release lists them. Those rows have an
+ * {@link OpaqueActivityType}.
+ */
 export enum ActivityType {
   TRADE = 'TRADE',
   SPLIT = 'SPLIT',
   MERGE = 'MERGE',
-  DIRECTIONAL_SPLIT = 'DIRECTIONAL_SPLIT',
-  DIRECTIONAL_MERGE = 'DIRECTIONAL_MERGE',
-  THRESHOLD_COMPOSE = 'THRESHOLD_COMPOSE',
-  THRESHOLD_DECOMPOSE = 'THRESHOLD_DECOMPOSE',
   REDEEM = 'REDEEM',
   REWARD = 'REWARD',
   CONVERSION = 'CONVERSION',
@@ -22,9 +23,43 @@ export enum ActivityType {
   TAKER_REBATE = 'TAKER_REBATE',
   /** A user-to-user tip, served in the feed like every other type. */
   TIP = 'TIP',
+  /** Collateral and range-event buckets split into two line positions. */
+  DIRECTIONAL_SPLIT = 'DIRECTIONAL_SPLIT',
+  /** Two range-event line positions merged into collateral and buckets. */
+  DIRECTIONAL_MERGE = 'DIRECTIONAL_MERGE',
+  /** Range-event buckets composed into one line position. */
+  THRESHOLD_COMPOSE = 'THRESHOLD_COMPOSE',
+  /** A range-event line position decomposed into buckets. */
+  THRESHOLD_DECOMPOSE = 'THRESHOLD_DECOMPOSE',
 }
 
 export const ActivityTypeSchema = z.enum(ActivityType);
+
+declare const opaqueActivityType: unique symbol;
+
+/**
+ * The type of an activity this SDK version does not list in
+ * {@link ActivityType}. It never overlaps a listed type, so comparing
+ * `activity.type` with an {@link ActivityType} member still narrows the row.
+ * At runtime it holds the type as served, so do not narrow on
+ * `typeof activity.type`.
+ *
+ * Because of this type, `activity.type` is not assignable to `string` and
+ * cannot index a record. Read the served type with `String(activity.type)`.
+ *
+ * @example
+ * ```ts
+ * const labels: Partial<Record<string, string>> = {
+ *   [ActivityType.TRADE]: 'Trade',
+ * };
+ *
+ * // Before: labels[activity.type]
+ * const label = labels[String(activity.type)] ?? 'Other';
+ * ```
+ */
+export type OpaqueActivityType = {
+  readonly [opaqueActivityType]: 'OpaqueActivityType';
+};
 
 /** Direction of a TIP from the row wallet's perspective. */
 export enum TipSide {

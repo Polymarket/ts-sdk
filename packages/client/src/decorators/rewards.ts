@@ -11,26 +11,28 @@ import type {
 } from '@polymarket/bindings/clob';
 import type { Prettify } from '@polymarket/types';
 import {
-  type FetchCurrentRebatesRequest,
   type FetchOrderScoringRequest,
   type FetchOrdersScoringRequest,
   type FetchTotalEarningsForUserForDayRequest,
-  fetchCurrentRebates,
   fetchOrderScoring,
   fetchOrdersScoring,
   fetchRewardPercentages,
   fetchTotalEarningsForUserForDay,
+  type ListUserEarningsAndMarketsConfigRequest,
+  type ListUserEarningsForDayRequest,
+  listUserEarningsAndMarketsConfig,
+  listUserEarningsForDay,
+} from '../actions/account';
+import {
+  type FetchCurrentRebatesRequest,
+  fetchCurrentRebates,
   type ListCurrentRewardsRequest,
   type ListMarketRewardsRequest,
   type ListRewardMarketsRequest,
-  type ListUserEarningsAndMarketsConfigRequest,
-  type ListUserEarningsForDayRequest,
   listCurrentRewards,
   listMarketRewards,
   listRewardMarkets,
-  listUserEarningsAndMarketsConfig,
-  listUserEarningsForDay,
-} from '../actions';
+} from '../actions/clob';
 import type {
   BaseClient,
   BasePublicClient,
@@ -330,20 +332,22 @@ export function rewardsActions(
   };
 }
 
+export {
+  FetchOrderScoringError,
+  FetchOrdersScoringError,
+  FetchRewardPercentagesError,
+  FetchTotalEarningsForUserForDayError,
+  ListUserEarningsAndMarketsConfigError,
+  ListUserEarningsForDayError,
+} from '../actions/account';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on PublicRewardsActions / SecureRewardsActions.
 export {
   FetchCurrentRebatesError,
   type FetchCurrentRebatesRequest,
-  FetchOrderScoringError,
-  FetchOrdersScoringError,
-  FetchRewardPercentagesError,
-  FetchTotalEarningsForUserForDayError,
   ListCurrentRewardsError,
   ListMarketRewardsError,
   ListRewardMarketsError,
   type ListRewardMarketsRequest,
-  ListUserEarningsAndMarketsConfigError,
-  ListUserEarningsForDayError,
-} from '../actions';
+} from '../actions/clob';

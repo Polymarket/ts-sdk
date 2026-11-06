@@ -224,10 +224,13 @@ require a market listing. The existing `horizontalSplit`, `horizontalMerge` and
 for module 4.
 
 `listActivity` accepts and parses all four new types in default or filtered
-feeds. `DIRECTIONAL_MERGE` / `DIRECTIONAL_SPLIT` return an on-chain `eventId`,
-`pairs` and collateral `amount`; they are not deposits or market-level rows.
-`THRESHOLD_COMPOSE` / `THRESHOLD_DECOMPOSE` return a line condition, side and
-`shares`, with zero collateral movement. Missing metadata remains optional.
+feeds. `DIRECTIONAL_MERGE` / `DIRECTIONAL_SPLIT` return `pairs` and collateral
+`amount`, plus an on-chain `eventId` when supplied and recognized; they are not
+deposits or market-level rows. `THRESHOLD_COMPOSE` / `THRESHOLD_DECOMPOSE` return
+a line condition and `shares`, with zero collateral movement and no USD `amount`.
+Recognized directional conditions also expose the event ID and line; a known
+outcome index supplies the threshold side. Missing identity and display metadata
+remain optional, preserving activity from earlier indexers.
 Filtering for `MERGE` or `SPLIT` does not include the directional variants.
 
 To resolve residual bucket or Void metadata, use

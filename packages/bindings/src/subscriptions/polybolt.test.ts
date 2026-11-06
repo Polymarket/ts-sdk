@@ -15,6 +15,7 @@ describe('realtime frame normalization', () => {
     'pyth',
     'chainlink',
     'massive',
+    'binance',
     'future_provider',
   ])('preserves served provider %s in subscription acknowledgements', (provider) => {
     expect(
@@ -58,7 +59,13 @@ describe('realtime frame normalization', () => {
     }
 
     it('preserves known and future sources on updates and history batches', () => {
-      for (const source of ['pyth', 'chainlink', 'massive', 'newvendor']) {
+      for (const source of [
+        'pyth',
+        'chainlink',
+        'massive',
+        'binance',
+        'newvendor',
+      ]) {
         expect(parse(source)).toMatchObject({
           type: 'update',
           payload: { source, value: point.full_accuracy_value },

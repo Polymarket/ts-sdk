@@ -16,44 +16,51 @@ import type {
   TokenReference,
   Trade,
 } from '@polymarket/bindings/data';
+import { type ListTradesRequest, listTrades } from '../actions/activity';
 import {
-  type EstimateMarketPriceRequest,
-  estimateMarketPrice,
-  type FetchEventLiveVolumeRequest,
   type FetchLastTradePriceRequest,
   type FetchLastTradePricesRequest,
   type FetchMidpointRequest,
   type FetchMidpointsRequest,
-  type FetchOpenInterestRequest,
   type FetchOrderBookRequest,
   type FetchOrderBooksRequest,
   type FetchPriceRequest,
   type FetchPricesRequest,
-  type FetchResolutionsRequest,
   type FetchSpreadRequest,
   type FetchSpreadsRequest,
-  type FetchTokenReferencesRequest,
-  fetchEventLiveVolume,
   fetchLastTradePrice,
   fetchLastTradePrices,
   fetchMidpoint,
   fetchMidpoints,
-  fetchOpenInterest,
   fetchOrderBook,
   fetchOrderBooks,
   fetchPrice,
   fetchPrices,
-  fetchResolutions,
   fetchSpread,
   fetchSpreads,
-  fetchTokenReferences,
+} from '../actions/clob';
+import {
+  type FetchEventLiveVolumeRequest,
+  type FetchResolutionsRequest,
+  fetchEventLiveVolume,
+  fetchResolutions,
+} from '../actions/events';
+import {
+  type FetchOpenInterestRequest,
+  fetchOpenInterest,
   type ListMarketHoldersRequest,
   type ListPriceHistoryRequest,
-  type ListTradesRequest,
   listMarketHolders,
   listPriceHistory,
-  listTrades,
-} from '../actions';
+} from '../actions/markets';
+import {
+  type EstimateMarketPriceRequest,
+  estimateMarketPrice,
+} from '../actions/orders';
+import {
+  type FetchTokenReferencesRequest,
+  fetchTokenReferences,
+} from '../actions/tokens';
 import type {
   BaseClient,
   BasePublicClient,
@@ -479,33 +486,37 @@ export function dataActions(client: BaseClient): DataActions {
   };
 }
 
-export type { FetchTokenReferencesRequest } from '../actions';
-// Error unions and runtime `isError` guards for every action bound above.
-// Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on DataActions.
+export { ListTradesError } from '../actions/activity';
 export {
-  EstimateMarketPriceError,
-  FetchEventLiveVolumeError,
   FetchLastTradePriceError,
   FetchLastTradePricesError,
   FetchMidpointError,
   FetchMidpointsError,
-  FetchOpenInterestError,
   FetchOrderBookError,
   FetchOrderBooksError,
   FetchPriceError,
   FetchPricesError,
-  FetchResolutionsError,
   FetchSpreadError,
   FetchSpreadsError,
-  FetchTokenReferencesError,
-  ListMarketHoldersError,
-  ListPriceHistoryError,
-  ListTradesError,
-  PriceHistoryInterval,
+} from '../actions/clob';
+export {
+  FetchEventLiveVolumeError,
+  FetchResolutionsError,
   ResolutionMarketType,
   ResolutionReporter,
   ResolutionSettlementTimeBasis,
   ResolutionSource,
   ResolutionStatus,
-} from '../actions';
+} from '../actions/events';
+export {
+  FetchOpenInterestError,
+  ListMarketHoldersError,
+  ListPriceHistoryError,
+  PriceHistoryInterval,
+} from '../actions/markets';
+// Error unions and runtime `isError` guards for every action bound above.
+// Surfaced at the root entry point through `export * from './decorators'`.
+// Keep this list in sync with the methods on DataActions.
+export { EstimateMarketPriceError } from '../actions/orders';
+export type { FetchTokenReferencesRequest } from '../actions/tokens';
+export { FetchTokenReferencesError } from '../actions/tokens';

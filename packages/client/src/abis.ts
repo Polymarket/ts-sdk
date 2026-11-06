@@ -9,7 +9,8 @@ import {
   ThresholdSide,
 } from '@polymarket/bindings/protocol';
 import { type EvmAddress, type HexString, invariant } from '@polymarket/types';
-import { AbiFunction, AbiParameters } from 'ox';
+import * as AbiFunction from 'ox/AbiFunction';
+import * as AbiParameters from 'ox/AbiParameters';
 import { makeErrorGuard, UserInputError } from './errors';
 import { parseUserInput } from './input';
 import {

@@ -38,7 +38,7 @@ import {
   transferPerpsCollateral,
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
-} from '../actions';
+} from '../actions/perps';
 import {
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
@@ -137,7 +137,7 @@ export type {
   UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
-} from '../actions';
+} from '../actions/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
@@ -157,7 +157,7 @@ export {
   UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
-} from '../actions';
+} from '../actions/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ApprovePerpsBuilderFeeError,

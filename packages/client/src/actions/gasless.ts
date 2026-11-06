@@ -33,7 +33,9 @@ import {
   type TxHash,
   ZERO_ADDRESS,
 } from '@polymarket/types';
-import { Bytes, Hash, TypedData as OxTypedData } from 'ox';
+import * as Bytes from 'ox/Bytes';
+import * as Hash from 'ox/Hash';
+import * as OxTypedData from 'ox/TypedData';
 import { z } from 'zod';
 import { encodeProxyCall, encodeSafeMultisendCall } from '../abis';
 import type { BaseClient, BaseSecureClient } from '../clients';

@@ -30,7 +30,7 @@ import {
 } from '../shared';
 import {
   ActivityType,
-  ActivityTypeSchema,
+  type OpaqueActivityType,
   type TipSide,
   TipSideSchema,
 } from './common';
@@ -319,42 +319,130 @@ export type TipActivity = ActivityBase & {
   side: TipSide | null;
 };
 
-/** Collateral exchanged against two lines; metadata belongs to the event. */
-export type DirectionalActivity = ActivityBase & {
-  type: ActivityType.DIRECTIONAL_SPLIT | ActivityType.DIRECTIONAL_MERGE;
-  /** On-chain event ID, distinct from a market condition or catalog event ID. */
-  eventId: DirectionalEventId;
-  /** Number of pairs, in shares. */
+/**
+ * Collateral plus the range-event buckets between two lines split into ABOVE
+ * the lower line and BELOW the higher one. The row belongs to the whole event,
+ * not one market.
+ */
+export type DirectionalSplitActivity = ActivityBase & {
+  /** Protocol event identity, when supplied and recognized. */
+  eventId?: DirectionalEventId;
+  /** Number of threshold pairs, in shares. */
   pairs: DecimalString;
-  /** Collateral paid or returned in USD. */
-  amount: DecimalString;
-  /** Metadata may be absent before the event is indexed. */
-  title?: string;
+  /** Event slug supplied with this activity. */
   slug?: string;
+  /** A range-event directional split. */
+  type: 'DIRECTIONAL_SPLIT';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
   icon: string | null;
+  /** URL slug of the range event, when available. */
   eventSlug?: string;
 };
 
-/** Inventory conversion between a threshold side and its bucket basket. */
-export type ThresholdActivity = ActivityBase & {
-  type: ActivityType.THRESHOLD_COMPOSE | ActivityType.THRESHOLD_DECOMPOSE;
-  eventId: DirectionalEventId;
+/**
+ * ABOVE and BELOW line positions merged back into collateral plus the
+ * range-event buckets between the two lines. The row belongs to the whole
+ * event, not one market.
+ */
+export type DirectionalMergeActivity = ActivityBase & {
+  /** Protocol event identity, when supplied and recognized. */
+  eventId?: DirectionalEventId;
+  /** Number of threshold pairs, in shares. */
+  pairs: DecimalString;
+  /** Event slug supplied with this activity. */
+  slug?: string;
+  /** A range-event directional merge. */
+  type: 'DIRECTIONAL_MERGE';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
+};
+
+/**
+ * Range-event buckets composed into one line position. No collateral moves, so
+ * the row reports shares instead of a USD amount.
+ */
+export type ThresholdComposeActivity = ActivityBase & {
+  /** Protocol event identity, when the line condition is recognized. */
+  eventId?: DirectionalEventId;
+  /** Ordinal line boundary, when the condition is recognized. */
+  line?: number;
+  /** Threshold side, when the condition and outcome index are recognized. */
+  side?: ThresholdSide;
+  /** A range-event threshold compose. */
+  type: 'THRESHOLD_COMPOSE';
+  /** Condition id of the line's market. */
   conditionId: ConditionId;
-  line: number;
-  side: ThresholdSide;
+  /** Number of line-position shares composed. */
   shares: DecimalString;
-  /** No collateral moves; the API returns zero. */
-  amount: DecimalString;
+  /** Human-readable title of the line's market, when available. */
   title?: string;
+  /** URL slug of the line's market, when available. */
   slug?: string;
+  /** Icon URL for the line's market, when available. */
   icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
   eventSlug?: string;
+  /** Label of the line side, when available. */
   outcome?: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
 };
 
+/**
+ * A range-event line position decomposed back into buckets. No collateral
+ * moves, so the row reports shares instead of a USD amount.
+ */
+export type ThresholdDecomposeActivity = ActivityBase & {
+  /** Protocol event identity, when the line condition is recognized. */
+  eventId?: DirectionalEventId;
+  /** Ordinal line boundary, when the condition is recognized. */
+  line?: number;
+  /** Threshold side, when the condition and outcome index are recognized. */
+  side?: ThresholdSide;
+  /** A range-event threshold decompose. */
+  type: 'THRESHOLD_DECOMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of line-position shares decomposed. */
+  shares: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
+};
+
+export type DirectionalActivity =
+  | DirectionalSplitActivity
+  | DirectionalMergeActivity;
+export type ThresholdActivity =
+  | ThresholdComposeActivity
+  | ThresholdDecomposeActivity;
+
+/**
+ * Wallet account history. New activity types can appear before this SDK
+ * version lists them in {@link ActivityType}. Those rows carry only the shared
+ * account fields and an {@link OpaqueActivityType}, so a switch over `type`
+ * needs a `default` branch.
+ */
 export type Activity =
-  | DirectionalActivity
-  | ThresholdActivity
   | TradeActivity
   | SplitActivity
   | MergeActivity
@@ -368,7 +456,15 @@ export type Activity =
   | DepositActivity
   | WithdrawalActivity
   | TakerRebateActivity
-  | TipActivity;
+  | TipActivity
+  | DirectionalSplitActivity
+  | DirectionalMergeActivity
+  | ThresholdComposeActivity
+  | ThresholdDecomposeActivity
+  | (ActivityBase & {
+      /** A type this SDK version does not list in {@link ActivityType}. */
+      type: OpaqueActivityType;
+    });
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -547,7 +643,10 @@ const RawActivitySchema = z
       (value) => (value === '' ? undefined : value),
       z.union([ConditionIdSchema, DirectionalEventIdSchema]).optional(),
     ),
-    type: ActivityTypeSchema,
+    // New activity types ship independently of SDK releases. Rows with types
+    // missing from ActivityType parse with an opaque type instead of failing
+    // the page.
+    type: z.string().min(1),
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
     transaction_hash: TxHashSchema,
@@ -658,46 +757,6 @@ function normalizeActivity(activity: RawActivity): Activity {
   const base = normalizeActivityBase(activity);
 
   switch (activity.type) {
-    case ActivityType.DIRECTIONAL_SPLIT:
-    case ActivityType.DIRECTIONAL_MERGE:
-      return {
-        ...base,
-        type: activity.type,
-        eventId: DirectionalEventIdSchema.parse(activity.condition_id),
-        pairs: activity.size,
-        amount: activity.usdc_size,
-        title: activity.title,
-        slug: activity.slug,
-        icon: activity.icon ?? null,
-        eventSlug: activity.event_slug,
-      };
-    case ActivityType.THRESHOLD_COMPOSE:
-    case ActivityType.THRESHOLD_DECOMPOSE: {
-      const conditionId = DirectionalConditionIdSchema.refine(
-        (id) =>
-          (decodeDirectionalConditionId(id).conditionIndex & 0x8000) !== 0,
-        'Expected a threshold condition for threshold activity',
-      ).parse(activity.condition_id);
-      const position = decodeDirectionalConditionId(conditionId);
-      const outcomeIndex = z
-        .union([z.literal(0), z.literal(1)])
-        .parse(activity.outcome_index);
-      return {
-        ...base,
-        type: activity.type,
-        eventId: position.eventId,
-        conditionId,
-        line: position.conditionIndex & 0x7fff,
-        side: outcomeIndex === 0 ? ThresholdSide.Above : ThresholdSide.Below,
-        shares: activity.size,
-        amount: activity.usdc_size,
-        title: activity.title,
-        slug: activity.slug,
-        icon: activity.icon ?? null,
-        eventSlug: activity.event_slug,
-        outcome: activity.outcome,
-      };
-    }
     case ActivityType.TRADE:
       return normalizeTradeActivity(activity, base);
     case ActivityType.REDEEM:
@@ -764,6 +823,68 @@ function normalizeActivity(activity: RawActivity): Activity {
             ? null
             : TipSideSchema.parse(activity.side),
       };
+    case ActivityType.DIRECTIONAL_SPLIT:
+    case ActivityType.DIRECTIONAL_MERGE: {
+      const event = DirectionalEventIdSchema.safeParse(activity.condition_id);
+      return {
+        ...base,
+        type: activity.type,
+        ...(event.success ? { eventId: event.data } : {}),
+        pairs: activity.size,
+        amount: activity.usdc_size,
+        title: activity.title,
+        slug: activity.slug,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+      };
+    }
+    case ActivityType.THRESHOLD_COMPOSE:
+    case ActivityType.THRESHOLD_DECOMPOSE: {
+      const conditionId = ConditionIdSchema.parse(
+        expectPresent(activity.condition_id, 'condition_id'),
+      );
+      const directional = DirectionalConditionIdSchema.safeParse(conditionId);
+      const position = directional.success
+        ? decodeDirectionalConditionId(directional.data)
+        : undefined;
+      const line =
+        position && (position.conditionIndex & 0x8000) !== 0
+          ? position.conditionIndex & 0x7fff
+          : undefined;
+      return {
+        ...base,
+        type: activity.type,
+        conditionId,
+        ...(line !== undefined && position
+          ? {
+              eventId: position.eventId,
+              line,
+              ...(activity.outcome_index === 0 || activity.outcome_index === 1
+                ? {
+                    side:
+                      activity.outcome_index === 0
+                        ? ThresholdSide.Above
+                        : ThresholdSide.Below,
+                  }
+                : {}),
+            }
+          : {}),
+        shares: activity.size,
+        title: activity.title,
+        slug: activity.slug,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+        outcome: activity.outcome,
+        outcomeIndex: activity.outcome_index,
+      };
+    }
+    default:
+      return {
+        ...base,
+        // The served string stays at runtime; the opaque type keeps it from
+        // overlapping the listed variants.
+        type: activity.type as unknown as OpaqueActivityType,
+      };
   }
 }
 
@@ -787,9 +908,7 @@ function normalizeTradeActivity(
       ...trade,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        ConditionIdSchema.parse(
-          expectPresent(activity.condition_id, 'condition_id'),
-        ),
+        expectPresent(activity.condition_id, 'condition_id'),
       ),
       positionId: PositionIdSchema.parse(
         expectPresent(activity.token_id, 'token_id'),
@@ -835,9 +954,7 @@ function normalizeRedeemActivity(
       ...redemption,
       isCombo: true,
       conditionId: ComboConditionIdSchema.parse(
-        ConditionIdSchema.parse(
-          expectPresent(activity.condition_id, 'condition_id'),
-        ),
+        expectPresent(activity.condition_id, 'condition_id'),
       ),
     };
   }
