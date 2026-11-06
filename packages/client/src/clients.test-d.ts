@@ -8,12 +8,40 @@ import {
   type SecureClient,
   type SecureClientOptions,
 } from './clients';
-import { ServiceClient as RootServiceClient } from './index';
+import {
+  type CancelOrdersResponse,
+  type Paginated,
+  ServiceClient as RootServiceClient,
+  type WalletOpenOrder,
+} from './index';
 import type { ServiceClient } from './ServiceClient';
 
 declare const publicClient: PublicClient;
 declare const secureClient: SecureClient;
 declare const secureOptions: SecureClientOptions;
+
+it('exposes wallet-wide trading only on authenticated clients', () => {
+  expectTypeOf(
+    secureClient.listWalletOpenOrders(
+      { sessionKeys: ['0x0000000000000000000000000000000000000001'] },
+      { retries: 1 },
+    ),
+  ).toEqualTypeOf<Paginated<WalletOpenOrder[]>>();
+  expectTypeOf(
+    secureClient.cancelWalletOrders({ orderIds: [`0x${'a'.repeat(64)}`] }),
+  ).toEqualTypeOf<Promise<CancelOrdersResponse>>();
+  expectTypeOf(secureClient.cancelWalletOrders({ all: true })).toEqualTypeOf<
+    Promise<CancelOrdersResponse>
+  >();
+  expectTypeOf<PublicClient>().not.toHaveProperty('listWalletOpenOrders');
+  expectTypeOf<PublicClient>().not.toHaveProperty('cancelWalletOrders');
+  // @ts-expect-error Cancellation requires an explicit selection.
+  secureClient.cancelWalletOrders({});
+  // @ts-expect-error Cancellation modes cannot be combined.
+  secureClient.cancelWalletOrders({ orderIds: ['order'], all: true });
+  // @ts-expect-error Cancel-all must be explicit.
+  secureClient.cancelWalletOrders({ all: false });
+});
 
 it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.listTrades(
