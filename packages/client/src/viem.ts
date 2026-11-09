@@ -244,6 +244,8 @@ class DirectTransactionHandle implements TransactionHandle {
         transactionId: null,
       };
     } catch (error) {
+      if (error instanceof TransactionFailedError) throw error;
+
       if (error instanceof WaitForTransactionReceiptTimeoutError) {
         throw new TimeoutError(
           `Timed out waiting for transaction ${this.#transactionHash} to settle`,

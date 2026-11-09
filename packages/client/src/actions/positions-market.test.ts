@@ -1,3 +1,4 @@
+import { ConditionIdSchema, toConditionId } from '@polymarket/bindings';
 import {
   type Market,
   MarketSchema,
@@ -7,10 +8,56 @@ import { describe, expect, it } from 'vitest';
 import { UnexpectedResponseError } from '../errors';
 import {
   normalizeMarketPositionContext,
+  PositionConditionIdSchema,
   PositionProtocol,
+  resolveDirectionalConditionPositionContext,
 } from './positions-market';
 
 describe('market position routing', () => {
+  it.each([
+    0, 4, 0x8001, 0x8003,
+  ])('resolves directional descriptor %s directly from canonical IDs', (descriptor) => {
+    const base = (4n << 248n) | (123n << 120n) | (4n << 104n);
+    const positionId = base | (BigInt(descriptor) << 8n);
+    const padded = `0x${positionId.toString(16).padStart(64, '0')}`;
+    const conditionId = PositionConditionIdSchema.parse(padded);
+    expect(conditionId).toBe(padded.slice(0, -2));
+    expect(resolveDirectionalConditionPositionContext(conditionId)).toEqual({
+      protocol: PositionProtocol.V2,
+      conditionId,
+      outcomeIds: [positionId.toString(), (positionId | 1n).toString()],
+    });
+  });
+
+  it('keeps legacy hashes with a native-looking prefix on the legacy path', () => {
+    const legacy = toConditionId(`0x04${'ab'.repeat(31)}`);
+    expect(PositionConditionIdSchema.parse(legacy)).toBe(legacy);
+    expect(resolveDirectionalConditionPositionContext(legacy)).toBeUndefined();
+  });
+
+  it.each([
+    '0x0100112233445566778899aabbccddeeff0000000000000000000000000000',
+    '0x0200112233445566778899aabbccddeeff0004000000000000000000000001',
+    '0x0300112233445566778899aabbccddeeff0000000000000000000000000000',
+  ])('parses and routes non-directional condition %s as before', (id) => {
+    const conditionId = PositionConditionIdSchema.parse(id);
+    expect(conditionId).toBe(ConditionIdSchema.parse(id));
+    expect(
+      resolveDirectionalConditionPositionContext(conditionId),
+    ).toBeUndefined();
+  });
+
+  it('rejects dirty padding and invalid structured directional indices', () => {
+    const base = (4n << 248n) | (123n << 120n) | (4n << 104n);
+    for (const id of [base | 1n, base | (5n << 8n), base | (0x8004n << 8n)]) {
+      expect(() =>
+        PositionConditionIdSchema.parse(
+          `0x${id.toString(16).padStart(64, '0')}`,
+        ),
+      ).toThrow();
+    }
+  });
+
   it.each([
     [ProtocolVersion.V1, PositionProtocol.CTF, ['11', '12']],
     [ProtocolVersion.V2, PositionProtocol.V2, ['21', '22']],

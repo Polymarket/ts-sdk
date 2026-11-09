@@ -1,0 +1,310 @@
+# Directional collateral return
+
+The SDK supports module-4 lines, real buckets and Void. A line is a normal
+YES/NO trading market: YES means ABOVE the boundary and NO means BELOW it.
+Buckets and Void are inventory and resolution instruments with no order book.
+
+## Market maker workflow
+
+Use `listMarkets({ version: ProtocolVersion.V2 })` to discover tradable lines.
+Orders take each outcome's `positionId` as their `assetId`. Buy YES on the lower
+line and NO on the higher line, then wait for both fills to settle **on chain**.
+Order acceptance or a matched fill alone does not establish wallet balances.
+
+After settlement, discover pairs from the authenticated wallet and select one:
+
+```ts
+await client.setupTradingApprovals();
+const pairs = await client.findDirectionalPairs();
+console.table(pairs);
+
+// Choose one candidate after inspecting its amount and expectedPusd.
+const selected = pairs[0];
+if (!selected) throw new Error('No mergeable directional pair found');
+
+const transaction = await client.mergeDirectional(
+  selected.abovePositionId,
+  selected.belowPositionId,
+  selected.amount,
+);
+const outcome = await transaction.wait();
+console.log(outcome.transactionHash);
+```
+
+Both methods take two position IDs and an optional amount:
+`mergeDirectional(positionIdA, positionIdB, amount?)` and
+`splitDirectional(positionIdA, positionIdB, amount?)`. The IDs may be passed in
+**either order**. They must identify ABOVE on a lower line and BELOW on a higher
+line in the same directional event. The SDK decodes the event and boundaries
+locally and rejects invalid pairs before signing; callers need no event ID,
+line indices or market metadata lookup.
+
+`decodePositionId` uses local bit math and accepts decimal module-4 position IDs. It
+returns `{ moduleId, eventId, bucketCount, kind, index, side, conditionId }`.
+It rejects CTF and other modules rather than interpreting hashes as directional
+instruments. `kind` is `line`, `bucket` or `void`; line indices are **ordinal
+boundaries**, not point totals or the encoded `0x8000 | index` descriptor.
+Protocol event IDs are bytes29 (zero-padded bytes32 is also accepted), distinct
+from the numeric event IDs used by the market catalog and position filters.
+
+`mergeDirectional` consumes ABOVE(low) and BELOW(high). Per pair, it returns
+1 pUSD plus one YES on each real bucket in `[lowLine, highLine)`. With six real
+buckets, merging lines 2 and 4 returns pUSD plus bucket YES positions 2 and 3.
+It does not return Void. BELOW baskets used by threshold composition do include
+Void; ABOVE baskets do not.
+
+Both methods accept `amount?: bigint | 'max'`, in six-decimal base units:
+
+- Merge: omitted or `'max'` uses the fresh minimum of the two threshold balances.
+- Split: omitted or `'max'` uses the fresh minimum of pUSD and **every** required
+  middle-bucket YES balance. Splitting requires both collateral and buckets.
+- Explicit amounts must be positive uint256 values. Preparation rejects empty
+  inventory and insufficient balances before signing. Balances can still change
+  before execution; the Router transaction is atomic.
+
+To reverse a known merge, use its explicit amount so other inventory is untouched:
+
+```ts
+const split = await client.splitDirectional(
+  selected.abovePositionId,
+  selected.belowPositionId,
+  selected.amount,
+);
+await split.wait();
+```
+
+`client.findDirectionalPairs({ eventId })` optionally narrows discovery to one
+protocol event; omit the request to scan this account. It scans indexed holdings
+and refreshes candidate balances on chain. Each result includes the two position
+IDs plus `amount` and `expectedPusd` in base units. Pass the IDs and chosen amount
+as separate arguments to `mergeDirectional`.
+Overlapping pairs share inventory: do not add their amounts or treat the result
+as a batch execution plan. Unindexed positions cannot be discovered this way;
+an explicitly known pair can still be merged using its position IDs and wallet
+balances. Discovery may need a retry while newly settled holdings are indexing.
+
+## Discover buckets to split
+
+`client.findDirectionalBuckets(request?, options?)` discovers this wallet's
+indexed middle-bucket YES holdings and refreshes their balances on chain.
+Pass `{ eventId }` to restrict discovery to one protocol event, or omit the
+request to scan all events. The optional second argument accepts request options.
+
+```ts
+const buckets = await client.findDirectionalBuckets();
+console.table(buckets);
+
+const bucket = buckets[0]; // Inspect its balance and requiredPusd before choosing.
+if (!bucket) throw new Error('No splittable directional bucket found');
+await client.setupTradingApprovals();
+const transaction = await client.splitDirectional(
+  bucket.abovePositionId,
+  bucket.belowPositionId,
+  bucket.balance,
+);
+await transaction.wait();
+```
+
+Each `DirectionalBucketHolding` contains `positionId`, `eventId`,
+`bucketIndex`, `balance`, `requiredPusd`, `abovePositionId` and
+`belowPositionId`. The two threshold IDs describe a split consuming that single
+bucket. Both `balance` and `requiredPusd` are bigint values in six-decimal base
+units; `requiredPusd` equals the full bucket balance. Results rank by descending
+balance with deterministic event/index tie-breaking.
+
+Discovery only returns positive YES balances at middle-bucket indices
+`1..B-2`. Outer buckets, bucket NO and Void cannot be used for this single-bucket
+split and are omitted. It does not read the wallet's pUSD balance or filter by
+affordability: execution checks actual pUSD and bucket balances before signing.
+Unindexed holdings cannot be discovered. Contiguous bucket ranges can share one
+collateral requirement, so summing singleton `requiredPusd` values does not give
+an optimal global split cost. Wallet-wide split execution independently discovers
+ranges and checks collateral as described below.
+
+## Process the wallet's directional inventory
+
+To process the authenticated wallet without selecting individual pairs, set up
+approvals and call either bulk method:
+
+```ts
+await client.setupTradingApprovals();
+
+const merged = await client.mergeAllUserPositionsDirectional();
+console.table(merged.outcomes);
+console.log(merged.errors);
+```
+
+To restore threshold positions from bucket inventory instead:
+
+```ts
+const split = await client.splitAllUserPositionsDirectional();
+console.table(split.outcomes);
+console.log(split.errors);
+```
+
+Both methods take no arguments and return `Promise<DirectionalBulkResult>`:
+`{ outcomes, errors }`. The `outcomes` array contains confirmed transactions;
+`errors` records discovery, preparation, submission, confirmation and limit failures with the
+original error and, for execution failures, the pair and amount being processed.
+Known transaction identifiers are included when available. No additional
+`wait()` is needed. An empty `outcomes` array alone does not prove the wallet
+has no eligible inventory: inspect `errors` for an interrupted run.
+
+`mergeAllUserPositionsDirectional()` discovers pairs from this wallet's indexed
+holdings, refreshes balances on chain, chooses the pair returning the most
+collateral, merges its maximum available amount and waits for confirmation.
+It then discovers pairs again until none remain.
+
+`splitAllUserPositionsDirectional()` independently discovers contiguous ranges
+of indexed middle-bucket YES holdings and refreshes their balances and the
+wallet's pUSD balance. It chooses the largest feasible amount, preferring the
+widest range when amounts tie, then spends pUSD and those buckets to restore a
+threshold pair. It waits and repeats discovery until no eligible range or
+collateral remains. It does not replay a previous merge history or guarantee
+that a bulk merge followed by a bulk split restores the original holdings.
+
+Both flows execute sequentially and are not atomic across transactions. Their
+greedy choices are not guaranteed to find a globally optimal inventory
+allocation. Unindexed holdings cannot be discovered, and indexing lag may leave
+newly settled inventory for a later call. Approvals remain the caller's
+responsibility.
+
+Transient discovery, preparation and confirmation reads receive up to three total attempts
+with backoff. Confirmation retries use the same transaction handle; the method
+never resubmits a transaction to recover from an uncertain confirmation.
+Definite preflight or submission rejections and confirmed transaction failures
+are recorded; the failed pair is excluded and processing continues with other
+candidates, including overlapping pairs. A run stops after 25 failed pairs to
+bound repeated failures.
+
+An ambiguous submission error or unresolved confirmation pauses further
+mutations and returns the partial result. Persistent discovery failures and
+cancelled signing also return the accumulated outcomes and errors. Previously
+confirmed transactions remain in effect. When a run pauses or reaches its
+failure limit, the summary does not claim all eligible inventory was processed.
+Inspect the recorded transaction identifiers and reconcile uncertain execution
+before starting another run.
+
+## Wallets and approvals
+
+Deposit Wallet, Safe and Proxy use their existing atomic wallet-batch path.
+EOAs send a direct Router transaction and pay gas. Every operation uses the
+authenticated account wallet as holder and recipient; there is no recipient
+override or wallet migration. `wait()` remains explicit.
+
+`setupTradingApprovals()` already includes pUSD approval for the Router and
+PositionManager `setApprovalForAll(Router)`. It waits for its approval work and
+returns `void`. Directional operations do not submit approvals automatically.
+An EOA signer must use the same chain and RPC as the SDK environment; for a
+staging fork, pass that transport to `privateKey(key, { chain, transport })`.
+
+For custom signing, each operation exposes a `prepare*` action and bound method.
+`prepareMergeDirectional` and `prepareSplitDirectional` accept the same two
+position IDs, in either order, and optional amount as their execution methods.
+Preparing reads balances where needed, but does not sign or submit until its
+workflow is advanced. Router calldata builders are also exported. The wallet
+batch transport alone does **not** establish server selector acceptance, policy
+classification or sponsorship; verify all three in the target environment.
+
+## Inventory and data
+
+| Intent | SDK method |
+| --- | --- |
+| Split/merge one line, bucket or Void YES/NO pair | `splitPosition`, `mergePositions` with `conditionId` |
+| Redeem an eligible outcome | `redeemPositions` |
+| Split collateral into every bucket YES, including Void | `splitEventPositions` |
+| Merge that complete YES set | `mergeEventPositions` |
+| Convert a bucket NO, including Void NO, into other buckets' YES | `convertPosition` |
+| Convert buckets to a threshold side or back | `composeThreshold`, `decomposeThreshold` |
+| Return collateral from two lines, or reverse it | `mergeDirectional`, `splitDirectional` |
+
+Directional split/merge/redeem by condition ID resolves IDs locally and does not
+require a market listing. The existing `horizontalSplit`, `horizontalMerge` and
+`convert` APIs remain neg-risk workflows; use the event/position methods above
+for module 4.
+
+`listActivity` accepts and parses all four new types in default or filtered
+feeds. `DIRECTIONAL_MERGE` / `DIRECTIONAL_SPLIT` return `pairs` and collateral
+`amount`, plus an on-chain `eventId` when supplied and recognized; they are not
+deposits or market-level rows. `THRESHOLD_COMPOSE` / `THRESHOLD_DECOMPOSE` return
+a line condition and `shares`, with zero collateral movement and no USD `amount`.
+Recognized directional conditions also expose the event ID and line; a known
+outcome index supplies the threshold side. Missing identity and display metadata
+remain optional, preserving activity from earlier indexers.
+Filtering for `MERGE` or `SPLIT` does not include the directional variants.
+
+To resolve residual bucket or Void metadata, use
+`listMarkets({ positionIds: [id], closed: 'any' })`. Unfiltered discovery excludes
+these instruments. A successful identity lookup does not prove that
+`listPositions` includes the holding: deployment must leave its market active
+and unarchived. Collateral-return PnL policy remains an upstream open decision;
+the SDK does not invent residual cost basis or realized PnL.
+
+## Validation and remaining integration work
+
+This PR includes local codec, Router encoding, balance-limit, activity, pair
+discovery and public-type coverage. The runnable `directional:positions` example
+shows the IDs and decoded line contract without any credentials.
+
+The staging integration test covers Deposit Wallet, Safe and EOA. It requires a
+deployed event with at least three real buckets and dedicated wallets with no
+inventory on lines 1/2, bucket 1 or Void. It splits two line sets, merges the
+cross-line pair, checks pUSD and bucket balances plus one merge activity row and
+bucket metadata/holdings, reverses the pair, then merges the original line sets.
+It uses one pair and requires at least 2 pUSD per wallet, plus EOA gas.
+
+Configure locally or through the secret runner, without committing values:
+
+- `POLYMARKET_INTEGRATION_ENVIRONMENT_CONFIG`: explicit staging environment
+  JSON, including name, chain ID, RPC, deployed contract overrides and service
+  URLs/headers. Do not inherit production endpoints for staging transactions.
+- `POLYMARKET_DCR_EVENT_ID`: on-chain directional event ID.
+- Deposit Wallet: `POLYMARKET_PRIVATE_KEY`, `POLYMARKET_DEPOSIT_WALLET`.
+- Safe: `POLYMARKET_SAFE_PRIVATE_KEY`, `POLYMARKET_SAFE_WALLET`.
+- EOA: `POLYMARKET_DCR_EOA_PRIVATE_KEY`.
+- Wallet-batch authorization: `POLYMARKET_RELAYER_API_KEY` and
+  `POLYMARKET_RELAYER_API_KEY_ADDRESS`, matching the account under test.
+
+```sh
+pnpm build
+pnpm test:client:integration --run packages/client/tests/integration/directional.test.ts
+```
+
+Missing event/credential configuration skips with a reason; skips are not a
+staging pass. Partial transaction failures may leave test inventory; inspect
+confirmed transactions before rerunning. The test rejects the default production
+environment. Its deterministic line splits do not validate trading or settlement.
+
+Complete these launch checks in staging, in order:
+
+1. Verify module 4 registration and the deployed Router ABI; enable line books
+   through the normal deployment flow. Buckets/Void must stay nontradable.
+2. Run the round trip above for all three wallet types. Verify each of the four
+   selectors under sponsorship and withdrawal-allowlist policy, and retain clear
+   revert diagnostics. SDK code cannot enable server policy or sponsorship.
+3. Buy the two wings through SDK orders, wait for chain settlement, then run the
+   merge/reverse workflow. Assert the activity row and residual holdings, not
+   only transaction success. Repeat invalid-pair and insufficient-balance cases.
+4. Validate threshold compose/decompose, whole-event operations including Void,
+   and eligible bucket/line redemptions. Confirm portfolio visibility and the
+   agreed PnL policy with the data owners.
+
+As of 3 November 2026, the Deposit Wallet merge/reverse flow has completed on
+staging with the earlier event/line signature, including restored inventory.
+The positional-signature rerun passed invalid-input checks but stopped while
+seeding line inventory: the staging relayer returned `context deadline exceeded`
+on submission, before the directional merge. Subsequent reads found zero in all
+six tracked position balances. The refactored round trip remains unverified.
+The configured staging `/v2/activity` and `/v2/positions` routes previously returned
+404, so activity and portfolio acceptance also remain unverified. The linked
+trading discussion reports threshold trading after manually enabling its book;
+it does not establish normal book activation or all wallet execution paths.
+
+Directional integration into `planCollateralReturn` / `executeCollateralReturnPlan`
+is P2 and remains deferred, as specified. Pair discovery is read-only and does
+not imply that the existing collateral-return service plans directional pairs.
+
+Sources: [SDK scope](https://app.notion.com/p/408d316c50d581e2bb8fc824d9ec5016),
+[Gamma contract](https://github.com/Polymarket/markets-tooling/blob/main/packages/api/agent-docs/directional-markets.md),
+[data decisions](https://app.notion.com/p/402d316c50d5819aaea8e8d12097e1f5),
+[staging discussion](https://polymarket.slack.com/archives/C0BRN8DLS8G/p1793288989782179).
