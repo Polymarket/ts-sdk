@@ -1460,6 +1460,24 @@ describe('ServiceClient', () => {
     });
   });
 
+  it('uses upper-case non-400 JSON error identifiers as fallback codes', async () => {
+    server.use(
+      http.get(`${root}/json-upper-error-identifier`, () =>
+        HttpResponse.json({ error: 'NOT_ALLOWED' }, { status: 403 }),
+      ),
+    );
+    const client = new ServiceClient({ root });
+
+    await expect(
+      client.get('/json-upper-error-identifier'),
+    ).rejects.toMatchObject({
+      code: 'NOT_ALLOWED',
+      message: `NOT_ALLOWED (${root}/json-upper-error-identifier)`,
+      name: 'RequestRejectedError',
+      status: 403,
+    });
+  });
+
   it('does not promote 400 validation details into fallback codes', async () => {
     server.use(
       http.get(`${root}/json-400-error-identifier`, () =>
