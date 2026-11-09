@@ -1,4 +1,4 @@
-# Wallet-wide orders
+# Wallet-wide orders and session keys
 
 Use an authenticated Deposit Wallet client to read orders across the wallet owner
 and its non-revoked session signers. Expired signers' resting orders are included.
@@ -44,3 +44,63 @@ their API-key-scoped behavior.
 Availability depends on the environment's cancellation rollout. A disabled
 endpoint can return a 404 rejection. The SDK preserves that failure and does not
 fall back to a narrower cancellation endpoint.
+
+## Session-key authentication
+
+Session-key authorization and revocation require the Deposit Wallet owner's
+signature and an `apiKey` authorizer that supports gasless transactions. Supported
+choices are `relayerApiKey`, local `builderApiKey` signing, and
+`remoteBuilderSigning`. Ordinary account credentials authenticate trading and
+session-key listing; they do not authenticate session-key authorization or
+revocation on their own.
+
+Use the owner's EOA address with a relayer key:
+
+```ts
+const owner = await createSecureClient({
+  signer: ownerSigner,
+  wallet: depositWallet,
+  apiKey: relayerApiKey({
+    key: relayerKey,
+    address: await ownerSigner.getAddress(),
+  }),
+});
+
+const authorization = await owner.authorizeSessionKey({
+  address: sessionAddress,
+  scopes: [SessionKeyKnownScope.CLOB],
+});
+console.log(authorization.sessionKey, authorization.transaction);
+
+await owner.revokeSessionKey({ address: sessionAddress });
+```
+
+The relayer key's `address` is the wallet owner's EOA, rather than the Deposit
+Wallet or the session signer. The application generates and protects the session
+private key. Authorization resolves after confirmation and active-key registry
+readiness. Revocation resolves after registry removal makes the key unusable;
+its transaction and order sweep may still be pending. Existing scope and expiry
+defaults and return types stay the same.
+
+For builder credentials, configure either authorizer at client creation:
+
+```ts
+// Node.js: builderApiKey is exported from @polymarket/client/node.
+const localBuilderOwner = await createSecureClient({
+  signer: ownerSigner,
+  wallet: depositWallet,
+  apiKey: builderApiKey(builderCredentials),
+});
+
+const remoteBuilderOwner = await createSecureClient({
+  signer: ownerSigner,
+  wallet: depositWallet,
+  apiKey: remoteBuilderSigning({
+    url: 'https://app.example.com/api/builder/sign',
+  }),
+});
+```
+
+The selected environment must admit the supplied credential type for session-key
+registration. The SDK preserves authentication failures from older deployments;
+it does not send an unauthenticated registration when `apiKey` is omitted.

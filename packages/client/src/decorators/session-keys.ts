@@ -18,7 +18,8 @@ export type SessionKeyActions = {
    * responsible for generating, storing, and protecting the private key.
    * When scopes are omitted, authorization defaults to `ALL`.
    * The authorization expires 180 days after it is created.
-   * Requires builder API-key authentication.
+   * Requires API-key authentication that supports gasless transactions.
+   * Account credentials alone do not authorize this operation.
    *
    * @remarks
    * Resolves after the submitted transaction is confirmed and the session key

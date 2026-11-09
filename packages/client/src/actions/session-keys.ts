@@ -215,7 +215,8 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
  * The authorization expires 180 days after it is created.
- * Requires builder API-key authentication.
+ * Requires API-key authentication that supports gasless transactions.
+ * Account credentials alone do not authorize this operation.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -239,9 +240,9 @@ export async function authorizeSessionKey(
 ): Promise<AuthorizeSessionKeyResult> {
   assertOwnerDepositWallet(client);
 
-  if (!client.hasBuilderApiKey) {
+  if (!client.supportsGasless) {
     throw new UserInputError(
-      'Session-key authorization requires builder API-key authentication.',
+      'Session-key authorization requires API-key authentication that supports gasless transactions.',
     );
   }
 
