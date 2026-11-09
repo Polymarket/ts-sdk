@@ -164,8 +164,16 @@ describe('ServiceClient', () => {
       http.post(`${serviceRoot}/v1/heartbeats`, () => {
         requests++;
         return HttpResponse.json(
-          { error_msg: 'Invalid Heartbeat ID', heartbeat_id: heartbeatId },
-          { status: 400 },
+          {
+            error_msg: 'Invalid Heartbeat ID',
+            heartbeat_id: heartbeatId,
+            retryable: false,
+            parameter: 'heartbeat_id',
+          },
+          {
+            status: 400,
+            headers: { 'x-trace-id': 'heartbeat-trace', 'retry-after': '7' },
+          },
         );
       }),
     );
@@ -183,6 +191,10 @@ describe('ServiceClient', () => {
       name: 'OrderHeartbeatMismatchError',
       status: 400,
       heartbeatId,
+      retryable: false,
+      traceId: 'heartbeat-trace',
+      parameter: 'heartbeat_id',
+      retryAfter: undefined,
     });
     expect(requests).toBe(1);
   });
@@ -610,6 +622,127 @@ describe('ServiceClient', () => {
         status: 400,
         code,
         message: expect.stringContaining('Invalid page size'),
+      });
+    });
+
+    it.each([
+      400, 429, 503,
+    ])('retains rejection diagnostics at HTTP %s without replaying writes', async (status) => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          {
+            error: 'Invalid user',
+            code: 'invalid_request',
+            retryable: false,
+            trace_id: 'body-trace',
+            parameter: 'user',
+            retry_after_seconds: 99,
+          },
+          {
+            status,
+            headers: { 'x-trace-id': 'header-trace', 'retry-after': '7' },
+          },
+        ),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(client.post('/diagnostics', {})).rejects.toMatchObject({
+        name: status === 429 ? 'RateLimitError' : 'RequestRejectedError',
+        retryable: false,
+        traceId: 'body-trace',
+        parameter: 'user',
+        retryAfter: 7,
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      { body: { error: 'Invalid user', retryable: true }, retryable: true },
+      {
+        body: {
+          error: 'Invalid user',
+          retryable: null,
+          trace_id: null,
+          parameter: null,
+        },
+        retryable: undefined,
+      },
+      {
+        body: {
+          error: 'Invalid user',
+          retryable: 'false',
+          trace_id: 42,
+          parameter: {},
+        },
+        retryable: undefined,
+      },
+      { body: { unexpected: true }, retryable: undefined },
+    ])('keeps header trace and error behavior with optional diagnostics: $body', async ({
+      body,
+      retryable,
+    }) => {
+      const client = new ServiceClient({
+        root,
+        fetch: async () =>
+          Response.json(body, {
+            status: 400,
+            headers: { 'x-trace-id': 'header-trace' },
+          }),
+      });
+      await expect(
+        client.get('/invalid', { retries: 0 }),
+      ).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        status: 400,
+        traceId: 'header-trace',
+        retryable,
+        parameter: undefined,
+        message: expect.stringContaining(
+          'error' in body ? 'Invalid user' : 'unreadable response body',
+        ),
+      });
+    });
+
+    it('keeps 429 body retry hints informational without changing retryAfter', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json(
+          {
+            error: 'slow down',
+            retryable: true,
+            retry_after_seconds: 99,
+          },
+          { status: 429 },
+        ),
+      );
+      const client = new ServiceClient({ root, fetch });
+      await expect(
+        client.get('/limited', { retries: 0 }),
+      ).rejects.toMatchObject({
+        name: 'RateLimitError',
+        retryable: true,
+        retryAfter: undefined,
+      });
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('retains header trace for non-JSON errors', async () => {
+      const client = new ServiceClient({
+        root,
+        fetch: async () =>
+          new Response('unavailable', {
+            status: 503,
+            headers: {
+              'content-type': 'text/plain',
+              'x-trace-id': 'header-trace',
+            },
+          }),
+      });
+      await expect(
+        client.get('/invalid', { retries: 0 }),
+      ).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        traceId: 'header-trace',
+        message: expect.stringContaining('unavailable'),
+        retryable: undefined,
       });
     });
 
