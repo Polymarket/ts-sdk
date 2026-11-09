@@ -232,7 +232,16 @@ export type ConversionActivity = ActivityBase & {
   type: 'CONVERSION';
   /** Condition id of the market involved in the conversion. */
   conditionId: ConditionId;
-  /** The amount converted or migrated for the market in USD. */
+  /** Number of shares converted. */
+  shares: DecimalString;
+  /**
+   * Collateral released to the wallet by the conversion in USD.
+   *
+   * Converting NO shares on k outcomes releases `(k - 1) * shares`. The value
+   * is 0 for single-outcome conversions and for protocol v2 conversions, which
+   * swap positions without releasing collateral. Read `shares` for the
+   * converted quantity.
+   */
   amount: DecimalString;
   /** Human-readable title of the market involved in the conversion. */
   title: string;
@@ -752,6 +761,7 @@ function normalizeActivity(activity: RawActivity): Activity {
         ...base,
         type: activity.type,
         conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        shares: activity.size,
         amount: activity.usdc_size,
         title: expectPresent(activity.title, 'title'),
         slug: expectPresent(activity.slug, 'slug'),
