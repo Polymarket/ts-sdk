@@ -30,10 +30,11 @@ Only the wallet owner can cancel across the wallet:
 const cancellation = await client.cancelWalletOrders({ orderIds: [orderId] });
 console.log(cancellation.canceled, cancellation.notCanceled);
 
-await client.cancelWalletOrders({ all: true });
+await client.cancelAllWalletOrders();
 ```
 
-Choose exactly one mode. Selected cancellation accepts 1 to 1,000 order hashes.
+`cancelWalletOrders` accepts 1 to 1,000 order hashes. Use the parameterless
+`cancelAllWalletOrders` to cancel every open order across the wallet.
 Partial failures are returned in `notCanceled`. A missing, foreign, or already
 cancelled order is not treated as successfully cancelled. The SDK does not split
 requests into batches or retry cancellation after a transport failure. Read the

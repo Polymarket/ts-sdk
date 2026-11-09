@@ -27,6 +27,7 @@ import {
   type CancelOrdersRequest,
   type CancelWalletOrdersRequest,
   cancelAll,
+  cancelAllWalletOrders,
   cancelMarketOrders,
   cancelOrder,
   cancelOrders,
@@ -306,19 +307,30 @@ export type SecureTradingActions = {
   cancelOrders(request: CancelOrdersRequest): Promise<CancelOrdersResponse>;
 
   /**
-   * Cancels selected orders or all orders across the Deposit Wallet.
+   * Cancels selected orders across the Deposit Wallet.
    * Only the wallet owner can call this method. Partial failures are returned
    * in `notCanceled`. Requests are not split into batches or retried automatically.
    * @throws {@link CancelWalletOrdersError} Thrown on failure.
    * @example
    * ```ts
    * const cancellation = await client.cancelWalletOrders({ orderIds: [orderId] });
-   * await client.cancelWalletOrders({ all: true });
    * ```
    */
   cancelWalletOrders(
     request: CancelWalletOrdersRequest,
   ): Promise<CancelOrdersResponse>;
+
+  /**
+   * Cancels all open orders across the Deposit Wallet, whichever signer placed them.
+   * Only the wallet owner can call this method. Partial failures are returned
+   * in `notCanceled`. The request is not retried automatically.
+   * @throws {@link CancelAllWalletOrdersError} Thrown on failure.
+   * @example
+   * ```ts
+   * const cancellation = await client.cancelAllWalletOrders();
+   * ```
+   */
+  cancelAllWalletOrders(): Promise<CancelOrdersResponse>;
   /**
    * Cancels all open orders for the authenticated account.
    *
@@ -436,6 +448,7 @@ export function tradingActions(client: BaseSecureClient): SecureTradingActions {
     cancelOrder: cancelOrder.bind(null, client),
     cancelOrders: cancelOrders.bind(null, client),
     cancelWalletOrders: cancelWalletOrders.bind(null, client),
+    cancelAllWalletOrders: cancelAllWalletOrders.bind(null, client),
     cancelAll: cancelAll.bind(null, client),
     cancelMarketOrders: cancelMarketOrders.bind(null, client),
     listOpenOrders: listOpenOrders.bind(null, client),
@@ -459,6 +472,7 @@ export {
 // Keep this list in sync with the methods on SecureTradingActions.
 export {
   CancelAllError,
+  CancelAllWalletOrdersError,
   CancelMarketOrdersError,
   CancelOrderError,
   CancelOrdersError,

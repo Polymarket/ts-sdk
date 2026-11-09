@@ -135,20 +135,15 @@ export async function cancelOrders(
   return cancel(client, '/orders', params.orderIds);
 }
 
-/** Cancel selected orders or every open order on the Deposit Wallet. */
-export type CancelWalletOrdersRequest =
-  | { orderIds: string[]; all?: never }
-  | { all: true; orderIds?: never };
+/** Order hashes to cancel across the Deposit Wallet. */
+export type CancelWalletOrdersRequest = { orderIds: string[] };
 
-const CancelWalletOrdersRequestSchema = z.union([
-  z.strictObject({
-    orderIds: z
-      .array(z.string().regex(/^0x[0-9a-fA-F]{64}$/))
-      .min(1)
-      .max(1000),
-  }),
-  z.strictObject({ all: z.literal(true) }),
-]);
+const CancelWalletOrdersRequestSchema = z.strictObject({
+  orderIds: z
+    .array(z.string().regex(/^0x[0-9a-fA-F]{64}$/))
+    .min(1)
+    .max(1000),
+});
 
 export type CancelWalletOrdersError =
   | RequestRejectedError
@@ -167,14 +162,13 @@ export const CancelWalletOrdersError = makeErrorGuard(
 );
 
 /**
- * Cancels orders across the Deposit Wallet, whichever signer placed them.
+ * Cancels selected orders across the Deposit Wallet, whichever signer placed them.
  * Only the wallet owner can call this method. Partial failures are returned
  * in `notCanceled`. The request is not split into batches or retried automatically.
  * @throws {@link CancelWalletOrdersError} Thrown on failure.
  * @example
  * ```ts
  * const response = await cancelWalletOrders(client, { orderIds: [orderId] });
- * await cancelWalletOrders(client, { all: true });
  * ```
  */
 export async function cancelWalletOrders(
@@ -190,11 +184,49 @@ export async function cancelWalletOrders(
     );
   }
   const params = parseUserInput(request, CancelWalletOrdersRequestSchema);
-  return cancel(
-    client,
-    '/cancel-wallet-orders',
-    'orderIds' in params ? { order_ids: params.orderIds } : { all: true },
-  );
+  return cancel(client, '/cancel-wallet-orders', {
+    order_ids: params.orderIds,
+  });
+}
+
+export type CancelAllWalletOrdersError =
+  | RequestRejectedError
+  | RateLimitError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const CancelAllWalletOrdersError = makeErrorGuard(
+  RequestRejectedError,
+  RateLimitError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Cancels all open orders across the Deposit Wallet, whichever signer placed them.
+ * Only the wallet owner can call this method. Partial failures are returned
+ * in `notCanceled`. The request is not retried automatically.
+ * @throws {@link CancelAllWalletOrdersError} Thrown on failure.
+ * @example
+ * ```ts
+ * const response = await cancelAllWalletOrders(client);
+ * ```
+ */
+export async function cancelAllWalletOrders(
+  client: BaseSecureClient,
+): Promise<CancelOrdersResponse> {
+  if (
+    client.account.walletType !== WalletType.DEPOSIT_WALLET ||
+    client.account.signerType !== SignerType.OWNER
+  ) {
+    throw new UserInputError(
+      'Wallet-wide cancellation requires the Deposit Wallet owner.',
+    );
+  }
+  return cancel(client, '/cancel-wallet-orders', { all: true });
 }
 
 export type CancelAllError =

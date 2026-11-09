@@ -1,4 +1,5 @@
 import { UserInputError } from '@polymarket/client';
+import { vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
 
 describe('Wallet-wide orders', () => {
@@ -18,16 +19,30 @@ describe('Wallet-wide orders', () => {
     }
   });
 
-  it('rejects ambiguous cancellation modes before sending a request', async ({
+  it('rejects legacy all flags and malformed batches before sending a request', async ({
     secureClientWithDepositWallet,
   }) => {
     const ambiguous = { all: true as const, orderIds: [`0x${'a'.repeat(64)}`] };
-    await expect(
-      // @ts-expect-error Exercise the runtime boundary for untyped callers.
-      secureClientWithDepositWallet.cancelWalletOrders(ambiguous),
-    ).rejects.toBeInstanceOf(UserInputError);
-    await expect(
-      secureClientWithDepositWallet.cancelWalletOrders({ orderIds: [] }),
-    ).rejects.toBeInstanceOf(UserInputError);
+    const sending = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(
+        // @ts-expect-error Exercise the runtime boundary for untyped callers.
+        secureClientWithDepositWallet.cancelWalletOrders({ all: true }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        secureClientWithDepositWallet.cancelWalletOrders(ambiguous),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        secureClientWithDepositWallet.cancelWalletOrders({ orderIds: [] }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(
+        secureClientWithDepositWallet.cancelWalletOrders({
+          orderIds: ['invalid'],
+        }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      expect(sending).not.toHaveBeenCalled();
+    } finally {
+      sending.mockRestore();
+    }
   });
 });

@@ -30,17 +30,20 @@ it('exposes wallet-wide trading only on authenticated clients', () => {
   expectTypeOf(
     secureClient.cancelWalletOrders({ orderIds: [`0x${'a'.repeat(64)}`] }),
   ).toEqualTypeOf<Promise<CancelOrdersResponse>>();
-  expectTypeOf(secureClient.cancelWalletOrders({ all: true })).toEqualTypeOf<
+  expectTypeOf(secureClient.cancelAllWalletOrders()).toEqualTypeOf<
     Promise<CancelOrdersResponse>
   >();
   expectTypeOf<PublicClient>().not.toHaveProperty('listWalletOpenOrders');
   expectTypeOf<PublicClient>().not.toHaveProperty('cancelWalletOrders');
+  expectTypeOf<PublicClient>().not.toHaveProperty('cancelAllWalletOrders');
   // @ts-expect-error Cancellation requires an explicit selection.
   secureClient.cancelWalletOrders({});
-  // @ts-expect-error Cancellation modes cannot be combined.
+  // @ts-expect-error Selected cancellation has no all flag.
   secureClient.cancelWalletOrders({ orderIds: ['order'], all: true });
-  // @ts-expect-error Cancel-all must be explicit.
-  secureClient.cancelWalletOrders({ all: false });
+  // @ts-expect-error Cancel every wallet order with cancelAllWalletOrders.
+  secureClient.cancelWalletOrders({ all: true });
+  // @ts-expect-error Cancel-all takes no options.
+  secureClient.cancelAllWalletOrders({ all: true });
 });
 
 it('keeps retry budgets on reads rather than clients or mutations', () => {
