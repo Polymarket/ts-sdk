@@ -24,6 +24,7 @@ import {
 export const PerpsDepositSchema = z
   .object({
     hash: TxHashSchema,
+    log_index: z.number().int().nonnegative().nullish(),
     asset: PerpsAssetSchema,
     amount: BaseUnitsSchema,
     status: PerpsDepositStatusSchema,
@@ -36,6 +37,16 @@ export const PerpsDepositSchema = z
   })
   .transform((deposit) => ({
     hash: deposit.hash,
+    ...(deposit.log_index == null
+      ? {}
+      : {
+          /**
+           * Position of the deposit event within its transaction. Absent for
+           * deposits recorded without one. Together with the transaction
+           * hash, it identifies the deposit.
+           */
+          logIndex: deposit.log_index,
+        }),
     asset: deposit.asset,
     amount: deposit.amount,
     status: deposit.status,
