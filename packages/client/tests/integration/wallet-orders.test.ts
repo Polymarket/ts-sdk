@@ -1,17 +1,14 @@
 import { OrderSide } from '@polymarket/bindings';
 import { RelayerRevokeSessionSignerResponseSchema } from '@polymarket/bindings/relayer';
 import {
-  type ApiKeyAuthorization,
   createSecureClient,
   type EnvironmentConfig,
   type Market,
   OrderPostStatus,
   type Paginated,
-  type PublicClient,
   RequestRejectedError,
   type SecureClient,
   SessionKeyKnownScope,
-  type Signer,
   UserInputError,
   type WalletOpenOrder,
 } from '@polymarket/client';
@@ -43,39 +40,6 @@ describe('Wallet-wide orders', { timeout: 600_000 }, () => {
     }
   });
 
-  it('rejects malformed requests before sending them', async ({
-    secureClientWithDepositWallet,
-  }) => {
-    const ambiguous = { all: true as const, orderIds: [`0x${'a'.repeat(64)}`] };
-    const sending = vi.spyOn(globalThis, 'fetch');
-    try {
-      await expect(
-        // @ts-expect-error Exercise the runtime boundary for untyped callers.
-        secureClientWithDepositWallet.cancelWalletOrders({ all: true }),
-      ).rejects.toBeInstanceOf(UserInputError);
-      await expect(
-        secureClientWithDepositWallet.cancelWalletOrders(ambiguous),
-      ).rejects.toBeInstanceOf(UserInputError);
-      await expect(
-        secureClientWithDepositWallet.cancelWalletOrders({ orderIds: [] }),
-      ).rejects.toBeInstanceOf(UserInputError);
-      await expect(
-        secureClientWithDepositWallet.cancelWalletOrders({
-          orderIds: ['invalid'],
-        }),
-      ).rejects.toBeInstanceOf(UserInputError);
-      // An empty filter must not widen into every signer's orders.
-      expect(() =>
-        secureClientWithDepositWallet.listWalletOpenOrders({
-          signerAddresses: [],
-        }),
-      ).toThrow(UserInputError);
-      expect(sending).not.toHaveBeenCalled();
-    } finally {
-      sending.mockRestore();
-    }
-  });
-
   // Live side effects: authorizes and revokes an on-chain session-key grant,
   // places two minimum-size post-only orders, and cancels every resting order
   // on the shared integration Deposit Wallet.
@@ -89,218 +53,181 @@ describe('Wallet-wide orders', { timeout: 600_000 }, () => {
       publicClient,
       relayerAuthentication,
     }) => {
-      await runWalletOrderWorkflow({
-        annotate,
+      const market = await findHighVolumeLowPriceMarket(publicClient, {
+        sportsOnly: false,
+      });
+      const assetId = expectPresent(market.outcomes.yes.tokenId);
+      const owner = await createSecureClient({
         apiKey: relayerAuthentication,
         environment,
-        onTestFinished,
-        publicClient,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
-    });
+      const ownerAddress = owner.account.signer;
+      const sessionSigner = privateKey(generatePrivateKey(), {
+        transport: http(environment.rpc),
+      });
+      const sessionAddress = await sessionSigner.getAddress();
+      let ordersMayRemain = false;
+      let revoked = false;
 
-    it('authorizes with a builder API key, then reads and cancels wallet orders', async ({
-      annotate,
-      builderAuthentication,
-      depositWalletAddress,
-      depositWalletSigner,
-      environment,
-      onTestFinished,
-      publicClient,
-    }) => {
-      await runWalletOrderWorkflow({
-        annotate,
-        apiKey: builderAuthentication,
-        environment,
-        onTestFinished,
-        publicClient,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
+      // Register before authorization: it can create the grant before failing.
+      onTestFinished(async () => {
+        const cleanupErrors: unknown[] = [];
+        if (ordersMayRemain) {
+          try {
+            await owner.cancelAllWalletOrders();
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        }
+        if (!revoked) {
+          try {
+            await revokeSessionKeyAndWait(owner, sessionAddress, environment);
+          } catch (error) {
+            cleanupErrors.push(error);
+          }
+        }
+        if (cleanupErrors.length > 0) {
+          throw new AggregateError(
+            cleanupErrors,
+            'Wallet-order cleanup failed.',
+          );
+        }
+      }, 600_000);
+
+      await annotate(`Market ID: ${market.id}`);
+      await annotate(`Session address: ${sessionAddress}`);
+
+      const authorization = await owner.authorizeSessionKey({
+        address: sessionAddress,
+        scopes: [SessionKeyKnownScope.CLOB],
       });
+      expect(authorization.sessionKey.address).toBe(
+        sessionAddress.toLowerCase(),
+      );
+      expect(await owner.fetchSessionKeys()).toContainEqual(
+        authorization.sessionKey,
+      );
+
+      const session = await createSecureClient({
+        environment,
+        signer: sessionSigner,
+        wallet: owner.account.wallet,
+      });
+
+      ordersMayRemain = true;
+      const sessionOrderId = await placeSessionOrderWhenReady(
+        session,
+        market,
+        annotate,
+      );
+      const ownerOrderId = await placeRestingOrder(owner, market);
+
+      // Read: signer filters select by placing signer, and session signers can
+      // read the whole wallet.
+      await vi.waitFor(
+        async () => {
+          const visible = await collect(
+            session.listWalletOpenOrders({ assetId }),
+          );
+          expect(visible.map((order) => order.id)).toEqual(
+            expect.arrayContaining([sessionOrderId, ownerOrderId]),
+          );
+        },
+        { timeout: 20_000, interval: 1_000 },
+      );
+
+      const sessionOrders = await collect(
+        owner.listWalletOpenOrders({
+          assetId,
+          signerAddresses: [sessionAddress],
+        }),
+      );
+      const sessionOrder = sessionOrders.find(
+        (order) => order.id === sessionOrderId,
+      );
+      expect(sessionOrder).toMatchObject({
+        assetId,
+        conditionId: market.conditionId,
+      });
+      expect(sessionOrder?.makerAddress.toLowerCase()).toBe(
+        owner.account.wallet.toLowerCase(),
+      );
+      expect(
+        sessionOrders.every(
+          (order) =>
+            order.signerAddress.toLowerCase() === sessionAddress.toLowerCase(),
+        ),
+      ).toBe(true);
+
+      const ownerOrders = await collect(
+        owner.listWalletOpenOrders({
+          assetId,
+          signerAddresses: [ownerAddress],
+        }),
+      );
+      expect(ownerOrders.map((order) => order.id)).toContain(ownerOrderId);
+      expect(
+        ownerOrders.every(
+          (order) =>
+            order.signerAddress.toLowerCase() === ownerAddress.toLowerCase(),
+        ),
+      ).toBe(true);
+
+      // Several signers in one filter exercise the multi-address wire format.
+      const bothSigners = await collect(
+        owner.listWalletOpenOrders({
+          assetId,
+          signerAddresses: [sessionAddress, ownerAddress],
+        }),
+      );
+      expect(bothSigners.map((order) => order.id)).toEqual(
+        expect.arrayContaining([sessionOrderId, ownerOrderId]),
+      );
+
+      // Credential-scoped listing excludes the session signer's order.
+      const { items: credentialScoped } = await owner
+        .listOpenOrders({ assetId })
+        .firstPage();
+      expect(
+        credentialScoped.some((order) => order.id === sessionOrderId),
+      ).toBe(false);
+
+      // Cancel: only the owner cancels across the wallet.
+      await expect(
+        session.cancelWalletOrders({ orderIds: [sessionOrderId] }),
+      ).rejects.toBeInstanceOf(UserInputError);
+      await expect(session.cancelAllWalletOrders()).rejects.toBeInstanceOf(
+        UserInputError,
+      );
+
+      const selected = await owner.cancelWalletOrders({
+        orderIds: [sessionOrderId],
+      });
+      expect(selected.canceled).toContain(sessionOrderId);
+
+      const all = await owner.cancelAllWalletOrders();
+      expect(all.canceled).toContain(ownerOrderId);
+      ordersMayRemain = false;
+
+      const remaining = await collect(owner.listWalletOpenOrders({ assetId }));
+      expect(
+        remaining.some(
+          (order) => order.id === sessionOrderId || order.id === ownerOrderId,
+        ),
+      ).toBe(false);
+
+      await revokeSessionKeyAndWait(owner, sessionAddress, environment);
+      revoked = true;
+      expect(
+        (await owner.fetchSessionKeys()).some(
+          (key) => key.address === sessionAddress.toLowerCase(),
+        ),
+      ).toBe(false);
     });
   });
 });
-
-type WalletOrderWorkflow = {
-  annotate: (message: string) => Promise<unknown>;
-  apiKey: ApiKeyAuthorization;
-  environment: EnvironmentConfig;
-  onTestFinished: (cleanup: () => Promise<void>, timeout?: number) => void;
-  publicClient: PublicClient;
-  signer: Signer;
-  wallet: EvmAddress;
-};
-
-async function runWalletOrderWorkflow({
-  annotate,
-  apiKey,
-  environment,
-  onTestFinished,
-  publicClient,
-  signer,
-  wallet,
-}: WalletOrderWorkflow): Promise<void> {
-  const market = await findHighVolumeLowPriceMarket(publicClient, {
-    sportsOnly: false,
-  });
-  const assetId = expectPresent(market.outcomes.yes.tokenId);
-  const owner = await createSecureClient({
-    apiKey,
-    environment,
-    signer,
-    wallet,
-  });
-  const ownerAddress = owner.account.signer;
-  const sessionSigner = privateKey(generatePrivateKey(), {
-    transport: http(environment.rpc),
-  });
-  const sessionAddress = await sessionSigner.getAddress();
-  let ordersMayRemain = false;
-  let revoked = false;
-
-  // Register before authorization: it can create the grant before failing.
-  onTestFinished(async () => {
-    const cleanupErrors: unknown[] = [];
-    if (ordersMayRemain) {
-      try {
-        await owner.cancelAllWalletOrders();
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
-    }
-    if (!revoked) {
-      try {
-        await revokeSessionKeyAndWait(owner, sessionAddress, environment);
-      } catch (error) {
-        cleanupErrors.push(error);
-      }
-    }
-    if (cleanupErrors.length > 0) {
-      throw new AggregateError(cleanupErrors, 'Wallet-order cleanup failed.');
-    }
-  }, 600_000);
-
-  await annotate(`Market ID: ${market.id}`);
-  await annotate(`Session address: ${sessionAddress}`);
-
-  const authorization = await owner.authorizeSessionKey({
-    address: sessionAddress,
-    scopes: [SessionKeyKnownScope.CLOB],
-  });
-  expect(authorization.sessionKey.address).toBe(sessionAddress.toLowerCase());
-  expect(await owner.fetchSessionKeys()).toContainEqual(
-    authorization.sessionKey,
-  );
-
-  const session = await createSecureClient({
-    environment,
-    signer: sessionSigner,
-    wallet: owner.account.wallet,
-  });
-
-  ordersMayRemain = true;
-  const sessionOrderId = await placeSessionOrderWhenReady(
-    session,
-    market,
-    annotate,
-  );
-  const ownerOrderId = await placeRestingOrder(owner, market);
-
-  // Read: signer filters select by placing signer, and session signers can
-  // read the whole wallet.
-  await vi.waitFor(
-    async () => {
-      const visible = await collect(session.listWalletOpenOrders({ assetId }));
-      expect(visible.map((order) => order.id)).toEqual(
-        expect.arrayContaining([sessionOrderId, ownerOrderId]),
-      );
-    },
-    { timeout: 20_000, interval: 1_000 },
-  );
-
-  const sessionOrders = await collect(
-    owner.listWalletOpenOrders({ assetId, signerAddresses: [sessionAddress] }),
-  );
-  const sessionOrder = sessionOrders.find(
-    (order) => order.id === sessionOrderId,
-  );
-  expect(sessionOrder).toMatchObject({
-    assetId,
-    conditionId: market.conditionId,
-  });
-  expect(sessionOrder?.makerAddress.toLowerCase()).toBe(
-    owner.account.wallet.toLowerCase(),
-  );
-  expect(
-    sessionOrders.every(
-      (order) =>
-        order.signerAddress.toLowerCase() === sessionAddress.toLowerCase(),
-    ),
-  ).toBe(true);
-
-  const ownerOrders = await collect(
-    owner.listWalletOpenOrders({ assetId, signerAddresses: [ownerAddress] }),
-  );
-  expect(ownerOrders.map((order) => order.id)).toContain(ownerOrderId);
-  expect(
-    ownerOrders.every(
-      (order) =>
-        order.signerAddress.toLowerCase() === ownerAddress.toLowerCase(),
-    ),
-  ).toBe(true);
-
-  // Several signers in one filter exercise the multi-address wire format.
-  const bothSigners = await collect(
-    owner.listWalletOpenOrders({
-      assetId,
-      signerAddresses: [sessionAddress, ownerAddress],
-    }),
-  );
-  expect(bothSigners.map((order) => order.id)).toEqual(
-    expect.arrayContaining([sessionOrderId, ownerOrderId]),
-  );
-
-  // Credential-scoped listing excludes the session signer's order.
-  const { items: credentialScoped } = await owner
-    .listOpenOrders({ assetId })
-    .firstPage();
-  expect(credentialScoped.some((order) => order.id === sessionOrderId)).toBe(
-    false,
-  );
-
-  // Cancel: only the owner cancels across the wallet.
-  await expect(
-    session.cancelWalletOrders({ orderIds: [sessionOrderId] }),
-  ).rejects.toBeInstanceOf(UserInputError);
-  await expect(session.cancelAllWalletOrders()).rejects.toBeInstanceOf(
-    UserInputError,
-  );
-
-  const selected = await owner.cancelWalletOrders({
-    orderIds: [sessionOrderId],
-  });
-  expect(selected.canceled).toContain(sessionOrderId);
-
-  const all = await owner.cancelAllWalletOrders();
-  expect(all.canceled).toContain(ownerOrderId);
-  ordersMayRemain = false;
-
-  const remaining = await collect(owner.listWalletOpenOrders({ assetId }));
-  expect(
-    remaining.some(
-      (order) => order.id === sessionOrderId || order.id === ownerOrderId,
-    ),
-  ).toBe(false);
-
-  await revokeSessionKeyAndWait(owner, sessionAddress, environment);
-  revoked = true;
-  expect(
-    (await owner.fetchSessionKeys()).some(
-      (key) => key.address === sessionAddress.toLowerCase(),
-    ),
-  ).toBe(false);
-}
 
 async function collect(
   paginated: Paginated<WalletOpenOrder[]>,

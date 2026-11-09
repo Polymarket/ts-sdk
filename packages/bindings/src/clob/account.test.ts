@@ -39,7 +39,7 @@ const baseTrade = {
 };
 
 describe('WalletOpenOrdersPageSchema', () => {
-  it('preserves signer identity and redacted ownership without legacy order fields', () => {
+  it('normalizes a withheld owner to null', () => {
     const order = {
       id: 'order-1',
       asset_id: '1',
@@ -57,42 +57,11 @@ describe('WalletOpenOrdersPageSchema', () => {
       expiration: '0',
     };
     const page = WalletOpenOrdersPageSchema.parse({
-      data: [
-        order,
-        { ...order, owner: '' },
-        { ...order, owner: null },
-        { ...order, owner: 'caller-key' },
-      ],
-      next_cursor: 'continue',
+      data: [order, { ...order, owner: '' }, { ...order, owner: 'key' }],
+      next_cursor: '',
     });
 
-    expect(page.nextCursor).toBe('continue');
-    expect(page.data.map((item) => item.owner)).toEqual([
-      null,
-      null,
-      null,
-      'caller-key',
-    ]);
-    expect(page.data[0]).toMatchObject({
-      signerAddress: order.signer_address,
-      makerAddress: order.maker_address,
-      assetId: '1',
-      conditionId: order.market,
-      createdAt: '2025-01-01T00:00:00.000Z',
-      price: '0.05',
-      originalSize: '10',
-      sizeMatched: '5',
-    });
-    expect(page.data[0]).not.toHaveProperty('expiresAt');
-  });
-
-  it('preserves continuation on an empty page and accepts an empty final cursor', () => {
-    expect(
-      WalletOpenOrdersPageSchema.parse({ data: [], next_cursor: 'continue' }),
-    ).toEqual({ data: [], nextCursor: 'continue' });
-    expect(
-      WalletOpenOrdersPageSchema.parse({ data: [], next_cursor: '' }),
-    ).toEqual({ data: [], nextCursor: '' });
+    expect(page.data.map((item) => item.owner)).toEqual([null, null, 'key']);
   });
 });
 

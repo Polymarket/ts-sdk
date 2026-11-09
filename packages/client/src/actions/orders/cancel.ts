@@ -139,6 +139,17 @@ export async function cancelOrders(
   return cancel(client, '/orders', params.orderIds);
 }
 
+function assertDepositWalletOwner(client: BaseSecureClient): void {
+  if (
+    client.account.walletType !== WalletType.DEPOSIT_WALLET ||
+    client.account.signerType !== SignerType.OWNER
+  ) {
+    throw new UserInputError(
+      'Wallet-wide cancellation requires the Deposit Wallet owner.',
+    );
+  }
+}
+
 /** Order hashes to cancel across the Deposit Wallet. */
 export type CancelWalletOrdersRequest = { orderIds: string[] };
 
@@ -179,14 +190,7 @@ export async function cancelWalletOrders(
   client: BaseSecureClient,
   request: CancelWalletOrdersRequest,
 ): Promise<CancelOrdersResponse> {
-  if (
-    client.account.walletType !== WalletType.DEPOSIT_WALLET ||
-    client.account.signerType !== SignerType.OWNER
-  ) {
-    throw new UserInputError(
-      'Wallet-wide cancellation requires the Deposit Wallet owner.',
-    );
-  }
+  assertDepositWalletOwner(client);
   const params = parseUserInput(request, CancelWalletOrdersRequestSchema);
   return cancel(client, '/cancel-wallet-orders', {
     order_ids: params.orderIds,
@@ -222,14 +226,7 @@ export const CancelAllWalletOrdersError = makeErrorGuard(
 export async function cancelAllWalletOrders(
   client: BaseSecureClient,
 ): Promise<CancelOrdersResponse> {
-  if (
-    client.account.walletType !== WalletType.DEPOSIT_WALLET ||
-    client.account.signerType !== SignerType.OWNER
-  ) {
-    throw new UserInputError(
-      'Wallet-wide cancellation requires the Deposit Wallet owner.',
-    );
-  }
+  assertDepositWalletOwner(client);
   return cancel(client, '/cancel-wallet-orders', { all: true });
 }
 

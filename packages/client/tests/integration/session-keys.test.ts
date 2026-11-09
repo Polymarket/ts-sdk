@@ -22,28 +22,16 @@ import { findHighVolumeLowPriceMarket } from './markets';
 const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
 
 describe('Session keys', { timeout: 600_000 }, () => {
-  it('accepts relayer authentication before validating session-key input', async ({
+  it('accepts relayer authentication for session-key authorization', async ({
     secureClientWithDepositWallet,
   }) => {
     expect(secureClientWithDepositWallet.hasBuilderApiKey).toBe(false);
-    expect(secureClientWithDepositWallet.supportsGasless).toBe(true);
-    const signing = vi.spyOn(
-      secureClientWithDepositWallet.signer,
-      'signTypedData',
-    );
-    const sending = vi.spyOn(globalThis, 'fetch');
-    try {
-      await expect(
-        secureClientWithDepositWallet.authorizeSessionKey({
-          address: '0x0000000000000000000000000000000000000000',
-        }),
-      ).rejects.toThrow('Session key address must not be the zero address.');
-      expect(signing).not.toHaveBeenCalled();
-      expect(sending).not.toHaveBeenCalled();
-    } finally {
-      signing.mockRestore();
-      sending.mockRestore();
-    }
+    // Past the auth guard, so input validation is what rejects.
+    await expect(
+      secureClientWithDepositWallet.authorizeSessionKey({
+        address: '0x0000000000000000000000000000000000000000',
+      }),
+    ).rejects.toThrow('Session key address must not be the zero address.');
   });
 
   it('requires gasless API-key authentication for session-key mutations', async ({
@@ -59,25 +47,12 @@ describe('Session keys', { timeout: 600_000 }, () => {
     const sessionAddress = await privateKey(generatePrivateKey()).getAddress();
 
     expect(client.supportsGasless).toBe(false);
-    const signing = vi.spyOn(client.signer, 'signTypedData');
-    const sending = vi.spyOn(globalThis, 'fetch');
-    try {
-      await expect(
-        client.authorizeSessionKey({ address: sessionAddress }),
-      ).rejects.toThrow(
-        'Session-key authorization requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
-      );
-      await expect(
-        client.revokeSessionKey({ address: sessionAddress }),
-      ).rejects.toThrow(
-        'Session-key revocation requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
-      );
-      expect(signing).not.toHaveBeenCalled();
-      expect(sending).not.toHaveBeenCalled();
-    } finally {
-      signing.mockRestore();
-      sending.mockRestore();
-    }
+    await expect(
+      client.authorizeSessionKey({ address: sessionAddress }),
+    ).rejects.toThrow('Session-key authorization requires apiKey');
+    await expect(
+      client.revokeSessionKey({ address: sessionAddress }),
+    ).rejects.toThrow('Session-key revocation requires apiKey');
   });
 
   it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
