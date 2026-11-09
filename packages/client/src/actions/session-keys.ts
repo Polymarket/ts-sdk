@@ -215,8 +215,8 @@ export const AuthorizeSessionKeyError = makeErrorGuard(
  * responsible for generating, storing, and protecting the private key.
  * When scopes are omitted, authorization defaults to `ALL`.
  * The authorization expires 180 days after it is created.
- * Requires API-key authentication that supports gasless transactions.
- * Account credentials alone do not authorize this operation.
+ * Requires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or
+ * `remoteBuilderSigning(...)`. Account credentials alone are not enough.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -242,7 +242,7 @@ export async function authorizeSessionKey(
 
   if (!client.supportsGasless) {
     throw new UserInputError(
-      'Session-key authorization requires API-key authentication that supports gasless transactions.',
+      'Session-key authorization requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
     );
   }
 
@@ -365,7 +365,8 @@ export const RevokeSessionKeyError = makeErrorGuard(
  *
  * Returns once the session key is removed from the active-key registry and can
  * no longer be used. The on-chain transaction may still be pending.
- * Requires API-key authentication that supports gasless transactions.
+ * Requires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or
+ * `remoteBuilderSigning(...)`. Account credentials alone are not enough.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -388,7 +389,7 @@ export async function revokeSessionKey(
 
   if (!client.supportsGasless) {
     throw new UserInputError(
-      'Session-key revocation requires API-key authentication that supports gasless transactions.',
+      'Session-key revocation requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
     );
   }
 

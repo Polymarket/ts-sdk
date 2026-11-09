@@ -278,7 +278,9 @@ export type SecureTradingActions = {
     request?: WaitForOrderFillSettlementRequest,
   ): Promise<TxHash[]>;
   /**
-   * Cancels a single open order for the authenticated account.
+   * Cancels a single open order placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelWalletOrders` for orders
+   * placed by session keys.
    *
    * @throws {@link CancelOrderError}
    * Thrown on failure.
@@ -292,7 +294,9 @@ export type SecureTradingActions = {
    */
   cancelOrder(request: CancelOrderRequest): Promise<CancelOrdersResponse>;
   /**
-   * Cancels multiple open orders for the authenticated account.
+   * Cancels multiple open orders placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelWalletOrders` for orders
+   * placed by session keys.
    *
    * @throws {@link CancelOrdersError}
    * Thrown on failure.
@@ -332,7 +336,9 @@ export type SecureTradingActions = {
    */
   cancelAllWalletOrders(): Promise<CancelOrdersResponse>;
   /**
-   * Cancels all open orders for the authenticated account.
+   * Cancels all open orders placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelAllWalletOrders` to include
+   * orders placed by session keys.
    *
    * @throws {@link CancelAllError}
    * Thrown on failure.
@@ -364,7 +370,9 @@ export type SecureTradingActions = {
     request: CancelMarketOrdersRequest,
   ): Promise<CancelOrdersResponse>;
   /**
-   * Lists open orders for the authenticated account across all pages.
+   * Lists open orders placed with this client's credentials across all pages.
+   * On a Deposit Wallet, use `listWalletOpenOrders` to include orders placed
+   * by the owner and its session keys.
    *
    * @throws {@link ListOpenOrdersError}
    * Thrown on failure.
@@ -408,7 +416,7 @@ export type SecureTradingActions = {
    * @throws {@link ListWalletOpenOrdersError} Thrown on failure.
    * @example
    * ```ts
-   * for await (const page of client.listWalletOpenOrders({ sessionKeys: [sessionAddress] })) {
+   * for await (const page of client.listWalletOpenOrders({ signerAddresses: [sessionAddress] })) {
    *   for (const order of page.items) console.log(order.id, order.signerAddress);
    * }
    * ```

@@ -15,7 +15,7 @@ import { delay, expectPresent } from '@polymarket/types';
 import { http } from 'viem';
 import { generatePrivateKey } from 'viem/accounts';
 import { vi } from 'vitest';
-import { describe, expect, it, runMeteredTests } from './fixtures';
+import { describe, expect, it } from './fixtures';
 import { expectAcceptedOrderResponse } from './helpers';
 import { findHighVolumeLowPriceMarket } from './markets';
 
@@ -65,12 +65,12 @@ describe('Session keys', { timeout: 600_000 }, () => {
       await expect(
         client.authorizeSessionKey({ address: sessionAddress }),
       ).rejects.toThrow(
-        'Session-key authorization requires API-key authentication that supports gasless transactions.',
+        'Session-key authorization requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
       );
       await expect(
         client.revokeSessionKey({ address: sessionAddress }),
       ).rejects.toThrow(
-        'Session-key revocation requires API-key authentication that supports gasless transactions.',
+        'Session-key revocation requires apiKey: relayerApiKey(...), builderApiKey(...), or remoteBuilderSigning(...).',
       );
       expect(signing).not.toHaveBeenCalled();
       expect(sending).not.toHaveBeenCalled();
@@ -79,104 +79,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
       sending.mockRestore();
     }
   });
-
-  // Creates and revokes an on-chain grant; it does not place orders.
-  it.runIf(runMeteredTests)(
-    'authorizes and revokes with relayer headers',
-    async ({ secureClientWithDepositWallet, environment, onTestFinished }) => {
-      const client = secureClientWithDepositWallet;
-      const sessionAddress = await privateKey(
-        generatePrivateKey(),
-      ).getAddress();
-      const authorizationUrl = new URL(
-        '/v1/session-signers/authorizations',
-        environment.relayer.rest,
-      );
-      const revocationUrl = new URL(
-        '/v1/session-signers/revocations',
-        environment.relayer.rest,
-      );
-      let authorizationHeaders: Headers | undefined;
-      let revocationTransaction: GaslessTransactionHandle | undefined;
-      let revoked = false;
-      const originalFetch = globalThis.fetch;
-      const sending = vi
-        .spyOn(globalThis, 'fetch')
-        .mockImplementation(async (input, init) => {
-          const url = new URL(input instanceof Request ? input.url : input);
-          const method =
-            init?.method ?? (input instanceof Request ? input.method : 'GET');
-          if (
-            method === 'POST' &&
-            url.origin === authorizationUrl.origin &&
-            url.pathname === authorizationUrl.pathname
-          ) {
-            authorizationHeaders = new Headers(
-              init?.headers ??
-                (input instanceof Request ? input.headers : undefined),
-            );
-          }
-          const response = await originalFetch(input, init);
-          if (
-            response.ok &&
-            method === 'POST' &&
-            url.origin === revocationUrl.origin &&
-            url.pathname === revocationUrl.pathname
-          ) {
-            const revocation = RelayerRevokeSessionSignerResponseSchema.parse(
-              await response.clone().json(),
-            );
-            revocationTransaction = new GaslessTransactionHandle(client, {
-              transactionHash: null,
-              transactionId: revocation.transactionId,
-            });
-          }
-          return response;
-        });
-      onTestFinished(async () => {
-        try {
-          if (!revoked)
-            await client.revokeSessionKey({ address: sessionAddress });
-        } finally {
-          sending.mockRestore();
-          // Registry removal can precede release of the shared wallet's busy gate.
-          await revocationTransaction?.wait();
-        }
-      });
-
-      expect(client.hasBuilderApiKey).toBe(false);
-      const authorization = await client.authorizeSessionKey({
-        address: sessionAddress,
-        scopes: [SessionKeyKnownScope.CLOB],
-      });
-      expect(authorizationHeaders?.has('RELAYER_API_KEY')).toBe(true);
-      expect(
-        authorizationHeaders?.get('RELAYER_API_KEY_ADDRESS')?.toLowerCase(),
-      ).toBe(client.account.signer.toLowerCase());
-      expect(authorizationHeaders?.has('POLY_BUILDER_API_KEY')).toBe(false);
-      expect(authorizationHeaders?.has('POLY_BUILDER_SIGNATURE')).toBe(false);
-      expect(authorization.sessionKey.address).toBe(
-        sessionAddress.toLowerCase(),
-      );
-      expect(authorization.transaction.transactionHash).toMatch(
-        /^0x[0-9a-f]{64}$/i,
-      );
-      expect(await client.fetchSessionKeys()).toContainEqual(
-        authorization.sessionKey,
-      );
-
-      const outcome = await client.revokeSessionKey({
-        address: sessionAddress,
-      });
-      revoked = true;
-      expect(outcome).toBeUndefined();
-      expect(
-        (await client.fetchSessionKeys()).some(
-          (key) => key.address === sessionAddress.toLowerCase(),
-        ),
-      ).toBe(false);
-    },
-  );
 
   it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
     annotate,

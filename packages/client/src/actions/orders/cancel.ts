@@ -63,7 +63,9 @@ export const CancelOrderError = makeErrorGuard(
 );
 
 /**
- * Cancels a single open order for the authenticated account.
+ * Cancels a single open order placed with this client's credentials.
+ * On a Deposit Wallet, the owner can use {@link cancelWalletOrders} for
+ * orders placed by session keys.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -109,7 +111,9 @@ export const CancelOrdersError = makeErrorGuard(
 );
 
 /**
- * Cancels multiple open orders for the authenticated account.
+ * Cancels multiple open orders placed with this client's credentials.
+ * On a Deposit Wallet, the owner can use {@link cancelWalletOrders} for
+ * orders placed by session keys.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -244,7 +248,9 @@ export const CancelAllError = makeErrorGuard(
 );
 
 /**
- * Cancels all open orders for the authenticated account.
+ * Cancels all open orders placed with this client's credentials.
+ * On a Deposit Wallet, the owner can use {@link cancelAllWalletOrders} to
+ * include orders placed by session keys.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

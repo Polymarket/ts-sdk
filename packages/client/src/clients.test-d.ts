@@ -23,7 +23,7 @@ declare const secureOptions: SecureClientOptions;
 it('exposes wallet-wide trading only on authenticated clients', () => {
   expectTypeOf(
     secureClient.listWalletOpenOrders(
-      { sessionKeys: ['0x0000000000000000000000000000000000000001'] },
+      { signerAddresses: ['0x0000000000000000000000000000000000000001'] },
       { retries: 1 },
     ),
   ).toEqualTypeOf<Paginated<WalletOpenOrder[]>>();

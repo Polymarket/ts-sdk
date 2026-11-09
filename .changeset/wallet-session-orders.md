@@ -3,6 +3,8 @@
 '@polymarket/client': minor
 ---
 
-Add wallet-wide open-order listing and owner cancellation, with signer attribution and nullable `owner` metadata. Cancel selected orders with `cancelWalletOrders({ orderIds })`, or every open order with `cancelAllWalletOrders()`.
+Add `listWalletOpenOrders` to list open orders across a Deposit Wallet, including orders placed by its session keys. Each order reports the `signerAddress` that placed it and a nullable `owner`. Filter by `market`, `assetId`, or 1 to 50 `signerAddresses`.
 
-Allow session-key authorization with `relayerApiKey` as well as local or remote builder authorizers. Account credentials alone remain insufficient for session-key authorization and revocation.
+Add `cancelWalletOrders({ orderIds })` and `cancelAllWalletOrders()` so the Deposit Wallet owner can cancel orders placed by any of its signers. `listOpenOrders`, `cancelOrder`, `cancelOrders`, and `cancelAll` still cover only orders placed with the client's own credentials.
+
+Allow session-key authorization with `relayerApiKey` as well as `builderApiKey` and `remoteBuilderSigning`. Account credentials alone remain insufficient for session-key authorization and revocation.

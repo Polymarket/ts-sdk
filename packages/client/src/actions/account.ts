@@ -141,7 +141,9 @@ export const ListOpenOrdersError = makeErrorGuard(
 );
 
 /**
- * Lists open orders for the authenticated account across all pages.
+ * Lists open orders placed with this client's credentials across all pages.
+ * On a Deposit Wallet, use {@link listWalletOpenOrders} to include orders
+ * placed by the owner and its session keys.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -216,8 +218,11 @@ export function listOpenOrders(
 export type ListWalletOpenOrdersRequest = {
   assetId?: string;
   market?: string;
-  /** Restrict results to these signer addresses. At most 50 addresses. */
-  sessionKeys?: string[];
+  /**
+   * Restrict results to orders placed by these signers: the wallet owner or
+   * its session keys. Accepts 1 to 50 addresses. Omit to include every signer.
+   */
+  signerAddresses?: string[];
   cursor?: string;
 };
 
@@ -225,7 +230,7 @@ const ListWalletOpenOrdersRequestSchema = z
   .object({
     assetId: z.string().optional(),
     market: z.string().optional(),
-    sessionKeys: z.array(EvmAddressSchema).max(50).optional(),
+    signerAddresses: z.array(EvmAddressSchema).min(1).max(50).optional(),
     cursor: PaginationCursorSchema.optional(),
   })
   .default({});
@@ -255,7 +260,7 @@ export const ListWalletOpenOrdersError = makeErrorGuard(
  * @throws {@link ListWalletOpenOrdersError} Thrown on failure.
  * @example
  * ```ts
- * for await (const page of listWalletOpenOrders(client, { sessionKeys: [sessionAddress] })) {
+ * for await (const page of listWalletOpenOrders(client, { signerAddresses: [sessionAddress] })) {
  *   for (const order of page.items) console.log(order.id, order.signerAddress);
  * }
  * ```
@@ -280,10 +285,13 @@ export function listWalletOpenOrders(
             {
               assetId: params.assetId,
               market: params.market,
-              sessionKeys: params.sessionKeys,
+              signerAddresses: params.signerAddresses?.join(','),
               cursor,
             },
-            snakeCase({ assetId: 'asset_id' }),
+            snakeCase({
+              assetId: 'asset_id',
+              signerAddresses: 'session_keys',
+            }),
           ),
         })
         .then((response) => ({
