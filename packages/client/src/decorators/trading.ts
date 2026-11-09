@@ -5,13 +5,16 @@ import type {
   OrderHeartbeat,
   OrderResponse,
   OrderResponses,
+  WalletOpenOrder,
 } from '@polymarket/bindings/clob';
 import type { TxHash } from '@polymarket/types';
 import {
   type FetchOrderRequest,
   fetchOrder,
   type ListOpenOrdersRequest,
+  type ListWalletOpenOrdersRequest,
   listOpenOrders,
+  listWalletOpenOrders,
 } from '../actions/account';
 import {
   type SendOrderHeartbeatRequest,
@@ -22,10 +25,13 @@ import {
   type CancelMarketOrdersRequest,
   type CancelOrderRequest,
   type CancelOrdersRequest,
+  type CancelWalletOrdersRequest,
   cancelAll,
+  cancelAllWalletOrders,
   cancelMarketOrders,
   cancelOrder,
   cancelOrders,
+  cancelWalletOrders,
   createLimitOrder,
   createMarketOrder,
   type PostOrdersRequest,
@@ -272,7 +278,9 @@ export type SecureTradingActions = {
     request?: WaitForOrderFillSettlementRequest,
   ): Promise<TxHash[]>;
   /**
-   * Cancels a single open order for the authenticated account.
+   * Cancels a single open order placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelWalletOrders` for orders
+   * placed by session keys.
    *
    * @throws {@link CancelOrderError}
    * Thrown on failure.
@@ -286,7 +294,9 @@ export type SecureTradingActions = {
    */
   cancelOrder(request: CancelOrderRequest): Promise<CancelOrdersResponse>;
   /**
-   * Cancels multiple open orders for the authenticated account.
+   * Cancels multiple open orders placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelWalletOrders` for orders
+   * placed by session keys.
    *
    * @throws {@link CancelOrdersError}
    * Thrown on failure.
@@ -299,8 +309,36 @@ export type SecureTradingActions = {
    * ```
    */
   cancelOrders(request: CancelOrdersRequest): Promise<CancelOrdersResponse>;
+
   /**
-   * Cancels all open orders for the authenticated account.
+   * Cancels selected orders across the Deposit Wallet.
+   * Only the wallet owner can call this method. Partial failures are returned
+   * in `notCanceled`. Requests are not split into batches or retried automatically.
+   * @throws {@link CancelWalletOrdersError} Thrown on failure.
+   * @example
+   * ```ts
+   * const cancellation = await client.cancelWalletOrders({ orderIds: [orderId] });
+   * ```
+   */
+  cancelWalletOrders(
+    request: CancelWalletOrdersRequest,
+  ): Promise<CancelOrdersResponse>;
+
+  /**
+   * Cancels all open orders across the Deposit Wallet, whichever signer placed them.
+   * Only the wallet owner can call this method. Partial failures are returned
+   * in `notCanceled`. The request is not retried automatically.
+   * @throws {@link CancelAllWalletOrdersError} Thrown on failure.
+   * @example
+   * ```ts
+   * const cancellation = await client.cancelAllWalletOrders();
+   * ```
+   */
+  cancelAllWalletOrders(): Promise<CancelOrdersResponse>;
+  /**
+   * Cancels all open orders placed with this client's credentials.
+   * On a Deposit Wallet, the owner can use `cancelAllWalletOrders` to include
+   * orders placed by session keys.
    *
    * @throws {@link CancelAllError}
    * Thrown on failure.
@@ -332,7 +370,9 @@ export type SecureTradingActions = {
     request: CancelMarketOrdersRequest,
   ): Promise<CancelOrdersResponse>;
   /**
-   * Lists open orders for the authenticated account across all pages.
+   * Lists open orders placed with this client's credentials across all pages.
+   * On a Deposit Wallet, use `listWalletOpenOrders` to include orders placed
+   * by the owner and its session keys.
    *
    * @throws {@link ListOpenOrdersError}
    * Thrown on failure.
@@ -368,6 +408,23 @@ export type SecureTradingActions = {
     request?: ListOpenOrdersRequest,
     options?: RequestOptions,
   ): Paginated<OpenOrder[]>;
+
+  /**
+   * Lists open orders across the Deposit Wallet, including other signers' orders.
+   * Owners and non-revoked session signers can read this collection. An empty page
+   * can still have a continuation cursor; iteration follows every continuation.
+   * @throws {@link ListWalletOpenOrdersError} Thrown on failure.
+   * @example
+   * ```ts
+   * for await (const page of client.listWalletOpenOrders({ signerAddresses: [sessionAddress] })) {
+   *   for (const order of page.items) console.log(order.id, order.signerAddress);
+   * }
+   * ```
+   */
+  listWalletOpenOrders(
+    request?: ListWalletOpenOrdersRequest,
+    options?: RequestOptions,
+  ): Paginated<WalletOpenOrder[]>;
   /**
    * Fetches a single order for the authenticated account.
    *
@@ -398,14 +455,22 @@ export function tradingActions(client: BaseSecureClient): SecureTradingActions {
     waitForOrderFillSettlement: waitForOrderFillSettlement.bind(null, client),
     cancelOrder: cancelOrder.bind(null, client),
     cancelOrders: cancelOrders.bind(null, client),
+    cancelWalletOrders: cancelWalletOrders.bind(null, client),
+    cancelAllWalletOrders: cancelAllWalletOrders.bind(null, client),
     cancelAll: cancelAll.bind(null, client),
     cancelMarketOrders: cancelMarketOrders.bind(null, client),
     listOpenOrders: listOpenOrders.bind(null, client),
+    listWalletOpenOrders: listWalletOpenOrders.bind(null, client),
     fetchOrder: fetchOrder.bind(null, client),
   };
 }
 
-export { FetchOrderError, ListOpenOrdersError } from '../actions/account';
+export {
+  FetchOrderError,
+  ListOpenOrdersError,
+  ListWalletOpenOrdersError,
+  type ListWalletOpenOrdersRequest,
+} from '../actions/account';
 export {
   SendOrderHeartbeatError,
   type SendOrderHeartbeatRequest,
@@ -415,9 +480,12 @@ export {
 // Keep this list in sync with the methods on SecureTradingActions.
 export {
   CancelAllError,
+  CancelAllWalletOrdersError,
   CancelMarketOrdersError,
   CancelOrderError,
   CancelOrdersError,
+  CancelWalletOrdersError,
+  type CancelWalletOrdersRequest,
   CreateLimitOrderError,
   CreateMarketOrderError,
   PlaceLimitOrderError,

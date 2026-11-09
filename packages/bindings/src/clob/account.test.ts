@@ -4,6 +4,7 @@ import {
   type OpenOrder,
   OpenOrderSchema,
   TotalUserEarningsResponseSchema,
+  WalletOpenOrdersPageSchema,
 } from './account';
 
 const baseTrade = {
@@ -36,6 +37,33 @@ const baseTrade = {
   trader_side: 'TAKER',
   transaction_hash: `0x${'dd'.repeat(32)}`,
 };
+
+describe('WalletOpenOrdersPageSchema', () => {
+  it('normalizes a withheld owner to null', () => {
+    const order = {
+      id: 'order-1',
+      asset_id: '1',
+      market: `0x${'cc'.repeat(32)}`,
+      maker_address: `0x${'aa'.repeat(20)}`,
+      signer_address: `0x${'bb'.repeat(20)}`,
+      side: 'BUY',
+      price: '0.05',
+      original_size: '10',
+      size_matched: '5',
+      outcome: 'Yes',
+      order_type: 'GTC',
+      status: 'LIVE',
+      created_at: 1735689600,
+      expiration: '0',
+    };
+    const page = WalletOpenOrdersPageSchema.parse({
+      data: [order, { ...order, owner: '' }, { ...order, owner: 'key' }],
+      next_cursor: '',
+    });
+
+    expect(page.data.map((item) => item.owner)).toEqual([null, null, 'key']);
+  });
+});
 
 describe('ClobTradeSchema', () => {
   it.each([
