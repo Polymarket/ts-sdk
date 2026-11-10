@@ -139,7 +139,6 @@ describe('predictions service types', () => {
       publicClient.predictions.del('/reserved', { responseType: 'empty' }),
     ).toEqualTypeOf<Promise<void>>();
     expectTypeOf(publicClient.clob).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.gamma).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
   });
 

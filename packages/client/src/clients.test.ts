@@ -150,7 +150,7 @@ describe('predictions gateway service', () => {
       }));
       expect(extended.predictions).toBe(client.predictions);
       expect(extended.predictionService).toBe(client.predictions);
-      for (const service of [client.clob, client.gamma, client.perps]) {
+      for (const service of [client.clob, client.perps]) {
         await expect(
           service.get('/direct', { retries: 0 }),
         ).rejects.toMatchObject({

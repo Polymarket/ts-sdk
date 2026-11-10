@@ -64,8 +64,6 @@ export type EnvironmentConfig = {
   predictions: RestEndpoint;
   /** @internal */
   clob: ClobEndpoints;
-  /** @internal */
-  gamma: RestEndpoint;
   /** @internal Combo quoter socket. */
   combos: WebSocketEndpoint;
   /** @internal */
@@ -95,7 +93,6 @@ export type EnvironmentConfigFork = {
     market?: Partial<WebSocketEndpoint>;
     user?: Partial<WebSocketEndpoint>;
   };
-  gamma?: Partial<RestEndpoint>;
   combos?: Partial<WebSocketEndpoint>;
   perps?: EnvironmentConfigForkEndpoint;
   realtime?: Partial<WebSocketEndpoint>;
@@ -188,7 +185,6 @@ export const production: EnvironmentConfig = {
     market: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/market' },
     user: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/user' },
   },
-  gamma: { rest: 'https://gamma-api.polymarket.com' },
   combos: {
     ws: 'wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq',
   },
@@ -230,7 +226,6 @@ export function forkEnvironmentConfig(
       user: forkWebSocketEndpoint(base.clob.user, fork.clob?.user),
     },
     predictions: forkRestEndpoint(base.predictions, fork.predictions),
-    gamma: forkRestEndpoint(base.gamma, fork.gamma),
     combos: forkWebSocketEndpoint(base.combos, fork.combos),
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
     realtime: forkWebSocketEndpoint(base.realtime, fork.realtime),
@@ -284,5 +279,4 @@ export const preproduction = forkEnvironmentConfig({
   name: 'preproduction',
   predictions: { rest: 'https://api-defi-staging.polymarket.dev' },
   clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
-  gamma: { rest: 'https://gamma-api-preprod-int.polymarket.com' },
 });

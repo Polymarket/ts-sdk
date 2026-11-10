@@ -103,8 +103,6 @@ type PublicContext = {
   /** @internal */
   rpc: JsonRpcClient;
   /** @internal */
-  gamma: ServiceClient;
-  /** @internal */
   perps: ServiceClient;
   /** @internal */
   webSockets: PublicWebSocketManagers;
@@ -196,11 +194,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get rpc(): JsonRpcClient {
     return this.context.rpc;
-  }
-
-  /** @internal */
-  get gamma(): ServiceClient {
-    return this.context.gamma;
   }
 
   /** @internal */
@@ -315,11 +308,6 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
-      gamma: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.gamma.headers,
-        root: config.environment.gamma.rest,
-      }),
       clob: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.clob.headers,
@@ -566,13 +554,6 @@ class BaseSecureClient<
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
-      }),
-      gamma: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.gamma.headers,
-        root: config.environment.gamma.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
