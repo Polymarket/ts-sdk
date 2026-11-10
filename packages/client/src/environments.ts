@@ -26,12 +26,6 @@ export type ClobEndpoints = RestEndpoint & {
   user: WebSocketEndpoint;
 };
 
-export type CombosEndpoints = RestEndpoint &
-  WebSocketEndpoint & {
-    builderGateway: RestEndpoint;
-    collateralReturn: RestEndpoint;
-  };
-
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
@@ -71,13 +65,9 @@ export type EnvironmentConfig = {
   /** @internal */
   clob: ClobEndpoints;
   /** @internal */
-  relayer: RestEndpoint;
-  /** @internal */
   gamma: RestEndpoint;
-  /** @internal */
-  data: RestEndpoint;
-  /** @internal */
-  combos: CombosEndpoints;
+  /** @internal Combo quoter socket. */
+  combos: WebSocketEndpoint;
   /** @internal */
   perps: PerpsEndpoints;
   /** @internal */
@@ -105,13 +95,8 @@ export type EnvironmentConfigFork = {
     market?: Partial<WebSocketEndpoint>;
     user?: Partial<WebSocketEndpoint>;
   };
-  relayer?: Partial<RestEndpoint>;
   gamma?: Partial<RestEndpoint>;
-  data?: Partial<RestEndpoint>;
-  combos?: EnvironmentConfigForkEndpoint & {
-    builderGateway?: Partial<RestEndpoint>;
-    collateralReturn?: Partial<RestEndpoint>;
-  };
+  combos?: Partial<WebSocketEndpoint>;
   perps?: EnvironmentConfigForkEndpoint;
   realtime?: Partial<WebSocketEndpoint>;
   /** @deprecated Retained temporarily for legacy RTDS streams. */
@@ -203,18 +188,9 @@ export const production: EnvironmentConfig = {
     market: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/market' },
     user: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/user' },
   },
-  relayer: { rest: 'https://relayer-v2.polymarket.com' },
   gamma: { rest: 'https://gamma-api.polymarket.com' },
-  data: { rest: 'https://data-api.polymarket.com' },
   combos: {
-    rest: 'https://combos-rfq-api.polymarket.com',
     ws: 'wss://combos-rfq-gateway-quoter.polymarket.com/ws/rfq',
-    builderGateway: {
-      rest: 'https://combos-rfq-gateway-builder.polymarket.com',
-    },
-    collateralReturn: {
-      rest: 'https://combos-rfq-collateral-return.polymarket.com',
-    },
   },
   perps: {
     rest: 'https://api.perpetuals.polymarket.com',
@@ -254,20 +230,8 @@ export function forkEnvironmentConfig(
       user: forkWebSocketEndpoint(base.clob.user, fork.clob?.user),
     },
     predictions: forkRestEndpoint(base.predictions, fork.predictions),
-    relayer: forkRestEndpoint(base.relayer, fork.relayer),
     gamma: forkRestEndpoint(base.gamma, fork.gamma),
-    data: forkRestEndpoint(base.data, fork.data),
-    combos: {
-      ...forkRestWebSocketEndpoint(base.combos, fork.combos),
-      builderGateway: forkRestEndpoint(
-        base.combos.builderGateway,
-        fork.combos?.builderGateway,
-      ),
-      collateralReturn: forkRestEndpoint(
-        base.combos.collateralReturn,
-        fork.combos?.collateralReturn,
-      ),
-    },
+    combos: forkWebSocketEndpoint(base.combos, fork.combos),
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
     realtime: forkWebSocketEndpoint(base.realtime, fork.realtime),
     rtds: forkWebSocketEndpoint(base.rtds, fork.rtds),
@@ -320,7 +284,5 @@ export const preproduction = forkEnvironmentConfig({
   name: 'preproduction',
   predictions: { rest: 'https://api-defi-staging.polymarket.dev' },
   clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
-  data: { rest: 'https://data-api-preprod-int.polymarket.com' },
   gamma: { rest: 'https://gamma-api-preprod-int.polymarket.com' },
-  relayer: { rest: 'https://relayer-v2-preprod-int.polymarket.com' },
 });

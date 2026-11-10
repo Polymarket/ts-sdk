@@ -26,6 +26,6 @@ The SDK chooses the route before dispatch. It does not fall back to another endp
 
 Standalone credential administration is no longer provided by the SDK. Perps and websocket transports keep their independent configuration and lifecycle.
 
-The gateway origin may include an application proxy prefix. Keep direct endpoint configurations consistent with that environment.
+The gateway origin may include an application proxy prefix. Keep `clob.rest` and `gamma.rest` consistent with that environment, because heartbeats and offset comment reads still use them.
 
 Routing follows the gateway passthrough tables at `97867a07` (2026-11-10), including the wallet-order routes added in gateway PR #1277. SDK method coverage includes the merged changes through SDK PR #503. Gateway-only endpoints without corresponding SDK methods are outside this change.

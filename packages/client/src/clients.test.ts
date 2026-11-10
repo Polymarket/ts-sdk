@@ -43,7 +43,6 @@ const environment = forkEnvironmentConfig({
   name: 'test',
   predictions: { rest: clobRoot },
   clob: { rest: clobRoot },
-  relayer: { rest: relayerRoot },
   rpc: rpcRoot,
 });
 
@@ -151,13 +150,7 @@ describe('predictions gateway service', () => {
       }));
       expect(extended.predictions).toBe(client.predictions);
       expect(extended.predictionService).toBe(client.predictions);
-      for (const service of [
-        client.clob,
-        client.gamma,
-        client.data,
-        client.relayer,
-        client.perps,
-      ]) {
+      for (const service of [client.clob, client.gamma, client.perps]) {
         await expect(
           service.get('/direct', { retries: 0 }),
         ).rejects.toMatchObject({
