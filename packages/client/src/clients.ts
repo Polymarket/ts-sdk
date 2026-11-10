@@ -3,6 +3,9 @@ import {
   AccessTokenResponseSchema,
   type BearerCredentials,
   EvmAddressSchema,
+  type OwnershipChallenge,
+  type OwnershipChallengeRequest,
+  OwnershipChallengeSchema,
   type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
@@ -59,7 +62,7 @@ import {
 import { parseUserInput } from './input';
 import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
-import { protectRequestErrors } from './request-errors';
+import { protectRequestErrors, redactRequestError } from './request-errors';
 import type { Fetch } from './request-options';
 import { JsonRpcClient } from './rpc';
 import type { RequestHeadersResolver, ServiceRequest } from './ServiceClient';
@@ -266,12 +269,33 @@ type PublicClientConfig = {
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
+async function resolveGatewayHeaders(
+  config: PublicClientConfig,
+  request: ServiceRequest,
+  existingHeaders?: HeadersInit,
+): Promise<Headers> {
+  const headers = new Headers(existingHeaders);
+  // Attribution is bound to the session. Refresh/logout need no application key exchange.
+  if (request.path === '/v1/auth/refresh' || request.path === '/v1/auth/logout')
+    return headers;
+  const gateway = await config.apiKey?.authorizeGateway?.({
+    fetch: config.fetch,
+    signal: request.signal,
+  });
+  for (const [key, value] of new Headers(gateway)) headers.set(key, value);
+  return headers;
+}
+
 function createAuthService(config: PublicClientConfig): ServiceClient {
   return new ServiceClient({
     fetch: protectRequestErrors(config.fetch, true),
     root: config.environment.predictions.rest,
     headers: config.environment.predictions.headers,
-    resolveHeaders: async () => ({ POLYMARKET_CLIENT: createClientMetadata() }),
+    resolveHeaders: async (request) => {
+      const headers = await resolveGatewayHeaders(config, request);
+      headers.set('POLYMARKET_CLIENT', createClientMetadata());
+      return headers;
+    },
   });
 }
 
@@ -282,12 +306,16 @@ function createPredictionsService(
 ): ServiceClient {
   const metadata = createClientMetadata();
   return new ServiceClient({
-    fetch: config.fetch,
+    fetch: protectRequestErrors(config.fetch),
     headers: config.environment.predictions.headers,
     root: config.environment.predictions.rest,
     onRateLimitUpdate: config.onRateLimitUpdate,
     resolveHeaders: async (request) => {
-      const headers = new Headers(await resolveHeaders(request));
+      const headers = await resolveGatewayHeaders(
+        config,
+        request,
+        await resolveHeaders?.(request),
+      );
       headers.set('POLYMARKET_CLIENT', metadata);
       return headers;
     },
@@ -411,6 +439,28 @@ class BasePublicClient<
     >;
   }
 
+  /** @internal */
+  assertPlatformChallengeSupported(): void {
+    if (this.context.apiKey?.authorizeGateway === undefined)
+      throw new UserInputError(
+        'Create platform challenges with a client configured with platformApiKey.',
+      );
+  }
+
+  /** @internal */
+  async requestOwnershipChallenge(
+    request: OwnershipChallengeRequest,
+  ): Promise<OwnershipChallenge> {
+    if (this.context.apiKey?.createChallenge !== undefined)
+      return this.context.apiKey.createChallenge(request, {
+        fetch: this.context.fetch,
+      });
+    return this.auth.post('/v1/auth/challenge', {
+      json: request,
+      schema: OwnershipChallengeSchema,
+    });
+  }
+
   /** Opens a bearer session by signing a server-issued ownership challenge.
    * @throws {@link LoginError} Thrown on authentication failure.
    */
@@ -513,8 +563,16 @@ class BaseSecureClient<
           signal,
         }),
     });
+    function ownedSecrets(): string[] {
+      return Object.values(session.credentials);
+    }
+    const protectedFetch = protectRequestErrors(
+      config.fetch,
+      false,
+      ownedSecrets,
+    );
     predictions = new AuthenticatedServiceClient({
-      fetch: protectRequestErrors(config.fetch),
+      fetch: protectedFetch,
       headers: config.environment.predictions.headers,
       root: config.environment.predictions.rest,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -540,8 +598,9 @@ class BaseSecureClient<
       signer: config.signer,
       predictions,
       auth,
+
       clob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
@@ -561,7 +620,7 @@ class BaseSecureClient<
         root: config.environment.perps.rest,
       }),
       secureClob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
+        fetch: protectedFetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         resolveHeaders: (request) =>
@@ -624,8 +683,12 @@ class BaseSecureClient<
     const context = request.path.startsWith('/v1/auth/')
       ? super.context
       : this.context;
-    return this.resolveSecureHeaders(request, (request) =>
-      authorizePredictionsRequest(context, request),
+    return this.resolveSecureHeaders(request, async (request) =>
+      resolveGatewayHeaders(
+        context,
+        request,
+        await authorizePredictionsRequest(context, request),
+      ),
     );
   }
 
@@ -633,18 +696,23 @@ class BaseSecureClient<
     request: ServiceRequest,
     resolveHeaders?: RequestHeadersResolver,
   ): Promise<HeadersInit> {
-    const session = (
-      request.path.startsWith('/v1/auth/') ? super.context : this.context
-    ).session;
-    // Refresh itself must never await the rotation it is completing.
-    const credentials = request.path.startsWith('/v1/auth/')
-      ? session.credentials
-      : await session.ready(request.signal);
-    const headers = new Headers(await resolveHeaders?.(request));
-    headers.set('Authorization', `Bearer ${credentials.accessToken}`);
-    if (request.signal !== undefined)
-      this.#requestTokens.set(request.signal, credentials.accessToken);
-    return headers;
+    const context = request.path.startsWith('/v1/auth/')
+      ? super.context
+      : this.context;
+    const session = context.session;
+    try {
+      // Refresh itself must never await the rotation it is completing.
+      const credentials = request.path.startsWith('/v1/auth/')
+        ? session.credentials
+        : await session.ready(request.signal);
+      const headers = new Headers(await resolveHeaders?.(request));
+      headers.set('Authorization', `Bearer ${credentials.accessToken}`);
+      if (request.signal !== undefined)
+        this.#requestTokens.set(request.signal, credentials.accessToken);
+      return headers;
+    } catch (error) {
+      throw redactRequestError(error, Object.values(session.credentials));
+    }
   }
 
   protected async refreshTokens(signal?: AbortSignal): Promise<boolean> {
@@ -897,7 +965,10 @@ export type PublicClientOptions = {
   environment?: EnvironmentConfig;
 
   /**
-   * Optional request authorization applied by the client when needed.
+   * Optional request authorization applied by the client when needed:
+   * `platformApiKey` or `remotePlatformApiKey` for application attribution, or
+   * `builderApiKey`, `relayerApiKey` or `remoteBuilderSigning` for builder and
+   * submission authorization.
    */
   apiKey?: ApiKeyAuthorization;
 

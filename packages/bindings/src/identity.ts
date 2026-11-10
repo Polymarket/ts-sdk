@@ -40,6 +40,13 @@ function typedDataField<TName extends string, TType extends string>(
   return z.object({ name: z.literal(name), type: z.literal(type) }).strict();
 }
 
+export type OwnershipChallengeRequest = {
+  signer: string;
+  wallet?: string;
+  nonce?: number;
+  verification_token?: string;
+};
+
 /**
  * An ownership challenge. Its typed data is always the `ClobAuth` attestation
  * under the `ClobAuthDomain` domain. Any other payload is rejected before a
@@ -86,6 +93,8 @@ export const OwnershipChallengeSchema = z.object({
       .strict(),
   }),
 });
+
+export type OwnershipChallenge = z.infer<typeof OwnershipChallengeSchema>;
 
 // Claims are decoded for lifecycle scheduling and identity continuity only.
 // Authentication and signature verification remain the server's responsibility.
