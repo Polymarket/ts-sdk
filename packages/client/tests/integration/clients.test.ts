@@ -1,11 +1,13 @@
 import {
   createSecureClient,
   type EnvironmentConfig,
+  remotePlatformApiKey,
   type Signer,
   UserInputError,
   WalletType,
 } from '@polymarket/client';
 import { isWalletDeployed } from '@polymarket/client/actions';
+import { platformApiKey } from '@polymarket/client/node';
 import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
 import { afterEach, vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
@@ -198,6 +200,56 @@ describe('clients', () => {
         vi.restoreAllMocks();
         await secureClient.endAuthentication();
       }
+    });
+
+    it('migrates saved L2 credentials under a platform key, attributed only by the server key', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      platformKey,
+    }) => {
+      const saved = await obtainL2Credentials(
+        environment,
+        depositWalletSigner,
+        3,
+      );
+      const challengeUrl = 'http://localhost:4010/api/auth/challenge';
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      let calls: Parameters<typeof fetch>[] = [];
+
+      try {
+        for (const apiKey of [
+          platformApiKey(platformKey),
+          remotePlatformApiKey({ url: challengeUrl }),
+        ]) {
+          const secureClient = await createSecureClient({
+            apiKey,
+            credentials: saved,
+            environment,
+            signer: depositWalletSigner,
+            wallet: depositWalletAddress,
+          });
+          await secureClient.endAuthentication();
+        }
+      } finally {
+        calls = [...fetchSpy.mock.calls];
+        vi.restoreAllMocks();
+      }
+
+      const requests = calls.map(([input, init]) =>
+        input instanceof Request
+          ? { headers: input.headers, url: input.url }
+          : { headers: new Headers(init?.headers), url: String(input) },
+      );
+      // Migration needs no challenge, so the proxy is never called.
+      expect(requests.some((request) => request.url === challengeUrl)).toBe(
+        false,
+      );
+      expect(
+        requests
+          .filter((request) => request.url.endsWith('/v1/auth/migrate'))
+          .map((request) => request.headers.get('x-api-key')),
+      ).toEqual([platformKey, null]);
     });
 
     // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.
