@@ -71,7 +71,7 @@ Saved credentials bound to a wallet keep that wallet. Passing a different `walle
 
 ## Renewal
 
-The SDK renews the access token 30 seconds before it expires. It schedules renewal from the lifetime the server returns with each token, so a device clock that runs fast or slow does not end the session. The timer, request recovery and socket reconnects share one renewal. Every adopted response replaces both tokens. `onCredentialsChanged` runs after adoption. Its synchronous exceptions and rejected promises are ignored, so handle storage failures inside the callback. A slow callback does not block requests.
+The SDK renews the access token 30 seconds before it expires. It schedules renewal from the lifetime the server returns with each token, so a device clock that runs fast or slow does not end the session. The timer, request recovery and socket reconnects share one renewal, and requests started while it runs wait for its result. Every adopted response replaces both tokens. `onCredentialsChanged` runs after adoption. Its synchronous exceptions and rejected promises are ignored, so handle storage failures inside the callback. A slow callback does not block requests.
 
 Transport failures, rate limits and server errors during renewal keep the session. Requests continue with the current access token while it is valid, and the SDK retries renewal with backoff (up to 30 seconds between attempts, or longer when the server sends `Retry-After`). A rejected refresh token, such as `invalid_refresh_token`, or a renewal response for a different identity ends the session. After that, authenticated requests reject with that error and socket iterators end with it. Create a new client to continue.
 
