@@ -36,6 +36,11 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
   EquityTwapPriceSubscription,
+  PolymarketPriceEvent,
+  PolymarketPriceQuote,
+  PolymarketPriceSnapshotEvent,
+  PolymarketPriceSubscription,
+  PolymarketPriceUpdateEvent,
   PriceSource,
   PriceSubscription,
   PriceSubscriptionConfirmation,
@@ -51,6 +56,7 @@ export {
 export type PublicSubscriptionsActions = {
   /**
    * Starts one or more realtime subscriptions on this client.
+   * `prices.polymarket` provides public best bid and ask events for `assetIds`.
    *
    * @throws {@link SubscribeError}
    * Thrown when subscription input is invalid or a realtime subscription fails.
