@@ -30,7 +30,7 @@ type ServiceClientWorkflowGetOptions<T = unknown> =
     params?: URLSearchParams;
   };
 
-/** Callback-owned authentication; this transport never stores credentials. */
+/** Callback-owned authentication; this transport never stores credentials. @internal */
 export type AuthenticatedServiceClientConfig = {
   fetch?: Fetch;
   root?: string;
@@ -49,6 +49,7 @@ export type AuthenticatedServiceClientConfig = {
 export class AuthenticatedServiceClient extends ServiceClient {
   readonly #config: AuthenticatedServiceClientConfig;
 
+  /** @internal */
   constructor(config: AuthenticatedServiceClientConfig) {
     super({});
     this.#config = config;
