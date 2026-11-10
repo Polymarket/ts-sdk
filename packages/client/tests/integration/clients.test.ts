@@ -1,5 +1,7 @@
 import {
   createSecureClient,
+  type EnvironmentConfig,
+  type Signer,
   UserInputError,
   WalletType,
 } from '@polymarket/client';
@@ -130,7 +132,7 @@ describe('clients', () => {
       ).rejects.toThrow(UserInputError);
     });
 
-    it('reuses stored credentials during authentication when they remain valid', async ({
+    it('restores saved credentials and reports the renewed pair', async ({
       depositWalletAddress,
       depositWalletSigner,
       environment,
@@ -140,15 +142,62 @@ describe('clients', () => {
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
       });
+      const saved = initialClient.credentials;
+      const changed = vi.fn();
 
       const secureClient = await createSecureClient({
         environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,
-        credentials: initialClient.credentials,
+        credentials: saved,
+        onCredentialsChanged: changed,
       });
 
-      await secureClient.listOpenOrders().firstPage();
+      try {
+        expect(changed).toHaveBeenCalledExactlyOnceWith(
+          secureClient.credentials,
+        );
+        // Renewal keeps the refresh token, so logout never has a rotated token to recover.
+        expect(secureClient.credentials.refreshToken).toBe(saved.refreshToken);
+        await secureClient.listOpenOrders().firstPage();
+      } finally {
+        await Promise.allSettled([
+          secureClient.endAuthentication(),
+          initialClient.endAuthentication(),
+        ]);
+      }
+    });
+
+    it('migrates saved L2 credentials without a new wallet signature', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+    }) => {
+      const saved = await obtainL2Credentials(
+        environment,
+        depositWalletSigner,
+        3,
+      );
+      const signTypedData = vi.spyOn(depositWalletSigner, 'signTypedData');
+
+      const secureClient = await createSecureClient({
+        environment,
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+        credentials: saved,
+      });
+
+      try {
+        expect(signTypedData).not.toHaveBeenCalled();
+        expect(Object.keys(secureClient.credentials).sort()).toEqual([
+          'accessToken',
+          'refreshToken',
+        ]);
+        await secureClient.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        await secureClient.endAuthentication();
+      }
     });
 
     // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.
@@ -173,10 +222,20 @@ describe('clients', () => {
         nonce: 998,
       });
       const signer = secureClient.account.signer;
+      const saved = secureClient.credentials;
       await controlClient.listOpenOrders().firstPage();
       const publicOnlyClient = await secureClient.endAuthentication();
       await controlClient.listOpenOrders().firstPage();
       expect(() => secureClient.credentials).toThrow(InvariantError);
+      // The server ended the session, so its refresh token no longer restores a client.
+      await expect(
+        createSecureClient({
+          environment,
+          signer: depositWalletSigner,
+          wallet: depositWalletAddress,
+          credentials: saved,
+        }),
+      ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 401 });
       await expect(
         publicOnlyClient.fetchPublicProfile({ address: signer }),
       ).resolves.toBeDefined();
@@ -234,3 +293,64 @@ describe('clients', () => {
     });
   });
 });
+
+/**
+ * Obtains L2 credentials for the signer directly from the trading service.
+ * The SDK no longer manages these credentials, so the migration test sets them up itself.
+ */
+async function obtainL2Credentials(
+  environment: EnvironmentConfig,
+  signer: Signer,
+  nonce: number,
+): Promise<{ key: string; secret: string; passphrase: string }> {
+  const address = await signer.getAddress();
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const signature = await signer.signTypedData({
+    domain: {
+      name: 'ClobAuthDomain',
+      version: '1',
+      chainId: environment.chainId,
+    },
+    primaryType: 'ClobAuth',
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+      ],
+      ClobAuth: [
+        { name: 'address', type: 'address' },
+        { name: 'timestamp', type: 'string' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'message', type: 'string' },
+      ],
+    },
+    message: {
+      address,
+      timestamp,
+      nonce,
+      message: 'This message attests that I control the given wallet',
+    },
+  });
+  const headers = {
+    POLY_ADDRESS: address,
+    POLY_SIGNATURE: signature,
+    POLY_TIMESTAMP: timestamp,
+    POLY_NONCE: String(nonce),
+  };
+  let response = await fetch(`${environment.clob.rest}/auth/api-key`, {
+    method: 'POST',
+    headers,
+  });
+  if (!response.ok)
+    response = await fetch(`${environment.clob.rest}/auth/derive-api-key`, {
+      headers,
+    });
+  expect(response.ok).toBe(true);
+  const body = (await response.json()) as {
+    apiKey: string;
+    secret: string;
+    passphrase: string;
+  };
+  return { key: body.apiKey, secret: body.secret, passphrase: body.passphrase };
+}
