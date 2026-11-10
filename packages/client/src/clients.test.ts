@@ -405,7 +405,7 @@ describe('secure client gasless wallet setup', () => {
     const signingSigner: Signer = {
       ...signer,
       signTypedData(payload) {
-        expect(payload.message.nonce).toBe(0);
+        expect(payload.message.nonce).toBe('0');
         return Promise.resolve(expectEvmSignature(`0x${'1'.repeat(130)}`));
       },
     };
@@ -421,10 +421,31 @@ describe('secure client gasless wallet setup', () => {
           challengeId: '00000000-0000-4000-8000-000000000001',
           expiresAt: new Date(Date.now() + 90_000).toISOString(),
           typedData: {
-            domain: {},
-            types: {},
-            primaryType: 'Auth',
-            message: { nonce: 0 },
+            domain: {
+              name: 'ClobAuthDomain',
+              version: '1',
+              chainId: environment.chainId,
+            },
+            types: {
+              EIP712Domain: [
+                { name: 'name', type: 'string' },
+                { name: 'version', type: 'string' },
+                { name: 'chainId', type: 'uint256' },
+              ],
+              ClobAuth: [
+                { name: 'address', type: 'address' },
+                { name: 'timestamp', type: 'string' },
+                { name: 'nonce', type: 'uint256' },
+                { name: 'message', type: 'string' },
+              ],
+            },
+            primaryType: 'ClobAuth',
+            message: {
+              address: signerAddress.toLowerCase(),
+              timestamp: '1700000000',
+              nonce: '0',
+              message: 'This message attests that I control the given wallet',
+            },
           },
         });
       }),

@@ -1,4 +1,3 @@
-import { ApiKeyCredsSchema } from '@polymarket/bindings/clob';
 import {
   KnownPriceSource,
   type PolyboltSubscription,
@@ -8,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceSubscription } from '../../actions/subscriptions';
 import { TransportError } from '../../errors';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
+import { testSession } from '../testing';
 import { SocketPool } from './pool';
 import { polyboltReconnectDelay } from './protocol';
 
@@ -98,16 +98,11 @@ describe('price authentication', () => {
     vi.stubGlobal('WebSocket', TestWebSocket);
   });
 
-  const credentials = ApiKeyCredsSchema.parse({
-    apiKey: 'test-key',
-    secret: 'test-secret',
-    passphrase: 'test-passphrase',
-  });
-
   it('authenticates each connection with its subscriptions Chainlink providerApiKey', async () => {
+    const session = testSession();
     const pool = new SocketPool({
       url: 'wss://example.test/prices',
-      credentials,
+      session,
     });
     const pending = Promise.all([
       pool.subscribe({ topic: 'prices.equity', symbol: 'aapl' }),
@@ -155,11 +150,7 @@ describe('price authentication', () => {
     }));
     const auth = {
       op: 'auth',
-      auth: {
-        apiKey: 'test-key',
-        secret: 'test-secret',
-        passphrase: 'test-passphrase',
-      },
+      auth: { accessToken: session.credentials.accessToken },
       rid: expect.any(String),
     };
     expect(sent).toEqual([
@@ -196,11 +187,7 @@ describe('price channel lifecycle', () => {
     vi.stubGlobal('WebSocket', TestWebSocket);
     pool = new SocketPool({
       url: 'wss://example.test/prices',
-      credentials: ApiKeyCredsSchema.parse({
-        apiKey: 'test-key',
-        secret: 'test-secret',
-        passphrase: 'test-passphrase',
-      }),
+      session: testSession(),
     });
   });
   afterEach(async () => {

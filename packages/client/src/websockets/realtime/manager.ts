@@ -1,4 +1,3 @@
-import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import type { PriceEvent } from '@polymarket/bindings/subscriptions';
 import type {
   EventForSubscriptionSpec,
@@ -14,8 +13,7 @@ export type { SubscribeError } from '../../actions/subscriptions';
 export type RealtimeWebSocketManagerOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials?: ApiKeyCreds;
-  session?: AuthSession;
+  session: AuthSession;
 };
 
 /** @internal Manages authenticated realtime prices across shared connections. */

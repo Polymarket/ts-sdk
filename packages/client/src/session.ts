@@ -1,13 +1,20 @@
 import {
   type AccessTokenClaims,
   AccessTokenClaimsSchema,
+  type AccessTokenResponse,
   type BearerCredentials,
+  type TokenResponse,
 } from '@polymarket/bindings';
-import { isSameEvmAddress, setNonBlockingTimeout } from '@polymarket/types';
+import {
+  type EvmAddress,
+  isSameEvmAddress,
+  setNonBlockingTimeout,
+} from '@polymarket/types';
 import {
   RateLimitError,
   RequestRejectedError,
   TransportError,
+  UnexpectedResponseError,
   UserInputError,
 } from './errors';
 import { withAbort } from './request-options';
@@ -18,12 +25,19 @@ export type CredentialsChanged = (
 
 type SessionOptions = {
   credentials: BearerCredentials;
+  /** Access-token lifetime in seconds when the credentials were issued. Unknown for restored credentials. */
+  expiresIn?: number;
   refresh: (
     credentials: BearerCredentials,
     signal: AbortSignal,
-  ) => Promise<BearerCredentials>;
+  ) => Promise<TokenResponse>;
   onCredentialsChanged?: CredentialsChanged;
 };
+
+/** Renewal starts this long before the access token expires. */
+const RENEWAL_LEAD_MS = 30_000;
+/** Upper bound for the backoff between renewals after transient failures. */
+const MAX_RETRY_DELAY_MS = 30_000;
 
 /** Decode unverified scheduling metadata; never use this as server authorization. @internal */
 export function accessTokenClaims(token: string): AccessTokenClaims {
@@ -38,7 +52,15 @@ export function accessTokenClaims(token: string): AccessTokenClaims {
   }
 }
 
-/** One owner for token adoption, refresh, notification and deterministic shutdown. @internal */
+/**
+ * One owner for token adoption, refresh, notification and deterministic shutdown.
+ *
+ * Transient renewal failures (transport errors, rate limits and server errors)
+ * keep the session. The current access token stays in use while it is valid
+ * and renewal is retried with backoff. Only a definite rejection or an invalid
+ * renewal response ends the session.
+ * @internal
+ */
 export class AuthSession {
   readonly #options: SessionOptions;
   readonly #abort = new AbortController();
@@ -46,8 +68,12 @@ export class AuthSession {
   readonly #failureListeners = new Set<(error: Error) => void>();
   #credentials: BearerCredentials;
   #claims: AccessTokenClaims;
+  // Token `exp` minus the local expiry derived from `expiresIn`, in milliseconds.
+  // It absorbs the difference between the local and server clocks.
+  #clockOffset = 0;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #refreshing: Promise<BearerCredentials> | undefined;
+  #retries = 0;
   #failure: Error | undefined;
   #closed = false;
 
@@ -55,6 +81,8 @@ export class AuthSession {
     this.#options = options;
     this.#credentials = { ...options.credentials };
     this.#claims = accessTokenClaims(options.credentials.accessToken);
+    if (options.expiresIn !== undefined)
+      this.#clockOffset = clockOffset(this.#claims, options.expiresIn);
   }
 
   get credentials(): BearerCredentials {
@@ -63,6 +91,14 @@ export class AuthSession {
   get claims(): AccessTokenClaims {
     return { ...this.#claims };
   }
+  /** Local time in milliseconds at which `accessToken` expires. */
+  expiresAt(accessToken: string): number {
+    const claims =
+      accessToken === this.#credentials.accessToken
+        ? this.#claims
+        : accessTokenClaims(accessToken);
+    return claims.exp * 1000 - this.#clockOffset;
+  }
   assertActive(): void {
     if (this.#closed)
       throw new TransportError('The authenticated session is closed.');
@@ -70,9 +106,24 @@ export class AuthSession {
   }
   async ready(signal?: AbortSignal): Promise<BearerCredentials> {
     this.assertActive();
-    if (this.#claims.exp * 1000 - Date.now() <= 30_000)
-      return withAbort(this.refresh(), signal);
-    return this.credentials;
+    const remaining =
+      this.expiresAt(this.#credentials.accessToken) - Date.now();
+    if (remaining > RENEWAL_LEAD_MS) return this.credentials;
+    // A scheduled retry owns renewal while the current bearer is still valid.
+    if (this.#retries > 0 && this.#refreshing === undefined && remaining > 0)
+      return this.credentials;
+    try {
+      return await withAbort(this.refresh(), signal);
+    } catch (error) {
+      if (
+        signal?.aborted ||
+        this.#closed ||
+        this.#failure !== undefined ||
+        this.expiresAt(this.#credentials.accessToken) <= Date.now()
+      )
+        throw error;
+      return this.credentials;
+    }
   }
   start(): void {
     this.#schedule();
@@ -81,6 +132,7 @@ export class AuthSession {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
   }
+  /** Listens for the failure that ends the session. Transient renewal failures are not reported. */
   onFailure(listener: (error: Error) => void): () => void {
     this.#failureListeners.add(listener);
     return () => this.#failureListeners.delete(listener);
@@ -104,8 +156,8 @@ export class AuthSession {
             ? cause
             : new TransportError('Session renewal failed.');
         if (!this.#closed) {
-          this.#failure = error;
-          for (const listener of this.#failureListeners) listener(error);
+          if (isTransient(error)) this.#retryLater(error);
+          else this.#end(error);
         }
         throw error;
       })
@@ -115,8 +167,39 @@ export class AuthSession {
     this.#refreshing = refreshing;
     return refreshing;
   }
+  /**
+   * Binds `wallet` to this signer-only session and adopts the wallet-bound
+   * access token. The refresh token does not change.
+   */
+  async bindWallet(
+    wallet: EvmAddress,
+    upgrade: (accessToken: string) => Promise<AccessTokenResponse>,
+  ): Promise<void> {
+    this.assertActive();
+    const next = await upgrade(this.#credentials.accessToken);
+    this.assertActive();
+    const claims = issuedClaims(next.accessToken);
+    if (
+      next.expiresIn * 1000 <= RENEWAL_LEAD_MS ||
+      !isSameEvmAddress(claims.sub, this.#claims.sub) ||
+      claims.client_id !== this.#claims.client_id ||
+      claims.wallet === undefined ||
+      !isSameEvmAddress(claims.wallet, wallet)
+    )
+      throw new UnexpectedResponseError(
+        'The wallet binding returned a different session identity.',
+      );
+    this.#adopt(
+      {
+        accessToken: next.accessToken,
+        refreshToken: this.#credentials.refreshToken,
+      },
+      claims,
+      next.expiresIn,
+    );
+  }
   async #renew(): Promise<BearerCredentials> {
-    let next: BearerCredentials | undefined;
+    let next: TokenResponse | undefined;
     for (let attempt = 0; attempt < 3; attempt++) {
       this.assertActive();
       try {
@@ -127,16 +210,9 @@ export class AuthSession {
         break;
       } catch (error) {
         this.assertActive();
-        const transient =
-          error instanceof TransportError ||
-          error instanceof RateLimitError ||
-          (error instanceof RequestRejectedError && error.status >= 500);
-        if (!transient || attempt === 2) throw error;
-        const retryAfter =
-          error instanceof RateLimitError ||
-          error instanceof RequestRejectedError
-            ? error.retryAfter
-            : undefined;
+        if (!isTransient(error) || attempt === 2) throw error;
+        // A long server-requested delay is left to the session retry timer.
+        const retryAfter = retryAfterSeconds(error);
         if (retryAfter !== undefined && retryAfter > 5) throw error;
         await wait(
           Math.max(250 * 2 ** attempt, (retryAfter ?? 0) * 1000),
@@ -146,17 +222,31 @@ export class AuthSession {
     }
     this.assertActive();
     if (next === undefined) throw new TransportError('Session renewal failed.');
-    const claims = accessTokenClaims(next.accessToken);
+    const claims = issuedClaims(next.accessToken);
     if (
-      claims.exp * 1000 <= Date.now() + 30_000 ||
+      next.expiresIn * 1000 <= RENEWAL_LEAD_MS ||
       !sameSessionIdentity(this.#claims, claims)
     )
-      throw new RequestRejectedError(
-        'Session renewal returned invalid identity or expiry.',
-        { status: 401 },
+      throw new UnexpectedResponseError(
+        'Session renewal returned a different identity or an unusable expiry.',
       );
-    this.#credentials = { ...next };
+    this.#adopt(
+      { accessToken: next.accessToken, refreshToken: next.refreshToken },
+      claims,
+      next.expiresIn,
+    );
+    this.assertActive();
+    return this.credentials;
+  }
+  #adopt(
+    credentials: BearerCredentials,
+    claims: AccessTokenClaims,
+    expiresIn: number,
+  ): void {
+    this.#credentials = { ...credentials };
     this.#claims = claims;
+    this.#clockOffset = clockOffset(claims, expiresIn);
+    this.#retries = 0;
     this.#schedule();
     for (const listener of this.#listeners) listener(this.credentials);
     // Persistence is advisory. Its failure must not discard adopted credentials,
@@ -168,8 +258,26 @@ export class AuthSession {
     } catch {
       /* documented policy */
     }
-    this.assertActive();
-    return this.credentials;
+  }
+  #retryLater(error: Error): void {
+    this.#retries++;
+    const backoff = Math.min(
+      MAX_RETRY_DELAY_MS,
+      1_000 * 2 ** (this.#retries - 1),
+    );
+    const delay = Math.max(backoff, (retryAfterSeconds(error) ?? 0) * 1000);
+    clearTimeout(this.#timer);
+    this.#timer = setNonBlockingTimeout(
+      () => {
+        void this.refresh().catch(() => undefined);
+      },
+      Math.min(2_147_483_647, delay),
+    );
+  }
+  #end(error: Error): void {
+    this.#failure = error;
+    clearTimeout(this.#timer);
+    for (const listener of this.#failureListeners) listener(error);
   }
   #schedule(): void {
     clearTimeout(this.#timer);
@@ -180,7 +288,12 @@ export class AuthSession {
       },
       Math.min(
         2_147_483_647,
-        Math.max(0, this.#claims.exp * 1000 - Date.now() - 30_000),
+        Math.max(
+          0,
+          this.expiresAt(this.#credentials.accessToken) -
+            Date.now() -
+            RENEWAL_LEAD_MS,
+        ),
       ),
     );
   }
@@ -188,6 +301,7 @@ export class AuthSession {
   async logout(revoke: (accessToken: string) => Promise<void>): Promise<void> {
     let credentials = this.credentials;
     const identity = this.claims;
+    const expired = this.expiresAt(this.#credentials.accessToken) <= Date.now();
     // Stop ordinary renewal and abort its in-flight work before acquiring any
     // bearer needed solely for revocation. Cached renewal failures do not
     // prevent revocation with a still-valid access token.
@@ -197,18 +311,16 @@ export class AuthSession {
         credentials,
         new AbortController().signal,
       );
-      const claims = accessTokenClaims(next.accessToken);
-      if (
-        claims.exp * 1000 <= Date.now() ||
-        !sameSessionIdentity(identity, claims)
-      )
-        throw new RequestRejectedError(
-          'Logout renewal returned invalid identity or expiry.',
-          { status: 401 },
+      if (!sameSessionIdentity(identity, issuedClaims(next.accessToken)))
+        throw new UnexpectedResponseError(
+          'Logout renewal returned a different session identity.',
         );
-      credentials = { ...next };
+      credentials = {
+        accessToken: next.accessToken,
+        refreshToken: next.refreshToken,
+      };
     };
-    if (identity.exp * 1000 <= Date.now()) await refresh();
+    if (expired) await refresh();
     try {
       await revoke(credentials.accessToken);
     } catch (error) {
@@ -227,11 +339,43 @@ export class AuthSession {
 
   close(): void {
     this.#closed = true;
+    this.#retries = 0;
     clearTimeout(this.#timer);
     this.#abort.abort();
     this.#listeners.clear();
     this.#failureListeners.clear();
   }
+}
+
+/** Server responses with unreadable tokens violate the identity contract. */
+function issuedClaims(accessToken: string): AccessTokenClaims {
+  try {
+    return accessTokenClaims(accessToken);
+  } catch {
+    throw new UnexpectedResponseError(
+      'The server issued an access token with invalid session metadata.',
+    );
+  }
+}
+
+function clockOffset(claims: AccessTokenClaims, expiresIn: number): number {
+  return claims.exp * 1000 - (Date.now() + expiresIn * 1000);
+}
+
+/** Failures that leave the refresh session usable once the cause clears. */
+function isTransient(error: unknown): boolean {
+  return (
+    error instanceof TransportError ||
+    error instanceof RateLimitError ||
+    (error instanceof RequestRejectedError && error.status >= 500)
+  );
+}
+
+function retryAfterSeconds(error: unknown): number | undefined {
+  return error instanceof RateLimitError ||
+    error instanceof RequestRejectedError
+    ? error.retryAfter
+    : undefined;
 }
 
 function sameSessionIdentity(

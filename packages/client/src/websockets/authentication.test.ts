@@ -1,4 +1,4 @@
-import type { BearerCredentials } from '@polymarket/bindings';
+import type { BearerCredentials, TokenResponse } from '@polymarket/bindings';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RequestRejectedError } from '../errors';
 import { AuthSession } from '../session';
@@ -19,12 +19,18 @@ describe('acknowledged socket lifecycle', () => {
     const replacement = pair(1);
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => replacement,
+      refresh: async () => ({ ...replacement, expiresIn: 900 }),
     });
     const pending = Promise.withResolvers<void>();
     const authenticate = vi.fn(() => pending.promise);
     const fail = vi.fn();
-    const socket = new SocketAuthentication({ session, authenticate, fail });
+    const expired = vi.fn();
+    const socket = new SocketAuthentication({
+      session,
+      authenticate,
+      fail,
+      expired,
+    });
     socket.accepted(original.accessToken);
     await session.refresh();
     expect(authenticate).toHaveBeenCalledExactlyOnceWith(
@@ -34,9 +40,8 @@ describe('acknowledged socket lifecycle', () => {
       new RequestRejectedError('invalid renewal', { status: 401 }),
     );
     await vi.advanceTimersByTimeAsync(90_000);
-    expect(fail).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ code: 'expired_access_token' }),
-    );
+    expect(expired).toHaveBeenCalledOnce();
+    expect(fail).not.toHaveBeenCalled();
     socket.stop();
     session.close();
     expect(vi.getTimerCount()).toBe(0);
@@ -48,7 +53,7 @@ describe('acknowledged socket lifecycle', () => {
     let sequence = 0;
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => pair(++sequence),
+      refresh: async () => ({ ...pair(++sequence), expiresIn: 900 }),
     });
     const first = Promise.withResolvers<void>();
     const authenticate = vi.fn(async () => {
@@ -58,6 +63,7 @@ describe('acknowledged socket lifecycle', () => {
       session,
       authenticate,
       fail: vi.fn(),
+      expired: vi.fn(),
     });
     socket.accepted(original.accessToken);
     await session.refresh();
@@ -78,14 +84,19 @@ describe('acknowledged socket lifecycle', () => {
     let sequence = 0;
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => pair(++sequence),
+      refresh: async () => ({ ...pair(++sequence), expiresIn: 900 }),
     });
     const first = Promise.withResolvers<void>();
     const authenticate = vi.fn(async () => {
       if (authenticate.mock.calls.length === 1) await first.promise;
     });
     const fail = vi.fn();
-    const socket = new SocketAuthentication({ session, authenticate, fail });
+    const socket = new SocketAuthentication({
+      session,
+      authenticate,
+      fail,
+      expired: vi.fn(),
+    });
     socket.accepted(original.accessToken);
     await session.refresh();
     await session.refresh();
@@ -106,7 +117,7 @@ describe('acknowledged socket lifecycle', () => {
     const original = pair(0, 60);
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => pair(1),
+      refresh: async () => ({ ...pair(1), expiresIn: 900 }),
     });
     const authenticate = vi.fn(async () => {
       throw new RequestRejectedError('unavailable', {
@@ -118,6 +129,7 @@ describe('acknowledged socket lifecycle', () => {
       session,
       authenticate,
       fail: vi.fn(),
+      expired: vi.fn(),
     });
     socket.accepted(original.accessToken);
     await session.refresh();
@@ -133,18 +145,19 @@ describe('acknowledged socket lifecycle', () => {
 
   it('reconnect preparation joins the same proactive refresh as HTTP', async () => {
     const original = pair(0, 1);
-    const deferred = Promise.withResolvers<BearerCredentials>();
+    const deferred = Promise.withResolvers<TokenResponse>();
     const refresh = vi.fn(() => deferred.promise);
     const session = new AuthSession({ credentials: original, refresh });
     const socket = new SocketAuthentication({
       session,
       authenticate: async () => undefined,
       fail: vi.fn(),
+      expired: vi.fn(),
     });
     const connecting = socket.prepare();
     const http = session.ready();
     const updated = pair(1);
-    deferred.resolve(updated);
+    deferred.resolve({ ...updated, expiresIn: 900 });
     await expect(connecting).resolves.toEqual(updated);
     await expect(http).resolves.toEqual(updated);
     expect(refresh).toHaveBeenCalledTimes(1);

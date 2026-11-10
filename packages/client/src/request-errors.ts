@@ -56,6 +56,11 @@ export function redactRequestError(
   );
 }
 
+// Body fields that carry credentials. Identifiers such as `tokenId` or
+// `token_id` are not secrets and stay readable in rejection messages.
+const CREDENTIAL_BODY_FIELD =
+  /^(?:access|refresh|verification)_?token$|secret|passphrase|signature|api.?key|^key$/i;
+
 /** Keeps authentication material out of transport diagnostics. @internal */
 export function protectRequestErrors(
   fetch: Fetch = globalThis.fetch,
@@ -77,10 +82,7 @@ export function protectRequestErrors(
       const collect = (value: unknown): void => {
         if (value === null || typeof value !== 'object') return;
         for (const [key, field] of Object.entries(value)) {
-          if (
-            typeof field === 'string' &&
-            /token|secret|passphrase|signature|api.?key|^key$/i.test(key)
-          )
+          if (typeof field === 'string' && CREDENTIAL_BODY_FIELD.test(key))
             secrets.add(field);
           else collect(field);
         }
