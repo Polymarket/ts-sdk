@@ -1,4 +1,3 @@
-import { ApiKeyCredsSchema } from '@polymarket/bindings/clob';
 import {
   KnownPriceSource,
   PriceProvider,
@@ -7,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PriceSubscription } from '../../actions/subscriptions';
 import { TransportError } from '../../errors';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
+import { testSession } from '../testing';
 import { SocketPool } from './pool';
 import { polyboltReconnectDelay } from './protocol';
 
@@ -96,11 +96,7 @@ describe('price channel lifecycle', () => {
     vi.stubGlobal('WebSocket', TestWebSocket);
     pool = new SocketPool({
       url: 'wss://example.test/prices',
-      credentials: ApiKeyCredsSchema.parse({
-        apiKey: 'test-key',
-        secret: 'test-secret',
-        passphrase: 'test-passphrase',
-      }),
+      session: testSession(),
     });
   });
   afterEach(async () => {

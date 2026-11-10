@@ -30,12 +30,32 @@ const l2Credentials = {
   passphrase: 'synthetic-passphrase',
 };
 const signature = expectEvmSignature(`0x${'1'.repeat(130)}`);
-const typedData = {
-  domain: { name: 'Synthetic' },
-  types: { Proof: [{ name: 'nonce', type: 'uint256' }] },
-  primaryType: 'Proof',
-  message: { nonce: 0 },
-};
+function clobAuthTypedData(signerAddress: string, chainId: number) {
+  return {
+    domain: { name: 'ClobAuthDomain', version: '1', chainId },
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+      ],
+      ClobAuth: [
+        { name: 'address', type: 'address' },
+        { name: 'timestamp', type: 'string' },
+        { name: 'nonce', type: 'uint256' },
+        { name: 'message', type: 'string' },
+      ],
+    },
+    primaryType: 'ClobAuth',
+    message: {
+      address: signerAddress.toLowerCase(),
+      timestamp: '1700000000',
+      nonce: '0',
+      message: 'This message attests that I control the given wallet',
+    },
+  };
+}
+const typedData = clobAuthTypedData(address, environment.chainId);
 function tokens(sequence = 0, seconds = 900) {
   return {
     accessToken: `test.${btoa(JSON.stringify({ sub: address, wallet: address, signature_type: 0, client_id: 'synthetic-client', clob_api_key: l2Credentials.key, exp: Math.floor(Date.now() / 1000) + seconds, jti: sequence }))}.test`,
@@ -140,7 +160,7 @@ describe('gateway public authentication boundary', () => {
     const client = createPublicClient({ environment, fetch });
     await expect(
       migrateCredentials(client, {
-        signer: address,
+        signerAddress: address,
         wallet: address,
         credentials: l2Credentials,
         verificationToken: 'synthetic-verification',
@@ -198,46 +218,79 @@ describe('gateway public authentication boundary', () => {
     expect(walletSigner.signTypedData).not.toHaveBeenCalled();
   });
 
-  it('restores signer-only sessions without wallet discovery and permits authenticated user reads', async () => {
+  it('binds saved credentials without a wallet to the requested wallet without signing again', async () => {
     const pair = tokens();
     const payload = JSON.parse(atob(pair.accessToken.split('.')[1] ?? ''));
     delete payload.wallet;
     delete payload.signature_type;
     pair.accessToken = `test.${btoa(JSON.stringify(payload))}.test`;
+    const bound = tokens(1);
     const paths: string[] = [];
+    const changed = vi.fn();
     const walletSigner = signer();
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
       const request = new Request(input, init);
       const path = new URL(request.url).pathname;
       paths.push(path);
       if (path === '/v1/auth/refresh') return Response.json(pair);
-      if (path === '/internal/users/me') {
+      if (path === '/v1/auth/upgrade') {
         expect(request.headers.get('authorization')).toBe(
           `Bearer ${pair.accessToken}`,
         );
-        return Response.json({ signer: address });
+        expect(await request.json()).toEqual({ wallet: address });
+        return Response.json({
+          accessToken: bound.accessToken,
+          tokenType: 'Bearer',
+          expiresIn: 900,
+        });
       }
-      throw new Error(`Unexpected signer-only route: ${path}`);
+      throw new Error(`Unexpected route: ${path}`);
     });
     const client = await createSecureClient({
       environment,
       fetch,
       signer: walletSigner,
+      wallet: address,
       credentials: saved(pair),
+      onCredentialsChanged: changed,
     });
     try {
-      await expect(
-        client.predictions.get('/internal/users/me'),
-      ).resolves.toEqual({ signer: address });
-      expect(() => client.account).toThrow('wallet');
-      await expect(client.webSockets.rfqQuoter.connect()).rejects.toThrow(
-        'wallet',
-      );
-      expect(paths).toEqual(['/v1/auth/refresh', '/internal/users/me']);
+      expect(paths).toEqual(['/v1/auth/refresh', '/v1/auth/upgrade']);
+      expect(client.account.wallet).toBe(address);
+      expect(client.credentials).toEqual({
+        accessToken: bound.accessToken,
+        refreshToken: pair.refreshToken,
+      });
+      expect(changed).toHaveBeenLastCalledWith(client.credentials);
       expect(walletSigner.signTypedData).not.toHaveBeenCalled();
     } finally {
       client.closeAuthenticationSession();
       await client.closeSubscriptions();
+    }
+  });
+
+  it('rejects an ownership challenge for another signer or network before signing', async () => {
+    for (const challenge of [
+      clobAuthTypedData(
+        '0x0000000000000000000000000000000000000002',
+        environment.chainId,
+      ),
+      clobAuthTypedData(address, 1),
+    ]) {
+      const walletSigner = signer();
+      const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+        Response.json({
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          typedData: challenge,
+        }),
+      );
+      const client = createPublicClient({ environment, fetch });
+      await expect(
+        client.login({ signer: walletSigner, wallet: address }),
+      ).rejects.toMatchObject({ name: 'UnexpectedResponseError' });
+      expect(walletSigner.signTypedData).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledOnce();
     }
   });
 
@@ -526,7 +579,7 @@ it('rejects mixed migration credentials before generating a proof or dispatching
   const client = createPublicClient({ environment, fetch });
   await expect(
     client.migrateCredentials({
-      signer: address,
+      signerAddress: address,
       credentials: { ...l2Credentials, ...tokens() },
     }),
   ).rejects.toMatchObject({ name: 'UserInputError' });
@@ -715,9 +768,9 @@ describe('failed secure-client creation owns newly issued sessions', () => {
         onCredentialsChanged: changed,
       }),
     ).rejects.toMatchObject({
-      name: 'RequestRejectedError',
+      name: 'UnexpectedResponseError',
       message:
-        'Session identity does not match the requested signer and wallet.',
+        'The issued session does not match the requested signer and wallet.',
     });
     expect(paths.at(-1)).toBe('/v1/auth/logout');
     expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);

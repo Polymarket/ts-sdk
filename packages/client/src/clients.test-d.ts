@@ -59,7 +59,7 @@ it('accepts plain bearer or L2 input and exposes bearer credentials', () => {
   >();
   expectTypeOf(
     publicClient.migrateCredentials({
-      signer: '0x0000000000000000000000000000000000000001',
+      signerAddress: '0x0000000000000000000000000000000000000001',
       credentials: { key: 'k', secret: 's', passphrase: 'p' },
     }),
   ).toEqualTypeOf<Promise<BearerCredentials>>();

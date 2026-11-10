@@ -1,13 +1,14 @@
 import type { BearerCredentials } from '@polymarket/bindings';
 import { setNonBlockingTimeout } from '@polymarket/types';
 import { RequestRejectedError, TransportError } from '../errors';
-import { type AuthSession, accessTokenClaims } from '../session';
+import type { AuthSession } from '../session';
 
 type SocketAuthenticationOptions = {
   session: AuthSession;
   authenticate: (accessToken: string) => Promise<void>;
   fail: (error: Error) => void;
-  expired?: () => void;
+  /** Called when the last acknowledged token expires without a successful renewal. */
+  expired: () => void;
 };
 
 /** Tracks the last acknowledged token independently of the HTTP session. @internal */
@@ -43,20 +44,9 @@ export class SocketAuthentication {
       );
     }
     clearTimeout(this.#deadline);
-    const delay = accessTokenClaims(token).exp * 1000 + 30_000 - Date.now();
+    const delay = this.#options.session.expiresAt(token) + 30_000 - Date.now();
     this.#deadline = setNonBlockingTimeout(
-      () => {
-        if (this.#options.expired !== undefined) {
-          this.#options.expired();
-          return;
-        }
-        this.#options.fail(
-          new RequestRejectedError('WebSocket authentication expired.', {
-            status: 401,
-            code: 'expired_access_token',
-          }),
-        );
-      },
+      () => this.#options.expired(),
       Math.min(2_147_483_647, Math.max(0, delay)),
     );
     // A refresh can complete while an initial/renewal acknowledgement is pending.

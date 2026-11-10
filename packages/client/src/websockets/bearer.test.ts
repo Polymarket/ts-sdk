@@ -96,7 +96,7 @@ describe('bearer socket boundaries', () => {
     const replacement = pair(1);
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => replacement,
+      refresh: async () => ({ ...replacement, expiresIn: 900 }),
     });
     const manager = new ClobUserWebSocketManager({
       session,
@@ -134,7 +134,7 @@ describe('bearer socket boundaries', () => {
   ] as const)('bounds consecutive CLOB authentication failures and resets after %s', async (recovery) => {
     const session = new AuthSession({
       credentials: pair(),
-      refresh: async () => pair(1),
+      refresh: async () => ({ ...pair(1), expiresIn: 900 }),
     });
     const manager = new ClobUserWebSocketManager({
       session,
@@ -202,7 +202,7 @@ describe('bearer socket boundaries', () => {
     const replacement = pair(1);
     const session = new AuthSession({
       credentials: original,
-      refresh: async () => replacement,
+      refresh: async () => ({ ...replacement, expiresIn: 900 }),
     });
     const failed = vi.fn();
     const connection = new PolyboltConnection({
@@ -243,7 +243,7 @@ describe('bearer socket boundaries', () => {
   it('Combos sends no CLOB API-key credentials, renews on the same connection, and cleans up', async () => {
     const session = new AuthSession({
       credentials: pair(),
-      refresh: async () => pair(1),
+      refresh: async () => ({ ...pair(1), expiresIn: 900 }),
     });
     const manager = maker(session);
     const rfq = await manager.connect();
@@ -267,7 +267,7 @@ it('keeps the CLOB handle across idle expiry after rejected renewal', async () =
   const replacement = pair(1);
   const session = new AuthSession({
     credentials: expiring,
-    refresh: async () => replacement,
+    refresh: async () => ({ ...replacement, expiresIn: 900 }),
   });
   const manager = new ClobUserWebSocketManager({
     session,
@@ -289,41 +289,27 @@ it('keeps the CLOB handle across idle expiry after rejected renewal', async () =
   expect(vi.getTimerCount()).toBe(0);
 });
 
-it('keeps maker public feeds after rejection and blocks quotes before wallet signing', async () => {
+it('rejects a maker session when the quoter rejects the access token', async () => {
   const session = new AuthSession({
     credentials: pair(),
-    refresh: async () => pair(1),
+    refresh: async () => ({ ...pair(1), expiresIn: 900 }),
   });
-  const signTypedData = vi.fn();
-  const manager = maker(session, signTypedData);
+  const manager = maker(session);
   ControlledSocket.accept = false;
   const connecting = manager.connect();
-  await vi.advanceTimersByTimeAsync(0);
-  const socket = ControlledSocket.sockets[0];
-  socket?.receive({ type: 'auth', success: false, error: 'auth_invalid' });
-  const rfq = await connecting;
-  expect(socket?.readyState).toBe(1);
-  socket?.receive({
-    type: 'RFQ_REQUEST',
-    rfq_id: '00000000-0000-4000-8000-000000000001',
-    requestor_public_id: 'synthetic-requester',
-    leg_position_ids: ['1'],
-    condition_id: `0x03${'0'.repeat(60)}`,
-    yes_position_id: '1',
-    no_position_id: '2',
-    direction: 'BUY',
-    side: 'YES',
-    requested_size: { unit: 'shares', value_e6: '1000000' },
-    submission_deadline: Date.now() + 60_000,
+  const rejected = expect(connecting).rejects.toMatchObject({
+    name: 'RequestRejectedError',
+    code: 'auth_invalid',
   });
-  for await (const event of rfq) {
-    if (event.type !== 'quote_request') continue;
-    await expect(event.quote({ price: '0.5' })).rejects.toMatchObject({
-      name: 'RequestRejectedError',
-    });
-    break;
-  }
-  expect(signTypedData).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(0);
+  ControlledSocket.sockets[0]?.receive({
+    type: 'auth',
+    success: false,
+    error: 'auth_invalid',
+  });
+  await rejected;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(ControlledSocket.sockets[0]?.readyState).toBe(3);
   await manager.shutdown();
   session.close();
   expect(vi.getTimerCount()).toBe(0);
@@ -335,7 +321,7 @@ it.each([
 ])('Polybolt ignores an initial ACK invalidated by %s before its continuation', async (stop) => {
   const session = new AuthSession({
     credentials: pair(),
-    refresh: async () => pair(1),
+    refresh: async () => ({ ...pair(1), expiresIn: 900 }),
   });
   const changes = vi.spyOn(session, 'onChange');
   const connection = new PolyboltConnection({
@@ -377,7 +363,7 @@ it.each([
 ])('RFQ ignores an initial ACK invalidated by %s before its continuation', async (stop) => {
   const session = new AuthSession({
     credentials: pair(),
-    refresh: async () => pair(1),
+    refresh: async () => ({ ...pair(1), expiresIn: 900 }),
   });
   const changes = vi.spyOn(session, 'onChange');
   const manager = maker(session);

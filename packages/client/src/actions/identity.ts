@@ -2,6 +2,7 @@ import {
   type BearerCredentials,
   EvmAddressSchema,
   OwnershipChallengeSchema,
+  type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
 import { z } from 'zod';
@@ -53,13 +54,29 @@ export const LoginError = makeErrorGuard(
   UserInputError,
 );
 
-/** Signs a server-issued ownership challenge and returns the complete session credentials.
+/**
+ * Signs a server-issued ownership challenge and returns the session
+ * credentials. Omit `wallet` to open a session without a wallet. Passing these
+ * credentials and a wallet to `createSecureClient` binds the wallet later
+ * without signing again.
  * @throws {@link LoginError} Thrown on authentication failure.
  */
 export async function login(
   client: BasePublicClient,
   request: LoginRequest,
 ): Promise<BearerCredentials> {
+  const { accessToken, refreshToken } = await issueLoginSession(
+    client,
+    request,
+  );
+  return { accessToken, refreshToken };
+}
+
+/** Logs in and keeps the access-token lifetime for session scheduling. @internal */
+export async function issueLoginSession(
+  client: BasePublicClient,
+  request: LoginRequest,
+): Promise<TokenResponse> {
   const params = parseUserInput(request, AuthenticationInputSchema);
   let address: string;
   try {
@@ -77,6 +94,14 @@ export async function login(
     },
     schema: OwnershipChallengeSchema,
   });
+  // The signature must prove control of this signer on this network only.
+  if (
+    challenge.typedData.domain.chainId !== client.environment.chainId ||
+    challenge.typedData.message.address.toLowerCase() !== signer.toLowerCase()
+  )
+    throw new UnexpectedResponseError(
+      'The ownership challenge does not match the signer and network.',
+    );
   let signature: string;
   try {
     signature = await request.signer.signTypedData(challenge.typedData);
@@ -93,7 +118,8 @@ export async function login(
 
 export type MigrateCredentialsRequest = {
   credentials: { key: string; secret: string; passphrase: string };
-  signer: string;
+  /** Address of the signer that owns the saved credentials. */
+  signerAddress: string;
   wallet?: string;
   verificationToken?: string;
 };
@@ -101,7 +127,7 @@ const MigrateCredentialsRequestSchema = AuthenticationInputSchema.omit({
   nonce: true,
 }).extend({
   credentials: L2CredentialsSchema,
-  signer: EvmAddressSchema,
+  signerAddress: EvmAddressSchema,
 });
 export type MigrateCredentialsError =
   | RateLimitError
@@ -129,6 +155,18 @@ export async function migrateCredentials(
   client: BasePublicClient,
   request: MigrateCredentialsRequest,
 ): Promise<BearerCredentials> {
+  const { accessToken, refreshToken } = await issueMigratedSession(
+    client,
+    request,
+  );
+  return { accessToken, refreshToken };
+}
+
+/** Migrates and keeps the access-token lifetime for session scheduling. @internal */
+export async function issueMigratedSession(
+  client: BasePublicClient,
+  request: MigrateCredentialsRequest,
+): Promise<TokenResponse> {
   const params = parseUserInput(request, MigrateCredentialsRequestSchema);
   const timestamp = Math.floor(Date.now() / 1000);
   let signature: string;
@@ -145,7 +183,7 @@ export async function migrateCredentials(
   }
   return client.auth.post('/v1/auth/migrate', {
     json: {
-      signer: params.signer,
+      signer: params.signerAddress,
       timestamp: String(timestamp),
       clob_api_key: params.credentials.key,
       clob_passphrase: params.credentials.passphrase,

@@ -2,7 +2,6 @@ import {
   type BearerCredentials,
   SocketAuthResponseSchema,
 } from '@polymarket/bindings';
-import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import {
   type UserEvent,
   UserEventSchema,
@@ -37,8 +36,7 @@ import {
 } from './protocol';
 
 export type ClobUserWebSocketManagerOptions = {
-  credentials?: ApiKeyCreds;
-  session?: AuthSession;
+  session: AuthSession;
   headers?: Record<string, string>;
   url: string;
 };
@@ -46,8 +44,7 @@ export type ClobUserWebSocketManagerOptions = {
 export class ClobUserWebSocketManager
   implements WebSocketSubscriptionManager<UserSubscription, UserEvent>
 {
-  readonly #credentials: ApiKeyCreds | undefined;
-  readonly #authentication: SocketAuthentication | undefined;
+  readonly #authentication: SocketAuthentication;
   #auth: { resolve: () => void; reject: (error: Error) => void } | undefined;
   #authUnavailable = 0;
   readonly #headers: Record<string, string> | undefined;
@@ -64,21 +61,19 @@ export class ClobUserWebSocketManager
   >({ deriveServerState: deriveUserServerSubscription });
 
   constructor(options: ClobUserWebSocketManagerOptions) {
-    this.#credentials = options.credentials;
-    if (options.session !== undefined)
-      this.#authentication = new SocketAuthentication({
-        session: options.session,
-        authenticate: (token) => this.#renew(token),
-        expired: () => {
-          this.#authentication?.stop();
-          this.#auth?.reject(new TransportError('User connection expired.'));
-          void this.#connection.close().then(() => this.#scheduleReconnect());
-        },
-        fail: (error) => {
-          this.#subscriptions.endAll(error);
-          void this.close();
-        },
-      });
+    this.#authentication = new SocketAuthentication({
+      session: options.session,
+      authenticate: (token) => this.#renew(token),
+      expired: () => {
+        this.#authentication.stop();
+        this.#auth?.reject(new TransportError('User connection expired.'));
+        void this.#connection.close().then(() => this.#scheduleReconnect());
+      },
+      fail: (error) => {
+        this.#subscriptions.endAll(error);
+        void this.close();
+      },
+    });
     this.#headers = options.headers;
     this.#url = options.url;
   }
@@ -143,7 +138,7 @@ export class ClobUserWebSocketManager
 
   async #shutdown(): Promise<void> {
     this.#authUnavailable = 0;
-    this.#authentication?.stop();
+    this.#authentication.stop();
     this.#auth?.reject(new TransportError('User connection closed.'));
     this.#reconnectScheduler.stop();
     this.#subscriptions.endAll();
@@ -154,7 +149,7 @@ export class ClobUserWebSocketManager
   #connect(): Promise<WebSocketConnectionResult> {
     return this.#connection.connect({
       onConnectionLost: (info) => {
-        this.#authentication?.stop();
+        this.#authentication.stop();
         this.#auth?.reject(new TransportError('User connection closed.'));
         if (
           (info.code === 1008 && info.reason !== 'authentication expired') ||
@@ -172,23 +167,16 @@ export class ClobUserWebSocketManager
       onError: () => this.#onConnectionError(),
       onMessage: (message) => this.#onConnectionMessage(message),
       onOpen: (credentials) => this.#onConnectionOpen(credentials),
-      prepare: async () => {
-        const credentials =
-          (await this.#authentication?.prepare()) ?? this.#credentials;
-        if (credentials === undefined)
-          throw new TransportError('User stream credentials are missing.');
-        return credentials;
-      },
+      prepare: () => this.#authentication.prepare(),
       headers: this.#headers,
       url: this.#url,
     });
   }
 
-  #onConnectionOpen(credentials: ApiKeyCreds | BearerCredentials): void {
+  #onConnectionOpen(credentials: BearerCredentials): void {
     this.#reconnectScheduler.resetBackoff();
-    this.#sendInitialSubscription(credentials);
-    if ('accessToken' in credentials)
-      this.#authentication?.accepted(credentials.accessToken);
+    this.#sendInitialSubscription(credentials.accessToken);
+    this.#authentication.accepted(credentials.accessToken);
   }
 
   #onConnectionMessage(message: unknown): void {
@@ -225,9 +213,9 @@ export class ClobUserWebSocketManager
     // Keep iterators alive here so the close path can reconnect active handles.
   }
 
-  #sendInitialSubscription(credentials: ApiKeyCreds | BearerCredentials): void {
+  #sendInitialSubscription(accessToken: string): void {
     this.#connection.send(
-      buildUserSubscribeMessage(this.#subscriptions.serverState(), credentials),
+      buildUserSubscribeMessage(this.#subscriptions.serverState(), accessToken),
     );
   }
 
