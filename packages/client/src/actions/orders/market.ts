@@ -26,12 +26,7 @@ import {
   validatePriceOnTickGrid,
 } from './context';
 import { resolveMarketPriceFromOrderBook } from './estimate';
-import {
-  FIXED_SCALE,
-  fromScaledPrice,
-  type ScaledPrice,
-  toScaledPrice,
-} from './fixed';
+import { fromScaledPrice, type ScaledPrice, toScaledPrice } from './fixed';
 import type { OrderDraft, PrepareMarketOrderRequest } from './types';
 
 const BasePrepareMarketOrderParamsSchema = z.object({
@@ -230,8 +225,6 @@ export async function resolveProtectedMarketOrderAmounts(
   };
 }
 
-const MIN_SUPPORTED_TICK_SIZE = toScaledPrice(MINIMUM_TICK_SIZE_VALUE);
-
 function buildProtectedMarketOrderAmounts(
   params: PrepareMarketOrderDraftParams,
   metadata: OrderMarketMetadata,
@@ -250,34 +243,12 @@ function buildProtectedMarketOrderAmounts(
     });
   }
 
-  const amounts = computeMarketOrderAmounts({
+  return computeMarketOrderAmounts({
     amount,
     price,
     side: params.side,
     tickSize: metadata.tickSize,
   });
-
-  if (params.side === OrderSide.BUY) {
-    if (amounts.offeredAmount <= 0n || amounts.requestedAmount <= 0n) {
-      throw new UserInputError(
-        'Protected BUY amount rounds to zero; increase amount and, if set, maxSpend.',
-      );
-    }
-
-    // Flooring shares makes the implied bid reach maxPrice. Keep it strictly
-    // below the next executable price, even if the cached tick becomes finer
-    // before submission. Check the final fee-adjusted amounts without division.
-    if (
-      amounts.offeredAmount * FIXED_SCALE >=
-      amounts.requestedAmount * (price + MIN_SUPPORTED_TICK_SIZE)
-    ) {
-      throw new UserInputError(
-        'Cannot preserve maxPrice with this BUY amount and tick precision; increase amount and, if set, maxSpend, or choose a different maxPrice.',
-      );
-    }
-  }
-
-  return amounts;
 }
 
 async function resolveUnprotectedMarketOrderContext(
