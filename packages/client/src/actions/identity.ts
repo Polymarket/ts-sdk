@@ -1,7 +1,6 @@
 import {
   type BearerCredentials,
   EvmAddressSchema,
-  OwnershipChallengeSchema,
   type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
@@ -85,14 +84,11 @@ export async function issueLoginSession(
     throw new SigningError('Could not obtain signer address.');
   }
   const signer = parseUserInput(address, EvmAddressSchema);
-  const challenge = await client.auth.post('/v1/auth/challenge', {
-    json: {
-      signer,
-      wallet: params.wallet,
-      verification_token: params.verificationToken,
-      nonce: params.nonce,
-    },
-    schema: OwnershipChallengeSchema,
+  const challenge = await client.requestOwnershipChallenge({
+    signer,
+    wallet: params.wallet,
+    verification_token: params.verificationToken,
+    nonce: params.nonce,
   });
   // The signature must prove control of this signer on this network only.
   if (

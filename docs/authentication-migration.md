@@ -95,6 +95,8 @@ Set `predictions.rest` to the gateway origin without `/v1`, because request path
 
 Orders take their owner from the session's trading identity, never from the HTTP credentials.
 
+See [Platform API Keys](platform-api-keys.md) for server-only keys, challenge proxies and builder and submission authorization.
+
 ## Release verification
 
 Deterministic tests cover these contracts but do not prove production readiness. Before an external release, verify the deployed gateway issuer, audience and route coverage, browser access from other origins, builder identity and gasless quota continuity, and same-connection token renewal on every socket server. Browser ticket flows must keep working.

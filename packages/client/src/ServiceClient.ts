@@ -9,6 +9,7 @@ import {
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
+  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -169,6 +170,7 @@ export type ServiceClientRequestError =
   | RateLimitError
   | RequestAbortedError
   | RequestRejectedError
+  | SigningError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
@@ -177,6 +179,7 @@ export const ServiceClientRequestError = makeErrorGuard(
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
+  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -453,6 +456,7 @@ export class ServiceClient {
         error instanceof RequestAbortedError ||
         error instanceof RateLimitError ||
         error instanceof RequestRejectedError ||
+        error instanceof SigningError ||
         error instanceof UnexpectedResponseError ||
         error instanceof UserInputError ||
         error instanceof TransportError
