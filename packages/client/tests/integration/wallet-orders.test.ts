@@ -26,7 +26,11 @@ import { findHighVolumeLowPriceMarket } from './markets';
 describe('Wallet-wide orders', { timeout: 600_000 }, () => {
   it('reads the authenticated wallet without builder credentials', async ({
     secureClientWithDepositWallet,
+    environment,
+    onTestFinished,
   }) => {
+    const requests = vi.spyOn(globalThis, 'fetch');
+    onTestFinished(() => requests.mockRestore());
     const firstPage = await secureClientWithDepositWallet
       .listWalletOpenOrders()
       .firstPage();
@@ -38,6 +42,13 @@ describe('Wallet-wide orders', { timeout: 600_000 }, () => {
       );
       expect(order.signerAddress).toMatch(/^0x[0-9a-f]{40}$/i);
     }
+    const urls = requests.mock.calls.map(
+      ([input]) =>
+        new URL(input instanceof Request ? input.url : String(input)),
+    );
+    expect(urls.map((url) => url.href)).toContain(
+      `${environment.predictions.rest.replace(/\/$/, '')}/v1/me/wallet-orders`,
+    );
   });
 
   // Live side effects: authorizes and revokes an on-chain session-key grant,
@@ -286,8 +297,7 @@ async function revokeSessionKeyAndWait(
   environment: EnvironmentConfig,
 ): Promise<void> {
   const revocationUrl = new URL(
-    '/v1/session-signers/revocations',
-    environment.relayer.rest,
+    `${environment.predictions.rest.replace(/\/$/, '')}/v1/wallets/session-signers/revocations`,
   );
   const originalFetch = globalThis.fetch;
   let transaction: GaslessTransactionHandle | undefined;

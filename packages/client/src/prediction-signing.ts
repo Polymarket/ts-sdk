@@ -46,6 +46,7 @@ const SIGNING_ROUTES: readonly SigningRoute[] = [
     'trading',
   ),
   route('GET', '/v1/me/orders', '/data/orders', 'trading'),
+  route('GET', '/v1/me/wallet-orders', '/data/wallet-open-orders', 'trading'),
   route('GET', '/v1/me/orders/{order_id}', '/data/order/{order_id}', 'trading'),
   route('GET', '/v1/me/trades', '/data/trades', 'trading'),
   route('GET', '/v1/me/notifications', '/notifications', 'trading'),
@@ -131,6 +132,7 @@ const SIGNING_ROUTES: readonly SigningRoute[] = [
   route('DELETE', '/v1/orders/batch', '/orders', 'trading'),
   route('DELETE', '/v1/orders/all', '/cancel-all', 'trading'),
   route('DELETE', '/v1/orders/by-market', '/cancel-market-orders', 'trading'),
+  route('DELETE', '/v1/orders/by-wallet', '/cancel-wallet-orders', 'trading'),
   route(
     'POST',
     '/v1/combos/builder/requests',

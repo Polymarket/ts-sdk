@@ -13,6 +13,8 @@ A configured API key adds headers only to the operations its credential family c
 
 The signature covers the upstream method, path and exact body, even when the gateway path or method differs. Order payload owners are trading identities. Bearer credentials never become order owners.
 
+Wallet-wide order methods follow the same rules: `listWalletOpenOrders` uses `GET /v1/me/wallet-orders`, while `cancelWalletOrders` and `cancelAllWalletOrders` use `DELETE /v1/orders/by-wallet`. Builder keys sign the upstream `/data/wallet-open-orders` or `/cancel-wallet-orders` path. Filters, pagination and cancellation bodies stay unchanged; wallet-wide cancellation still requires the Deposit Wallet owner.
+
 ## Direct endpoints
 
 The following actions keep their direct endpoints because the gateway has no equivalent operation:
@@ -26,4 +28,4 @@ Standalone credential administration is no longer provided by the SDK. Perps and
 
 The gateway origin may include an application proxy prefix. Keep direct endpoint configurations consistent with that environment.
 
-Routing follows the gateway passthrough tables at `5d031a59` (2026-11-03). Gateway-only endpoints without corresponding SDK methods are outside this change.
+Routing follows the gateway passthrough tables at `97867a07` (2026-11-10), including the wallet-order routes added in gateway PR #1277. SDK method coverage includes the merged changes through SDK PR #503. Gateway-only endpoints without corresponding SDK methods are outside this change.

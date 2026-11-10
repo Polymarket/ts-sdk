@@ -41,6 +41,25 @@ describe('predictionSigningRequest', () => {
     ).toMatchObject({ method: 'GET', path: '/balance-allowance/update' });
   });
 
+  it.each([
+    ['GET', '/v1/me/wallet-orders', '/data/wallet-open-orders', undefined],
+    [
+      'DELETE',
+      '/v1/orders/by-wallet',
+      '/cancel-wallet-orders',
+      '{"order_ids":["0xabc"]}',
+    ],
+    ['DELETE', '/v1/orders/by-wallet', '/cancel-wallet-orders', '{"all":true}'],
+  ] as const)('signs wallet-wide %s %s only with builder credentials (%s, %s)', (method, path, upstreamPath, body) => {
+    const walletOrders = request(method, path, body);
+    expect(predictionSigningRequest(walletOrders, builderKey)).toEqual({
+      method,
+      path: upstreamPath,
+      body,
+    });
+    expect(predictionSigningRequest(walletOrders, relayerKey)).toBeUndefined();
+  });
+
   it('signs the relayed envelope of a collateral return submission', () => {
     expect(
       predictionSigningRequest(
