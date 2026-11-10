@@ -277,8 +277,8 @@ export function listWalletOpenOrders(
   const requestOptions = parseRequestOptions(options);
   return paginate(
     (cursor) =>
-      client.secureClob
-        .get('/data/wallet-open-orders', {
+      client.predictions
+        .get('/v1/me/wallet-orders', {
           ...requestOptions,
           schema: WalletOpenOrdersPageSchema,
           params: toSearchParams(

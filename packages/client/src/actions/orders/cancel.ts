@@ -192,7 +192,7 @@ export async function cancelWalletOrders(
 ): Promise<CancelOrdersResponse> {
   assertDepositWalletOwner(client);
   const params = parseUserInput(request, CancelWalletOrdersRequestSchema);
-  return cancel(client, '/cancel-wallet-orders', {
+  return cancel(client, '/v1/orders/by-wallet', {
     order_ids: params.orderIds,
   });
 }
@@ -227,7 +227,7 @@ export async function cancelAllWalletOrders(
   client: BaseSecureClient,
 ): Promise<CancelOrdersResponse> {
   assertDepositWalletOwner(client);
-  return cancel(client, '/cancel-wallet-orders', { all: true });
+  return cancel(client, '/v1/orders/by-wallet', { all: true });
 }
 
 export type CancelAllError =
