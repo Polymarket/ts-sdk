@@ -517,7 +517,7 @@ export const ListMarketHoldersError = makeErrorGuard(
  * equivalent to 1,000,000 base units.
  * Amounts are net holdings by default. `includePnl` switches to per-outcome
  * gross holdings and adds position economics; it requires one condition ID and
- * a page size of at most 100. Transient rate limits are retried by default.
+ * a page size of at most 100. Set `retries` to retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -711,8 +711,8 @@ export const ListPriceHistoryError = makeErrorGuard(
  * when that resolution is unavailable for the window. Prices are decimal
  * strings and returned timestamps are Unix epoch milliseconds. Series pages
  * are ordered oldest first; an `asOf` request returns at most one item. Series
- * page sizes default to and are capped at 10,000 points. Transient rate limits
- * are retried by default.
+ * page sizes default to and are capped at 10,000 points. Set `retries` to
+ * retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -790,8 +790,8 @@ export const FetchOpenInterestError = makeErrorGuard(
  * `conditionIds` accepts up to 20 distinct market condition IDs. Omit it for
  * the global aggregate, whose `conditionId` is `null`. A requested servable
  * market with no holdings has a zero value; an absent row means the market is
- * not servable. Values are in USDC. Transient rate limits are retried
- * by default.
+ * not servable. Values are in USDC. Set `retries` to
+ * retry transient failures.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
