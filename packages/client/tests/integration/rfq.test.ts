@@ -98,18 +98,10 @@ describe('RFQ sessions', () => {
       try {
         const session = await secureClientWithDepositWallet.openRfqSession();
 
+        const credentials = secureClientWithDepositWallet.credentials;
         expect(outboundFrames).toContainEqual(
           expect.objectContaining({
-            auth: {
-              apiKey: secureClientWithDepositWallet.credentials.key,
-              passphrase: secureClientWithDepositWallet.credentials.passphrase,
-              secret: secureClientWithDepositWallet.credentials.secret,
-            },
-            identity: {
-              maker_address: secureClientWithDepositWallet.account.wallet,
-              signature_type: SignatureType.POLY_1271,
-              signer_address: secureClientWithDepositWallet.account.wallet,
-            },
+            auth: { accessToken: credentials.accessToken },
             type: 'auth',
           }),
         );

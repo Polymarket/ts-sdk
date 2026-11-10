@@ -1,6 +1,4 @@
-import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import type {
-  RfqAuthMessage,
   RfqConfirmationDecision,
   RfqConfirmationResponseMessage,
   RfqId,
@@ -12,27 +10,6 @@ import type {
 import type { AccountIdentity } from '../../wallet';
 import { resolveOrderIdentity } from '../../wallet';
 import type { RfqQuote } from './quote';
-
-export function createAuthMessage(
-  account: AccountIdentity,
-  credentials: ApiKeyCreds,
-): RfqAuthMessage {
-  const identity = resolveOrderIdentity(account);
-
-  return {
-    auth: {
-      apiKey: credentials.key,
-      passphrase: credentials.passphrase,
-      secret: credentials.secret,
-    },
-    identity: {
-      maker_address: identity.maker,
-      signature_type: identity.signatureType,
-      signer_address: identity.signer,
-    },
-    type: 'auth',
-  };
-}
 
 export function createQuoteMessage(
   request: RfqQuoteRequest,

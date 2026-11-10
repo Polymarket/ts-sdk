@@ -3,7 +3,7 @@ import {
   UserInputError,
   WalletType,
 } from '@polymarket/client';
-import { fetchApiKeys, isWalletDeployed } from '@polymarket/client/actions';
+import { isWalletDeployed } from '@polymarket/client/actions';
 import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
@@ -20,7 +20,7 @@ describe('clients', () => {
         wallet: depositWalletAddress,
       });
 
-      await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+      await secureClient.listOpenOrders().firstPage();
     });
 
     it('authenticates with a non-zero nonce', async ({
@@ -35,7 +35,7 @@ describe('clients', () => {
         nonce: 1,
       });
 
-      await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+      await secureClient.listOpenOrders().firstPage();
     });
 
     it('authenticates twice with the same nonce', async ({
@@ -50,7 +50,7 @@ describe('clients', () => {
         nonce: 2,
       });
 
-      await expect(fetchApiKeys(firstClient)).resolves.toBeDefined();
+      await firstClient.listOpenOrders().firstPage();
 
       const secondClient = await createSecureClient({
         environment,
@@ -59,7 +59,7 @@ describe('clients', () => {
         nonce: 2,
       });
 
-      await expect(fetchApiKeys(secondClient)).resolves.toBeDefined();
+      await secondClient.listOpenOrders().firstPage();
     });
 
     it('classifies a deterministic proxy wallet as POLY_PROXY', async ({
@@ -78,7 +78,7 @@ describe('clients', () => {
       expect(secureClient.account.wallet).toBe(proxyWalletAddress);
       expect(secureClient.account.signer).toBe(signerAddress);
 
-      await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+      await secureClient.listOpenOrders().firstPage();
     });
 
     it('defaults omitted wallet to the current Deposit Wallet', async ({
@@ -95,7 +95,7 @@ describe('clients', () => {
       expect(secureClient.account.signer).toBe(signerAddress);
       expect(secureClient.account.wallet).toBe(depositWalletAddress);
       expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
-      await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+      await secureClient.listOpenOrders().firstPage();
     });
 
     it.runIf(runMeteredTests)(
@@ -147,46 +147,10 @@ describe('clients', () => {
         credentials: initialClient.credentials,
       });
 
-      await expect(fetchApiKeys(secureClient)).resolves.toBeDefined();
+      await secureClient.listOpenOrders().firstPage();
     });
 
-    it('falls back to fresh authentication when stored credentials have been revoked', async ({
-      depositWalletAddress,
-      depositWalletSigner,
-      environment,
-    }) => {
-      const controlClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        nonce: 1997,
-      });
-      const secureClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        nonce: 1998,
-      });
-      const { credentials } = secureClient;
-      const revokedKey = credentials.key;
-
-      await expect(fetchApiKeys(controlClient)).resolves.toContain(revokedKey);
-
-      await secureClient.endAuthentication();
-
-      const resumedClient = await createSecureClient({
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-        credentials,
-      });
-      const remainingApiKeys = await fetchApiKeys(controlClient);
-
-      expect(resumedClient.credentials.key).not.toBe(revokedKey);
-      expect(remainingApiKeys).toContain(controlClient.credentials.key);
-      expect(remainingApiKeys).toContain(resumedClient.credentials.key);
-      expect(remainingApiKeys).not.toContain(revokedKey);
-    });
+    // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.
   });
 
   describe('SecureClient.endAuthentication', () => {
@@ -207,19 +171,11 @@ describe('clients', () => {
         wallet: depositWalletAddress,
         nonce: 998,
       });
-      const revokedKey = secureClient.credentials.key;
       const signer = secureClient.account.signer;
-
-      await expect(fetchApiKeys(controlClient)).resolves.toContain(revokedKey);
-
+      await controlClient.listOpenOrders().firstPage();
       const publicOnlyClient = await secureClient.endAuthentication();
-      const remainingApiKeys = await fetchApiKeys(controlClient);
-
-      expect(remainingApiKeys).toContain(controlClient.credentials.key);
-      expect(remainingApiKeys).not.toContain(revokedKey);
-      await expect(fetchApiKeys(secureClient)).rejects.toBeInstanceOf(
-        InvariantError,
-      );
+      await controlClient.listOpenOrders().firstPage();
+      expect(() => secureClient.credentials).toThrow(InvariantError);
       await expect(
         publicOnlyClient.fetchPublicProfile({ address: signer }),
       ).resolves.toBeDefined();

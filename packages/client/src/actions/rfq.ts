@@ -182,6 +182,7 @@ export class RfqQuoteRejectedError extends PolymarketError {
 
 export type RfqQuoteError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqQuoteRejectedError
   | SigningError
   | TimeoutError
@@ -189,6 +190,7 @@ export type RfqQuoteError =
   | UserInputError;
 export const RfqQuoteError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqQuoteRejectedError,
   SigningError,
   TimeoutError,
@@ -232,11 +234,13 @@ export class RfqCancelQuoteRejectedError extends PolymarketError {
 
 export type RfqCancelQuoteError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqCancelQuoteRejectedError
   | TimeoutError
   | TransportError;
 export const RfqCancelQuoteError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqCancelQuoteRejectedError,
   TimeoutError,
   TransportError,
@@ -278,11 +282,13 @@ export class RfqConfirmationRejectedError extends PolymarketError {
 
 export type RfqConfirmationError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqConfirmationRejectedError
   | TimeoutError
   | TransportError;
 export const RfqConfirmationError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqConfirmationRejectedError,
   TimeoutError,
   TransportError,
@@ -398,10 +404,12 @@ export interface RfqSession extends AsyncIterable<RfqEvent> {
 
 export type OpenRfqSessionError =
   | ConnectionLostError
+  | RequestRejectedError
   | TransportError
   | UserInputError;
 export const OpenRfqSessionError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   TransportError,
   UserInputError,
 );

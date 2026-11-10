@@ -300,16 +300,7 @@ export type RfqOrderSide = OrderSide | 0 | 1;
 
 export type RfqAuthMessage = {
   type: 'auth';
-  auth: {
-    apiKey: string;
-    passphrase: string;
-    secret: string;
-  };
-  identity: {
-    signer_address: EvmAddress;
-    maker_address: EvmAddress;
-    signature_type: SignatureType;
-  };
+  auth: { accessToken: string };
 };
 
 export enum RfqKnownInboundType {

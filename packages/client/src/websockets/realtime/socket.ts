@@ -1,4 +1,3 @@
-import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import {
   PolyboltAckOp,
   PolyboltAckSchema,
@@ -13,6 +12,8 @@ import {
   RequestRejectedError,
   TransportError,
 } from '../../errors';
+import type { AuthSession } from '../../session';
+import { SocketAuthentication } from '../authentication';
 import { PolyboltWebSocketHeartbeat } from '../heartbeat';
 import { WebSocketConnection } from '../lifecycle';
 import type { PriceKey } from './protocol';
@@ -37,7 +38,7 @@ type PendingOp = {
 export type PolyboltConnectionOptions = {
   url: string;
   headers?: Record<string, string>;
-  credentials: ApiKeyCreds;
+  session: AuthSession;
 };
 
 /** @internal Adapts price operations and events to the PolyBolt wire protocol. */
@@ -49,6 +50,7 @@ export class PolyboltConnection implements PriceSessionConnection {
     closeTimeoutMs: 1_000,
   });
   readonly #pending = new Map<string, PendingOp>();
+  readonly #authentication: SocketAuthentication;
   #events: PriceSessionEvents | undefined;
   #requestId = 0;
   #lastSent = 0;
@@ -56,6 +58,30 @@ export class PolyboltConnection implements PriceSessionConnection {
 
   constructor(options: PolyboltConnectionOptions) {
     this.#options = options;
+    this.#authentication = new SocketAuthentication({
+      session: options.session,
+      authenticate: async (accessToken) => {
+        await this.#request(
+          { op: 'auth', auth: { accessToken } },
+          PolyboltAckOp.Authed,
+          [],
+        );
+      },
+      expired: () => {
+        const events = this.#events;
+        void this.close().then(() =>
+          events?.disconnected({
+            code: 1008,
+            reason: 'authentication expired',
+          }),
+        );
+      },
+      fail: (error) => {
+        const events = this.#events;
+        this.#cancel(error);
+        void this.close().then(() => events?.failed(error));
+      },
+    });
   }
 
   async open(events: PriceSessionEvents): Promise<void> {
@@ -68,6 +94,8 @@ export class PolyboltConnection implements PriceSessionConnection {
       onError: () => undefined,
       onConnectionLost: (info) => {
         if (generation !== this.#generation) return;
+        this.#generation++;
+        this.#authentication.stop();
         this.#cancel(
           new ConnectionLostError('Realtime connection closed.', info),
         );
@@ -80,12 +108,18 @@ export class PolyboltConnection implements PriceSessionConnection {
   }
 
   async authorize(): Promise<void> {
-    const { key, secret, passphrase } = this.#options.credentials;
+    const generation = this.#generation;
+    const { accessToken } = await this.#authentication.prepare();
+    if (generation !== this.#generation)
+      throw new TransportError('Realtime authentication was cancelled.');
     await this.#request(
-      { op: 'auth', auth: { apiKey: key, secret, passphrase } },
+      { op: 'auth', auth: { accessToken } },
       PolyboltAckOp.Authed,
       [],
     );
+    if (generation !== this.#generation)
+      throw new TransportError('Realtime authentication was cancelled.');
+    this.#authentication.accepted(accessToken);
   }
 
   async change(
@@ -246,6 +280,7 @@ export class PolyboltConnection implements PriceSessionConnection {
   }
 
   async close(): Promise<void> {
+    this.#authentication.stop();
     this.#generation++;
     this.#events = undefined;
     this.#cancel(new TransportError('Realtime connection closed.'));

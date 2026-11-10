@@ -114,13 +114,17 @@ intended for external consumers, who should use the high-level SDK actions.
 Breaking changes may occur in any release, including patch releases.
 
 Production requests go to `https://api.defi.polymarket.com`. Environment forks
-can override `predictions.rest` and `predictions.headers`. Trading credentials
-are not attached automatically, so callers supply any headers the endpoint
-requires.
+can override `predictions.rest` and `predictions.headers`. On a secure client,
+`predictions` attaches the session's access token and renews it. On a public
+client, callers supply any headers the endpoint requires.
 
 Prediction POST, PATCH, and DELETE requests are sent once, including when a
-connection drops after dispatch. GET accepts the same per-request `retries` budget.
-Gateway rejections preserve their `code` and message on `RequestRejectedError`.
+connection drops after dispatch. A secure client replays a request once after an
+`expired_access_token` rejection, because the gateway rejected it before
+forwarding. GET accepts the same per-request `retries` budget.
+Gateway rejections keep their `code` on `RequestRejectedError`. Authentication
+requests replace the message with a generic one, and secure clients remove
+credential values from messages.
 After `cancel_outcome_unknown`, check open orders before manually retrying;
 cancellation may already have taken effect. Aborting a mutation stops the local
 request but cannot prove it had no effect. Raw callers inspect the status/body,
