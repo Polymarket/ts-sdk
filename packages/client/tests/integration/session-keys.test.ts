@@ -57,7 +57,7 @@ describe('Session keys', { timeout: 600_000 }, () => {
 
   it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
     annotate,
-    builderAuthentication,
+    relayerAuthentication,
     depositWalletAddress,
     depositWalletSigner,
     environment,
@@ -68,7 +68,7 @@ describe('Session keys', { timeout: 600_000 }, () => {
       sportsOnly: false,
     });
     const secureClientWithDepositWallet = await createSecureClient({
-      apiKey: builderAuthentication,
+      apiKey: relayerAuthentication,
       environment,
       signer: depositWalletSigner,
       wallet: depositWalletAddress,
@@ -214,6 +214,8 @@ describe('Session keys', { timeout: 600_000 }, () => {
       wallet: secureClientWithDepositWallet.account.wallet,
     });
     expect(sessionClient.account.signerType).toBe(SignerType.SESSION_KEY);
+    const sessionOrders = await sessionClient.listOpenOrders().firstPage();
+    expect(Array.isArray(sessionOrders.items)).toBe(true);
     await expect(
       sessionClient.requestComboQuote({
         amount: 1,
