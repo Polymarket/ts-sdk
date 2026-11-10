@@ -50,6 +50,7 @@ type IntegrationFixtures = {
   depositWalletSigner: Signer;
   environment: EnvironmentConfig;
   newDepositWalletClient: SecureClient;
+  platformKey: string;
   publicClient: PublicClient;
   proxyWalletAddress: EvmAddress;
   proxyWalletSigner: Signer;
@@ -173,6 +174,16 @@ export const it: TestAPI<IntegrationFixtures> =
           loadRequiredEnv('POLYMARKET_BUILDER_CODE', skip),
         ),
       );
+    },
+
+    platformKey: async ({ skip }, use) => {
+      // Optional until CI provides a Platform API Key, so it skips in CI too.
+      const value = process.env.POLYMARKET_PLATFORM_API_KEY?.trim() ?? '';
+      if (value === '') {
+        skip('POLYMARKET_PLATFORM_API_KEY is not set');
+      }
+
+      await use(value);
     },
 
     randomEoaSigner: async ({ skip: _skip }, use) => {

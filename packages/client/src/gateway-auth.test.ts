@@ -13,8 +13,8 @@ import {
 } from './clients';
 import type { ClientCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
-import { RequestRejectedError, TransportError } from './errors';
-import { protectRequestErrors } from './request-errors';
+import { RequestRejectedError, SigningError, TransportError } from './errors';
+import { protectRequestErrors, redactRequestError } from './request-errors';
 import { AuthSession } from './session';
 import type { Signer } from './types';
 import { deriveBeaconDepositWalletAddress } from './wallet';
@@ -698,6 +698,48 @@ it.each([
       }),
     ),
   ).rejects.toMatchObject({ name: 'TransportError', message });
+});
+
+it.each([
+  'response',
+  'transport',
+] as const)('redacts a platform key and session tokens reflected in a %s failure', async (kind) => {
+  const platformKey = 'pm_sk_synthetic-server-only';
+  const sessionTokens = ['synthetic-access-token', 'synthetic-refresh-token'];
+  const message = `Rejected ${platformKey} ${sessionTokens.join(' ')}`;
+  const fetch = protectRequestErrors(
+    async () => {
+      if (kind === 'transport') throw new Error(message);
+      return Response.json(
+        { code: 'request_rejected', message },
+        { status: 403 },
+      );
+    },
+    false,
+    () => sessionTokens,
+  );
+  const outcome = await fetch(
+    new Request('https://synthetic.invalid/private', {
+      headers: { 'x-api-key': platformKey },
+    }),
+  ).then(
+    (response) => response.text(),
+    (error: unknown) => inspect(error, { depth: 10 }),
+  );
+  for (const secret of [platformKey, ...sessionTokens])
+    expect(outcome).not.toContain(secret);
+});
+
+it('keeps a signing failure a SigningError without its secret cause', () => {
+  const error = redactRequestError(
+    new SigningError('Signing failed for synthetic-access-token', {
+      cause: new Error('synthetic-refresh-token'),
+    }),
+    ['synthetic-access-token', 'synthetic-refresh-token'],
+  );
+  expect(error).toBeInstanceOf(SigningError);
+  expect(error).toMatchObject({ message: 'Signing failed for [REDACTED]' });
+  expect(inspect(error, { depth: 10 })).not.toContain('synthetic-refresh');
 });
 
 it.each([

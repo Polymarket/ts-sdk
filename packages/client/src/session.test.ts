@@ -159,6 +159,7 @@ describe('shared session policy', () => {
 
   it.each([
     'identity',
+    'attribution',
     'expiry',
   ])('ends the session when renewal returns a changed %s', async (kind) => {
     const original = tokens();
@@ -167,9 +168,13 @@ describe('shared session policy', () => {
       kind === 'expiry'
         ? issue(tokens(1), 10)
         : issue(
-            tokens(1, 900, {
-              sub: '0x0000000000000000000000000000000000000003',
-            }),
+            tokens(
+              1,
+              900,
+              kind === 'attribution'
+                ? { client_id: 'other-client' }
+                : { sub: '0x0000000000000000000000000000000000000003' },
+            ),
           );
     const session = new AuthSession({
       credentials: original,
