@@ -1,72 +1,100 @@
 # Bearer session migration
 
-`createSecureClient` accepts saved L2 credentials as `{ key, secret, passphrase }` or bearer credentials as `{ accessToken, refreshToken }`. It automatically migrates L2 credentials and always exposes the plain bearer pair through `secureClient.credentials`. Login, migration and `onCredentialsChanged` use that same untagged bearer shape. Applications own persistence; credentials are never logged by the SDK.
+Secure clients authenticate with a bearer session: an access token and a refresh token. `createSecureClient` accepts saved L2 credentials as `{ key, secret, passphrase }` or saved bearer credentials as `{ accessToken, refreshToken }`. It exchanges L2 credentials for a bearer session automatically and always exposes the bearer pair through `secureClient.credentials`. Login, migration and `onCredentialsChanged` use the same plain pair. Applications own persistence, and the SDK never logs credentials.
 
 ```ts
-// Before: store the L2 key, secret and passphrase.
+// Before: the stored object held the L2 key, secret and passphrase.
 const saved = await loadCredentials();
 
-// After: the same creation call accepts saved L2 or bearer credentials.
+// After: the same call accepts saved L2 or bearer credentials.
 const client = await createSecureClient({
   signer,
   credentials: saved,
   onCredentialsChanged: async (credentials) => {
-    try { await saveCredentials(credentials); }
-    catch (error) { reportStorageFailure(); } // Do not log credentials.
+    try {
+      await saveCredentials(credentials);
+    } catch {
+      reportStorageFailure(); // Do not log credentials.
+    }
   },
 });
 await saveCredentials(client.credentials);
 ```
 
-Existing code that reads `.key`, `.secret` or `.passphrase` from `secureClient.credentials` must switch to `BearerCredentials`. Applications saving the whole object can keep that pattern: after successful creation, save `client.credentials` to replace the stored L2 object with the bearer pair. The callback persists subsequent token refreshes. Standalone API-key creation, derivation, listing, deletion and revocation operations are no longer exposed.
+After the first successful creation, save `client.credentials` to replace the stored L2 object with the bearer pair. The callback then saves every later renewal.
 
-During client creation, supplied L2 credentials are exchanged through `/v1/auth/migrate` with an HMAC ownership proof and the supplied signer's address. The L2 secret never leaves the SDK and migration asks for no new wallet signature. A rejected migration throws `RequestRejectedError`; it does not return a client, fall back to signing, call the persistence callback, or change your saved object. Direct consumers can also call `publicClient.migrateCredentials({ credentials, signer: signerAddress, wallet, verificationToken })`, save the returned pair, and pass it to `createSecureClient`.
+## Breaking changes
 
-If login or migration succeeds but identity validation or wallet setup later fails, client creation attempts to log out the newly opened session and closes its local resources. It rethrows the original creation error even if logout fails. Failed creation does not call `onCredentialsChanged` with credentials for that new session; refreshes during setup are delivered only after creation succeeds. Migration does not revoke the supplied L2 key, so the application can retry using its unchanged saved credentials.
+- `secureClient.credentials` is now `{ accessToken, refreshToken }`. Code that reads `.key`, `.secret` or `.passphrase` must switch to `BearerCredentials`.
+- The SDK no longer supports creating, deriving, listing or deleting API keys, or creating, listing or revoking builder API keys. `createApiKey`, `deriveApiKey`, `createOrDeriveApiKey`, `fetchApiKeys`, `deleteApiKey`, `createBuilderApiKey`, `fetchBuilderApiKeys` and `revokeBuilderApiKey` are removed from `@polymarket/client/actions`, together with their error guards and `ApiKeyAuthRequest`. They have no replacement in the SDK.
+- Saved credentials that no longer work reject `createSecureClient` with `RequestRejectedError`. The SDK no longer falls back to a new wallet signature. Create the client without `credentials` to sign in again (see below).
+- A saved bearer session ends when it is logged out or when its refresh token expires. In production a refresh token expires after seven days without a renewal. Saved L2 credentials did not expire.
+- Restoring saved bearer credentials sends one renewal request before the client is returned, so it needs the network.
+- `endAuthentication()` ends the bearer session. It does not revoke the L2 credentials that were migrated into that session, and access tokens that were already issued stay valid until they expire.
+- `publicClient.migrateCredentials` takes the owner as `signerAddress`.
+- `openRfqSession` rejects with `RequestRejectedError` when the quoter rejects the access token.
+- `CreateSecureClientError` now includes `RequestAbortedError`. `endAuthentication` documents its failures as `EndAuthenticationError`.
 
-Restoring supplied bearer credentials does not transfer ownership of the existing session to the factory. A restoration or wallet-setup failure closes local resources without logging out that session. Successful token rotations still invoke the persistence callback, so a refresh token rotated before a later setup failure can be saved.
-
-A bearer restoration refreshes once before returning to validate the saved refresh session, even if its access token is still fresh. An invalid or ended refresh session rejects creation. New logins sign the server's typed ownership challenge. `publicClient.login({ signer, wallet, verificationToken })` returns a bearer pair without creating a secure client. The wallet and optional verification token belong to challenge creation. The SDK never sends wallet information on login.
-
-For fresh authentication, `createSecureClient({ signer, wallet })` keeps its existing wallet behavior. Omitting `wallet` first checks the legacy Deposit Wallet, otherwise derives the current Deposit Wallet, then checks/deploys it through the existing wallet workflow. Passing the signer address selects an EOA. Existing Proxy and Safe wallets stay bound to their account.
-
-Supplied bearer credentials use their wallet claim when present. Credentials without a wallet claim create a signer-only client without wallet discovery or deployment. This supports authenticated account requests before wallet setup:
+Signing in again after a saved session ends:
 
 ```ts
-const credentials = await publicClient.login({ signer, verificationToken });
-await saveCredentials(credentials);
-const client = await createSecureClient({
-  signer,
-  credentials,
-  onCredentialsChanged: saveCredentials,
-});
-const account = await client.predictions.get('/internal/users/me');
+async function connect(saved?: ClientCredentials) {
+  try {
+    return await createSecureClient({
+      signer,
+      credentials: saved,
+      onCredentialsChanged: saveCredentials,
+    });
+  } catch (error) {
+    if (saved === undefined || !(error instanceof RequestRejectedError))
+      throw error;
+    return createSecureClient({ signer, onCredentialsChanged: saveCredentials });
+  }
+}
 ```
 
-Wallet-dependent operations require a session bound to a wallet.
+## Migrating saved L2 credentials
 
-The SDK schedules renewal 30 seconds before access-token expiry. Timer, request recovery and socket reconnects share a single refresh. Every adopted response replaces both tokens. `onCredentialsChanged` runs after adoption; synchronous exceptions and asynchronous rejections are ignored. Handle persistence failures inside your callback. A slow callback does not block network state. Transient refresh failures receive at most three attempts with bounded backoff. A terminal failure stops the session and surfaces through authenticated requests and active socket iterators.
+During client creation, saved L2 credentials are exchanged at `/v1/auth/migrate` with an HMAC ownership proof and the signer's address. The L2 secret never leaves the SDK, and migration asks for no wallet signature. A rejected migration throws `RequestRejectedError`. It does not return a client, sign, call the persistence callback or change the saved object. You can also call `publicClient.migrateCredentials({ credentials, signerAddress, wallet, verificationToken })`, save the returned pair and pass it to `createSecureClient`.
 
-An HTTP `401` is retried only for `expired_access_token`, once, preserving method, serialized body, query, cancellation and per-request timeout. A request whose token is already superseded uses the newer pair. Other `401`s and retry failures propagate. Mutations otherwise retain their no-replay transport policy. Cancelling one operation does not cancel another operation's shared refresh.
+If login or migration succeeds but a later setup step fails, client creation logs out the new session, closes its local resources and rethrows the original error, even if logout fails. A failed creation does not call `onCredentialsChanged` for that new session. Renewals during setup are delivered only after creation succeeds. Migration does not revoke the L2 credentials, so the application can retry with its unchanged saved object.
 
-Sockets receive only the access token. Each connection keeps its own acknowledged expiry; a rejected renewal never extends it. Renewal preserves subscriptions. Reconnect uses current session credentials. Pending maker trading commands are rejected on disconnect and never replayed. A maker with rejected initial authentication can retain public feeds, while protected commands are blocked. This does not grant external sessions access to requester sockets; external requesters may need REST. Browser price-ticket flows and Perps authentication remain separate.
+## Signing in and restoring sessions
+
+A new login signs the server's ownership challenge. The SDK checks that the challenge is the expected `ClobAuth` attestation for the signer and the configured chain before asking the wallet to sign, and rejects any other payload with `UnexpectedResponseError`. `publicClient.login({ signer, wallet, verificationToken })` returns a bearer pair without creating a secure client. The wallet and the optional verification token belong to challenge creation.
+
+Without `wallet`, `createSecureClient` uses the signer's Deposit Wallet. It first checks the earlier Deposit Wallet address, otherwise derives the current one, and deploys it if needed. Passing the signer address selects an EOA. Existing Proxy and Safe wallets stay bound to their account.
+
+Restoring saved bearer credentials does not hand the existing session to the factory. If restoration or wallet setup fails, the client closes its local resources without logging out. Renewals that succeed during a failed restoration still reach the persistence callback, so the latest pair can be saved.
+
+Saved credentials bound to a wallet keep that wallet. Passing a different `wallet` rejects with `UserInputError`. Saved credentials without a wallet, such as the pair from `publicClient.login({ signer })`, are bound to the requested wallet (or the default Deposit Wallet) through `/v1/auth/upgrade` before the client is returned. Binding needs no new signature and keeps the refresh token, and the new access token reaches `onCredentialsChanged`. A secure client always has an account wallet.
+
+## Renewal
+
+The SDK renews the access token 30 seconds before it expires. It schedules renewal from the lifetime the server returns with each token, so a device clock that runs fast or slow does not end the session. The timer, request recovery and socket reconnects share one renewal. Every adopted response replaces both tokens. `onCredentialsChanged` runs after adoption. Its synchronous exceptions and rejected promises are ignored, so handle storage failures inside the callback. A slow callback does not block requests.
+
+Transport failures, rate limits and server errors during renewal keep the session. Requests continue with the current access token while it is valid, and the SDK retries renewal with backoff (up to 30 seconds between attempts, or longer when the server sends `Retry-After`). A rejected refresh token, such as `invalid_refresh_token`, or a renewal response for a different identity ends the session. After that, authenticated requests reject with that error and socket iterators end with it. Create a new client to continue.
+
+An HTTP `401` is retried only for `expired_access_token`, once, with the same method, serialized body, query, cancellation and per-request timeout. A request whose token was already replaced uses the newer one. Other `401` responses and retry failures propagate. Mutations otherwise keep their no-replay policy. Cancelling one operation does not cancel a renewal shared with other operations.
+
+## Sockets
+
+Sockets receive only the access token. Each connection tracks the expiry of the token it last acknowledged, and a rejected renewal never extends it. Renewal keeps subscriptions. Reconnects use the current session token. Pending maker commands are rejected on disconnect and never replayed. Browser price-ticket flows and Perps authentication are separate.
+
+## Logging out
 
 ```ts
 const publicClient = await client.endAuthentication();
 ```
 
-Logout sends a usable bearer access token with no body. If tab suspension let it expire, the SDK refreshes solely for revocation; an `expired_access_token` rejection receives one refresh/retry. Other logout failures are not replayed. A still-valid access token can revoke the session despite an earlier refresh failure. Logout-only refresh results are never adopted or sent to credential callbacks. It stops local refresh and socket work even when remote logout fails, and a late refresh cannot revive the client. Already issued access tokens can remain valid until expiry.
-
-Identity HTTP calls use the configured Predictions origin. Business-action routing is a separate stack layer. Existing direct endpoint configuration and existing builder/relayer adapters remain available during migration. Builder authentication and gasless quota credentials are still distinct from trading signatures; orders continue to require their existing signatures. Existing builder and collateral-return routes retain their configured endpoints where gateway passthrough coverage is unavailable. Perps keeps its own endpoint and lifecycle.
-
-# Release verification
-
-Deterministic tests validate these contracts; they do not establish production readiness. Before external release, verify deployed gateway issuer/audience and route coverage, external-origin CORS/WAF access, builder identity and gasless quota continuity, and same-connection renewal support on all socket servers. Requester socket admission is first-party only. Browser ticket flows must remain intact. Do not retire direct upstreams or L2 credentials as part of this SDK migration.
+Logout sends a valid access token with no body. If the token expired, for example while a browser tab was suspended, the SDK renews it solely for revocation. An `expired_access_token` rejection gets one renewal and retry. Other logout failures are not replayed. A valid access token can revoke the session even after a failed renewal. Renewals made for logout are never adopted or passed to the persistence callback. Logout stops local renewal and socket work even when the remote logout fails, and a late renewal cannot revive the client.
 
 ## Endpoint configuration
 
-Set `predictions.rest` to the gateway origin, without appending `/v1`: auth actions already include `/v1/auth`. A configured proxy prefix is preserved exactly. Changing only `predictions.rest` does not redirect the other endpoint configurations; configure direct services for the same environment for business actions and pre-login wallet discovery.
+Set `predictions.rest` to the gateway origin without `/v1`, because authentication paths already include `/v1/auth`. A configured proxy prefix is kept exactly. Login, migration, renewal, wallet binding and logout use this origin. Perps keeps its own endpoint and session.
 
-Session creation, restoration, refresh, logout and socket authentication are defined here. Business-action routing through Predictions is a separate stack layer; direct endpoint configuration remains available.
+Orders take their owner from the session's trading identity, never from the HTTP credentials.
 
-Login, migration and persistence callbacks return the bearer saved format. HTTP credentials are never used as the order owner for bearer sessions; order ownership comes from the session trading identity.
+## Release verification
+
+Deterministic tests cover these contracts but do not prove production readiness. Before an external release, verify the deployed gateway issuer, audience and route coverage, browser access from other origins, builder identity and gasless quota continuity, and same-connection token renewal on every socket server. Browser ticket flows must keep working.
