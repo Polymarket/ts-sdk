@@ -52,6 +52,7 @@ export {
 export type * from '@polymarket/bindings/relayer';
 export type { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 export * from './abis';
+export { CommentSort } from './actions/comments';
 export { SearchSort } from './actions/search';
 export type {
   RelayerApiKeyConfig,
