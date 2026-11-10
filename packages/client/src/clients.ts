@@ -101,15 +101,9 @@ type PublicContext = {
   /** @internal */
   clob: ServiceClient;
   /** @internal */
-  relayer: ServiceClient;
-  /** @internal */
   rpc: JsonRpcClient;
   /** @internal */
   gamma: ServiceClient;
-  /** @internal */
-  data: ServiceClient;
-  /** @internal */
-  rfq: ServiceClient;
   /** @internal */
   perps: ServiceClient;
   /** @internal */
@@ -200,11 +194,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get relayer(): ServiceClient {
-    return this.context.relayer;
-  }
-
-  /** @internal */
   get rpc(): JsonRpcClient {
     return this.context.rpc;
   }
@@ -212,16 +201,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal */
   get gamma(): ServiceClient {
     return this.context.gamma;
-  }
-
-  /** @internal */
-  get data(): ServiceClient {
-    return this.context.data;
-  }
-
-  /** @internal */
-  get rfq(): ServiceClient {
-    return this.context.rfq;
   }
 
   /** @internal */
@@ -253,18 +232,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
     request: ServiceRequest,
   ): Promise<HeadersInit> {
     if (this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return Promise.resolve({});
-  }
-
-  protected async resolveRelayerHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (this.context.apiKey?.supportGasless) {
       return this.context.apiKey.authorize(request, {
         fetch: this.context.fetch,
         signal: request.signal,
@@ -348,11 +315,6 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
-      data: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.data.headers,
-        root: config.environment.data.rest,
-      }),
       gamma: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.gamma.headers,
@@ -364,17 +326,6 @@ class BasePublicClient<
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
-      }),
-      relayer: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.relayer.headers,
-        root: config.environment.relayer.rest,
-        resolveHeaders: (request) => this.resolveRelayerHeaders(request),
-      }),
-      rfq: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.combos.headers,
-        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
@@ -612,16 +563,6 @@ class BaseSecureClient<
             this.resolveClobHeaders(request),
           ),
       }),
-      relayer: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.relayer.headers,
-        root: config.environment.relayer.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveRelayerHeaders(request),
-          ),
-      }),
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
@@ -631,20 +572,6 @@ class BaseSecureClient<
         resolveHeaders: (request) => this.resolveSecureHeaders(request),
         headers: config.environment.gamma.headers,
         root: config.environment.gamma.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      data: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.data.headers,
-        root: config.environment.data.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      rfq: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.combos.headers,
-        root: config.environment.combos.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       perps: new ServiceClient({

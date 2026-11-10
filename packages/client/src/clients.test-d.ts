@@ -140,8 +140,6 @@ describe('predictions service types', () => {
     ).toEqualTypeOf<Promise<void>>();
     expectTypeOf(publicClient.clob).toEqualTypeOf<ServiceClient>();
     expectTypeOf(publicClient.gamma).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.data).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.relayer).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
   });
 

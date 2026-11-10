@@ -91,7 +91,7 @@ Logout sends a valid access token with no body. If the token expired, for exampl
 
 ## Endpoint configuration
 
-Set `predictions.rest` to the gateway origin without `/v1`, because authentication paths already include `/v1/auth`. A configured proxy prefix is kept exactly. Login, migration, renewal, wallet binding and logout use this origin. Perps keeps its own endpoint and session.
+Set `predictions.rest` to the gateway origin without `/v1`, because request paths already include it. A configured proxy prefix is kept exactly. Login, migration, renewal, wallet binding, logout and every supported action use this origin, including wallet discovery before login. Order heartbeats and offset comment reads still use `clob.rest` and `gamma.rest`. Perps keeps its own endpoint and session. See [Predictions action routing](predictions-routing.md) for the routed operations and API-key signing.
 
 Orders take their owner from the session's trading identity, never from the HTTP credentials.
 
