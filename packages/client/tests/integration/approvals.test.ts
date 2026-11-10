@@ -64,7 +64,9 @@ describe('Approvals', () => {
         expect(requests).toHaveLength(1);
         const request = requests[0];
         expect(request?.method).toBe('GET');
-        expect(new URL(request?.url ?? '').pathname).toBe('/v2/approvals');
+        expect(new URL(request?.url ?? '').pathname).toBe(
+          '/v1/wallets/approvals',
+        );
         expect(new URL(request?.url ?? '').searchParams.get('user')).toBe(
           '0x00000000000000000000000000000000000000aa',
         );
@@ -98,7 +100,7 @@ describe('Approvals', () => {
 
         expect(ethCallBatchSpy).not.toHaveBeenCalled();
         expect(urls).toHaveLength(1);
-        expect(urls[0]?.pathname).toBe('/v2/approvals');
+        expect(urls[0]?.pathname).toBe('/v1/wallets/approvals');
         expect(urls[0]?.searchParams.get('user')?.toLowerCase()).toBe(
           secureClientWithDepositWallet.account.wallet.toLowerCase(),
         );

@@ -57,6 +57,7 @@ import {
   UserInputError,
 } from './errors';
 import { parseUserInput } from './input';
+import { predictionSigningRequest } from './prediction-signing';
 import type { RateLimitUpdateListener } from './rate-limit';
 import { protectRequestErrors } from './request-errors';
 import type { Fetch } from './request-options';
@@ -100,15 +101,7 @@ type PublicContext = {
   /** @internal */
   clob: ServiceClient;
   /** @internal */
-  relayer: ServiceClient;
-  /** @internal */
   rpc: JsonRpcClient;
-  /** @internal */
-  gamma: ServiceClient;
-  /** @internal */
-  data: ServiceClient;
-  /** @internal */
-  rfq: ServiceClient;
   /** @internal */
   perps: ServiceClient;
   /** @internal */
@@ -141,6 +134,23 @@ type DecoratorSecureActions<TDecorator extends ClientDecorator> =
   >
     ? TSecureActions
     : never;
+
+/** Adds API-key headers to the Predictions operations that the key's credential family covers. */
+function authorizePredictionsRequest(
+  context: PublicContext,
+  request: ServiceRequest,
+): Promise<HeadersInit> {
+  const apiKey = context.apiKey;
+  const signing =
+    apiKey === undefined
+      ? undefined
+      : predictionSigningRequest(request, apiKey);
+  if (apiKey === undefined || signing === undefined) return Promise.resolve({});
+  return apiKey.authorize(signing, {
+    fetch: context.fetch,
+    signal: request.signal,
+  });
+}
 
 abstract class AbstractClient<TContext extends PublicContext> {
   // Keep the backing context off the public object shape so accidental
@@ -182,28 +192,8 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get relayer(): ServiceClient {
-    return this.context.relayer;
-  }
-
-  /** @internal */
   get rpc(): JsonRpcClient {
     return this.context.rpc;
-  }
-
-  /** @internal */
-  get gamma(): ServiceClient {
-    return this.context.gamma;
-  }
-
-  /** @internal */
-  get data(): ServiceClient {
-    return this.context.data;
-  }
-
-  /** @internal */
-  get rfq(): ServiceClient {
-    return this.context.rfq;
   }
 
   /** @internal */
@@ -243,27 +233,10 @@ abstract class AbstractClient<TContext extends PublicContext> {
     return Promise.resolve({});
   }
 
-  protected async resolveRelayerHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (this.context.apiKey?.supportGasless) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return Promise.resolve({});
-  }
-
   protected resolveRequestHeaders(
     request: ServiceRequest,
   ): Promise<HeadersInit> {
-    return (
-      this.context.apiKey?.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      }) ?? Promise.resolve({})
-    );
+    return authorizePredictionsRequest(this.context, request);
   }
 
   protected rememberDecorator(decorator: ClientDecorator): void {
@@ -335,33 +308,12 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
-      data: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.data.headers,
-        root: config.environment.data.rest,
-      }),
-      gamma: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.gamma.headers,
-        root: config.environment.gamma.rest,
-      }),
       clob: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.clob.headers,
         onRateLimitUpdate: config.onRateLimitUpdate,
         root: config.environment.clob.rest,
         resolveHeaders: (request) => this.resolveClobHeaders(request),
-      }),
-      relayer: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.relayer.headers,
-        root: config.environment.relayer.rest,
-        resolveHeaders: (request) => this.resolveRelayerHeaders(request),
-      }),
-      rfq: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.combos.headers,
-        root: config.environment.combos.rest,
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
@@ -599,40 +551,9 @@ class BaseSecureClient<
             this.resolveClobHeaders(request),
           ),
       }),
-      relayer: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.relayer.headers,
-        root: config.environment.relayer.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveRelayerHeaders(request),
-          ),
-      }),
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
-      }),
-      gamma: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.gamma.headers,
-        root: config.environment.gamma.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      data: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.data.headers,
-        root: config.environment.data.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      rfq: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        resolveHeaders: (request) => this.resolveSecureHeaders(request),
-        headers: config.environment.combos.headers,
-        root: config.environment.combos.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
       }),
       perps: new ServiceClient({
         fetch: config.fetch,
@@ -648,26 +569,6 @@ class BaseSecureClient<
             this.resolveClobHeaders(request),
           ),
         root: config.environment.clob.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      combos: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.combos.collateralReturn.headers,
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveRelayerHeaders(request),
-          ),
-        root: config.environment.combos.collateralReturn.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-      }),
-      builderGateway: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.combos.builderGateway.headers,
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.#resolveBuilderGatewayHeaders(request),
-          ),
-        root: config.environment.combos.builderGateway.rest,
         refreshToken: (signal) => this.refreshTokens(signal),
       }),
       webSockets: {
@@ -723,13 +624,8 @@ class BaseSecureClient<
     const context = request.path.startsWith('/v1/auth/')
       ? super.context
       : this.context;
-    return this.resolveSecureHeaders(
-      request,
-      (request) =>
-        context.apiKey?.authorize(request, {
-          fetch: context.fetch,
-          signal: request.signal,
-        }) ?? Promise.resolve({}),
+    return this.resolveSecureHeaders(request, (request) =>
+      authorizePredictionsRequest(context, request),
     );
   }
 
@@ -737,7 +633,6 @@ class BaseSecureClient<
     request: ServiceRequest,
     resolveHeaders?: RequestHeadersResolver,
   ): Promise<HeadersInit> {
-    const headers = new Headers(await resolveHeaders?.(request));
     const session = (
       request.path.startsWith('/v1/auth/') ? super.context : this.context
     ).session;
@@ -745,6 +640,7 @@ class BaseSecureClient<
     const credentials = request.path.startsWith('/v1/auth/')
       ? session.credentials
       : await session.ready(request.signal);
+    const headers = new Headers(await resolveHeaders?.(request));
     headers.set('Authorization', `Bearer ${credentials.accessToken}`);
     if (request.signal !== undefined)
       this.#requestTokens.set(request.signal, credentials.accessToken);
@@ -797,16 +693,6 @@ class BaseSecureClient<
   /** @internal */
   get secureClob(): ServiceClient {
     return this.context.secureClob;
-  }
-
-  /** @internal */
-  get combos(): ServiceClient {
-    return this.context.combos;
-  }
-
-  /** @internal */
-  get builderGateway(): ServiceClient {
-    return this.context.builderGateway;
   }
 
   /** @internal Shared managers for public and authenticated realtime subscriptions. */
@@ -945,20 +831,6 @@ class BaseSecureClient<
 
     return client as PublicClient<TPublicActions, TSecureActions>;
   }
-
-  // Builder gateway status reads authenticate with account headers only;
-  // builder headers are required on the mutating requests.
-  async #resolveBuilderGatewayHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (request.method !== 'GET' && this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return {};
-  }
 }
 
 type SecureContext = PublicContext & {
@@ -971,10 +843,6 @@ type SecureContext = PublicContext & {
   signer: Signer;
   /** @internal */
   secureClob: ServiceClient;
-  /** @internal */
-  combos: ServiceClient;
-  /** @internal */
-  builderGateway: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };

@@ -5,6 +5,7 @@ import {
 } from '@polymarket/client';
 import { isWalletDeployed } from '@polymarket/client/actions';
 import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
+import { afterEach, vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 describe('clients', () => {
@@ -199,6 +200,37 @@ describe('clients', () => {
       await expect(
         handle[Symbol.asyncIterator]().next(),
       ).resolves.toMatchObject({ done: true });
+    });
+  });
+
+  describe('Predictions routing', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('serves discovery, portfolio and combo reads from the Predictions endpoint', async ({
+      publicClient,
+      environment,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      await publicClient.listSports();
+      await publicClient.listEvents({ pageSize: 1 }).firstPage();
+      await publicClient
+        .listPositions({ user: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b' })
+        .firstPage();
+      await publicClient.listComboMarkets({ pageSize: 1 }).firstPage();
+
+      const urls = fetchSpy.mock.calls.map(
+        ([input]) =>
+          new URL(input instanceof Request ? input.url : String(input)),
+      );
+      expect(urls.map((url) => url.origin + url.pathname)).toEqual([
+        `${environment.predictions.rest}/v1/sports`,
+        `${environment.predictions.rest}/v1/events`,
+        `${environment.predictions.rest}/v1/positions`,
+        `${environment.predictions.rest}/v1/combos/markets`,
+      ]);
     });
   });
 });

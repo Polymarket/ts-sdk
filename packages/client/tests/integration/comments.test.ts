@@ -5,6 +5,7 @@ import {
 } from '@polymarket/bindings';
 import type { Comment } from '@polymarket/bindings/gamma';
 import {
+  CommentSort,
   createPublicClient,
   type Page,
   PaginationLimitError,
@@ -44,52 +45,6 @@ describe('Comments', () => {
 
       expect(firstPage.items).toEqual(expect.any(Array));
     });
-
-    for (const pageSize of [100, 75]) {
-      it(`stops normally at the depth limit with page size ${pageSize} when holder filtering keeps the read on offset pages`, async ({
-        publicClient,
-      }) => {
-        const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        // A long-running thread with far more than 300 top-level comments, so
-        // every page below the cap comes back full. Holder filtering is only
-        // served on offset pages, so this read cannot switch to cursors.
-        const paginator = publicClient.listComments({
-          holdersOnly: true,
-          parentEntityId: toEventId('45915'),
-          parentEntityType: CommentParentEntityType.Event,
-          pageSize,
-        });
-        const pages: Page<Comment[]>[] = [];
-
-        for await (const page of paginator) {
-          pages.push(page);
-        }
-
-        expect(pages).toHaveLength(3);
-        const lastPage = expectPresent(pages.at(-1));
-        expect(lastPage.hasMore).toBe(true);
-        expect(lastPage.limitReached).toBe(true);
-        expect(lastPage.nextCursor).toBeDefined();
-        expect(pages.slice(0, -1).every((page) => !page.limitReached)).toBe(
-          true,
-        );
-
-        const requests = fetchSpy.mock.calls
-          .map(
-            ([input]) =>
-              new URL(input instanceof Request ? input.url : String(input)),
-          )
-          .filter((url) => url.pathname === '/comments');
-        expect(requests.map((url) => url.searchParams.get('offset'))).toEqual(
-          [0, pageSize, 2 * pageSize].map(String),
-        );
-        fetchSpy.mockClear();
-        await expect(
-          paginator.from(lastPage.nextCursor).firstPage(),
-        ).rejects.toThrow(PaginationLimitError);
-        expect(fetchSpy).not.toHaveBeenCalled();
-      });
-    }
   });
 
   describe('listComments by server cursor', () => {
@@ -149,7 +104,7 @@ describe('Comments', () => {
         input instanceof Request ? input.url : String(input),
       );
       expect(urls).toHaveLength(2);
-      expect(urls[0]).toContain('/comments/keyset?');
+      expect(urls[0]).toContain('/v1/comments?');
       expect(urls[0]).toContain('order=createdAt');
       expect(urls[0]).toContain('ascending=false');
       expect(urls[0]).toContain('limit=5');
@@ -163,26 +118,22 @@ describe('Comments', () => {
       expect(urls[1]).toContain('order=createdAt');
     });
 
-    it('defaults to ascending when an order is given and stays on offset pages otherwise', async ({
+    it('defaults to ascending when an order is given', async ({
       publicClient,
     }) => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
 
-      await publicClient.listComments({ ...request, order: 'id' }).firstPage();
       await publicClient
-        .listComments({ ...request, order: 'reactionCount' })
+        .listComments({ ...request, order: CommentSort.Id })
         .firstPage();
 
       const urls = fetchSpy.mock.calls.map(([input]) =>
         input instanceof Request ? input.url : String(input),
       );
-      expect(urls).toHaveLength(2);
-      expect(urls[0]).toContain('/comments/keyset?');
+      expect(urls).toHaveLength(1);
+      expect(urls[0]).toContain('/v1/comments?');
       expect(urls[0]).toContain('order=id');
       expect(urls[0]).toContain('ascending=true');
-      expect(urls[1]).toContain('/comments?');
-      expect(urls[1]).toContain('order=reactionCount');
-      expect(urls[1]).toContain('offset=0');
     });
 
     it('refuses a cursor reused for a different query before any request', async ({
@@ -195,8 +146,8 @@ describe('Comments', () => {
 
       const otherQueries = [
         { ...request, parentEntityId: commentEvent.id },
-        { ...request, order: 'id' },
-        { ...request, ascending: true, order: 'createdAt' },
+        { ...request, order: CommentSort.Id },
+        { ...request, ascending: true, order: CommentSort.CreatedAt },
       ];
 
       for (const other of otherQueries) {
@@ -205,35 +156,21 @@ describe('Comments', () => {
         ).rejects.toThrow(UserInputError);
       }
 
-      // A cursor of some other shape is not silently treated as an offset.
-      const foreignCursor = toPaginationCursor(
-        btoa(JSON.stringify({ kind: 'other', offset: 0, pageSize: 5 })),
-      );
-      await expect(
-        publicClient.listComments(request).from(foreignCursor).firstPage(),
-      ).rejects.toThrow(UserInputError);
+      // Offset cursors saved from earlier versions, cursors of another shape
+      // and raw service tokens cannot resume a cursor walk.
+      const foreignCursors = [
+        { offset: 200, pageSize: 5 },
+        { kind: 'other', offset: 0, pageSize: 5 },
+      ].map((state) => toPaginationCursor(btoa(JSON.stringify(state))));
+      foreignCursors.push(toPaginationCursor('raw-service-token'));
+
+      for (const foreignCursor of foreignCursors) {
+        await expect(
+          publicClient.listComments(request).from(foreignCursor).firstPage(),
+        ).rejects.toThrow(UserInputError);
+      }
 
       expect(fetchSpy).not.toHaveBeenCalled();
-    });
-
-    it('continues a cursor minted before cursor pagination on offset pages', async ({
-      publicClient,
-    }) => {
-      const legacyCursor = toPaginationCursor(
-        btoa(JSON.stringify({ offset: 200, pageSize: 100 })),
-      );
-      const paginator = publicClient.listComments({
-        ...request,
-        pageSize: 100,
-      });
-      const page = await paginator.from(legacyCursor).firstPage();
-
-      expect(page.items.length).toBeGreaterThan(0);
-      expect(page.hasMore).toBe(true);
-      expect(page.limitReached).toBe(true);
-      await expect(paginator.from(page.nextCursor).firstPage()).rejects.toThrow(
-        PaginationLimitError,
-      );
     });
   });
 

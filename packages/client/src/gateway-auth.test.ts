@@ -643,9 +643,9 @@ it.each([
 });
 
 it.each([
-  'POLY_BUILDER_API_KEY',
-  'RELAYER_API_KEY',
-])('combines bearer and %s headers on gateway requests', async (header) => {
+  ['POLY_BUILDER_API_KEY', '/v1/orders'],
+  ['RELAYER_API_KEY', '/v1/wallets/transactions'],
+])('combines bearer and %s headers on %s', async (header, path) => {
   const pair = tokens();
   const client = await createSecureClient({
     environment,
@@ -669,7 +669,7 @@ it.each([
     },
   });
   try {
-    await expect(client.predictions.post('/private')).resolves.toBe(true);
+    await expect(client.predictions.post(path)).resolves.toBe(true);
   } finally {
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
@@ -995,7 +995,7 @@ describe('failed secure-client creation owns newly issued sessions', () => {
       const path = new URL(request.url).pathname;
       paths.push(path);
       if (path.endsWith('/deployed')) return Response.json({ deployed: false });
-      if (path.endsWith('/submit'))
+      if (path === '/v1/wallets/transactions')
         return stage === 'submit'
           ? Response.json(
               { code: 'deployment_rejected', message: 'Deployment rejected' },
@@ -1028,9 +1028,9 @@ describe('failed secure-client creation owns newly issued sessions', () => {
         },
       }),
     ).rejects.toMatchObject({ status: 401, code: 'deployment_rejected' });
-    expect(paths).toContain('/submit');
+    expect(paths).toContain('/v1/wallets/transactions');
     if (stage === 'wait')
-      expect(paths).toContain('/v1/account/transactions/failed-setup');
+      expect(paths).toContain('/v1/wallets/transactions/failed-setup');
     expect(paths.filter((path) => path.endsWith('/logout'))).toHaveLength(1);
   });
 

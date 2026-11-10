@@ -43,7 +43,6 @@ const environment = forkEnvironmentConfig({
   name: 'test',
   predictions: { rest: clobRoot },
   clob: { rest: clobRoot },
-  relayer: { rest: relayerRoot },
   rpc: rpcRoot,
 });
 
@@ -151,13 +150,7 @@ describe('predictions gateway service', () => {
       }));
       expect(extended.predictions).toBe(client.predictions);
       expect(extended.predictionService).toBe(client.predictions);
-      for (const service of [
-        client.clob,
-        client.gamma,
-        client.data,
-        client.relayer,
-        client.perps,
-      ]) {
+      for (const service of [client.clob, client.perps]) {
         await expect(
           service.get('/direct', { retries: 0 }),
         ).rejects.toMatchObject({
@@ -625,7 +618,8 @@ describe('secure client gasless wallet setup', () => {
       expect(request.url).toBe(`${environment.predictions.rest}/cancel-all`);
       expect(request.headers.has('POLY_API_KEY')).toBe(false);
       expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
-      expect(request.headers.has('RELAYER_API_KEY')).toBe(true);
+      // Order cancellation is not a wallet operation, so the relayer key stays local.
+      expect(request.headers.has('RELAYER_API_KEY')).toBe(false);
     }
     expect(() => client.predictions).toThrow(
       'This client has ended authentication',
@@ -648,7 +642,7 @@ function testTokens(wallet: string) {
 
 function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(wallet);
@@ -660,7 +654,7 @@ function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
 
 function mockUndeployedWallet(expectedWallet: EvmAddress) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(expectedWallet);
@@ -675,7 +669,7 @@ function mockDepositWalletDeployments(
   deployments: Array<{ wallet: EvmAddress; deployed: boolean }>,
 ) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
       const address = expectEvmAddress(url.searchParams.get('address') ?? '');
       const deployment = deployments.find(
@@ -696,7 +690,7 @@ function mockDeployDepositWallet() {
   const transactionHash = `0x${'1'.repeat(64)}`;
 
   server.use(
-    http.post(`${relayerRoot}/submit`, () => {
+    http.post(`${relayerRoot}/v1/wallets/transactions`, () => {
       state.called = true;
 
       return HttpResponse.json({
@@ -705,7 +699,7 @@ function mockDeployDepositWallet() {
         transactionID: transactionId,
       });
     }),
-    http.get(`${relayerRoot}/v1/account/transactions/${transactionId}`, () => {
+    http.get(`${relayerRoot}/v1/wallets/transactions/${transactionId}`, () => {
       state.transactionFetches += 1;
 
       return HttpResponse.json({
@@ -724,7 +718,7 @@ function mockDeployedWallet(expectedWallet: EvmAddress) {
   const state = { called: false };
 
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       state.called = true;
       const url = new URL(request.url);
 

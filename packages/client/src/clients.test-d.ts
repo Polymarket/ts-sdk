@@ -139,11 +139,7 @@ describe('predictions service types', () => {
       publicClient.predictions.del('/reserved', { responseType: 'empty' }),
     ).toEqualTypeOf<Promise<void>>();
     expectTypeOf(publicClient.clob).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.gamma).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.data).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(publicClient.relayer).toEqualTypeOf<ServiceClient>();
     expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(secureClient.builderGateway).toEqualTypeOf<ServiceClient>();
   });
 
   it('exports the service type without its constructor from the root entry point', () => {

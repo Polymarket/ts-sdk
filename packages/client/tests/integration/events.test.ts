@@ -53,13 +53,13 @@ describe('Events', () => {
       const firstPage = await paginator.firstPage().then(expectNonEmptyPage);
 
       expect(firstPage.items.length).toBeGreaterThan(0);
-      await expectPageWindow(paginator, firstPage, 99);
+      await expectPageWindow(paginator, firstPage, 19);
 
       for (const [input] of fetchSpy.mock.calls) {
         const url = new URL(
           input instanceof Request ? input.url : String(input),
         );
-        if (url.pathname === '/events/keyset') {
+        if (url.pathname === '/v1/events') {
           expect(url.searchParams.has('version')).toBe(false);
         }
       }
@@ -96,7 +96,7 @@ describe('Events', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/events/keyset');
+        .filter((url) => url.pathname === '/v1/events');
       expect(urls).toHaveLength(1);
       expect(urls[0]?.searchParams.getAll('version')).toEqual(
         Array.isArray(version) ? version : [version],
@@ -118,7 +118,7 @@ describe('Events', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/events/keyset');
+        .filter((url) => url.pathname === '/v1/events');
       expect(firstUrls).toHaveLength(1);
       expect(firstUrls[0]?.searchParams.getAll('version')).toEqual(
         Array.isArray(version) ? version : [version],
@@ -140,7 +140,7 @@ describe('Events', () => {
           ([input]) =>
             new URL(input instanceof Request ? input.url : String(input)),
         )
-        .filter((url) => url.pathname === '/events/keyset');
+        .filter((url) => url.pathname === '/v1/events');
       expect(urls).toHaveLength(2);
       for (const url of urls) {
         expect(url.searchParams.getAll('version')).toEqual(
@@ -240,7 +240,7 @@ describe('Events', () => {
     }) => {
       // Cursors saved by earlier versions are the service's own tokens.
       const raw = (await fetch(
-        `${environment.gamma.rest}/events/keyset?closed=false&limit=2`,
+        `${environment.predictions.rest}/v1/events?closed=false&limit=2`,
       ).then((response) => response.json())) as { next_cursor?: string };
       const legacyCursor = toPaginationCursor(expectPresent(raw.next_cursor));
       const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -257,7 +257,7 @@ describe('Events', () => {
           .map(([input]) =>
             input instanceof Request ? input.url : String(input),
           )
-          .find((url) => url.includes('/events/keyset')) ?? '',
+          .find((url) => url.includes('/v1/events')) ?? '',
       );
       expect(url.searchParams.get('after_cursor')).toBe(raw.next_cursor);
     });
@@ -353,7 +353,7 @@ describe('Events', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .find((url) => new URL(url).pathname === '/v2/live-volume');
+        .find((url) => new URL(url).pathname === '/v1/events/live-volume');
 
       expect(
         new URL(expectPresent(requestUrl)).searchParams.get('event_id'),
@@ -401,7 +401,7 @@ describe('Events', () => {
         .map(([input]) =>
           input instanceof Request ? input.url : String(input),
         )
-        .find((url) => new URL(url).pathname === '/v2/resolutions');
+        .find((url) => new URL(url).pathname === '/v1/markets/resolutions');
 
       expect(
         new URL(expectPresent(requestUrl)).searchParams.get('condition'),
