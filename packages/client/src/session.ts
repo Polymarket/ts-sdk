@@ -91,6 +91,10 @@ export class AuthSession {
   get claims(): AccessTokenClaims {
     return { ...this.#claims };
   }
+  /** The failure that ended the session, if renewal failed for good. */
+  get failure(): Error | undefined {
+    return this.#failure;
+  }
   /** Local time in milliseconds at which `accessToken` expires. */
   expiresAt(accessToken: string): number {
     const claims =
@@ -108,7 +112,9 @@ export class AuthSession {
     this.assertActive();
     const remaining =
       this.expiresAt(this.#credentials.accessToken) - Date.now();
-    if (remaining > RENEWAL_LEAD_MS) return this.credentials;
+    // A renewal in flight may be replacing a token the server already rejected.
+    if (this.#refreshing === undefined && remaining > RENEWAL_LEAD_MS)
+      return this.credentials;
     // A scheduled retry owns renewal while the current bearer is still valid.
     if (this.#retries > 0 && this.#refreshing === undefined && remaining > 0)
       return this.credentials;
@@ -142,14 +148,19 @@ export class AuthSession {
     signal?: AbortSignal,
   ): Promise<void> {
     this.assertActive();
-    if (previousAccessToken !== this.#credentials.accessToken) return;
-    await withAbort(this.refresh(), signal);
+    if (
+      this.#refreshing !== undefined ||
+      previousAccessToken === this.#credentials.accessToken
+    )
+      await withAbort(this.refresh(), signal);
   }
   refresh(): Promise<BearerCredentials> {
     this.assertActive();
     if (this.#refreshing !== undefined) return this.#refreshing;
     clearTimeout(this.#timer);
-    const refreshing = this.#renew()
+    // Install the shared promise before invoking any consumer refresh callback.
+    const refreshing = Promise.resolve()
+      .then(() => this.#renew())
       .catch((cause: unknown) => {
         const error =
           cause instanceof Error

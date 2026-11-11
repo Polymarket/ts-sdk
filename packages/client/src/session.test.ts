@@ -2,6 +2,7 @@ import type { BearerCredentials, TokenResponse } from '@polymarket/bindings';
 import { expectEvmAddress } from '@polymarket/types';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  RateLimitError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -290,16 +291,19 @@ it('does not adopt an ordinary refresh that completes while revocation is pendin
   const pendingRevocation = Promise.withResolvers<void>();
   const changed = vi.fn();
   let refreshSignal: AbortSignal | undefined;
+  const started = Promise.withResolvers<void>();
   const session = new AuthSession({
     credentials: original,
     onCredentialsChanged: changed,
     refresh: async (_credentials, signal) => {
       refreshSignal = signal;
+      started.resolve();
       return pendingRefresh.promise;
     },
   });
   const ordinaryRefresh = session.refresh();
   const failed = expect(ordinaryRefresh).rejects.toThrow('closed');
+  await started.promise;
   const ending = session.logout(async () => pendingRevocation.promise);
   expect(refreshSignal?.aborted).toBe(true);
   pendingRefresh.resolve(issue(tokens(1)));
@@ -307,6 +311,89 @@ it('does not adopt an ordinary refresh that completes while revocation is pendin
   pendingRevocation.resolve();
   await ending;
   expect(session.credentials).toEqual(original);
+  expect(changed).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('waits for an explicit refresh even while the current bearer is fresh', async () => {
+  const pending = Promise.withResolvers<TokenResponse>();
+  const started = Promise.withResolvers<void>();
+  const original = tokens();
+  const refresh = vi.fn(() => {
+    started.resolve();
+    return pending.promise;
+  });
+  const session = new AuthSession({ credentials: original, refresh });
+  const operation = session.refresh();
+  expect(session.refresh()).toBe(operation);
+  await started.promise;
+  const ready = vi.fn((pair: BearerCredentials) => pair);
+  const recovered = vi.fn();
+  const consumer = session.ready().then(ready);
+  const late401 = session.recover('already-superseded-token').then(recovered);
+  await Promise.resolve();
+  expect(ready).not.toHaveBeenCalled();
+  expect(recovered).not.toHaveBeenCalled();
+  const updated = tokens(1);
+  pending.resolve(issue(updated));
+  await expect(consumer).resolves.toEqual(updated);
+  await late401;
+  expect(refresh).toHaveBeenCalledExactlyOnceWith(
+    original,
+    expect.any(AbortSignal),
+  );
+  session.close();
+});
+
+it('installs the lock before a refresh callback can synchronously reenter', async () => {
+  let reentrant: Promise<BearerCredentials> | undefined;
+  const updated = tokens(1);
+  const refresh = vi.fn(async () => {
+    reentrant = session.refresh();
+    return issue(updated);
+  });
+  const session = new AuthSession({ credentials: tokens(), refresh });
+  const operation = session.refresh();
+  await expect(operation).resolves.toEqual(updated);
+  expect(reentrant).toBe(operation);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  session.close();
+});
+
+it('closing before a queued refresh starts skips its callback and never persists credentials', async () => {
+  const refresh = vi.fn(async () => issue(tokens(1)));
+  const changed = vi.fn();
+  const session = new AuthSession({
+    credentials: tokens(),
+    refresh,
+    onCredentialsChanged: changed,
+  });
+  const ordinary = expect(session.refresh()).rejects.toThrow('closed');
+  session.close();
+  await ordinary;
+  expect(refresh).not.toHaveBeenCalled();
+  expect(changed).not.toHaveBeenCalled();
+});
+
+it('renews an expired bearer once for revocation after a rate-limited renewal', async () => {
+  vi.useFakeTimers();
+  const original = tokens(0, -1);
+  const renewed = tokens(1);
+  const limited = new RateLimitError('rate limited', { retryAfter: 6 });
+  const refresh = vi
+    .fn(async () => issue(renewed))
+    .mockRejectedValueOnce(limited);
+  const changed = vi.fn();
+  const session = new AuthSession({
+    credentials: original,
+    refresh,
+    onCredentialsChanged: changed,
+  });
+  await expect(session.refresh()).rejects.toBe(limited);
+  const revoke = vi.fn(async () => undefined);
+  await session.logout(revoke);
+  expect(refresh).toHaveBeenCalledTimes(2);
+  expect(revoke).toHaveBeenCalledExactlyOnceWith(renewed.accessToken);
   expect(changed).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });
