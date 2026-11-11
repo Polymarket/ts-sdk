@@ -521,6 +521,20 @@ export const EndAuthenticationError = makeErrorGuard(
   UserInputError,
 );
 
+export type RefreshCredentialsError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError;
+export const RefreshCredentialsError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+);
+
 class BaseSecureClient<
   TPublicActions extends ClientActions = ClientActions,
   TSecureActions extends ClientActions = TPublicActions,
@@ -734,6 +748,28 @@ class BaseSecureClient<
    */
   get credentials(): BearerCredentials {
     return this.session.credentials;
+  }
+
+  /**
+   * Renews the session now and returns the renewed credentials.
+   *
+   * @remarks
+   * The client renews its session before the access token expires, so most
+   * applications never call this. Use it to renew on your own schedule, such as
+   * when a suspended browser tab becomes visible again or before a long-lived
+   * process persists its credentials. A call made while a renewal is in
+   * progress joins it instead of starting another one. `onCredentialsChanged`
+   * receives the renewed pair. A failure that ends the session rejects this
+   * call and every later authenticated request.
+   *
+   * @example
+   * ```ts
+   * const credentials = await client.refreshCredentials();
+   * ```
+   * @throws {@link RefreshCredentialsError} Thrown if the session cannot be renewed.
+   */
+  refreshCredentials(): Promise<BearerCredentials> {
+    return this.session.refresh();
   }
 
   /** @internal */
