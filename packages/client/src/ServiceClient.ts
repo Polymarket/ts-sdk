@@ -9,7 +9,6 @@ import {
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
-  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -170,7 +169,6 @@ export type ServiceClientRequestError =
   | RateLimitError
   | RequestAbortedError
   | RequestRejectedError
-  | SigningError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
@@ -179,7 +177,6 @@ export const ServiceClientRequestError = makeErrorGuard(
   RateLimitError,
   RequestAbortedError,
   RequestRejectedError,
-  SigningError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
@@ -275,6 +272,32 @@ function parseHttpDate(value: string, now: number): number | undefined {
 
 /** Order heartbeat routes, direct and through the gateway, whose 400 reports the expected heartbeat ID. */
 const HEARTBEAT_PATHS = new Set(['v1/heartbeats', 'v1/trading/heartbeats']);
+
+/**
+ * Reads a Retry-After header as whole seconds from now, or undefined when it is
+ * absent or malformed. @internal
+ */
+export function parseRetryAfter(headers: Headers): number | undefined {
+  const value = headers.get('retry-after');
+
+  if (value === null) {
+    return undefined;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return Number(value);
+  }
+
+  // RFC 9110 section 10.2.3 also allows an HTTP-date. Report whole seconds
+  // from now, never rounding a future deadline down, and clamp past dates.
+  const now = Date.now();
+  const deadline = parseHttpDate(value, now);
+  if (deadline === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
 
 /**
  * Sends requests and consumes and validates their responses.
@@ -427,7 +450,7 @@ export class ServiceClient {
       // Raw callers inspect the status, headers and body themselves.
       if (options.responseType === 'raw') return response;
       if (!response.ok) {
-        const retryAfter = this.#parseRetryAfterHeader(response);
+        const retryAfter = parseRetryAfter(response.headers);
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
@@ -456,7 +479,6 @@ export class ServiceClient {
         error instanceof RequestAbortedError ||
         error instanceof RateLimitError ||
         error instanceof RequestRejectedError ||
-        error instanceof SigningError ||
         error instanceof UnexpectedResponseError ||
         error instanceof UserInputError ||
         error instanceof TransportError
@@ -573,8 +595,7 @@ export class ServiceClient {
                     retryCount >= retries
                   )
                     return;
-                  const delaySeconds =
-                    this.#parseRetryAfterHeader(response) ?? 1;
+                  const delaySeconds = parseRetryAfter(response.headers) ?? 1;
                   // Never retry earlier than the server asks. Leave long waits to callers.
                   if (delaySeconds > 5) return;
                   const rateLimit = parseRateLimitHeaders(
@@ -645,28 +666,6 @@ export class ServiceClient {
     } catch {
       // A consumer-provided listener must never affect request handling.
     }
-  }
-
-  #parseRetryAfterHeader(response: Response): number | undefined {
-    const value = response.headers.get('retry-after');
-
-    if (value === null) {
-      return undefined;
-    }
-
-    if (/^\d+$/.test(value)) {
-      return Number(value);
-    }
-
-    // RFC 9110 section 10.2.3 also allows an HTTP-date. Report whole seconds
-    // from now, never rounding a future deadline down, and clamp past dates.
-    const now = Date.now();
-    const deadline = parseHttpDate(value, now);
-    if (deadline === undefined) {
-      return undefined;
-    }
-
-    return Math.max(0, Math.ceil((deadline - now) / 1000));
   }
 
   async #extractResponseError(

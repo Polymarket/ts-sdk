@@ -22,6 +22,7 @@ import {
   DEFAULT_REQUEST_TIMEOUT_MS,
   withAbort,
 } from './request-options';
+import { parseRetryAfter } from './ServiceClient';
 import type {
   ApiKeyAuthorization,
   ApiKeyAuthorizationOptions,
@@ -300,20 +301,25 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
       throw new TransportError('Could not reach the challenge proxy.');
     }
     if (!response.ok) {
-      if (response.status === 429)
-        throw new RateLimitError('The challenge proxy was rate limited.');
       const body: unknown = await withAbort(
         response.json().catch(() => undefined),
         options?.signal,
       );
       const error = ErrorResponseSchema.safeParse(body);
+      const retryAfter =
+        parseRetryAfter(response.headers) ??
+        (error.success ? error.data.retryAfter : undefined);
+      if (response.status === 429)
+        throw new RateLimitError('The challenge proxy was rate limited.', {
+          retryAfter,
+        });
       const code =
         error.success && /^[a-z][a-z0-9_]{0,127}$/.test(error.data.code ?? '')
           ? error.data.code
           : undefined;
       throw new RequestRejectedError(
         'The challenge proxy rejected the request.',
-        { status: response.status, code },
+        { status: response.status, code, retryAfter },
       );
     }
     let body: unknown;
