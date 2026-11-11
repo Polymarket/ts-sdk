@@ -501,7 +501,7 @@ export const PerpsPublicTradeUpdateSchema = z
  */
 export const FetchPerpsTradesResponseSchema = PerpsDataResponseSchema(
   PerpsPublicTradeSchema,
-);
+).extend({ cursor: z.string().min(1).optional() });
 
 /**
  * @experimental This API may change in a breaking way in any release, including patch releases.
