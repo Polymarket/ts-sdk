@@ -572,7 +572,7 @@ export type BestLine = z.infer<typeof BestLineSchema>;
 export type Team = z.infer<typeof TeamSchema>;
 export type SportsMetadata = z.infer<typeof SportsMetadataSchema>;
 
-function normalizeEvent(event: GammaEvent): Event {
+export function normalizeEvent(event: GammaEvent): Event {
   return {
     id: event.id,
     version: event.version,

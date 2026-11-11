@@ -1,9 +1,9 @@
 import { PaginationCursorSchema } from '@polymarket/bindings';
 import {
-  type Event,
   type Profile,
   type PublicSearchResponse,
   PublicSearchResponseSchema,
+  type SearchEvent,
   type SearchTag,
 } from '@polymarket/bindings/gamma';
 import { z } from 'zod';
@@ -69,7 +69,7 @@ type PublicSearchParams = Omit<SearchParams, 'cursor' | 'pageSize'> & {
 };
 
 export type SearchResults = {
-  events: Event[];
+  events: SearchEvent[];
   profiles: Profile[];
   tags: SearchTag[];
 };
@@ -100,6 +100,8 @@ export const SearchError = makeErrorGuard(
  * `keepClosedMarkets` is an hour window for including recently closed markets
  * when searching active events.
  *
+ * Search market summaries may omit their `id`, including optimized results.
+ *
  * Search serves up to 100 pages. If more results may exist at that boundary,
  * automatic iteration yields the page with `limitReached: true` and stops
  * normally, keeping `hasMore` true. Explicitly following its cursor throws
@@ -120,7 +122,7 @@ export const SearchError = makeErrorGuard(
  *
  * // Optionally, fetch additional pages:
  * for await (const page of result.from(firstPage.nextCursor)) {
- *   // page.items.events: Event[]
+ *   // page.items.events: SearchEvent[]
  *   // page.items.tags: SearchTag[]
  *   // page.items.profiles: Profile[]
  * }
