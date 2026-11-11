@@ -88,3 +88,5 @@ jobs:
           POLYMARKET_SAFE_WALLET: ${{ vars.POLYMARKET_SAFE_WALLET }}
           POLYMARKET_RELAYER_API_KEY: ${{ vars.POLYMARKET_RELAYER_API_KEY }}
           POLYMARKET_RELAYER_API_KEY_ADDRESS: ${{ vars.POLYMARKET_RELAYER_API_KEY_ADDRESS }}
+          # Platform API Key tests skip until this secret is configured.
+          POLYMARKET_PLATFORM_API_KEY: ${{ secrets.POLYMARKET_PLATFORM_API_KEY }}
