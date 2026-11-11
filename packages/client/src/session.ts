@@ -91,6 +91,10 @@ export class AuthSession {
   get claims(): AccessTokenClaims {
     return { ...this.#claims };
   }
+  /** The failure that ended the session, if renewal failed for good. */
+  get failure(): Error | undefined {
+    return this.#failure;
+  }
   /** Local time in milliseconds at which `accessToken` expires. */
   expiresAt(accessToken: string): number {
     const claims =

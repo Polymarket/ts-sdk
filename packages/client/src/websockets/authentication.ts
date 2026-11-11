@@ -28,8 +28,19 @@ export class SocketAuthentication {
     this.#options = options;
   }
 
-  prepare(): Promise<BearerCredentials> {
-    return this.#options.session.ready();
+  /**
+   * Returns credentials for a new connection. A session that ended while the
+   * connection was down cannot be recovered by reconnecting, so its failure
+   * also runs `fail`.
+   */
+  async prepare(): Promise<BearerCredentials> {
+    try {
+      return await this.#options.session.ready();
+    } catch (error) {
+      const failure = this.#options.session.failure;
+      if (failure !== undefined) this.#options.fail(failure);
+      throw error;
+    }
   }
 
   accepted(token: string): void {

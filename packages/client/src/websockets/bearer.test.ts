@@ -2,6 +2,7 @@ import type { BearerCredentials } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
 import { expectEvmAddress } from '@polymarket/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { RequestRejectedError } from '../errors';
 import { AuthSession } from '../session';
 import { SignerType } from '../wallet';
 import { ClobUserWebSocketManager } from './clob/user';
@@ -285,6 +286,55 @@ it('keeps the CLOB handle across idle expiry after rejected renewal', async () =
     { type: 'user', auth: { accessToken: replacement.accessToken } },
   ]);
   await handle.close();
+  session.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+function endingSession(): AuthSession {
+  return new AuthSession({
+    credentials: pair(),
+    refresh: async () => {
+      throw new RequestRejectedError('Session renewal rejected.', {
+        status: 401,
+        code: 'invalid_refresh_token',
+      });
+    },
+  });
+}
+
+it('ends CLOB handles when the session ends while the socket is down', async () => {
+  const session = endingSession();
+  const manager = new ClobUserWebSocketManager({
+    session,
+    url: 'wss://synthetic.invalid/user',
+  });
+  const handle = await manager.subscribe({ topic: 'user' });
+  const ended = expect(
+    handle[Symbol.asyncIterator]().next(),
+  ).rejects.toMatchObject({ code: 'invalid_refresh_token' });
+  ControlledSocket.sockets[0]?.disconnect(1006, '');
+  await expect(session.refresh()).rejects.toThrow(RequestRejectedError);
+  await vi.advanceTimersByTimeAsync(60_000);
+  await ended;
+  // Reconnecting cannot recover an ended session, so no new socket is opened.
+  expect(ControlledSocket.sockets).toHaveLength(1);
+  session.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('ends a maker session when the session ends while the socket is down', async () => {
+  const session = endingSession();
+  const manager = maker(session);
+  const rfq = await manager.connect();
+  const ended = expect(
+    rfq[Symbol.asyncIterator]().next(),
+  ).rejects.toMatchObject({ code: 'invalid_refresh_token' });
+  ControlledSocket.sockets[0]?.disconnect(1006, '');
+  await expect(session.refresh()).rejects.toThrow(RequestRejectedError);
+  await vi.advanceTimersByTimeAsync(60_000);
+  await ended;
+  expect(ControlledSocket.sockets).toHaveLength(1);
+  await manager.shutdown();
   session.close();
   expect(vi.getTimerCount()).toBe(0);
 });
