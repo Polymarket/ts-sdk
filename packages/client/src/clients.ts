@@ -768,7 +768,7 @@ class BaseSecureClient<
    * ```
    * @throws {@link RefreshCredentialsError} Thrown if the session cannot be renewed.
    */
-  refreshCredentials(): Promise<BearerCredentials> {
+  async refreshCredentials(): Promise<BearerCredentials> {
     return this.session.refresh();
   }
 
