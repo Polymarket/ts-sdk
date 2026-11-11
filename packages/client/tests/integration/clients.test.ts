@@ -161,6 +161,16 @@ describe('clients', () => {
         );
         // Renewal keeps the refresh token, so logout never has a rotated token to recover.
         expect(secureClient.credentials.refreshToken).toBe(saved.refreshToken);
+
+        // Concurrent explicit renewals share one renewal and one notification.
+        const [first, second] = await Promise.all([
+          secureClient.refreshCredentials(),
+          secureClient.refreshCredentials(),
+        ]);
+        expect(second).toEqual(first);
+        expect(first).toEqual(secureClient.credentials);
+        expect(changed).toHaveBeenCalledTimes(2);
+        expect(changed).toHaveBeenLastCalledWith(first);
         await secureClient.listOpenOrders().firstPage();
       } finally {
         await Promise.allSettled([
