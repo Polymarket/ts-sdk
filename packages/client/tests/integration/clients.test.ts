@@ -172,6 +172,13 @@ describe('clients', () => {
         expect(changed).toHaveBeenCalledTimes(2);
         expect(changed).toHaveBeenLastCalledWith(first);
         await secureClient.listOpenOrders().firstPage();
+
+        // Logging out the original client revokes the shared refresh session.
+        // Renewal then ends this session, and a later call still rejects.
+        await initialClient.endAuthentication();
+        await expect(secureClient.refreshCredentials()).rejects.toThrow();
+        const ended = secureClient.refreshCredentials();
+        await expect(ended).rejects.toThrow();
       } finally {
         await Promise.allSettled([
           secureClient.endAuthentication(),
