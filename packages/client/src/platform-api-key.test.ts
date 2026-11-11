@@ -100,6 +100,31 @@ describe('challenge proxy', () => {
     expect(inspect(error, { depth: 10 })).not.toContain('synthetic-access');
   });
 
+  it.each([
+    [429, { 'retry-after': '7' }, {}, 'RateLimitError', 7],
+    [503, {}, { retry_after_seconds: 30 }, 'RequestRejectedError', 30],
+    [
+      503,
+      { 'retry-after': '5' },
+      { retry_after_seconds: 30 },
+      'RequestRejectedError',
+      5,
+    ],
+  ] as const)('keeps the retry delay of a %s proxy answer', async (status, headers, hint, name, retryAfter) => {
+    const error = await createChallenge(
+      remotePlatformApiKey({ url: '/challenge' }),
+      {
+        fetch: async () =>
+          Response.json(
+            { code: 'busy', message: 'busy', ...hint },
+            { status, headers },
+          ),
+      },
+    ).catch((failure: unknown) => failure);
+
+    expect(error).toMatchObject({ name, retryAfter });
+  });
+
   it('cancels header resolution without dispatching a late challenge', async () => {
     const controller = new AbortController();
     const headers = Promise.withResolvers<HeadersInit>();
