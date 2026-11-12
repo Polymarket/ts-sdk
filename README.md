@@ -23,6 +23,22 @@ provide a deprecation path before removing or changing an API. Patch releases
 remain backward compatible except for APIs marked `@experimental`, which may
 change in any release. The Perps APIs are currently experimental.
 
+## Open order filters and fill tracking
+
+When filtering open orders by asset, include the market condition ID:
+
+```ts
+const orders = client.listOpenOrders({ assetId, market: conditionId });
+```
+
+The deprecated `tokenId` alias also requires `market`. Unfiltered and market-only
+queries remain supported. Asset-only queries are rejected with `UserInputError`.
+
+`associateTrades` is deprecated and defaults to an empty array when absent. Use
+`sizeMatched` for an order's cumulative filled quantity, or `listAccountTrades()`
+for individual fills, matching `takerOrderId` or `makerOrders[].orderId` to the
+order ID. An empty `associateTrades` array does not mean an order has no fills.
+
 ## Local Development
 
 ### Requirements

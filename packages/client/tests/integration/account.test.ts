@@ -1,5 +1,5 @@
 import { AssetType } from '@polymarket/bindings/clob';
-import type { SecureClient } from '@polymarket/client';
+import { type SecureClient, UserInputError } from '@polymarket/client';
 import { fetchBalanceAllowance } from '@polymarket/client/actions';
 import { describe, expect, it } from './fixtures';
 
@@ -15,6 +15,24 @@ describe('Account', () => {
   });
 
   describe('listOpenOrders', () => {
+    it('requires a market for asset filters before requesting orders', ({
+      secureClientWithDepositWallet,
+    }) => {
+      for (const filter of [{ assetId: '1' }, { tokenId: '1' }]) {
+        expect(() =>
+          // @ts-expect-error Asset filters require a market; JavaScript callers are validated too.
+          secureClientWithDepositWallet.listOpenOrders(filter),
+        ).toThrow(UserInputError);
+
+        expect(() =>
+          secureClientWithDepositWallet.listOpenOrders({
+            ...filter,
+            market: '   ',
+          }),
+        ).toThrow(UserInputError);
+      }
+    });
+
     it('lists open orders', async ({ secureClientWithDepositWallet }) => {
       const openOrders = await secureClientWithDepositWallet
         .listOpenOrders()

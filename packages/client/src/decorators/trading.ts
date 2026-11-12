@@ -300,6 +300,7 @@ export type SecureTradingActions = {
   ): Promise<CancelOrdersResponse>;
   /**
    * Lists open orders for the authenticated account across all pages.
+   * Supply the market condition ID in `market` when filtering by `assetId` or `tokenId`.
    *
    * @throws {@link ListOpenOrdersError}
    * Thrown on failure.
