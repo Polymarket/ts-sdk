@@ -69,11 +69,12 @@ export type {
   PriceSource,
 } from '@polymarket/bindings/subscriptions';
 export {
+  EquityMarketStatus,
   KnownPriceSource,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';
-
 // Event types — re-exported from bindings for consumer convenience.
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type {
   CustomMarketEvent,
   MarketEvent,
@@ -346,6 +347,9 @@ export type PriceSubscriptionConfirmation = {
  * Symbol-filtered cryptocurrency updates and recent history. Requires a secure
  * client and canonical lowercase USD pairs such as `btcusd`.
  * Slash-separated symbols and USDT pairs are rejected.
+ * Set `provider: PriceProvider.Binance` for Binance USDT spot closes under USD
+ * symbols. Omit the provider to follow the default; check the acknowledgement
+ * provider and payload source because an unavailable pin may fall back.
  */
 export type CryptoPriceSubscription = {
   topic: 'prices.crypto';

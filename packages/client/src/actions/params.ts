@@ -1,6 +1,8 @@
 import { EventIdSchema } from '@polymarket/bindings';
 import { z } from 'zod';
 
+export const ClosedFilterSchema = z.union([z.boolean(), z.literal('any')]);
+
 export type SearchParamPrimitive = boolean | number | string;
 
 export type SearchParamValue =
@@ -58,32 +60,6 @@ export function snakeCase<TParams extends SearchParamsInput>(
     format: 'snake_case',
     exceptions,
   };
-}
-
-/**
- * Legacy data endpoints use camelCase query keys and comma-separated arrays.
- * Dies with the last legacy data action; new data actions use
- * {@link toDataSearchParams}.
- */
-export function toLegacyDataSearchParams<TParams extends SearchParamsInput>(
-  params: TParams,
-): URLSearchParams {
-  const searchParams = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      searchParams.append(key, value.map(toSearchParamValue).join(','));
-      continue;
-    }
-
-    searchParams.append(key, toSearchParamValue(value as SearchParamPrimitive));
-  }
-
-  return searchParams;
 }
 
 /**

@@ -3,9 +3,17 @@ import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createPublicClient } from '../../clients';
 import { production } from '../../environments';
-import { RequestRejectedError, UserInputError } from '../../errors';
+import {
+  RequestAbortedError,
+  RequestRejectedError,
+  UserInputError,
+} from '../../errors';
 import { ServiceClient } from '../../ServiceClient';
-import { fetchOwnPerpsPositionSnapshots } from './position-snapshots';
+import {
+  FetchPerpsPositionSnapshotsError,
+  fetchOwnPerpsPositionSnapshots,
+} from './position-snapshots';
+import { FetchPerpsRegistrationError } from './registration';
 
 const root = 'http://localhost:4087';
 const address = '0x1111111111111111111111111111111111111111';
@@ -19,6 +27,69 @@ describe('position snapshot HTTP boundary', () => {
   beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
   afterEach(() => server.resetHandlers());
   afterAll(() => server.close());
+
+  it.each([
+    'registration',
+    'snapshots',
+  ] as const)('cancels %s through the public client before dispatch and during body consumption', async (operation) => {
+    let requestCount = 0;
+    let bodyStarted!: () => void;
+    const started = new Promise<void>((resolve) => {
+      bodyStarted = resolve;
+    });
+    let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+    const controlledClient = createPublicClient({
+      environment: {
+        ...production,
+        perps: { ...production.perps, rest: root },
+      },
+      fetch: async () => {
+        requestCount++;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            bodyController = controller;
+            controller.enqueue(new TextEncoder().encode('{'));
+            bodyStarted();
+          },
+        });
+        return new Response(body, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+      },
+    });
+    function read(signal: AbortSignal) {
+      return operation === 'registration'
+        ? controlledClient.fetchPerpsRegistration({ address }, { signal })
+        : controlledClient.fetchPerpsPositionSnapshots(
+            { address, activeInstrumentIds: [7] },
+            { signal },
+          );
+    }
+    const guard =
+      operation === 'registration'
+        ? FetchPerpsRegistrationError
+        : FetchPerpsPositionSnapshotsError;
+    const controller = new AbortController();
+    const reason = new Error('view disposed');
+    controller.abort(reason);
+    await expect(read(controller.signal)).rejects.toMatchObject({
+      cause: reason,
+    });
+    expect(requestCount).toBe(0);
+
+    const active = new AbortController();
+    const request = read(active.signal);
+    const rejected = expect(request).rejects.toMatchObject({ cause: reason });
+    await started;
+    active.abort(reason);
+    await rejected;
+    await request.catch((error: unknown) => {
+      expect(error).toBeInstanceOf(RequestAbortedError);
+      expect(guard.isError(error)).toBe(true);
+    });
+    expect(requestCount).toBe(1);
+    bodyController.close();
+  });
 
   it('dispatches public selection order and exact trade IDs without credentials', async () => {
     server.use(

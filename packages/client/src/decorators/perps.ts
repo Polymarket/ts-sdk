@@ -38,7 +38,7 @@ import {
   transferPerpsCollateral,
   type WithdrawFromPerpsRequest,
   withdrawFromPerps,
-} from '../actions';
+} from '../actions/perps';
 import {
   type FetchPerpsBuilderStatusRequest,
   fetchPerpsBuilderStatus,
@@ -66,6 +66,7 @@ export {
 } from '../actions/perps/position-snapshots';
 
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 import type { TransactionHandle } from '../types';
 
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
@@ -136,7 +137,7 @@ export type {
   UpdatePerpsLeveragesRequest,
   UpdatePerpsMarginRequest,
   WithdrawFromPerpsRequest,
-} from '../actions';
+} from '../actions/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ArmPerpsAutoCancelError,
@@ -156,7 +157,7 @@ export {
   UpdatePerpsLeveragesError,
   UpdatePerpsMarginError,
   WithdrawFromPerpsError,
-} from '../actions';
+} from '../actions/perps';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export {
   ApprovePerpsBuilderFeeError,
@@ -194,6 +195,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsPositionSnapshots(
     request: FetchPerpsPositionSnapshotsRequest,
+    options?: RequestOptions,
   ): Promise<PerpsPositionSnapshots>;
   /**
    * Fetches whether an address has a Perps account without authentication.
@@ -203,6 +205,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsRegistration(
     request: FetchPerpsRegistrationRequest,
+    options?: RequestOptions,
   ): Promise<boolean>;
   /**
    * Fetches public builder availability and the platform fee cap.
@@ -211,13 +214,16 @@ export type PublicPerpsActions = {
    */
   fetchPerpsBuilderStatus(
     request: FetchPerpsBuilderStatusRequest,
+    options?: RequestOptions,
   ): Promise<PerpsBuilderStatus>;
   /**
    * Fetches Perps instruments.
+   * Category strings are preserved, including values introduced after this SDK release.
    *
    * @example
    * ```ts
    * const instruments = await client.fetchPerpsInstruments();
+   * const preIpo = await client.fetchPerpsInstruments({ category: 'pre_ipo' });
    * ```
    *
    * @throws {@link FetchPerpsInstrumentsError}
@@ -227,6 +233,7 @@ export type PublicPerpsActions = {
    */
   fetchPerpsInstruments(
     request?: FetchPerpsInstrumentsRequest,
+    options?: RequestOptions,
   ): Promise<PerpsInstrument[]>;
 
   /**
@@ -242,7 +249,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsTicker(request: FetchPerpsTickerRequest): Promise<PerpsTicker>;
+  fetchPerpsTicker(
+    request: FetchPerpsTickerRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsTicker>;
 
   /**
    * Fetches current Perps tickers.
@@ -257,7 +267,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsTickers(request?: FetchPerpsTickersRequest): Promise<PerpsTicker[]>;
+  fetchPerpsTickers(
+    request?: FetchPerpsTickersRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsTicker[]>;
 
   /**
    * Fetches a Perps order book.
@@ -272,7 +285,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsBook(request: FetchPerpsBookRequest): Promise<PerpsBook>;
+  fetchPerpsBook(
+    request: FetchPerpsBookRequest,
+    options?: RequestOptions,
+  ): Promise<PerpsBook>;
 
   /**
    * Lists Perps candles for an instrument with SDK-owned pagination.
@@ -292,7 +308,10 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  listPerpsCandles(request: ListPerpsCandlesRequest): Paginated<PerpsCandle[]>;
+  listPerpsCandles(
+    request: ListPerpsCandlesRequest,
+    options?: RequestOptions,
+  ): Paginated<PerpsCandle[]>;
 
   /**
    * Lists Perps funding-rate history for an instrument with SDK-owned pagination.
@@ -313,6 +332,7 @@ export type PublicPerpsActions = {
    */
   listPerpsFundingHistory(
     request: ListPerpsFundingHistoryRequest,
+    options?: RequestOptions,
   ): Paginated<PerpsFundingRate[]>;
 
   /**
@@ -332,6 +352,7 @@ export type PublicPerpsActions = {
    */
   listPerpsTrades(
     request: ListPerpsTradesRequest,
+    options?: RequestOptions,
   ): Paginated<PerpsPublicTrade[]>;
 
   /**
@@ -347,7 +368,7 @@ export type PublicPerpsActions = {
    *
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
-  fetchPerpsFees(): Promise<PerpsFeeScheduleEntry[]>;
+  fetchPerpsFees(options?: RequestOptions): Promise<PerpsFeeScheduleEntry[]>;
 };
 
 /**
@@ -483,19 +504,17 @@ export function perpsActions(
   client: BaseClient,
 ): PublicPerpsActions | SecurePerpsActions {
   const actions: PublicPerpsActions = {
-    fetchPerpsPositionSnapshots: (request) =>
-      fetchPerpsPositionSnapshots(client, request),
+    fetchPerpsPositionSnapshots: fetchPerpsPositionSnapshots.bind(null, client),
     fetchPerpsRegistration: fetchPerpsRegistration.bind(null, client),
     fetchPerpsBuilderStatus: fetchPerpsBuilderStatus.bind(null, client),
-    fetchPerpsBook: (request) => fetchPerpsBook(client, request),
-    fetchPerpsFees: () => fetchPerpsFees(client),
-    fetchPerpsInstruments: (request) => fetchPerpsInstruments(client, request),
-    fetchPerpsTicker: (request) => fetchPerpsTicker(client, request),
-    fetchPerpsTickers: (request) => fetchPerpsTickers(client, request),
-    listPerpsCandles: (request) => listPerpsCandles(client, request),
-    listPerpsFundingHistory: (request) =>
-      listPerpsFundingHistory(client, request),
-    listPerpsTrades: (request) => listPerpsTrades(client, request),
+    fetchPerpsBook: fetchPerpsBook.bind(null, client),
+    fetchPerpsFees: fetchPerpsFees.bind(null, client),
+    fetchPerpsInstruments: fetchPerpsInstruments.bind(null, client),
+    fetchPerpsTicker: fetchPerpsTicker.bind(null, client),
+    fetchPerpsTickers: fetchPerpsTickers.bind(null, client),
+    listPerpsCandles: listPerpsCandles.bind(null, client),
+    listPerpsFundingHistory: listPerpsFundingHistory.bind(null, client),
+    listPerpsTrades: listPerpsTrades.bind(null, client),
   };
 
   if (!client.isSecureClient()) return actions;

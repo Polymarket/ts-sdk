@@ -13,6 +13,7 @@ import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -20,7 +21,7 @@ import {
 } from '../errors';
 import { parseUserInput } from '../input';
 import { type Paginated, paginate } from '../pagination';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { optionalExchangeAssetRequestSchema } from './exchange-asset';
 import { snakeCase, toSearchParams } from './params';
 
@@ -62,12 +63,14 @@ export type ListBuilderTradesRequest =
     };
 
 export type ListBuilderTradesError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const ListBuilderTradesError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -110,7 +113,9 @@ export const ListBuilderTradesError = makeErrorGuard(
 export function listBuilderTrades(
   client: BaseClient,
   request: ListBuilderTradesRequest,
+  options: RequestOptions = {},
 ): Paginated<BuilderTrade[]> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, ListBuilderTradesRequestSchema);
   const { cursor } = params;
 
@@ -118,6 +123,7 @@ export function listBuilderTrades(
     (nextCursor) =>
       client.clob
         .get('/builder/trades', {
+          ...requestOptions,
           params: toSearchParams(
             {
               after: params.after,
@@ -133,9 +139,9 @@ export function listBuilderTrades(
               builderCode: 'builder_code',
             }),
           ),
+          schema: PaginatedBuilderTradesSchema,
         })
-        .andThen(validateWith(PaginatedBuilderTradesSchema))
-        .map((response) => ({
+        .then((response) => ({
           items: response.data,
           hasMore: response.nextCursor !== END_CURSOR,
           nextCursor:

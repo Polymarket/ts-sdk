@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { PerpsMarketDataEventSchema } from '../subscriptions/perps';
 import {
+  FetchPerpsFeesResponseSchema,
+  FetchPerpsInstrumentsResponseSchema,
   PerpsFeeScheduleEntrySchema,
   PerpsFundingIntervalSchema,
   PerpsInstrumentSchema,
@@ -50,9 +53,127 @@ const baseInstrument = {
   quote_asset: 'USD',
   risk_tiers: [{ lower_bound: '0', max_leverage: 10 }],
   symbol: 'BTC-PERP',
+  ui_live_time: null,
 };
 
 describe('PerpsInstrumentSchema', () => {
+  it.each([
+    'equity',
+    'commodity',
+    'index',
+    'crypto',
+    'pre_ipo',
+    'future_category',
+  ])('preserves category %s without rejecting the instrument response', (category) => {
+    const instruments = FetchPerpsInstrumentsResponseSchema.parse([
+      baseInstrument,
+      { ...baseInstrument, instrument_id: 2, category },
+    ]);
+
+    expect(instruments.map((instrument) => instrument.category)).toEqual([
+      'crypto',
+      category,
+    ]);
+  });
+
+  it.each(['', null, 1, {}])('rejects invalid categories: %j', (category) => {
+    expect(
+      FetchPerpsInstrumentsResponseSchema.safeParse([
+        { ...baseInstrument, category },
+      ]).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    null,
+    1_794_355_200_000,
+  ])('normalizes fee and funding windows with end time %j', (endTime) => {
+    const instrument = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      category: 'pre_ipo',
+      fee_override: {
+        start_time: 1_793_145_600_000,
+        end_time: endTime,
+        tiers: [{ taker_fee_rate: '0.0002', maker_fee_rate: '-0.00005' }],
+      },
+      funding_multiplier: {
+        multiplier: '0.5',
+        start_time: 1_793_145_600_000,
+        end_time: endTime,
+      },
+    });
+
+    expect(instrument.feeOverride).toEqual({
+      startTime: 1_793_145_600_000,
+      endTime,
+      tiers: [{ takerFeeRate: '0.0002', makerFeeRate: '-0.00005' }],
+    });
+    expect(instrument.fundingMultiplier).toEqual({
+      multiplier: '0.5',
+      startTime: 1_793_145_600_000,
+      endTime,
+    });
+  });
+
+  it.each([
+    undefined,
+    null,
+  ])('preserves absent or null overrides: %j', (value) => {
+    const instrument = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      fee_override: value,
+      funding_multiplier: value,
+    });
+    expect(instrument.feeOverride).toBe(value);
+    expect(instrument.fundingMultiplier).toBe(value);
+  });
+
+  it('preserves advisory visibility independently of logo metadata', () => {
+    const visible = PerpsInstrumentSchema.parse({
+      ...baseInstrument,
+      ui_live_time: 1_786_032_000_000,
+      logo: {
+        light: 'https://assets.example/light.svg',
+        dark: 'https://assets.example/dark.svg',
+      },
+    });
+    expect(visible.uiLiveTime).toBe(1_786_032_000_000);
+    expect(visible.logo).toEqual({
+      light: 'https://assets.example/light.svg',
+      dark: 'https://assets.example/dark.svg',
+    });
+    const hidden = PerpsInstrumentSchema.parse(baseInstrument);
+    expect(hidden.uiLiveTime).toBeNull();
+    expect(hidden.logo).toBeUndefined();
+    expect(
+      PerpsInstrumentSchema.parse({ ...baseInstrument, ui_live_time: 0 })
+        .uiLiveTime,
+    ).toBe(0);
+  });
+
+  it('requires visibility metadata and rejects malformed timestamps or incomplete logo pairs', () => {
+    const { ui_live_time: _visibility, ...missing } = baseInstrument;
+    expect(PerpsInstrumentSchema.safeParse(missing).success).toBe(false);
+    for (const ui_live_time of [
+      -1,
+      1.5,
+      '1786032000000',
+      true,
+      253_402_300_799_001,
+    ]) {
+      expect(
+        PerpsInstrumentSchema.safeParse({ ...baseInstrument, ui_live_time })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      PerpsInstrumentSchema.safeParse({
+        ...baseInstrument,
+        logo: { light: 'light.svg' },
+      }).success,
+    ).toBe(false);
+  });
+
   it('normalizes instrument identifiers without exposing instrument type', () => {
     const instrument = PerpsInstrumentSchema.parse(baseInstrument);
 
@@ -76,6 +197,31 @@ describe('PerpsInstrumentSchema', () => {
 });
 
 describe('PerpsFeeScheduleEntrySchema', () => {
+  it.each([
+    'pre_ipo',
+    'future_category',
+  ])('preserves category %s in the fee schedule response', (category) => {
+    const fees = FetchPerpsFeesResponseSchema.parse({
+      fee_schedule: [
+        {
+          instrument_type: 'perpetual',
+          category,
+          taker_fee_rate: '0.00045',
+          maker_fee_rate: '0.00015',
+          tiers: [
+            {
+              min_volume_30d: '0',
+              taker_fee_rate: '0.00045',
+              maker_fee_rate: '0.00015',
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(fees.feeSchedule[0]?.category).toBe(category);
+  });
+
   it('normalizes volume tiers including negative maker rates', () => {
     const entry = PerpsFeeScheduleEntrySchema.parse({
       instrument_type: 'perpetual',
@@ -216,5 +362,62 @@ describe('legacy instrument metadata and sequence precision', () => {
         sequence: Number.MAX_SAFE_INTEGER + 1,
       }),
     ).toThrow();
+  });
+});
+
+describe('Perps market event horizons', () => {
+  it.each([
+    { ch: 'trades::1', data: [] },
+    { ch: 'book::1', data: { b: [], a: [] } },
+    { ch: 'bbo::1', data: { iid: 1, bp: '1', bq: '2', ap: '3', aq: '4' } },
+    {
+      ch: 'tickers::all',
+      data: {
+        iid: 1,
+        idx: '1',
+        mark: '1',
+        last: '1',
+        mid: '1',
+        oi: '0',
+        fr: '0',
+        nxf: 1_767_225_600_000,
+      },
+    },
+    {
+      ch: 'statistics::all',
+      data: { iid: 1, vol: '0', open: '1', klines: [] },
+    },
+    { ch: 'klines::1::1m', data: [] },
+  ])('preserves the event horizon independently of send time on $ch', (frame) => {
+    const wire = {
+      ...frame,
+      ts: 1_767_225_600_100,
+      sq: 42,
+      ets: 1_767_225_600_000,
+    };
+    expect(PerpsMarketDataEventSchema.parse(wire)).toMatchObject({
+      timestamp: wire.ts,
+      eventTimestamp: wire.ets,
+      sequence: wire.sq,
+    });
+    expect(
+      PerpsMarketDataEventSchema.parse({ ...wire, ets: 0 }).eventTimestamp,
+    ).toBeNull();
+    const { ets: _horizon, ...missing } = wire;
+    expect(PerpsMarketDataEventSchema.safeParse(missing).success).toBe(false);
+    for (const ets of [
+      null,
+      '0',
+      true,
+      -1,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      expect(
+        PerpsMarketDataEventSchema.safeParse({ ...wire, ets }).success,
+      ).toBe(false);
+    }
   });
 });

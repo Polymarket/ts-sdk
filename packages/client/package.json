@@ -1,6 +1,6 @@
 {
   "name": "@polymarket/client",
-  "version": "0.12.0",
+  "version": "0.18.0",
   "description": "The Polymarket TypeScript client",
   "repository": {
     "type": "git",
@@ -98,7 +98,7 @@
     "it-pushable": "^3.2.3",
     "ky": "^1.14.3",
     "ox": "^0.14.16",
-    "zod": "^4.3.6"
+    "zod": "^4.6.7"
   },
   "publishConfig": {
     "access": "public"

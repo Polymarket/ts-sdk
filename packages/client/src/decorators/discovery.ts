@@ -15,61 +15,79 @@ import type {
 } from '@polymarket/bindings/gamma';
 import {
   type FetchCommentsByIdRequest,
-  type FetchEventRequest,
-  type FetchEventTagsRequest,
-  type FetchMarketRequest,
-  type FetchMarketTagsRequest,
-  type FetchPublicProfileRequest,
-  type FetchRelatedTagResourcesRequest,
-  type FetchRelatedTagsRequest,
-  type FetchSeriesRequest,
-  type FetchTagRequest,
   fetchCommentsById,
-  fetchEvent,
-  fetchEventTags,
-  fetchMarket,
-  fetchMarketTags,
-  fetchPublicProfile,
-  fetchRelatedTagResources,
-  fetchRelatedTags,
-  fetchSeries,
-  fetchSportsMarketTypes,
-  fetchTag,
-  type ListComboMarketsRequest,
   type ListCommentsByUserAddressRequest,
   type ListCommentsRequest,
-  type ListEventsRequest,
-  type ListMarketClarificationsRequest,
-  type ListMarketsRequest,
-  type ListSeriesRequest,
-  type ListTagsRequest,
-  type ListTeamsRequest,
-  listComboMarkets,
   listComments,
   listCommentsByUserAddress,
+} from '../actions/comments';
+import {
+  type FetchEventRequest,
+  type FetchEventTagsRequest,
+  fetchEvent,
+  fetchEventTags,
+  type ListEventsRequest,
   listEvents,
+} from '../actions/events';
+import {
+  type ListMarketClarificationsRequest,
   listMarketClarifications,
+} from '../actions/market-clarifications';
+import {
+  type FetchMarketRequest,
+  type FetchMarketTagsRequest,
+  fetchMarket,
+  fetchMarketTags,
+  type ListComboMarketsRequest,
+  type ListMarketsRequest,
+  listComboMarkets,
   listMarkets,
-  listSeries,
-  listSports,
-  listTags,
-  listTeams,
+} from '../actions/markets';
+import {
+  type FetchPublicProfileRequest,
+  fetchPublicProfile,
+} from '../actions/profiles';
+import {
   type SearchRequest,
   type SearchResults,
   search,
-} from '../actions';
+} from '../actions/search';
+import {
+  type FetchSeriesRequest,
+  fetchSeries,
+  type ListSeriesRequest,
+  listSeries,
+} from '../actions/series';
+import { fetchSportsMarketTypes, listSports } from '../actions/sports';
+import {
+  type FetchRelatedTagResourcesRequest,
+  type FetchRelatedTagsRequest,
+  type FetchTagRequest,
+  fetchRelatedTagResources,
+  fetchRelatedTags,
+  fetchTag,
+  type ListTagsRequest,
+  listTags,
+} from '../actions/tags';
+import { type ListTeamsRequest, listTeams } from '../actions/teams';
 import type {
   BaseClient,
   BasePublicClient,
   BaseSecureClient,
 } from '../clients';
 import type { Paginated } from '../pagination';
+import type { RequestOptions } from '../request-options';
 
 export type DiscoveryActions = {
   /**
    * Lists events.
    *
-   * Defaults to open events. Pass `closed: true` to list settled events.
+   * Defaults to open events. Pass `closed: true` for closed events or
+   * `closed: 'any'` for either state; no identifier filter is required.
+   * Optionally filter by protocol with `version: ProtocolVersion.V1` or
+   * `ProtocolVersion.V2`, or pass both in an array to include both protocols.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF events (v1).
    *
    * @remarks
    * Cursors continue the exact query they were minted for and are rejected for
@@ -106,7 +124,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listEvents(request?: ListEventsRequest): Paginated<Event[]>;
+  listEvents(
+    request?: ListEventsRequest,
+    options?: RequestOptions,
+  ): Paginated<Event[]>;
 
   /**
    * Fetches an event.
@@ -129,7 +150,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEvent(request: FetchEventRequest): Promise<Event>;
+  fetchEvent(
+    request: FetchEventRequest,
+    options?: RequestOptions,
+  ): Promise<Event>;
 
   /**
    * Fetches an event's tags.
@@ -144,14 +168,27 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchEventTags(request: FetchEventTagsRequest): Promise<TagReference[]>;
+  fetchEventTags(
+    request: FetchEventTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists markets.
    *
+   * Defaults to open markets. Pass `closed: true` for closed markets or
+   * `closed: 'any'` for either state. The latter requires a non-empty `ids`,
+   * `slug`, `clobTokenIds`, `positionIds`, `conditionIds`, or `questionIds` filter.
+   *
    * @remarks
    * Legacy multi-outcome markets cannot be represented by the binary
    * {@link Market} model and are omitted from results.
+   *
+   * Select one protocol with `version`, or pass both protocol versions in an array.
+   * Arrays accept one or two values. Omitting `version` uses the current server
+   * default of CTF markets (v1). Filter v2 markets by `resolutionStatus`, `requestIds`, or
+   * `onchainEventIds`. Each ID filter accepts at most 100 values. V1 markets
+   * use the separate `umaResolutionStatus` filter.
    *
    * @throws {@link ListMarketsError}
    * Thrown on failure.
@@ -185,7 +222,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listMarkets(request?: ListMarketsRequest): Paginated<Market[]>;
+  listMarkets(
+    request?: ListMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<Market[]>;
 
   /**
    * Lists markets available for Combos.
@@ -229,7 +269,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  listComboMarkets(request?: ListComboMarketsRequest): Paginated<ComboMarket[]>;
+  listComboMarkets(
+    request?: ListComboMarketsRequest,
+    options?: RequestOptions,
+  ): Paginated<ComboMarket[]>;
 
   /**
    * Fetches a market.
@@ -257,7 +300,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarket(request: FetchMarketRequest): Promise<Market>;
+  fetchMarket(
+    request: FetchMarketRequest,
+    options?: RequestOptions,
+  ): Promise<Market>;
 
   /**
    * Fetches a market's tags.
@@ -272,7 +318,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchMarketTags(request: FetchMarketTagsRequest): Promise<TagReference[]>;
+  fetchMarketTags(
+    request: FetchMarketTagsRequest,
+    options?: RequestOptions,
+  ): Promise<TagReference[]>;
 
   /**
    * Lists series.
@@ -307,7 +356,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listSeries(request?: ListSeriesRequest): Paginated<Series[]>;
+  listSeries(
+    request?: ListSeriesRequest,
+    options?: RequestOptions,
+  ): Paginated<Series[]>;
 
   /**
    * Fetches a series.
@@ -322,7 +374,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchSeries(request: FetchSeriesRequest): Promise<Series>;
+  fetchSeries(
+    request: FetchSeriesRequest,
+    options?: RequestOptions,
+  ): Promise<Series>;
 
   /**
    * Lists market clarifications — notes that resolve ambiguity in how a market
@@ -344,6 +399,7 @@ export type DiscoveryActions = {
    */
   listMarketClarifications(
     request?: ListMarketClarificationsRequest,
+    options?: RequestOptions,
   ): Paginated<MarketClarification[]>;
 
   /**
@@ -379,7 +435,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTags(request?: ListTagsRequest): Paginated<Tag[]>;
+  listTags(
+    request?: ListTagsRequest,
+    options?: RequestOptions,
+  ): Paginated<Tag[]>;
 
   /**
    * Fetches a tag by id or slug.
@@ -394,7 +453,7 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchTag(request: FetchTagRequest): Promise<Tag>;
+  fetchTag(request: FetchTagRequest, options?: RequestOptions): Promise<Tag>;
 
   /**
    * Fetches related tag relationships by id or slug.
@@ -409,7 +468,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchRelatedTags(request: FetchRelatedTagsRequest): Promise<RelatedTag[]>;
+  fetchRelatedTags(
+    request: FetchRelatedTagsRequest,
+    options?: RequestOptions,
+  ): Promise<RelatedTag[]>;
 
   /**
    * Fetches resources linked from related tag relationships by id or slug.
@@ -426,6 +488,7 @@ export type DiscoveryActions = {
    */
   fetchRelatedTagResources(
     request: FetchRelatedTagResourcesRequest,
+    options?: RequestOptions,
   ): Promise<Tag[]>;
 
   /**
@@ -460,7 +523,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  search(request: SearchRequest): Paginated<SearchResults>;
+  search(
+    request: SearchRequest,
+    options?: RequestOptions,
+  ): Paginated<SearchResults>;
 
   /**
    * Lists available sports metadata.
@@ -473,7 +539,7 @@ export type DiscoveryActions = {
    * const sports = await client.listSports();
    * ```
    */
-  listSports(): Promise<SportsMetadata[]>;
+  listSports(options?: RequestOptions): Promise<SportsMetadata[]>;
 
   /**
    * Fetches the available market types grouped by sport.
@@ -486,7 +552,9 @@ export type DiscoveryActions = {
    * const marketTypes = await client.fetchSportsMarketTypes();
    * ```
    */
-  fetchSportsMarketTypes(): Promise<SportsMarketTypesResponse>;
+  fetchSportsMarketTypes(
+    options?: RequestOptions,
+  ): Promise<SportsMarketTypesResponse>;
 
   /**
    * Lists teams.
@@ -521,7 +589,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listTeams(request?: ListTeamsRequest): Paginated<Team[]>;
+  listTeams(
+    request?: ListTeamsRequest,
+    options?: RequestOptions,
+  ): Paginated<Team[]>;
 
   /**
    * Fetches a public profile by wallet address.
@@ -538,6 +609,7 @@ export type DiscoveryActions = {
    */
   fetchPublicProfile(
     request: FetchPublicProfileRequest,
+    options?: RequestOptions,
   ): Promise<PublicProfile | null>;
 
   /**
@@ -596,7 +668,10 @@ export type DiscoveryActions = {
    * }
    * ```
    */
-  listComments(request: ListCommentsRequest): Paginated<Comment[]>;
+  listComments(
+    request: ListCommentsRequest,
+    options?: RequestOptions,
+  ): Paginated<Comment[]>;
 
   /**
    * Fetches a comment thread by comment id.
@@ -612,7 +687,10 @@ export type DiscoveryActions = {
    * });
    * ```
    */
-  fetchCommentsById(request: FetchCommentsByIdRequest): Promise<Comment[]>;
+  fetchCommentsById(
+    request: FetchCommentsByIdRequest,
+    options?: RequestOptions,
+  ): Promise<Comment[]>;
 
   /**
    * Lists comments written by a wallet address.
@@ -664,6 +742,7 @@ export type DiscoveryActions = {
    */
   listCommentsByUserAddress(
     request: ListCommentsByUserAddressRequest,
+    options?: RequestOptions,
   ): Paginated<Comment[]>;
 };
 
@@ -701,24 +780,31 @@ export function discoveryActions(client: BaseClient): DiscoveryActions {
 // Keep this list in sync with the methods on DiscoveryActions.
 export {
   FetchCommentsByIdError,
-  FetchEventError,
-  FetchEventTagsError,
-  FetchMarketError,
-  FetchMarketTagsError,
-  FetchPublicProfileError,
-  FetchRelatedTagResourcesError,
-  FetchRelatedTagsError,
-  FetchSeriesError,
-  FetchSportsMarketTypesError,
-  FetchTagError,
-  ListComboMarketsError,
   ListCommentsByUserAddressError,
   ListCommentsError,
+} from '../actions/comments';
+export {
+  FetchEventError,
+  FetchEventTagsError,
   ListEventsError,
+} from '../actions/events';
+export {
+  FetchMarketError,
+  FetchMarketTagsError,
+  ListComboMarketsError,
   ListMarketsError,
-  ListSeriesError,
+} from '../actions/markets';
+export { FetchPublicProfileError } from '../actions/profiles';
+export { SearchError } from '../actions/search';
+export { FetchSeriesError, ListSeriesError } from '../actions/series';
+export {
+  FetchSportsMarketTypesError,
   ListSportsError,
+} from '../actions/sports';
+export {
+  FetchRelatedTagResourcesError,
+  FetchRelatedTagsError,
+  FetchTagError,
   ListTagsError,
-  ListTeamsError,
-  SearchError,
-} from '../actions';
+} from '../actions/tags';
+export { ListTeamsError } from '../actions/teams';

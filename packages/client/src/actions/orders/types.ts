@@ -35,7 +35,11 @@ export type PrepareMarketBuyOrderRequest =
        * The SDK reduces the signed buy amount when necessary to stay within it.
        */
       maxSpend?: number | string;
-      /** Highest acceptable price per share; the order only fills at this price or better. */
+      /**
+       * Highest acceptable execution price per share; the order only fills at
+       * this price or better. Throws UserInputError if amount precision cannot
+       * preserve this bound after refreshing market metadata once.
+       */
       maxPrice?: number | string;
       /** Optional builder attribution code. */
       builderCode?: string;
@@ -58,7 +62,11 @@ export type PrepareMarketBuyOrderRequest =
        * The SDK reduces the signed buy amount when necessary to stay within it.
        */
       maxSpend?: number | string;
-      /** Highest acceptable price per share; the order only fills at this price or better. */
+      /**
+       * Highest acceptable execution price per share; the order only fills at
+       * this price or better. Throws UserInputError if amount precision cannot
+       * preserve this bound after refreshing market metadata once.
+       */
       maxPrice?: number | string;
       /** Optional builder attribution code. */
       builderCode?: string;

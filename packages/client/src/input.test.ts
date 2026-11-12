@@ -31,5 +31,24 @@ describe('input', () => {
           - limit: Invalid input: expected number, received string]
         `);
     });
+
+    it('rejects oversized arrays before inspecting their elements', () => {
+      const schema = z.array(z.number()).max(1);
+      const input = [1, 2];
+      let elementReads = 0;
+      Object.defineProperty(input, 0, {
+        get() {
+          elementReads += 1;
+          throw new Error('Oversized array elements must not be inspected');
+        },
+      });
+
+      expect(() => parseUserInput(input, schema)).toThrowError(UserInputError);
+      expect(elementReads).toBe(0);
+      expect(parseUserInput([1], schema)).toEqual([1]);
+      expect(() => parseUserInput(['invalid'], schema)).toThrowError(
+        UserInputError,
+      );
+    });
   });
 });

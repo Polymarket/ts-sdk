@@ -5,7 +5,7 @@ import {
   type OrderResponses,
   OrderResponsesSchema,
 } from '@polymarket/bindings/clob';
-import { invariant, unwrap } from '@polymarket/types';
+import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../../clients';
 import {
@@ -18,7 +18,6 @@ import {
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { validateWith } from '../../response';
 import { mapTradingRestrictionError } from './restrictions';
 import type { SignedOrder } from './types';
 
@@ -92,15 +91,15 @@ export function postOrder(
     parseUserInput(order, PostOrderInputSchema);
     const payload = createSendOrderPayload(client, order);
 
-    return unwrap(
-      client.secureClob
-        .post('/order', {
-          json: payload,
-          rateLimitBucket: 'order',
-        })
-        .mapErr(mapTradingRestrictionError)
-        .andThen(validateWith(OrderResponseSchema)),
-    );
+    return client.secureClob
+      .post('/order', {
+        json: payload,
+        rateLimitBucket: 'order',
+        schema: OrderResponseSchema,
+      })
+      .catch((error) => {
+        throw mapTradingRestrictionError(error);
+      });
   };
 }
 
@@ -132,15 +131,15 @@ export function postOrders(
       createSendOrderPayload(client, order),
     );
 
-    return unwrap(
-      client.secureClob
-        .post('/orders', {
-          json: payload,
-          rateLimitBucket: 'order',
-        })
-        .mapErr(mapTradingRestrictionError)
-        .andThen(validateWith(OrderResponsesSchema)),
-    );
+    return client.secureClob
+      .post('/orders', {
+        json: payload,
+        rateLimitBucket: 'order',
+        schema: OrderResponsesSchema,
+      })
+      .catch((error) => {
+        throw mapTradingRestrictionError(error);
+      });
   };
 }
 

@@ -2,19 +2,19 @@ import {
   type PublicProfile,
   PublicProfileSchema,
 } from '@polymarket/bindings/gamma';
-import { err, ok, unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
 import { parseUserInput } from '../input';
-import { validateWith } from '../response';
+import { parseRequestOptions, type RequestOptions } from '../request-options';
 import { snakeCase, toSearchParams } from './params';
 
 const FetchPublicProfileRequestSchema = z.object({
@@ -26,12 +26,14 @@ export type FetchPublicProfileRequest = z.input<
 >;
 
 export type FetchPublicProfileError =
+  | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
 export const FetchPublicProfileError = makeErrorGuard(
+  RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
   TransportError,
@@ -60,21 +62,22 @@ export const FetchPublicProfileError = makeErrorGuard(
 export async function fetchPublicProfile(
   client: BaseClient,
   request: FetchPublicProfileRequest,
+  options: RequestOptions = {},
 ): Promise<PublicProfile | null> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPublicProfileRequestSchema);
 
-  return unwrap(
-    client.gamma
-      .get('/public-profile', {
-        params: toSearchParams(params, snakeCase()),
-      })
-      .andThen(validateWith(PublicProfileSchema))
-      .orElse((error) => {
-        if (error instanceof RequestRejectedError && error.status === 404) {
-          return ok(null);
-        }
+  return client.gamma
+    .get('/public-profile', {
+      schema: PublicProfileSchema,
+      ...requestOptions,
+      params: toSearchParams(params, snakeCase()),
+    })
+    .catch((error) => {
+      if (error instanceof RequestRejectedError && error.status === 404) {
+        return null;
+      }
 
-        return err(error);
-      }),
-  );
+      throw error;
+    });
 }

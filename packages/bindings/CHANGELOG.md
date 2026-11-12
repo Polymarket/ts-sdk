@@ -1,5 +1,121 @@
 # @polymarket/bindings
 
+## 0.17.0
+
+### Minor Changes
+
+- cec0d2f: Add `listWalletOpenOrders` to list open orders across a Deposit Wallet, including orders placed by its session keys. Each order reports the `signerAddress` that placed it and a nullable `owner`. Filter by `market`, `assetId`, or 1 to 50 `signerAddresses`.
+
+  Add `cancelWalletOrders({ orderIds })` and `cancelAllWalletOrders()` so the Deposit Wallet owner can cancel orders placed by any of its signers. `listOpenOrders`, `cancelOrder`, `cancelOrders`, and `cancelAll` still cover only orders placed with the client's own credentials.
+
+  Allow session-key authorization with `relayerApiKey` as well as `builderApiKey` and `remoteBuilderSigning`. Account credentials alone remain insufficient for session-key authorization and revocation.
+
+## 0.16.0
+
+### Minor Changes
+
+- 6b9f4e4: Add the range-event activity types `DIRECTIONAL_SPLIT`, `DIRECTIONAL_MERGE`, `THRESHOLD_COMPOSE` and `THRESHOLD_DECOMPOSE` to `ActivityType` and `Activity`, and accept them in the `listActivity` `type` filter. Threshold rows always carry the line's `conditionId` and report the moved line position as `shares`, since no collateral moves. Titles, slugs and outcome labels are optional on all four types.
+
+  Activity rows with a type this SDK version does not list no longer fail the page. They carry only the shared account fields, and their `type` is an `OpaqueActivityType` that never matches an `ActivityType` member.
+
+  This is a breaking type change, and code that reads `activity.type` may need a migration.
+
+  Comparing `activity.type` with `ActivityType` members still narrows each row, but an exhaustive switch over `activity.type` needs cases for the new types and a `default` branch:
+
+  ```ts
+  switch (activity.type) {
+    case ActivityType.TIP:
+      console.log(activity.side);
+      break;
+    default:
+      console.log(activity.wallet, activity.transactionHash);
+  }
+  ```
+
+  `activity.type` is no longer assignable to `string` and can no longer index a record. Read the served type with `String(activity.type)`:
+
+  ```ts
+  const labels: Partial<Record<string, string>> = {
+    [ActivityType.TRADE]: "Trade",
+    [ActivityType.TIP]: "Tip",
+  };
+
+  // Before
+  const type: string = activity.type;
+  const label = labels[activity.type];
+
+  // After
+  const type = String(activity.type);
+  const label = labels[type] ?? "Other";
+  ```
+
+### Patch Changes
+
+- 458f5cd: Support Binance as an opt-in price provider and known price source. Binance serves USDT spot closes under canonical USD symbols on crypto spot subscriptions; omitted providers keep the existing default.
+- 1ba55c0: Reduce retained heap after importing `@polymarket/client` by about 20%.
+  Require `zod@^4.6.7` to address GHSA-mrhx-c7xc-m3w5.
+
+  Input that exceeds a collection limit, such as more than 15 orders in
+  `postOrders`, now fails on the limit alone, without per-item errors. When
+  invalid input is closest to one accepted shape, `UserInputError` now lists
+  only that shape's issues.
+
+## 0.15.0
+
+### Minor Changes
+
+- c97b958: Round protected market BUY shares down so orders can match at `maxPrice` without increasing the signed spend. Validate the final fee-adjusted amounts against the finest supported price tick, refreshing market metadata once before rejecting an amount that cannot safely preserve the price bound.
+
+  Export `MINIMUM_TICK_SIZE_VALUE` from `@polymarket/bindings` next to the tick-size schema.
+
+- fd96979: Add `trading.takerDelayMs` for the taker delay in milliseconds. Deprecate `trading.secondsDelay` in favor of `trading.takerDelayMs`.
+
+### Patch Changes
+
+- 33c249a: Accept the `pre_ipo` Perps instrument category and preserve future category strings in instrument reads, category filters, and fee schedules so new categories cannot invalidate entire responses. Expose optional, nullable instrument fee overrides and funding multipliers with normalized field names.
+
+  The experimental category enum is now `PerpsKnownInstrumentCategory`: replace `PerpsInstrumentCategory.Crypto` with `PerpsKnownInstrumentCategory.Crypto` (and likewise for other members). `PerpsInstrumentCategory` is the resilient type for known enum members and future category strings.
+
+## 0.14.0
+
+### Minor Changes
+
+- c05ca40, f059b22: Add optional equity market status (`open`, `closed`, `unknown`) to spot/TWAP updates and snapshots; omission means not stated, never open. Status describes the provider's instrument. Spot status-only updates may repeat the price timestamp with `isCarriedForward: true`; do not deduplicate by timestamp alone. Older unstated spot frames retain the last stated snapshot status. Snapshots carry status at batch level and may retain an older closing price; TWAP status changes with a new price.
+- 3bc5493: Breaking 0.x: `SplitActivity`, `MergeActivity` and `RedeemActivity` include Combo variants (`isCombo: true`, `ComboConditionId`, optional titles, no `slug`/`eventSlug`). Add `!activity.isCombo` to SPLIT/MERGE/REDEEM guards before accessing market URLs. Parsed ordinary rows use `isCombo: false`; ordinary object construction may omit it. Combo presentation metadata is optional; trade/redemption `outcome` and `outcomeIndex` preserve zero and normalize blank labels/index `999` to `undefined`. Automatic redemption remains REDEEM; `listComboActivity` is unchanged.
+- 3d93028: Add one-shot authenticated order heartbeats with mismatch-ID recovery (`OrderHeartbeatMismatchError` retains `RequestRejectedError` inheritance and its own runtime name). The first accepted send enables API-key-wide timeout cancellation with no disarm operation. Callers own scheduling and ID serialization; cancellation after expiry is best effort.
+- 8ae8885: Add Router v2 neg-risk workflows by market condition ID; low-level helpers retain explicit protocol event IDs.
+- ef3d314: Add optional oracle event/request IDs, market resolution status, and discovery filters for these fields and protocol version, with pagination and backend ID-count limits.
+- 8d0ecfb, bffb030, 66b441d: Add filtered/sorted reward-market cursor pagination (preserving selections, supported 24-hour volume keys, no removed tag-exclusion filter, ISO 8601 dates), current maker rebates by date/address (decimal-string amounts; empty results become `[]`), and direct outcome-asset reference lookup by decimal asset/condition selectors with nullable metadata.
+- a2ebe7c, 84e07ef, bdcfad0, d79941a: Extend experimental Perps with fill instrument filters and ADL/liquidation details, portfolio available order margin/fee tier/position ADL index, and instrument UI live time/logos (advisory, not trading eligibility). Preserve server event horizons as `eventTimestamp: EpochMilliseconds | null` independently of send time; zero becomes `null`, and synthetic recovery invents no horizon.
+- 3fd2412: Normalize native/upstream rejection envelopes and expose extensible known rejection codes, preserving transport fallbacks.
+
+### Patch Changes
+
+- d54c900, 24ec298: Normalize `gameStartTime` on new-market events/notifications to ISO 8601, empty values to `null`, and impossible dates/times to validation failures. Deliver user order websocket `INVALID` and `CANCELED_*` statuses instead of dropping them.
+- 911574f, edf336f: Add optional native/sponsored earnings breakdowns and sponsored queries without changing defaults; retain taker-tier upgrade notifications (previous/current tier, rebate basis points and snapshot date).
+- 7705d09: UMA lifecycle rows retain the initial RequestPrice log index, while their transaction hash may identify a later event; do not combine them as a log locator. Condition-resolution fallback rows retain their own event transaction/log metadata.
+- Update `@polymarket/types` to `0.3.0` (removed `neverthrow` exports and `unwrap`; await SDK requests directly and import remaining `neverthrow` APIs from your own dependency).
+
+## 0.13.0
+
+### Minor Changes
+
+- ea1237e: Read indexed trading approvals from the configured data endpoint, with no RPC fallback. Recent changes may lag; setup still checks on chain. Incomplete snapshots raise `UnexpectedResponseError`.
+- 61f140f, d0be2fd, bbbcb20: Add 60-second equity TWAPs, Chainlink/Pyth provider selection, subscription confirmations, and price source metadata. Cached history resets when the source changes.
+- b824569, 95766f8: Add Perps chase and TWAP execution lifecycles.
+- 2eea382, d004008: Add Perps GTD orders and trailing stop losses with activation events.
+- 04af7cc, d918f6a: Add public and authenticated Perps position snapshots and public registration lookup.
+- 1e0b3dd: Expose Perps close-only state, settlement records, display labels, and settlement flags on trades and fills.
+- ab1e3b2: Add `position_deleveraged` notifications. Exhaustive notification handlers must handle this variant; Perps remains experimental.
+- 1a2e9ca, 8d7fccc: Add position acquisition time (`firstEntryAt`, epoch milliseconds) and `PositionSortBy.Price`. Redeemable and closed listings retain their existing ordering.
+- 5976187: Add `expectedSettlementTime` and `settlementTimeBasis` as earliest settlement estimates, not guaranteed deadlines.
+
+### Patch Changes
+
+- 98adafb: Add ordered batch Perps leverage updates with per-instrument rejection results.
+- ae8b4e8: Emit server notification resync signals with the catch-up sequence and timestamp. Backfill and deduplicate by notification ID.
+- fcbe83c: Accept current terminal Perps order statuses so valid terminal updates resolve placement.
+
 ## 0.12.0
 
 ### Minor Changes

@@ -1,6 +1,11 @@
 import { z } from 'zod';
-import { SigningError } from './errors';
-import type { ApiKeyAuthorization, ApiKeyAuthorizationRequest } from './types';
+import { RequestAbortedError, SigningError } from './errors';
+import { assertNotAborted, withAbort } from './request-options';
+import type {
+  ApiKeyAuthorization,
+  ApiKeyAuthorizationOptions,
+  ApiKeyAuthorizationRequest,
+} from './types';
 
 export type RelayerApiKeyConfig = {
   key: string;
@@ -65,10 +70,15 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
     return true;
   }
 
-  async authorize(request: ApiKeyAuthorizationRequest): Promise<HeadersInit> {
+  async authorize(
+    request: ApiKeyAuthorizationRequest,
+    options?: ApiKeyAuthorizationOptions,
+  ): Promise<HeadersInit> {
     try {
-      return await this.#fetchBuilderKeyHeaders(request);
+      assertNotAborted(options?.signal);
+      return await this.#fetchBuilderKeyHeaders(request, options);
     } catch (error) {
+      if (error instanceof RequestAbortedError) throw error;
       throw SigningError.fromError(
         error,
         'Could not authorize the builder-authenticated request',
@@ -76,10 +86,12 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
     }
   }
 
-  async #resolveHeaders(): Promise<Headers> {
+  async #resolveHeaders(signal?: AbortSignal): Promise<Headers> {
     const headers = this.#config.headers;
     const resolvedHeaders =
-      typeof headers === 'function' ? await headers() : headers;
+      typeof headers === 'function'
+        ? await withAbort(Promise.resolve(headers()), signal)
+        : headers;
     const requestHeaders = new Headers(resolvedHeaders);
 
     requestHeaders.set('content-type', 'application/json');
@@ -89,18 +101,26 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
 
   async #fetchBuilderKeyHeaders(
     request: ApiKeyAuthorizationRequest,
+    options?: ApiKeyAuthorizationOptions,
   ): Promise<HeadersInit> {
-    const response = await fetch(this.#config.url, {
-      body: JSON.stringify({
-        body: request.body,
-        method: request.method,
-        path: request.path,
+    const headers = await this.#resolveHeaders(options?.signal);
+    assertNotAborted(options?.signal);
+    const fetch = options?.fetch ?? globalThis.fetch;
+    const response = await withAbort(
+      fetch(this.#config.url, {
+        body: JSON.stringify({
+          body: request.body,
+          method: request.method,
+          path: request.path,
+        }),
+        credentials: this.#config.credentials,
+        headers,
+        method: 'POST',
+        mode: 'cors',
+        signal: options?.signal,
       }),
-      credentials: this.#config.credentials,
-      headers: await this.#resolveHeaders(),
-      method: 'POST',
-      mode: 'cors',
-    });
+      options?.signal,
+    );
 
     if (!response.ok) {
       throw new Error(
@@ -108,7 +128,8 @@ class RemoteBuilderAuthorization implements ApiKeyAuthorization {
       );
     }
 
-    return RemoteBuilderSigningResponseSchema.parse(await response.json());
+    const body: unknown = await withAbort(response.json(), options?.signal);
+    return RemoteBuilderSigningResponseSchema.parse(body);
   }
 }
 

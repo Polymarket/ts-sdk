@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   PriceHistoryInterval,
+  ProtocolVersion,
   UnexpectedResponseError,
   UserInputError,
 } from '@polymarket/client';
@@ -45,6 +46,78 @@ describe('Markets', () => {
   });
 
   describe('listMarkets', () => {
+    it('looks up a closed market across closed states', async ({
+      publicClient,
+    }) => {
+      const slug = ['will-donald-trump-win-the-2024-us-presidential-election'];
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const page = await publicClient
+        .listMarkets({ closed: 'any', slug, pageSize: 1 })
+        .firstPage()
+        .then(expectNonEmptyPage);
+
+      expect(page.items[0].state.closed).toBe(true);
+      const request = fetchSpy.mock.calls[0]?.[0];
+      const url = new URL(
+        request instanceof Request ? request.url : String(request),
+      );
+      expect(url.searchParams.get('closed')).toBe('any');
+      expect(url.searchParams.getAll('slug')).toEqual(slug);
+      const defaultPage = await publicClient
+        .listMarkets({ slug, pageSize: 1 })
+        .firstPage();
+      expect(defaultPage.items).toEqual([]);
+    });
+
+    it('requires identifiers for either closed state before any request', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const filters of [{}, { ids: [] }, { slug: [], tagId: 1 }]) {
+        expect(() =>
+          publicClient.listMarkets({ closed: 'any', ...filters }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('retains repeated protocol filters across pages', async ({
+      publicClient,
+    }) => {
+      const version = [ProtocolVersion.V1, ProtocolVersion.V2];
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const pages = publicClient.listMarkets({ version, pageSize: 2 });
+      const first = await pages.firstPage().then(expectNonEmptyPage);
+      const cursor = expectPresent(first.nextCursor);
+      for await (const page of pages.from(cursor)) {
+        expect(page.items.length).toBeLessThanOrEqual(2);
+        break;
+      }
+      const urls = fetchSpy.mock.calls
+        .map(
+          ([input]) =>
+            new URL(input instanceof Request ? input.url : String(input)),
+        )
+        .filter((url) => url.pathname === '/markets/keyset');
+      expect(urls).toHaveLength(2);
+      for (const url of urls) {
+        expect(url.searchParams.getAll('version')).toEqual(version);
+      }
+      expect(urls[1]?.searchParams.has('after_cursor')).toBe(true);
+    });
+
+    it('rejects malformed protocol selections before transport', ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      for (const version of [1, [], ['v1', 'v2', 'v1'], ['v1', 'v3'], null]) {
+        expect(() =>
+          publicClient.listMarkets({ version: version as never }),
+        ).toThrow(UserInputError);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
     it('fetches markets', async ({ publicClient }) => {
       const paginator = publicClient.listMarkets({
         closed: false,

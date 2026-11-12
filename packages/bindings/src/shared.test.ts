@@ -4,6 +4,7 @@ import {
   type ConditionId,
   ConditionIdSchema,
   type CtfConditionId,
+  DateLikeToIsoDateTimeStringSchema,
   EvmAddressSchema,
   QuestionIdSchema,
   TxHashSchema,
@@ -100,5 +101,34 @@ describe('shared ID parsers', () => {
       expect(QuestionIdSchema.safeParse('0x1').success).toBe(false);
       expect(TxHashSchema.safeParse('0x1').success).toBe(false);
     });
+  });
+});
+
+describe('DateLikeToIsoDateTimeStringSchema', () => {
+  it.each([
+    ['2026-10-17 23:30:00+00', '2026-10-17T23:30:00.000Z'],
+    ['2026-10-17T23:30:00+00', '2026-10-17T23:30:00.000Z'],
+    ['2026-10-17 23:30:00.123456-05', '2026-10-18T04:30:00.123Z'],
+    ['2026-10-17 23:30:00+05:30', '2026-10-17T18:00:00.000Z'],
+  ])('normalizes %s to %s', (input, expected) => {
+    expect(DateLikeToIsoDateTimeStringSchema.parse(input)).toBe(expected);
+  });
+
+  it.each([
+    '2026-10-17T23:30:00Z',
+    '2026-10-17T23:30:00+00:00',
+    '2026-10-17T23:30:00.123-05:00',
+  ])('keeps ISO 8601 input %s unchanged', (input) => {
+    expect(DateLikeToIsoDateTimeStringSchema.parse(input)).toBe(input);
+  });
+
+  it.each([
+    '2026-13-17 23:30:00+00',
+    '2026-10-17 25:30:00+00',
+    '2026-02-30 23:30:00+00',
+  ])('rejects the impossible datetime %s instead of throwing', (input) => {
+    const result = DateLikeToIsoDateTimeStringSchema.safeParse(input);
+
+    expect(result.success).toBe(false);
   });
 });

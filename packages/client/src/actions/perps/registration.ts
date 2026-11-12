@@ -1,18 +1,21 @@
 import { EvmAddressSchema } from '@polymarket/bindings';
 import { PerpsRegistrationResponseSchema } from '@polymarket/bindings/perps';
-import { unwrap } from '@polymarket/types';
 import { z } from 'zod';
 import type { BaseClient } from '../../clients';
 import {
   makeErrorGuard,
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
   UserInputError,
 } from '../../errors';
 import { parseUserInput } from '../../input';
-import { validateWith } from '../../response';
+import {
+  parseRequestOptions,
+  type RequestOptions,
+} from '../../request-options';
 import { toSearchParams } from '../params';
 
 const FetchPerpsRegistrationRequestSchema = z.object({
@@ -28,6 +31,7 @@ export type FetchPerpsRegistrationRequest = {
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export type FetchPerpsRegistrationError =
   | RateLimitError
+  | RequestAbortedError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
@@ -36,6 +40,7 @@ export type FetchPerpsRegistrationError =
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
 export const FetchPerpsRegistrationError = makeErrorGuard(
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -52,13 +57,13 @@ export const FetchPerpsRegistrationError = makeErrorGuard(
 export async function fetchPerpsRegistration(
   client: BaseClient,
   request: FetchPerpsRegistrationRequest,
+  options: RequestOptions = {},
 ): Promise<boolean> {
+  const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPerpsRegistrationRequestSchema);
-  return unwrap(
-    client.perps
-      .get('/v1/info/registered', {
-        params: toSearchParams(params, { address: 'address' }),
-      })
-      .andThen(validateWith(PerpsRegistrationResponseSchema)),
-  );
+  return client.perps.get('/v1/info/registered', {
+    schema: PerpsRegistrationResponseSchema,
+    ...requestOptions,
+    params: toSearchParams(params, { address: 'address' }),
+  });
 }

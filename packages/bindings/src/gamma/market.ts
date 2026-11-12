@@ -100,6 +100,30 @@ export enum UmaResolutionStatus {
 
 const UmaResolutionStatusSchema = z.enum(UmaResolutionStatus);
 
+/** Resolution state for a market using the v2 protocol. */
+export enum MarketResolutionStatus {
+  Inactive = 'inactive',
+  Active = 'active',
+  Resolved = 'resolved',
+}
+
+const OnchainEventIdSchema = z
+  .string()
+  .length(66)
+  .regex(
+    /^0x[0-9a-fA-F]{58}000000$/,
+    'Expected a 32-byte on-chain event ID with the bottom three bytes zero',
+  );
+
+const V2RequestIdSchema = z
+  .string()
+  .length(66)
+  .regex(
+    /^0x[0-9a-fA-F]{62}00$/,
+    'Expected a 32-byte oracle request ID with the outcome byte zero',
+  )
+  .pipe(ResolutionRequestIdSchema);
+
 export type MarketState = {
   active?: boolean | null;
   closed?: boolean | null;
@@ -162,13 +186,22 @@ export type MarketPrices = {
 export type MarketTrading = {
   minimumOrderSize?: DecimalString | null;
   minimumTickSize?: TickSizeValue | null;
+  /** @deprecated Use takerDelayMs instead. */
   secondsDelay?: number | null;
+  /** Taker delay in milliseconds. */
+  takerDelayMs?: number | null;
   feesEnabled?: boolean | null;
   feeType?: string | null;
   feeSchedule?: FeeSchedule | null;
 };
 
 export type MarketResolution = {
+  /** Parent v2 on-chain event ID, shared by markets in a neg-risk event. */
+  onchainEventId?: string | null;
+  /** Oracle request ID: a condition ID or the parent event ID. */
+  requestId?: ResolutionRequestId | null;
+  /** V2 resolution state, distinct from the legacy UMA lifecycle. */
+  resolutionStatus?: MarketResolutionStatus | null;
   questionId: QuestionId | null;
   negRiskRequestId: ResolutionRequestId | null;
   umaResolutionStatus: UmaResolutionStatus | null;
@@ -231,6 +264,15 @@ export type Market = {
 export const GammaMarketSchema = z.object({
   id: MarketIdSchema,
   version: ProtocolVersionSchema.nullish(),
+  onchainEventId: z.preprocess(
+    emptyStringToNull,
+    OnchainEventIdSchema.nullish(),
+  ),
+  requestId: z.preprocess(emptyStringToNull, V2RequestIdSchema.nullish()),
+  resolutionStatus: z.preprocess(
+    emptyStringToNull,
+    z.enum(MarketResolutionStatus).nullish(),
+  ),
   question: z.string().nullish(),
   conditionId: z
     .preprocess(emptyStringToNull, ConditionIdResponseSchema.nullish())
@@ -311,6 +353,7 @@ export const GammaMarketSchema = z.object({
   volume1yr: DecimalishSchema.nullish(),
   gameStartTime: IsoDateTimeStringSchema.nullish(),
   secondsDelay: z.number().int().nullish(),
+  takerDelayMs: z.number().int().nullish(),
   clobTokenIds: TokenIdArraySchema,
   comboStatus: ComboStatusSchema.nullish(),
   positionIds: PositionIdArraySchema,
@@ -499,11 +542,15 @@ export function normalizeMarket(market: GammaMarket): Market {
       minimumOrderSize: market.orderMinSize,
       minimumTickSize: market.orderPriceMinTickSize,
       secondsDelay: market.secondsDelay,
+      takerDelayMs: market.takerDelayMs,
       feesEnabled: market.feesEnabled,
       feeType: market.feeType,
       feeSchedule: market.feeSchedule,
     },
     resolution: {
+      onchainEventId: market.onchainEventId ?? null,
+      requestId: market.requestId ?? null,
+      resolutionStatus: market.resolutionStatus ?? null,
       questionId: market.questionID,
       negRiskRequestId: market.negRiskRequestID,
       umaResolutionStatus: market.umaResolutionStatus,

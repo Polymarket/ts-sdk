@@ -6,8 +6,9 @@ import {
   type RevokeSessionKeyRequest,
   revokeSessionKey,
   type SessionKey,
-} from '../actions';
+} from '../actions/session-keys';
 import type { BaseSecureClient } from '../clients';
+import type { RequestOptions } from '../request-options';
 
 export type SessionKeyActions = {
   /**
@@ -17,7 +18,8 @@ export type SessionKeyActions = {
    * responsible for generating, storing, and protecting the private key.
    * When scopes are omitted, authorization defaults to `ALL`.
    * The authorization expires 180 days after it is created.
-   * Requires builder API-key authentication.
+   * Requires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or
+   * `remoteBuilderSigning(...)`. Account credentials alone are not enough.
    *
    * @remarks
    * Resolves after the submitted transaction is confirmed and the session key
@@ -48,14 +50,15 @@ export type SessionKeyActions = {
    * @throws {@link FetchSessionKeysError}
    * Thrown on failure.
    */
-  fetchSessionKeys(): Promise<SessionKey[]>;
+  fetchSessionKeys(options?: RequestOptions): Promise<SessionKey[]>;
 
   /**
    * Revokes a session key authorized for the Deposit Wallet.
    *
    * Returns once the session key is removed from the active-key registry and can
    * no longer be used. The on-chain transaction may still be pending.
-   * Requires API-key authentication that supports gasless transactions.
+   * Requires `apiKey` set to `relayerApiKey(...)`, `builderApiKey(...)`, or
+   * `remoteBuilderSigning(...)`. Account credentials alone are not enough.
    *
    * @example
    * ```ts
@@ -84,10 +87,10 @@ export type {
   RevokeSessionKeyRequest,
   SessionKey,
   SessionKeyScope,
-} from '../actions';
+} from '../actions/session-keys';
 export {
   AuthorizeSessionKeyError,
   FetchSessionKeysError,
   RevokeSessionKeyError,
   SessionKeyKnownScope,
-} from '../actions';
+} from '../actions/session-keys';

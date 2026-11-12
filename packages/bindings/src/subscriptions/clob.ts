@@ -8,6 +8,7 @@ import {
   type EpochMilliseconds,
   EpochMillisecondsStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  emptyStringToNull,
   type IsoDateTimeString,
   OptionalDecimalStringSchema,
   type OrderSide,
@@ -39,9 +40,17 @@ export enum UserOrderStatus {
   Delayed = 'DELAYED',
   Unmatched = 'UNMATCHED',
   Canceled = 'CANCELED',
+  Invalid = 'INVALID',
 }
 
-const UserOrderStatusSchema = z.enum(UserOrderStatus);
+export type CanceledWithReasonStatus = `CANCELED_${string}`;
+
+const UserOrderStatusSchema = z.union([
+  z.enum(UserOrderStatus),
+  z.custom<CanceledWithReasonStatus>(
+    (value) => typeof value === 'string' && value.startsWith('CANCELED_'),
+  ),
+]);
 
 const OrderBookLevelSchema = z.object({
   price: DecimalStringSchema,
@@ -359,7 +368,10 @@ export const NewMarketEventSchema = z
     clob_token_ids: z.array(z.string()).nullish(),
     sports_market_type: z.string().nullish(),
     line: OptionalDecimalStringSchema,
-    game_start_time: EpochMillisecondsToIsoDateTimeStringSchema.nullish(),
+    game_start_time: z.preprocess(
+      emptyStringToNull,
+      EpochMillisecondsToIsoDateTimeStringSchema.nullish(),
+    ),
     order_price_min_tick_size: OptionalDecimalStringSchema,
     group_item_title: z.string().nullish(),
     taker_base_fee: OptionalDecimalStringSchema,
@@ -588,7 +600,7 @@ export type UserOrderEvent = {
     createdAt: IsoDateTimeString | null | undefined;
     expiresAt: IsoDateTimeString | null | undefined;
     orderType: OrderType | null | undefined;
-    status?: UserOrderStatus | null;
+    status?: UserOrderStatus | CanceledWithReasonStatus | null;
     makerAddress: string | null | undefined;
     timestamp: EpochMilliseconds;
   };

@@ -49,7 +49,7 @@ import {
   type PerpsWithdrawalStatus,
   PerpsWithdrawalStatusSchema,
 } from '@polymarket/bindings/perps';
-import { invariant, unwrap } from '@polymarket/types';
+import { invariant } from '@polymarket/types';
 import { z } from 'zod';
 import { snakeCase, toSearchParams } from '../../../actions/params';
 import { RequestRejectedError } from '../../../errors';
@@ -61,7 +61,6 @@ import {
   type Paginated,
   paginate,
 } from '../../../pagination';
-import { validateWith } from '../../../response';
 import type { ServiceClient } from '../../../ServiceClient';
 import {
   type PerpsInternalTransfersCursorState,
@@ -139,11 +138,9 @@ type PerpsAscendingAccountCursorState = z.infer<
 export async function fetchPerpsBalances(
   api: ServiceClient,
 ): Promise<PerpsBalance[]> {
-  return await unwrap(
-    api
-      .get('/v1/account/balances')
-      .andThen(validateWith(FetchPerpsBalancesResponseSchema)),
-  );
+  return await api.get('/v1/account/balances', {
+    schema: FetchPerpsBalancesResponseSchema,
+  });
 }
 
 /**
@@ -152,11 +149,9 @@ export async function fetchPerpsBalances(
 export async function fetchPerpsPortfolio(
   api: ServiceClient,
 ): Promise<PerpsPortfolio> {
-  return await unwrap(
-    api
-      .get('/v1/account/portfolio')
-      .andThen(validateWith(FetchPerpsPortfolioResponseSchema)),
-  );
+  return await api.get('/v1/account/portfolio', {
+    schema: FetchPerpsPortfolioResponseSchema,
+  });
 }
 
 /**
@@ -165,11 +160,9 @@ export async function fetchPerpsPortfolio(
 export async function fetchPerpsStats(
   api: ServiceClient,
 ): Promise<PerpsAccountStats> {
-  return await unwrap(
-    api
-      .get('/v1/account/stats')
-      .andThen(validateWith(FetchPerpsAccountStatsResponseSchema)),
-  );
+  return await api.get('/v1/account/stats', {
+    schema: FetchPerpsAccountStatsResponseSchema,
+  });
 }
 
 /**
@@ -178,11 +171,9 @@ export async function fetchPerpsStats(
 export async function fetchPerpsAutoCancelStatus(
   api: ServiceClient,
 ): Promise<PerpsAutoCancelStatus> {
-  return await unwrap(
-    api
-      .get('/v1/account/auto-cancel')
-      .andThen(validateWith(FetchPerpsAutoCancelStatusResponseSchema)),
-  );
+  return await api.get('/v1/account/auto-cancel', {
+    schema: FetchPerpsAutoCancelStatusResponseSchema,
+  });
 }
 
 const FetchPerpsAccountConfigRequestSchema = z
@@ -207,13 +198,10 @@ export async function fetchPerpsAccountConfig(
   request?: FetchPerpsAccountConfigRequest,
 ): Promise<PerpsAccountConfig[]> {
   const params = parseUserInput(request, FetchPerpsAccountConfigRequestSchema);
-  return await unwrap(
-    api
-      .get('/v1/account/config', {
-        params: toPerpsSearchParams(params),
-      })
-      .andThen(validateWith(FetchPerpsAccountConfigResponseSchema)),
-  );
+  return await api.get('/v1/account/config', {
+    schema: FetchPerpsAccountConfigResponseSchema,
+    params: toPerpsSearchParams(params),
+  });
 }
 
 const FetchPerpsOpenOrdersRequestSchema = z
@@ -238,13 +226,10 @@ export async function fetchPerpsOpenOrders(
   request?: FetchPerpsOpenOrdersRequest,
 ): Promise<PerpsOrder[]> {
   const params = parseUserInput(request, FetchPerpsOpenOrdersRequestSchema);
-  return await unwrap(
-    api
-      .get('/v1/account/open-orders', {
-        params: toPerpsSearchParams(params),
-      })
-      .andThen(validateWith(FetchPerpsOpenOrdersResponseSchema)),
-  );
+  return await api.get('/v1/account/open-orders', {
+    schema: FetchPerpsOpenOrdersResponseSchema,
+    params: toPerpsSearchParams(params),
+  });
 }
 
 const FetchPerpsOrdersRequestInputSchema = z
@@ -290,16 +275,14 @@ export async function fetchPerpsOrders(
   request?: FetchPerpsOrdersRequest,
 ): Promise<PerpsOrder[]> {
   const params = parseUserInput(request, FetchPerpsOrdersRequestSchema);
-  return await unwrap(
-    api
-      .get('/v1/account/orders', {
-        params: toPerpsSearchParams(params),
-      })
-      .andThen(validateWith(FetchPerpsOrdersResponseSchema)),
-  );
+  return await api.get('/v1/account/orders', {
+    schema: FetchPerpsOrdersResponseSchema,
+    params: toPerpsSearchParams(params),
+  });
 }
 
 const ListPerpsFillsRequestSchema = z.object({
+  instrumentId: z.number().int().min(0).max(4_294_967_295).optional(),
   start: TimestampInputSchema.optional(),
   end: TimestampInputSchema.optional(),
   sort: PerpsSortDirectionSchema.optional(),
@@ -310,6 +293,8 @@ const ListPerpsFillsRequestSchema = z.object({
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export type ListPerpsFillsRequest = {
+  /** Only fills for this instrument; an unsigned 32-bit identifier. */
+  instrumentId?: number;
   /** Inclusive start timestamp in milliseconds. */
   start?: number;
   /** Inclusive end timestamp in milliseconds. */
@@ -321,6 +306,8 @@ export type ListPerpsFillsRequest = {
 };
 
 /**
+ * Lists authenticated account fills, retaining any instrument filter on each page.
+ * @throws {@link PerpsSessionAccountError} Thrown on invalid input or request failure.
  * @experimental This API may change in a breaking way in any release, including patch releases.
  */
 export function listPerpsFills(
@@ -332,15 +319,16 @@ export function listPerpsFills(
     (cursor) =>
       api
         .get('/v1/account/fills', {
+          schema: ListPerpsFillsResponseSchema,
           params: toPerpsSearchParams({
             startTimestamp: params.start,
             endTimestamp: params.end,
+            instrumentId: params.instrumentId,
             sort: params.sort,
             cursor: cursor ?? params.cursor,
           }),
         })
-        .andThen(validateWith(ListPerpsFillsResponseSchema))
-        .map((response): Page<PerpsAccountFill[]> => {
+        .then((response): Page<PerpsAccountFill[]> => {
           const last = response.data.at(-1);
           if (!response.more || last === undefined) {
             return { items: response.data, hasMore: false };
@@ -432,10 +420,10 @@ export function listPerpsFundingPayments(
 
     return api
       .get('/v1/account/funding', {
+        schema: ListPerpsFundingPaymentsResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsFundingPaymentsResponseSchema))
-      .map((response): Page<PerpsAccountFundingPayment[]> => {
+      .then((response): Page<PerpsAccountFundingPayment[]> => {
         const items = response.data.filter(
           (payment) =>
             !seenKeys.has(
@@ -530,10 +518,10 @@ export function listPerpsDeposits(
 
     return api
       .get('/v1/account/deposits', {
+        schema: ListPerpsDepositsResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsDepositsResponseSchema))
-      .map((response): Page<PerpsDeposit[]> => {
+      .then((response): Page<PerpsDeposit[]> => {
         const items = response.data.filter(
           (deposit) => !seenKeys.has(deposit.hash),
         );
@@ -629,10 +617,10 @@ export function listPerpsWithdrawals(
 
     return api
       .get('/v1/account/withdrawals', {
+        schema: ListPerpsWithdrawalsResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsWithdrawalsResponseSchema))
-      .map((response): Page<PerpsWithdrawal[]> => {
+      .then((response): Page<PerpsWithdrawal[]> => {
         const items = response.data.filter(
           (withdrawal) => !seenKeys.has(String(withdrawal.withdrawalId)),
         );
@@ -735,11 +723,22 @@ export function listPerpsInternalTransfers(
 
     return api
       .get('/v1/account/internal-transfers', {
+        schema: ListPerpsInternalTransfersResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsInternalTransfersResponseSchema))
-      .map((response) =>
-        toPerpsInternalTransfersPage(response.data, response.more, state),
+      .then((response) =>
+        toPerpsInternalTransfersPage(
+          response.data,
+          response.more,
+          state,
+          async (bounds) => {
+            const boundary = await api.get('/v1/account/internal-transfers', {
+              schema: ListPerpsInternalTransfersResponseSchema,
+              params: toPerpsSearchParams(bounds),
+            });
+            return { transfers: boundary.data, hasMore: boundary.more };
+          },
+        ),
       );
   }, cursor);
 }
@@ -819,10 +818,10 @@ export function listPerpsEquityHistory(
 
     return api
       .get('/v1/account/equity', {
+        schema: ListPerpsEquityHistoryResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsEquityHistoryResponseSchema))
-      .map((response): Page<PerpsEquityPoint[]> => {
+      .then((response): Page<PerpsEquityPoint[]> => {
         const last = response.data.at(-1);
         const hasMore =
           response.more &&
@@ -920,10 +919,10 @@ export function listPerpsPnlHistory(
 
     return api
       .get('/v1/account/pnl', {
+        schema: ListPerpsPnlHistoryResponseSchema,
         params: toPerpsSearchParams(searchParams),
       })
-      .andThen(validateWith(ListPerpsPnlHistoryResponseSchema))
-      .map((response): Page<PerpsPnlPoint[]> => {
+      .then((response): Page<PerpsPnlPoint[]> => {
         const last = response.data.at(-1);
         const hasMore =
           response.more &&
@@ -1037,14 +1036,14 @@ export function listPerpsNotifications(
 
     return api
       .get('/v1/account/notifications', {
+        schema: ListPerpsNotificationsResponseSchema,
         params: toPerpsSearchParams({
           cursor: state?.cursor,
           limit,
           sinceSeq,
         }),
       })
-      .andThen(validateWith(ListPerpsNotificationsResponseSchema))
-      .map((response): Page<PerpsNotificationEntry[]> => {
+      .then((response): Page<PerpsNotificationEntry[]> => {
         const hasMore = response.has_more && response.next_cursor !== null;
         return {
           items: response.items,
@@ -1069,13 +1068,10 @@ export function listPerpsNotifications(
 export async function fetchPerpsUnreadNotificationsCount(
   api: ServiceClient,
 ): Promise<number> {
-  const response = await unwrap(
-    api
-      .get('/v1/account/notifications', {
-        params: toPerpsSearchParams({ limit: 1 }),
-      })
-      .andThen(validateWith(FetchPerpsUnreadNotificationsCountResponseSchema)),
-  );
+  const response = await api.get('/v1/account/notifications', {
+    schema: FetchPerpsUnreadNotificationsCountResponseSchema,
+    params: toPerpsSearchParams({ limit: 1 }),
+  });
   return response.unread;
 }
 
@@ -1132,11 +1128,10 @@ export async function markPerpsNotificationsRead(
   request: MarkPerpsNotificationsReadRequest,
 ): Promise<void> {
   const body = parseUserInput(request, MarkPerpsNotificationsReadRequestSchema);
-  const response = await unwrap(
-    api
-      .post('/v1/account/notifications/read', { json: body })
-      .andThen(validateWith(MarkPerpsNotificationsReadResponseSchema)),
-  );
+  const response = await api.post('/v1/account/notifications/read', {
+    schema: MarkPerpsNotificationsReadResponseSchema,
+    json: body,
+  });
   if (response.status === 'err') {
     throw new RequestRejectedError(
       response.error ?? 'Perps notifications read request was rejected.',

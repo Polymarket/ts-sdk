@@ -1,7 +1,62 @@
 import { OrderSide } from '@polymarket/bindings';
+import { createPublicClient, RequestAbortedError } from '@polymarket/client';
 import { describe, expect, it } from './fixtures';
 
 describe('Data pagination', () => {
+  it('keeps cancellation on cursor continuations and stops before another page', async ({
+    environment,
+  }) => {
+    const client = createPublicClient({ environment });
+    const controller = new AbortController();
+    const paginator = client.listTrades(
+      { pageSize: 2, side: OrderSide.BUY },
+      { signal: controller.signal },
+    );
+    const first = await paginator.firstPage();
+    expect(first.nextCursor).toBeDefined();
+    const continuation = paginator.from(first.nextCursor);
+    const second = await continuation.firstPage();
+    expect(second.items).toHaveLength(2);
+    expect(second.items.every((trade) => trade.side === OrderSide.BUY)).toBe(
+      true,
+    );
+    controller.abort('query disposed');
+
+    await expect(
+      continuation.from(second.nextCursor).firstPage(),
+    ).rejects.toMatchObject({
+      name: 'RequestAbortedError',
+      cause: 'query disposed',
+    });
+    // A terminal cursor never starts an operation, even after cancellation.
+    await expect(paginator.from(undefined).firstPage()).resolves.toMatchObject({
+      items: [],
+      hasMore: false,
+    });
+  });
+
+  it('rejects an unfinished for-await traversal after cancellation', async ({
+    environment,
+  }) => {
+    const client = createPublicClient({ environment });
+    const controller = new AbortController();
+    let pages = 0;
+
+    async function consume() {
+      for await (const page of client.listTrades(
+        { pageSize: 2 },
+        { signal: controller.signal },
+      )) {
+        expect(page.items).toHaveLength(2);
+        pages += 1;
+        controller.abort();
+      }
+    }
+
+    await expect(consume()).rejects.toBeInstanceOf(RequestAbortedError);
+    expect(pages).toBe(1);
+  });
+
   it('walks consecutive pages with for await and re-sends filters', async ({
     publicClient,
   }) => {

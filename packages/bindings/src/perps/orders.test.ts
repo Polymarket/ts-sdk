@@ -25,6 +25,7 @@ const baseFill = {
   previous_entry_price: '0',
   pnl: '0',
   liquidation: false,
+  adl: false,
   timestamp: 1_700_000_000_000,
 };
 
@@ -421,11 +422,104 @@ describe('settlement account fills', () => {
       pep: '0',
       pnl: '0',
       liq: false,
+      adl: false,
       ts: 1700000000000,
       ...metadata,
     });
     expect(expanded.settlement).toBe(metadata.settlement ?? false);
     expect(compact.settlement).toBe(expanded.settlement);
     expect(compact.totalFee).toBe(expanded.totalFee);
+  });
+});
+
+const compactFill = {
+  tid: 1,
+  oid: 2,
+  iid: 6,
+  side: 'long',
+  p: '100',
+  qty: '2',
+  taker: true,
+  fee: '0.01',
+  fea: 'USDC',
+  psz: '0',
+  pep: '0',
+  pnl: '0',
+  liq: true,
+  ts: 1_700_000_000_000,
+};
+
+describe('Perps fill liquidation and auto-deleveraging', () => {
+  it('keeps the liquidation mark distinct from the accounting price on reads and updates', () => {
+    const details = {
+      liquidated_user: '0x1111111111111111111111111111111111111111',
+      mark: '9007199254740993.00000001',
+      method: 'backstop',
+    };
+    const fills = [
+      PerpsAccountFillSchema.parse({
+        ...baseFill,
+        hash: '0x',
+        price: '100',
+        liquidation: true,
+        adl: false,
+        liquidation_details: details,
+      }),
+      PerpsAccountFillUpdateSchema.parse({
+        ...compactFill,
+        adl: false,
+        liquidation_details: details,
+      }),
+    ];
+    for (const fill of fills) {
+      expect(fill.price).toBe('100');
+      expect(fill.adl).toBe(false);
+      expect(fill.liquidationDetails).toEqual({
+        liquidatedUser: details.liquidated_user,
+        mark: details.mark,
+        method: 'backstop',
+      });
+    }
+  });
+
+  it('retains ADL fills without fabricating liquidation details or identity', () => {
+    const adl = PerpsAccountFillUpdateSchema.parse({
+      ...compactFill,
+      liq: false,
+      adl: true,
+    });
+    expect(adl.adl).toBe(true);
+    expect(adl.liquidationDetails).toBeUndefined();
+    const liquidation = PerpsAccountFillSchema.parse({
+      ...baseFill,
+      hash: '0x',
+      adl: false,
+      liquidation_details: { mark: '100.1', method: 'market' },
+    });
+    expect(liquidation.liquidationDetails?.liquidatedUser).toBeUndefined();
+  });
+
+  it('rejects absent ADL and malformed liquidation details on both wire shapes', () => {
+    const { adl: _adl, ...missingAdl } = baseFill;
+    for (const [schema, fill] of [
+      [PerpsAccountFillSchema, { ...missingAdl, hash: '0x' }],
+      [PerpsAccountFillUpdateSchema, compactFill],
+    ] as const) {
+      expect(schema.safeParse(fill).success).toBe(false);
+      for (const details of [
+        { method: 'backstop' },
+        { mark: '100' },
+        { mark: '100', method: 'auction' },
+        { mark: 'NaN', method: 'backstop' },
+      ]) {
+        expect(
+          schema.safeParse({
+            ...fill,
+            adl: false,
+            liquidation_details: details,
+          }).success,
+        ).toBe(false);
+      }
+    }
   });
 });
