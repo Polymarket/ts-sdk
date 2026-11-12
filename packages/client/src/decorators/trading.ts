@@ -373,6 +373,7 @@ export type SecureTradingActions = {
    * Lists open orders placed with this client's credentials across all pages.
    * On a Deposit Wallet, use `listWalletOpenOrders` to include orders placed
    * by the owner and its session keys.
+   * Supply the market condition ID in `market` when filtering by `assetId` or `tokenId`.
    *
    * @throws {@link ListOpenOrdersError}
    * Thrown on failure.

@@ -28,6 +28,7 @@ import type {
   fetchPrices,
   fetchSpread,
   fetchSpreads,
+  ListOpenOrdersRequest,
 } from './index';
 
 describe('public CLOB price read types', () => {
@@ -129,6 +130,29 @@ describe('public CLOB price read types', () => {
     expectTypeOf<
       ReturnType<typeof actions.fetchLastTradePrice>
     >().toEqualTypeOf<Promise<LastTradePrice | null>>();
+  });
+});
+
+describe('open order filter types', () => {
+  it('requires a market only when an asset filter is supplied', () => {
+    expectTypeOf<
+      Record<string, never>
+    >().toMatchTypeOf<ListOpenOrdersRequest>();
+    expectTypeOf<{ market: string }>().toMatchTypeOf<ListOpenOrdersRequest>();
+    expectTypeOf<{
+      assetId: string;
+      market: string;
+    }>().toMatchTypeOf<ListOpenOrdersRequest>();
+    expectTypeOf<{
+      tokenId: string;
+      market: string;
+    }>().toMatchTypeOf<ListOpenOrdersRequest>();
+    expectTypeOf<{
+      assetId: string;
+    }>().not.toMatchTypeOf<ListOpenOrdersRequest>();
+    expectTypeOf<{
+      tokenId: string;
+    }>().not.toMatchTypeOf<ListOpenOrdersRequest>();
   });
 });
 

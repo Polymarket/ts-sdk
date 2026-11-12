@@ -159,6 +159,23 @@ const baseOpenOrder = {
 };
 
 describe('OpenOrderSchema', () => {
+  it('accepts orders without deprecated associated trades', () => {
+    const { associate_trades: _, ...payload } = baseOpenOrder;
+    const order = OpenOrderSchema.parse(payload);
+
+    expect(order.associateTrades).toEqual([]);
+    expect(order.sizeMatched).toBe(baseOpenOrder.size_matched);
+  });
+
+  it('preserves associated trades on legacy responses', () => {
+    const order = OpenOrderSchema.parse({
+      ...baseOpenOrder,
+      associate_trades: ['trade-1'],
+    });
+
+    expect(order.associateTrades).toEqual(['trade-1']);
+  });
+
   it('normalizes epoch seconds timestamps', () => {
     const order: OpenOrder = OpenOrderSchema.parse({
       ...baseOpenOrder,

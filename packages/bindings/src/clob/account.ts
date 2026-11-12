@@ -61,6 +61,7 @@ export type OpenOrder = {
   outcome: string;
   orderType: string;
   status: string;
+  /** @deprecated Use order sizeMatched or account trade records to track fills. May be empty when omitted by the API. */
   associateTrades: string[];
   createdAt: IsoDateTimeString;
   expiresAt?: IsoDateTimeString;
@@ -69,7 +70,7 @@ export type OpenOrder = {
 export const OpenOrderSchema = z
   .object({
     asset_id: ClobAssetIdSchema,
-    associate_trades: z.array(z.string()),
+    associate_trades: z.array(z.string()).default([]),
     created_at: EpochLikeToIsoDateTimeStringSchema,
     expiration: OptionalEpochLikeToIsoDateTimeStringSchema,
     id: z.string(),
