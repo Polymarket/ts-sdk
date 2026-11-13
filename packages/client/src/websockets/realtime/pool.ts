@@ -8,14 +8,19 @@ import type {
   SubscriptionHandle,
 } from '../../actions/subscriptions';
 import { TransportError } from '../../errors';
-import { subscriptionsFor } from './protocol';
+import { type PriceKey, subscriptionsFor } from './protocol';
 import { type PriceListener, PriceSession } from './session';
 import { PolyboltConnection, type PolyboltConnectionOptions } from './socket';
+
+type SocketGroup = {
+  provider: PriceProvider | undefined;
+  providerApiKey: string | undefined;
+};
 
 /** @internal Keeps each filter on exactly one connection until it is removed. */
 export class SocketPool {
   readonly #options: PolyboltConnectionOptions;
-  readonly #sockets = new Map<PriceSession, PriceProvider | undefined>();
+  readonly #sockets = new Map<PriceSession, SocketGroup>();
   readonly #closers = new Set<() => Promise<void>>();
   constructor(options: PolyboltConnectionOptions) {
     this.#options = options;
@@ -56,7 +61,7 @@ export class SocketPool {
       // promise is created and given a handler before any of them is awaited.
       const pending = subscriptions.map((subscription) => {
         if (closed) return Promise.resolve();
-        const socket = this.#place(subscription.key, subscription.provider);
+        const socket = this.#place(subscription);
         const listener: PriceListener = {
           subscribed(confirmation) {
             if (closed || !('onSubscribed' in spec)) return;
@@ -121,19 +126,28 @@ export class SocketPool {
     };
   }
 
-  #place(key: string, provider: PriceProvider | undefined): PriceSession {
-    for (const socket of this.#sockets.keys()) {
+  #place({ key, provider, providerApiKey }: PriceKey): PriceSession {
+    // A connection authenticates with one provider API key, so a filter is
+    // shared only within the same key group.
+    for (const [socket, group] of this.#sockets) {
       if (socket.closed) this.#sockets.delete(socket);
-      else if (socket.has(key)) return socket;
+      else if (group.providerApiKey === providerApiKey && socket.has(key))
+        return socket;
     }
     // Different pins can collapse to one server key or produce indistinguishable
     // fallback streams. Keep each connection's requested-provider group fixed,
     // including while idle and across reconnects.
-    for (const [socket, requestedProvider] of this.#sockets)
-      if (requestedProvider === provider && socket.size < socket.keyTarget)
+    for (const [socket, group] of this.#sockets)
+      if (
+        group.provider === provider &&
+        group.providerApiKey === providerApiKey &&
+        socket.size < socket.keyTarget
+      )
         return socket;
-    const socket = new PriceSession(new PolyboltConnection(this.#options));
-    this.#sockets.set(socket, provider);
+    const socket = new PriceSession(
+      new PolyboltConnection({ ...this.#options, provider, providerApiKey }),
+    );
+    this.#sockets.set(socket, { provider, providerApiKey });
     return socket;
   }
 

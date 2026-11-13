@@ -8,6 +8,7 @@ export type PriceKey =
       topic: 'prices.crypto';
       symbol: string;
       provider?: PriceProvider;
+      providerApiKey?: string;
     }
   | {
       key: string;
@@ -15,17 +16,19 @@ export type PriceKey =
       symbol: string;
       windowSeconds: 60;
       provider?: PriceProvider;
+      providerApiKey?: string;
     }
   | {
       key: string;
       topic: 'prices.equity';
       symbol: string;
       provider?: PriceProvider;
+      providerApiKey?: string;
     };
 
 export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
   const symbols = 'symbol' in spec ? [spec.symbol.toLowerCase()] : spec.symbols;
-  const { provider } = spec;
+  const { provider, providerApiKey } = spec;
   return symbols.map((symbol) => {
     if (
       spec.topic === 'prices.crypto.twap' ||
@@ -37,6 +40,7 @@ export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
         symbol,
         windowSeconds: 60,
         provider,
+        providerApiKey,
       };
     }
     return {
@@ -44,6 +48,7 @@ export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
       topic: spec.topic,
       symbol,
       provider,
+      providerApiKey,
     };
   });
 }

@@ -28,6 +28,7 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
     provider: z.enum(PriceProvider).optional(),
+    providerApiKey: z.string().optional(),
     onSubscribed: z
       .custom<
         (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
@@ -38,6 +39,7 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(CryptoSymbolSchema).min(1),
     provider: z.enum(PriceProvider).optional(),
+    providerApiKey: z.string().optional(),
     onSubscribed: z
       .custom<
         (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
@@ -49,6 +51,7 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
     provider: z.enum(PriceProvider).optional(),
+    providerApiKey: z.string().optional(),
     onSubscribed: z
       .custom<
         (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
@@ -59,6 +62,7 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
     topic: z.literal('prices.equity.twap'),
     symbol: SymbolSchema,
     provider: z.enum(PriceProvider).optional(),
+    providerApiKey: z.string().optional(),
     onSubscribed: z
       .custom<
         (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
