@@ -14,6 +14,7 @@ export type RealtimeWebSocketManagerOptions = {
   url: string;
   headers?: Record<string, string>;
   credentials: ApiKeyCreds;
+  chainlinkApiKey?: string;
 };
 
 /** @internal Manages authenticated realtime prices across shared connections. */

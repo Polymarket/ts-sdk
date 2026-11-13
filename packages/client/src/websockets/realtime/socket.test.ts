@@ -38,6 +38,7 @@ class TestWebSocket extends EventTarget {
   ) => string | undefined = () => undefined;
   readyState = 0;
   readonly operations: SentOperation[] = [];
+  readonly frames: Record<string, unknown>[] = [];
 
   constructor() {
     super();
@@ -49,7 +50,9 @@ class TestWebSocket extends EventTarget {
   }
 
   send(data: string): void {
-    const { op, rid, subscriptions } = JSON.parse(data) as SentOperation;
+    const frame = JSON.parse(data) as SentOperation & Record<string, unknown>;
+    const { op, rid, subscriptions } = frame;
+    this.frames.push(frame);
     this.operations.push({ op, rid, subscriptions });
     if (op === 'auth' || op === 'ping') {
       this.receive({ op: op === 'auth' ? 'authed' : 'pong', rid });
@@ -85,6 +88,56 @@ class TestWebSocket extends EventTarget {
     this.dispatchEvent(new Event('close'));
   }
 }
+
+describe('price authentication', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    TestWebSocket.connections = [];
+    TestWebSocket.servedProvider = () => undefined;
+    vi.stubGlobal('WebSocket', TestWebSocket);
+  });
+
+  const credentials = ApiKeyCredsSchema.parse({
+    apiKey: 'test-key',
+    secret: 'test-secret',
+    passphrase: 'test-passphrase',
+  });
+
+  it.each([
+    {
+      chainlinkApiKey: 'cl-key-0001',
+      expected: { chainlink_api_key: 'cl-key-0001' },
+    },
+    { chainlinkApiKey: undefined, expected: {} },
+  ])('authenticates with chainlinkApiKey only when set ($chainlinkApiKey)', async ({
+    chainlinkApiKey,
+    expected,
+  }) => {
+    const pool = new SocketPool({
+      url: 'wss://example.test/prices',
+      credentials,
+      chainlinkApiKey,
+    });
+    const pending = pool.subscribe({ topic: 'prices.equity', symbol: 'aapl' });
+    await vi.advanceTimersByTimeAsync(250);
+    const handle = await pending;
+    const auth = TestWebSocket.connections[0]?.frames.find(
+      (frame) => frame.op === 'auth',
+    );
+    expect(auth).toEqual({
+      op: 'auth',
+      auth: {
+        apiKey: 'test-key',
+        secret: 'test-secret',
+        passphrase: 'test-passphrase',
+      },
+      rid: expect.any(String),
+      ...expected,
+    });
+    await handle.close();
+    await pool.close();
+  });
+});
 
 describe('price channel lifecycle', () => {
   let pool: SocketPool;

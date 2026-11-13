@@ -79,6 +79,8 @@ type PublicContext = {
   /** @internal */
   apiKey?: ApiKeyAuthorization;
   /** @internal */
+  chainlinkApiKey?: string;
+  /** @internal */
   environment: EnvironmentConfig;
   /** @internal */
   onRateLimitUpdate?: RateLimitUpdateListener;
@@ -314,6 +316,7 @@ type PublicClientConfig = {
   fetch?: Fetch;
   environment: EnvironmentConfig;
   apiKey?: ApiKeyAuthorization;
+  chainlinkApiKey?: string;
   onRateLimitUpdate?: RateLimitUpdateListener;
 };
 
@@ -336,6 +339,7 @@ class BasePublicClient<
   constructor(config: PublicClientConfig) {
     super({
       apiKey: config.apiKey,
+      chainlinkApiKey: config.chainlinkApiKey,
       environment: config.environment,
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -546,6 +550,7 @@ class BasePublicClient<
     const client = new BaseSecureClient({
       account: account,
       apiKey: this.context.apiKey,
+      chainlinkApiKey: this.context.chainlinkApiKey,
       credentials,
       environment: this.environment,
       onRateLimitUpdate: this.context.onRateLimitUpdate,
@@ -589,11 +594,13 @@ class BaseSecureClient<
       url: config.environment.realtime.ws,
       headers: config.environment.realtime.headers,
       credentials: config.credentials,
+      chainlinkApiKey: config.chainlinkApiKey,
     });
     super({
       account: config.account,
       credentials: config.credentials,
       apiKey: config.apiKey,
+      chainlinkApiKey: config.chainlinkApiKey,
       environment: config.environment,
       fetch: config.fetch,
       onRateLimitUpdate: config.onRateLimitUpdate,
@@ -837,7 +844,8 @@ class BaseSecureClient<
     const closingSubscriptions = this.closeSubscriptions();
     const shuttingDownPerpsSessions = this.webSockets.perpsSession.shutdown();
     const shuttingDownRfqQuoter = this.webSockets.rfqQuoter.shutdown();
-    const { apiKey, environment, onRateLimitUpdate, fetch } = this.context;
+    const { apiKey, chainlinkApiKey, environment, onRateLimitUpdate, fetch } =
+      this.context;
 
     try {
       await deleteApiKey(this);
@@ -852,6 +860,7 @@ class BaseSecureClient<
 
     const client = new BasePublicClient({
       apiKey,
+      chainlinkApiKey,
       environment,
       onRateLimitUpdate,
       fetch,
@@ -973,6 +982,11 @@ export type PublicClientOptions = {
   apiKey?: ApiKeyAuthorization;
 
   /**
+   * Chainlink API key.
+   */
+  chainlinkApiKey?: string;
+
+  /**
    * Listener invoked whenever a response reports per-signer rate-limit state,
    * as order and cancellation responses do.
    *
@@ -1033,6 +1047,7 @@ export function createPublicClient(
   return new BasePublicClient({
     environment: options.environment ?? production,
     apiKey: options.apiKey,
+    chainlinkApiKey: options.chainlinkApiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
     fetch: options.fetch,
   }).extend(allActions);
@@ -1085,6 +1100,7 @@ export async function createSecureClient(
   const client = createPublicClient({
     environment: options.environment,
     apiKey: options.apiKey,
+    chainlinkApiKey: options.chainlinkApiKey,
     onRateLimitUpdate: options.onRateLimitUpdate,
     fetch: options.fetch,
   });

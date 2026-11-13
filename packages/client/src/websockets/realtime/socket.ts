@@ -38,6 +38,7 @@ export type PolyboltConnectionOptions = {
   url: string;
   headers?: Record<string, string>;
   credentials: ApiKeyCreds;
+  chainlinkApiKey?: string;
 };
 
 /** @internal Adapts price operations and events to the PolyBolt wire protocol. */
@@ -81,8 +82,15 @@ export class PolyboltConnection implements PriceSessionConnection {
 
   async authorize(): Promise<void> {
     const { key, secret, passphrase } = this.#options.credentials;
+    const { chainlinkApiKey } = this.#options;
     await this.#request(
-      { op: 'auth', auth: { apiKey: key, secret, passphrase } },
+      {
+        op: 'auth',
+        auth: { apiKey: key, secret, passphrase },
+        ...(chainlinkApiKey === undefined
+          ? {}
+          : { chainlink_api_key: chainlinkApiKey }),
+      },
       PolyboltAckOp.Authed,
       [],
     );
