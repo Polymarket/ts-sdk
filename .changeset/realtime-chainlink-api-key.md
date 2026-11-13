@@ -1,4 +1,5 @@
 ---
+'@polymarket/bindings': minor
 '@polymarket/client': minor
 ---
 
