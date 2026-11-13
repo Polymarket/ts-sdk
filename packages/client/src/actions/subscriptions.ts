@@ -356,6 +356,8 @@ export type CryptoPriceSubscription = {
   symbols: readonly string[];
   /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
   provider?: PriceProvider;
+  /** Chainlink API key. */
+  chainlinkApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -375,6 +377,8 @@ export type CryptoTwapPriceSubscription = {
   symbols: readonly string[];
   /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
   provider?: PriceProvider;
+  /** Chainlink API key. */
+  chainlinkApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -391,6 +395,8 @@ export type EquityPriceSubscription = {
   types?: readonly ('subscribe' | 'update')[];
   /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
   provider?: PriceProvider;
+  /** Chainlink API key. */
+  chainlinkApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -410,6 +416,8 @@ export type EquityTwapPriceSubscription = {
   symbol: string;
   /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
   provider?: PriceProvider;
+  /** Chainlink API key. */
+  chainlinkApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise

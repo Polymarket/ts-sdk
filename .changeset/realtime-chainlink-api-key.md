@@ -3,4 +3,4 @@
 '@polymarket/client': minor
 ---
 
-Add the `chainlinkApiKey` client option.
+Add the `chainlinkApiKey` price subscription option.

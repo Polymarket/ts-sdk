@@ -1,6 +1,7 @@
 import { ApiKeyCredsSchema } from '@polymarket/bindings/clob';
 import {
   KnownPriceSource,
+  type PolyboltSubscription,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -103,28 +104,38 @@ describe('price authentication', () => {
     passphrase: 'test-passphrase',
   });
 
-  it.each([
-    {
-      chainlinkApiKey: 'cl-key-0001',
-      expected: { chainlink_api_key: 'cl-key-0001' },
-    },
-    { chainlinkApiKey: undefined, expected: {} },
-  ])('authenticates with chainlinkApiKey only when set ($chainlinkApiKey)', async ({
-    chainlinkApiKey,
-    expected,
-  }) => {
+  it('authenticates each connection with its subscriptions chainlinkApiKey', async () => {
     const pool = new SocketPool({
       url: 'wss://example.test/prices',
       credentials,
-      chainlinkApiKey,
     });
-    const pending = pool.subscribe({ topic: 'prices.equity', symbol: 'aapl' });
+    const pending = Promise.all([
+      pool.subscribe({ topic: 'prices.equity', symbol: 'aapl' }),
+      pool.subscribe({
+        topic: 'prices.equity',
+        symbol: 'nvda',
+        provider: PriceProvider.Chainlink,
+        chainlinkApiKey: 'cl-key-0001',
+      }),
+      pool.subscribe({
+        topic: 'prices.equity',
+        symbol: 'msft',
+        provider: PriceProvider.Chainlink,
+        chainlinkApiKey: 'cl-key-0001',
+      }),
+    ]);
     await vi.advanceTimersByTimeAsync(250);
-    const handle = await pending;
-    const auth = TestWebSocket.connections[0]?.frames.find(
-      (frame) => frame.op === 'auth',
-    );
-    expect(auth).toEqual({
+    const handles = await pending;
+    const sent = TestWebSocket.connections.map((connection) => ({
+      auth: connection.frames.find((frame) => frame.op === 'auth'),
+      symbols: connection.frames
+        .filter((frame) => frame.op === 'subscribe')
+        .flatMap((frame) => frame.subscriptions as PolyboltSubscription[])
+        .map((subscription) =>
+          'symbol' in subscription.filter ? subscription.filter.symbol : '',
+        ),
+    }));
+    const auth = {
       op: 'auth',
       auth: {
         apiKey: 'test-key',
@@ -132,9 +143,22 @@ describe('price authentication', () => {
         passphrase: 'test-passphrase',
       },
       rid: expect.any(String),
-      ...expected,
-    });
-    await handle.close();
+    };
+    expect(sent).toEqual([
+      { auth, symbols: ['aapl'] },
+      {
+        auth: { ...auth, chainlink_api_key: 'cl-key-0001' },
+        symbols: ['nvda', 'msft'],
+      },
+    ]);
+    expect(
+      JSON.stringify(
+        TestWebSocket.connections[1]?.frames.filter(
+          (frame) => frame.op === 'subscribe',
+        ),
+      ),
+    ).not.toContain('cl-key-0001');
+    await Promise.all(handles.map((handle) => handle.close()));
     await pool.close();
   });
 });
