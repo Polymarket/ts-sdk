@@ -127,14 +127,16 @@ export class SocketPool {
   }
 
   #place({ key, provider, chainlinkApiKey }: PriceKey): PriceSession {
-    for (const socket of this.#sockets.keys()) {
+    // A connection authenticates with one Chainlink API key, so a filter is
+    // shared only within the same key group.
+    for (const [socket, group] of this.#sockets) {
       if (socket.closed) this.#sockets.delete(socket);
-      else if (socket.has(key)) return socket;
+      else if (group.chainlinkApiKey === chainlinkApiKey && socket.has(key))
+        return socket;
     }
     // Different pins can collapse to one server key or produce indistinguishable
     // fallback streams. Keep each connection's requested-provider group fixed,
-    // including while idle and across reconnects. A connection authenticates
-    // with one Chainlink API key, so the key is part of the group.
+    // including while idle and across reconnects.
     for (const [socket, group] of this.#sockets)
       if (
         group.provider === provider &&

@@ -126,6 +126,15 @@ describe('price authentication', () => {
     ]);
     await vi.advanceTimersByTimeAsync(250);
     const handles = await pending;
+    // An accepted filter is not shared across Chainlink API keys.
+    const rekeyed = pool.subscribe({
+      topic: 'prices.equity',
+      symbol: 'nvda',
+      provider: PriceProvider.Chainlink,
+      chainlinkApiKey: 'cl-key-0002',
+    });
+    await vi.advanceTimersByTimeAsync(250);
+    handles.push(await rekeyed);
     const sent = TestWebSocket.connections.map((connection) => ({
       auth: connection.frames.find((frame) => frame.op === 'auth'),
       symbols: connection.frames
@@ -149,6 +158,10 @@ describe('price authentication', () => {
       {
         auth: { ...auth, chainlink_api_key: 'cl-key-0001' },
         symbols: ['nvda', 'msft'],
+      },
+      {
+        auth: { ...auth, chainlink_api_key: 'cl-key-0002' },
+        symbols: ['nvda'],
       },
     ]);
     expect(
