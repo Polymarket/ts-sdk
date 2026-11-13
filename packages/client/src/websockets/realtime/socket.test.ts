@@ -104,7 +104,7 @@ describe('price authentication', () => {
     passphrase: 'test-passphrase',
   });
 
-  it('authenticates each connection with its subscriptions chainlinkApiKey', async () => {
+  it('authenticates each connection with its subscriptions Chainlink providerApiKey', async () => {
     const pool = new SocketPool({
       url: 'wss://example.test/prices',
       credentials,
@@ -115,26 +115,35 @@ describe('price authentication', () => {
         topic: 'prices.equity',
         symbol: 'nvda',
         provider: PriceProvider.Chainlink,
-        chainlinkApiKey: 'cl-key-0001',
+        providerApiKey: 'cl-key-0001',
       }),
       pool.subscribe({
         topic: 'prices.equity',
         symbol: 'msft',
         provider: PriceProvider.Chainlink,
-        chainlinkApiKey: 'cl-key-0001',
+        providerApiKey: 'cl-key-0001',
       }),
     ]);
     await vi.advanceTimersByTimeAsync(250);
     const handles = await pending;
-    // An accepted filter is not shared across Chainlink API keys.
+    // An accepted filter is not shared across provider API keys.
     const rekeyed = pool.subscribe({
       topic: 'prices.equity',
       symbol: 'nvda',
       provider: PriceProvider.Chainlink,
-      chainlinkApiKey: 'cl-key-0002',
+      providerApiKey: 'cl-key-0002',
     });
     await vi.advanceTimersByTimeAsync(250);
     handles.push(await rekeyed);
+    // Only Chainlink subscriptions send the key.
+    const pyth = pool.subscribe({
+      topic: 'prices.equity',
+      symbol: 'tsla',
+      provider: PriceProvider.Pyth,
+      providerApiKey: 'pyth-key-0001',
+    });
+    await vi.advanceTimersByTimeAsync(250);
+    handles.push(await pyth);
     const sent = TestWebSocket.connections.map((connection) => ({
       auth: connection.frames.find((frame) => frame.op === 'auth'),
       symbols: connection.frames
@@ -163,6 +172,7 @@ describe('price authentication', () => {
         auth: { ...auth, chainlink_api_key: 'cl-key-0002' },
         symbols: ['nvda'],
       },
+      { auth, symbols: ['tsla'] },
     ]);
     expect(
       JSON.stringify(

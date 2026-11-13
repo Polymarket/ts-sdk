@@ -5,6 +5,7 @@ import {
   PolyboltChannel,
   PolyboltEnvelopeSchema,
   type PolyboltSubscription,
+  PriceProvider,
   parsePolyboltEvent,
 } from '@polymarket/bindings/subscriptions';
 import { setNonBlockingTimeout } from '@polymarket/types';
@@ -38,7 +39,8 @@ export type PolyboltConnectionOptions = {
   url: string;
   headers?: Record<string, string>;
   credentials: ApiKeyCreds;
-  chainlinkApiKey?: string;
+  provider?: PriceProvider;
+  providerApiKey?: string;
 };
 
 /** @internal Adapts price operations and events to the PolyBolt wire protocol. */
@@ -82,14 +84,14 @@ export class PolyboltConnection implements PriceSessionConnection {
 
   async authorize(): Promise<void> {
     const { key, secret, passphrase } = this.#options.credentials;
-    const { chainlinkApiKey } = this.#options;
+    const { provider, providerApiKey } = this.#options;
     await this.#request(
       {
         op: 'auth',
         auth: { apiKey: key, secret, passphrase },
-        ...(chainlinkApiKey === undefined
-          ? {}
-          : { chainlink_api_key: chainlinkApiKey }),
+        ...(provider === PriceProvider.Chainlink && providerApiKey !== undefined
+          ? { chainlink_api_key: providerApiKey }
+          : {}),
       },
       PolyboltAckOp.Authed,
       [],

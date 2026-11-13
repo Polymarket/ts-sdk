@@ -14,7 +14,7 @@ import { PolyboltConnection, type PolyboltConnectionOptions } from './socket';
 
 type SocketGroup = {
   provider: PriceProvider | undefined;
-  chainlinkApiKey: string | undefined;
+  providerApiKey: string | undefined;
 };
 
 /** @internal Keeps each filter on exactly one connection until it is removed. */
@@ -126,12 +126,12 @@ export class SocketPool {
     };
   }
 
-  #place({ key, provider, chainlinkApiKey }: PriceKey): PriceSession {
-    // A connection authenticates with one Chainlink API key, so a filter is
+  #place({ key, provider, providerApiKey }: PriceKey): PriceSession {
+    // A connection authenticates with one provider API key, so a filter is
     // shared only within the same key group.
     for (const [socket, group] of this.#sockets) {
       if (socket.closed) this.#sockets.delete(socket);
-      else if (group.chainlinkApiKey === chainlinkApiKey && socket.has(key))
+      else if (group.providerApiKey === providerApiKey && socket.has(key))
         return socket;
     }
     // Different pins can collapse to one server key or produce indistinguishable
@@ -140,14 +140,14 @@ export class SocketPool {
     for (const [socket, group] of this.#sockets)
       if (
         group.provider === provider &&
-        group.chainlinkApiKey === chainlinkApiKey &&
+        group.providerApiKey === providerApiKey &&
         socket.size < socket.keyTarget
       )
         return socket;
     const socket = new PriceSession(
-      new PolyboltConnection({ ...this.#options, chainlinkApiKey }),
+      new PolyboltConnection({ ...this.#options, provider, providerApiKey }),
     );
-    this.#sockets.set(socket, { provider, chainlinkApiKey });
+    this.#sockets.set(socket, { provider, providerApiKey });
     return socket;
   }
 

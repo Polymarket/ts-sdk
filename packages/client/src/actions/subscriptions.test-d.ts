@@ -163,7 +163,7 @@ describe('price subscription contracts', () => {
       topic: 'prices.crypto.twap';
       symbols: readonly string[];
       provider?: PriceProvider;
-      chainlinkApiKey?: string;
+      providerApiKey?: string;
       onSubscribed?: (
         confirmation: PriceSubscriptionConfirmation,
       ) => void | Promise<void>;
@@ -255,7 +255,7 @@ describe('price subscription contracts', () => {
       topic: 'prices.equity.twap';
       symbol: string;
       provider?: PriceProvider;
-      chainlinkApiKey?: string;
+      providerApiKey?: string;
       onSubscribed?: (
         confirmation: PriceSubscriptionConfirmation,
       ) => void | Promise<void>;
