@@ -1,5 +1,5 @@
 ---
-"@polymarket/client": patch
+"@polymarket/client": minor
 "@polymarket/bindings": patch
 ---
 
