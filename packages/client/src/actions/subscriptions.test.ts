@@ -60,7 +60,7 @@ describe('price subscription input', () => {
         ...spec,
         provider,
         providerApiKey: 'key',
-      } as never);
+      });
       expect(subscriptionsFor(ignored)[0]?.apiKey).toBeUndefined();
     }
   });

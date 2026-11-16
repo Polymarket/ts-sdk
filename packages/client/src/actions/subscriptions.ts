@@ -344,30 +344,6 @@ export type PriceSubscriptionConfirmation = {
 };
 
 /**
- * Requested price vendor, discriminated by `provider`. Omit the provider to
- * follow the default; an unavailable pin may fall back. `providerApiKey` is accepted
- * only with `provider: PriceProvider.Chainlink`.
- */
-export type PriceProviderSelection =
-  | {
-      /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
-      provider?: Exclude<PriceProvider, PriceProvider.Chainlink>;
-      providerApiKey?: never;
-    }
-  | {
-      /** Requested vendor. An unavailable pin may fall back. */
-      provider: PriceProvider.Chainlink;
-      /** Chainlink API key sent when authenticating the connection that serves this subscription. */
-      providerApiKey?: string;
-    };
-
-type WithPriceProvider<Spec> = PriceProviderSelection extends infer Selection
-  ? Selection extends unknown
-    ? Prettify<Spec & Selection>
-    : never
-  : never;
-
-/**
  * Symbol-filtered cryptocurrency updates and recent history. Requires a secure
  * client and canonical lowercase USD pairs such as `btcusd`.
  * Slash-separated symbols and USDT pairs are rejected.
@@ -375,9 +351,13 @@ type WithPriceProvider<Spec> = PriceProviderSelection extends infer Selection
  * symbols. Omit the provider to follow the default; check the acknowledgement
  * provider and payload source because an unavailable pin may fall back.
  */
-export type CryptoPriceSubscription = WithPriceProvider<{
+export type CryptoPriceSubscription = {
   topic: 'prices.crypto';
   symbols: readonly string[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /** Chainlink API key. Sent only when `provider` is `PriceProvider.Chainlink`; ignored otherwise. */
+  providerApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -386,15 +366,19 @@ export type CryptoPriceSubscription = WithPriceProvider<{
   onSubscribed?: (
     confirmation: PriceSubscriptionConfirmation,
   ) => void | Promise<void>;
-}>;
+};
 /**
  * 60-second time-weighted prices and recent history. Requires a secure client
  * and canonical lowercase USD pairs such as `btcusd`. The window is fixed;
  * returned events include `windowSeconds: 60` as metadata.
  */
-export type CryptoTwapPriceSubscription = WithPriceProvider<{
+export type CryptoTwapPriceSubscription = {
   topic: 'prices.crypto.twap';
   symbols: readonly string[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /** Chainlink API key. Sent only when `provider` is `PriceProvider.Chainlink`; ignored otherwise. */
+  providerApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -403,12 +387,16 @@ export type CryptoTwapPriceSubscription = WithPriceProvider<{
   onSubscribed?: (
     confirmation: PriceSubscriptionConfirmation,
   ) => void | Promise<void>;
-}>;
+};
 /** Equity updates and recent history. Requires a secure client. */
-export type EquityPriceSubscription = WithPriceProvider<{
+export type EquityPriceSubscription = {
   topic: 'prices.equity';
   symbol: string;
   types?: readonly ('subscribe' | 'update')[];
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /** Chainlink API key. Sent only when `provider` is `PriceProvider.Chainlink`; ignored otherwise. */
+  providerApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -417,15 +405,19 @@ export type EquityPriceSubscription = WithPriceProvider<{
   onSubscribed?: (
     confirmation: PriceSubscriptionConfirmation,
   ) => void | Promise<void>;
-}>;
+};
 /**
  * 60-second time-weighted equity prices and recent history. Requires a secure
  * client. Symbols such as `eurusd` and `usdjpy` are case-insensitive; prices
  * use the symbol's quote currency. Returned events include `windowSeconds: 60`.
  */
-export type EquityTwapPriceSubscription = WithPriceProvider<{
+export type EquityTwapPriceSubscription = {
   topic: 'prices.equity.twap';
   symbol: string;
+  /** Requested vendor. Omit to follow the default; an unavailable pin may fall back. */
+  provider?: PriceProvider;
+  /** Chainlink API key. Sent only when `provider` is `PriceProvider.Chainlink`; ignored otherwise. */
+  providerApiKey?: string;
   /**
    * Called once per symbol on acceptance and every reconnect, or immediately
    * when joining an accepted subscription. A thrown error or rejected promise
@@ -434,7 +426,7 @@ export type EquityTwapPriceSubscription = WithPriceProvider<{
   onSubscribed?: (
     confirmation: PriceSubscriptionConfirmation,
   ) => void | Promise<void>;
-}>;
+};
 export type PriceSubscription =
   | CryptoPriceSubscription
   | CryptoTwapPriceSubscription

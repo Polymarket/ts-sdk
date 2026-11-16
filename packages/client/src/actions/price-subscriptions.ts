@@ -67,7 +67,5 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
 export function parsePriceSubscription(
   spec: PriceSubscription,
 ): PriceSubscription {
-  // The exported types restrict providerApiKey to Chainlink; at runtime it is
-  // optional everywhere and ignored for other providers.
-  return parseUserInput(spec, PriceSubscriptionSchema) as PriceSubscription;
+  return parseUserInput(spec, PriceSubscriptionSchema);
 }
