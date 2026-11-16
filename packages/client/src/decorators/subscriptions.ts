@@ -36,6 +36,7 @@ export type {
   EquityTwapPriceEvent,
   EquityTwapPriceSnapshotEvent,
   EquityTwapPriceSubscription,
+  PriceProviderSelection,
   PriceSource,
   PriceSubscription,
   PriceSubscriptionConfirmation,

@@ -135,13 +135,13 @@ describe('price authentication', () => {
     });
     await vi.advanceTimersByTimeAsync(250);
     handles.push(await rekeyed);
-    // Only Chainlink subscriptions send the key.
+    // Other providers never send a key, even if one slips past the types.
     const pyth = pool.subscribe({
       topic: 'prices.equity',
       symbol: 'tsla',
       provider: PriceProvider.Pyth,
       providerApiKey: 'pyth-key-0001',
-    });
+    } as never);
     await vi.advanceTimersByTimeAsync(250);
     handles.push(await pyth);
     const sent = TestWebSocket.connections.map((connection) => ({
@@ -226,7 +226,10 @@ describe('price channel lifecycle', () => {
     topic,
     channel,
   }) => {
-    const first = await subscribe({ topic, symbol: 'usdjpy' });
+    const first = await subscribe({
+      topic,
+      symbol: 'usdjpy',
+    } as PriceSubscription);
     const iterator = first[Symbol.asyncIterator]();
     const socket = TestWebSocket.connections[0];
     const point = {
@@ -253,7 +256,10 @@ describe('price channel lifecycle', () => {
       type: 'subscribe',
       payload: { marketStatus: 'closed' },
     });
-    const second = await subscribe({ topic, symbol: 'usdjpy' });
+    const second = await subscribe({
+      topic,
+      symbol: 'usdjpy',
+    } as PriceSubscription);
     expect((await second[Symbol.asyncIterator]().next()).value).toMatchObject({
       type: 'subscribe',
       payload: {
@@ -295,7 +301,10 @@ describe('price channel lifecycle', () => {
           receivedAt: 999999,
           isCarriedForward: true,
         });
-      const joined = await subscribe({ topic, symbol: 'usdjpy' });
+      const joined = await subscribe({
+        topic,
+        symbol: 'usdjpy',
+      } as PriceSubscription);
       expect((await joined[Symbol.asyncIterator]().next()).value).toMatchObject(
         {
           type: 'subscribe',
@@ -334,7 +343,10 @@ describe('price channel lifecycle', () => {
         expect((await next).value).toMatchObject({
           payload: { marketStatus: status, timestamp: point.timestamp - 1 },
         });
-        const joined = await subscribe({ topic, symbol: 'usdjpy' });
+        const joined = await subscribe({
+          topic,
+          symbol: 'usdjpy',
+        } as PriceSubscription);
         // An older unstated frame must not clear the last stated status.
         expect(
           (await joined[Symbol.asyncIterator]().next()).value,

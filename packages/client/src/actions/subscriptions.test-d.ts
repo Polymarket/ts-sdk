@@ -119,6 +119,43 @@ describe('price subscription contracts', () => {
           ) => void | Promise<void>)
         | undefined
       >();
+    expectTypeOf<ClientExports.PriceProviderSelection>().toEqualTypeOf<
+      | {
+          provider?: PriceProvider.Binance | PriceProvider.Pyth;
+          providerApiKey?: never;
+        }
+      | { provider: PriceProvider.Chainlink; providerApiKey?: string }
+    >();
+    void secureClient.subscribe([
+      {
+        topic: 'prices.equity',
+        symbol: 'aapl',
+        provider: PriceProvider.Chainlink,
+        providerApiKey: 'chainlink-key',
+      },
+      {
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+        provider: PriceProvider.Chainlink,
+      },
+    ]);
+    void secureClient.subscribe([
+      {
+        topic: 'prices.equity',
+        symbol: 'aapl',
+        provider: PriceProvider.Pyth,
+        // @ts-expect-error Only Chainlink subscriptions accept an API key.
+        providerApiKey: 'pyth-key',
+      },
+    ]);
+    void secureClient.subscribe([
+      // @ts-expect-error An API key requires an explicit Chainlink pin.
+      {
+        topic: 'prices.crypto',
+        symbols: ['btcusd'],
+        providerApiKey: 'chainlink-key',
+      },
+    ]);
     void secureClient.subscribe([
       {
         topic: 'prices.crypto',
@@ -159,15 +196,26 @@ describe('price subscription contracts', () => {
   });
 
   it('infers each price topic and only the requested mixed topics through the client', async () => {
-    expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<{
-      topic: 'prices.crypto.twap';
-      symbols: readonly string[];
-      provider?: PriceProvider;
-      providerApiKey?: string;
-      onSubscribed?: (
-        confirmation: PriceSubscriptionConfirmation,
-      ) => void | Promise<void>;
-    }>();
+    expectTypeOf<RootCryptoTwapPriceSubscription>().toEqualTypeOf<
+      | {
+          topic: 'prices.crypto.twap';
+          symbols: readonly string[];
+          provider?: PriceProvider.Binance | PriceProvider.Pyth;
+          providerApiKey?: never;
+          onSubscribed?: (
+            confirmation: PriceSubscriptionConfirmation,
+          ) => void | Promise<void>;
+        }
+      | {
+          topic: 'prices.crypto.twap';
+          symbols: readonly string[];
+          provider: PriceProvider.Chainlink;
+          providerApiKey?: string;
+          onSubscribed?: (
+            confirmation: PriceSubscriptionConfirmation,
+          ) => void | Promise<void>;
+        }
+    >();
     expectTypeOf<RootCryptoTwapPriceEvent>().toEqualTypeOf<CryptoTwapPriceEvent>();
     const crypto = secureClient.subscribe([
       {
@@ -251,15 +299,26 @@ describe('price subscription contracts', () => {
   });
 
   it('exports equity TWAP types only for secure subscriptions', () => {
-    expectTypeOf<EquityTwapPriceSubscription>().toEqualTypeOf<{
-      topic: 'prices.equity.twap';
-      symbol: string;
-      provider?: PriceProvider;
-      providerApiKey?: string;
-      onSubscribed?: (
-        confirmation: PriceSubscriptionConfirmation,
-      ) => void | Promise<void>;
-    }>();
+    expectTypeOf<EquityTwapPriceSubscription>().toEqualTypeOf<
+      | {
+          topic: 'prices.equity.twap';
+          symbol: string;
+          provider?: PriceProvider.Binance | PriceProvider.Pyth;
+          providerApiKey?: never;
+          onSubscribed?: (
+            confirmation: PriceSubscriptionConfirmation,
+          ) => void | Promise<void>;
+        }
+      | {
+          topic: 'prices.equity.twap';
+          symbol: string;
+          provider: PriceProvider.Chainlink;
+          providerApiKey?: string;
+          onSubscribed?: (
+            confirmation: PriceSubscriptionConfirmation,
+          ) => void | Promise<void>;
+        }
+    >();
     expectTypeOf<RootEquityTwapPriceEvent>().toEqualTypeOf<EquityTwapPriceEvent>();
     expectTypeOf<RootEquityTwapPriceSnapshotEvent>().toEqualTypeOf<EquityTwapPriceSnapshotEvent>();
     expectTypeOf<

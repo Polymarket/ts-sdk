@@ -23,51 +23,51 @@ enum PriceEventType {
   Update = 'update',
   Subscribe = 'subscribe',
 }
+const OnSubscribedSchema = z
+  .custom<
+    (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+  >((value) => typeof value === 'function')
+  .optional();
+
+/**
+ * Discriminates a price topic by `provider`. Only the Chainlink branch accepts
+ * `providerApiKey`; strict objects reject it for every other provider.
+ */
+function withProvider<const Shape extends z.core.$ZodLooseShape>(shape: Shape) {
+  return z.discriminatedUnion('provider', [
+    z.strictObject({
+      ...shape,
+      provider: z.enum(PriceProvider).exclude(['Chainlink']).optional(),
+    }),
+    z.strictObject({
+      ...shape,
+      provider: z.literal(PriceProvider.Chainlink),
+      providerApiKey: z.string().min(1).optional(),
+    }),
+  ]);
+}
+
 const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
-  z.strictObject({
+  withProvider({
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
-    provider: z.enum(PriceProvider).optional(),
-    providerApiKey: z.string().optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    onSubscribed: OnSubscribedSchema,
   }),
-  z.strictObject({
+  withProvider({
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(CryptoSymbolSchema).min(1),
-    provider: z.enum(PriceProvider).optional(),
-    providerApiKey: z.string().optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    onSubscribed: OnSubscribedSchema,
   }),
-  z.strictObject({
+  withProvider({
     topic: z.literal('prices.equity'),
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
-    provider: z.enum(PriceProvider).optional(),
-    providerApiKey: z.string().optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    onSubscribed: OnSubscribedSchema,
   }),
-  z.strictObject({
+  withProvider({
     topic: z.literal('prices.equity.twap'),
     symbol: SymbolSchema,
-    provider: z.enum(PriceProvider).optional(),
-    providerApiKey: z.string().optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    onSubscribed: OnSubscribedSchema,
   }),
 ]);
 

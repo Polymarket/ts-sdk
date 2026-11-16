@@ -3,4 +3,4 @@
 '@polymarket/client': minor
 ---
 
-Add the `providerApiKey` price subscription option.
+Add a `providerApiKey` option to price subscriptions pinned to `provider: PriceProvider.Chainlink`.
