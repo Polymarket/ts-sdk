@@ -16,6 +16,7 @@ export enum RealtimeKnownErrorCode {
   AuthExpired = 'auth_expired',
   AuthAttempts = 'auth_attempts',
   AuthInvalid = 'auth_invalid',
+  ChainlinkKeyRequired = 'chainlink_key_required',
 }
 
 /**
