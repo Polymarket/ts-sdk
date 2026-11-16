@@ -188,7 +188,7 @@ describe('Wallet-wide orders', { timeout: 600_000 }, () => {
 
       // Credential-scoped listing excludes the session signer's order.
       const { items: credentialScoped } = await owner
-        .listOpenOrders({ assetId })
+        .listOpenOrders({ assetId, market: expectPresent(market.conditionId) })
         .firstPage();
       expect(
         credentialScoped.some((order) => order.id === sessionOrderId),

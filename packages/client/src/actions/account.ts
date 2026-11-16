@@ -103,24 +103,41 @@ const ListOpenOrdersRequestFieldsSchema = z.object({
 
 const ListOpenOrdersRequestSchema = optionalExchangeAssetRequestSchema(
   ListOpenOrdersRequestFieldsSchema.shape,
-).default({});
+)
+  .refine(
+    (request) =>
+      (request.assetId === undefined && request.tokenId === undefined) ||
+      (request.market !== undefined && request.market.trim().length > 0),
+    {
+      path: ['market'],
+      message: 'market is required when filtering by assetId or tokenId',
+    },
+  )
+  .default({});
 
 export type ListOpenOrdersRequest =
   | {
-      /** Identifier for a CTF token or Polymarket V2 position. */
-      assetId?: string;
+      assetId?: never;
       tokenId?: never;
       cursor?: string;
       id?: string;
       market?: string;
     }
   | {
-      assetId?: never;
-      /** @deprecated Use `assetId`. */
-      tokenId?: string;
+      /** Identifier for a CTF token or Polymarket V2 position. Requires `market`. */
+      assetId: string;
+      tokenId?: never;
       cursor?: string;
       id?: string;
-      market?: string;
+      market: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. Requires `market`. */
+      tokenId: string;
+      cursor?: string;
+      id?: string;
+      market: string;
     };
 export type ListOpenOrdersError =
   | RequestAbortedError
@@ -144,6 +161,7 @@ export const ListOpenOrdersError = makeErrorGuard(
  * Lists open orders placed with this client's credentials across all pages.
  * On a Deposit Wallet, use {@link listWalletOpenOrders} to include orders
  * placed by the owner and its session keys.
+ * Supply the market condition ID in `market` when filtering by `assetId` or `tokenId`.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
