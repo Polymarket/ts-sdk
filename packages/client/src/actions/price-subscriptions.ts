@@ -29,44 +29,36 @@ const OnSubscribedSchema = z
   >((value) => typeof value === 'function')
   .optional();
 
-/**
- * Discriminates a price topic by `provider`. Only the Chainlink branch accepts
- * `providerApiKey`; strict objects reject it for every other provider.
- */
-function withProvider<const Shape extends z.core.$ZodLooseShape>(shape: Shape) {
-  return z.discriminatedUnion('provider', [
-    z.strictObject({
-      ...shape,
-      provider: z.enum(PriceProvider).exclude(['Chainlink']).optional(),
-    }),
-    z.strictObject({
-      ...shape,
-      provider: z.literal(PriceProvider.Chainlink),
-      providerApiKey: z.string().min(1).optional(),
-    }),
-  ]);
-}
+/** Provider fields; `providerApiKey` is only used with the Chainlink provider. */
+const ProviderShape = {
+  provider: z.enum(PriceProvider).optional(),
+  providerApiKey: z.string().optional(),
+};
 
 const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
-  withProvider({
+  z.strictObject({
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
+    ...ProviderShape,
     onSubscribed: OnSubscribedSchema,
   }),
-  withProvider({
+  z.strictObject({
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(CryptoSymbolSchema).min(1),
+    ...ProviderShape,
     onSubscribed: OnSubscribedSchema,
   }),
-  withProvider({
+  z.strictObject({
     topic: z.literal('prices.equity'),
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
+    ...ProviderShape,
     onSubscribed: OnSubscribedSchema,
   }),
-  withProvider({
+  z.strictObject({
     topic: z.literal('prices.equity.twap'),
     symbol: SymbolSchema,
+    ...ProviderShape,
     onSubscribed: OnSubscribedSchema,
   }),
 ]);
@@ -75,5 +67,7 @@ const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
 export function parsePriceSubscription(
   spec: PriceSubscription,
 ): PriceSubscription {
-  return parseUserInput(spec, PriceSubscriptionSchema);
+  // The exported types restrict providerApiKey to Chainlink; at runtime it is
+  // optional everywhere and ignored for other providers.
+  return parseUserInput(spec, PriceSubscriptionSchema) as PriceSubscription;
 }

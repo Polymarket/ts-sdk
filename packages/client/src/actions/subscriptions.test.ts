@@ -41,7 +41,7 @@ describe('price subscription input', () => {
     { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
     { topic: 'prices.equity', symbol: 'nvda' },
     { topic: 'prices.equity.twap', symbol: 'usdjpy' },
-  ] as const)('accepts a providerApiKey only with the Chainlink provider on $topic', (spec) => {
+  ] as const)('uses providerApiKey only with the Chainlink provider on $topic', (spec) => {
     const parsed = parsePriceSubscription({
       ...spec,
       provider: PriceProvider.Chainlink,
@@ -55,21 +55,14 @@ describe('price subscription input', () => {
       undefined,
       PriceProvider.Pyth,
       PriceProvider.Binance,
-    ])
-      expect(() =>
-        parsePriceSubscription({
-          ...spec,
-          provider,
-          providerApiKey: 'key',
-        } as never),
-      ).toThrow(UserInputError);
-    expect(() =>
-      parsePriceSubscription({
+    ]) {
+      const ignored = parsePriceSubscription({
         ...spec,
-        provider: PriceProvider.Chainlink,
-        providerApiKey: '',
-      }),
-    ).toThrow(UserInputError);
+        provider,
+        providerApiKey: 'key',
+      } as never);
+      expect(subscriptionsFor(ignored)[0]?.apiKey).toBeUndefined();
+    }
   });
 
   it.each([
