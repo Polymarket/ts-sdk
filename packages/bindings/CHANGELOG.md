@@ -1,5 +1,11 @@
 # @polymarket/bindings
 
+## 0.18.0
+
+### Minor Changes
+
+- 0a59fc2: Add the optional `providerApiKey` price subscription option, used when `provider` is `PriceProvider.Chainlink`.
+
 ## 0.17.0
 
 ### Minor Changes
