@@ -37,6 +37,35 @@ describe('price subscription input', () => {
   });
 
   it.each([
+    { topic: 'prices.crypto', symbols: ['btcusd'] },
+    { topic: 'prices.crypto.twap', symbols: ['btcusd'] },
+    { topic: 'prices.equity', symbol: 'nvda' },
+    { topic: 'prices.equity.twap', symbol: 'usdjpy' },
+  ] as const)('uses providerApiKey only with the Chainlink provider on $topic', (spec) => {
+    const parsed = parsePriceSubscription({
+      ...spec,
+      provider: PriceProvider.Chainlink,
+      providerApiKey: 'chainlink-key',
+    });
+    expect(subscriptionsFor(parsed)[0]).toMatchObject({
+      provider: PriceProvider.Chainlink,
+      apiKey: 'chainlink-key',
+    });
+    for (const provider of [
+      undefined,
+      PriceProvider.Pyth,
+      PriceProvider.Binance,
+    ]) {
+      const ignored = parsePriceSubscription({
+        ...spec,
+        provider,
+        providerApiKey: 'key',
+      });
+      expect(subscriptionsFor(ignored)[0]?.apiKey).toBeUndefined();
+    }
+  });
+
+  it.each([
     'prices.equity',
     'prices.equity.twap',
   ] as const)('keeps the %s acceptance callback next to the pin', (topic) => {

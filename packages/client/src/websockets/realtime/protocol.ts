@@ -1,4 +1,4 @@
-import type { PriceProvider } from '@polymarket/bindings/subscriptions';
+import { PriceProvider } from '@polymarket/bindings/subscriptions';
 import type { PriceSubscription } from '../../actions/subscriptions';
 
 /** @internal A single canonical price subscription shared by listeners. */
@@ -8,6 +8,7 @@ export type PriceKey =
       topic: 'prices.crypto';
       symbol: string;
       provider?: PriceProvider;
+      apiKey?: string;
     }
   | {
       key: string;
@@ -15,17 +16,21 @@ export type PriceKey =
       symbol: string;
       windowSeconds: 60;
       provider?: PriceProvider;
+      apiKey?: string;
     }
   | {
       key: string;
       topic: 'prices.equity';
       symbol: string;
       provider?: PriceProvider;
+      apiKey?: string;
     };
 
 export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
   const symbols = 'symbol' in spec ? [spec.symbol.toLowerCase()] : spec.symbols;
   const { provider } = spec;
+  const apiKey =
+    spec.provider === PriceProvider.Chainlink ? spec.providerApiKey : undefined;
   return symbols.map((symbol) => {
     if (
       spec.topic === 'prices.crypto.twap' ||
@@ -37,6 +42,7 @@ export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
         symbol,
         windowSeconds: 60,
         provider,
+        apiKey,
       };
     }
     return {
@@ -44,6 +50,7 @@ export function subscriptionsFor(spec: PriceSubscription): PriceKey[] {
       topic: spec.topic,
       symbol,
       provider,
+      apiKey,
     };
   });
 }
