@@ -115,7 +115,7 @@ can override `predictions.rest` and `predictions.headers`. On a secure client,
 `predictions` attaches the session's access token and renews it. On a public
 client, callers supply any headers the endpoint requires.
 
-Prediction POST, PATCH, and DELETE requests are sent once, including when a
+Prediction POST, PUT, PATCH, and DELETE requests are sent once, including when a
 connection drops after dispatch. A secure client replays a request once after an
 `expired_access_token` rejection, because the gateway rejected it before
 forwarding. GET accepts the same per-request `retries` budget.

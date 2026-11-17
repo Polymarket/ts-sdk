@@ -4,7 +4,10 @@ import { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 const root = 'https://offline.invalid/prefix';
 afterEach(() => vi.useRealTimers());
 
-it('re-resolves combined headers once and preserves the exact request on replay', async () => {
+it.each([
+  'post',
+  'put',
+] as const)('re-resolves combined headers once and preserves the exact %s request on replay', async (method) => {
   const params = new URLSearchParams({ original: 'value' });
   const json = { original: 'value' };
   let token = 'before';
@@ -31,7 +34,7 @@ it('re-resolves combined headers once and preserves the exact request on replay'
         : Response.json('accepted');
     },
   });
-  await expect(service.post(`/private?${params}`, { json })).resolves.toBe(
+  await expect(service[method](`/private?${params}`, { json })).resolves.toBe(
     'accepted',
   );
   expect(refreshToken).toHaveBeenCalledTimes(1);
@@ -40,6 +43,7 @@ it('re-resolves combined headers once and preserves the exact request on replay'
     'Bearer after',
   ]);
   for (const request of seen) {
+    expect(request.method).toBe(method.toUpperCase());
     expect(request.url).toBe(`${root}/private?original=value`);
     expect(await request.json()).toEqual({ original: 'value' });
     expect(request.headers.get('x-config')).toBe('configured');

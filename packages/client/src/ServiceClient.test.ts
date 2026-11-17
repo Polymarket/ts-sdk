@@ -222,6 +222,7 @@ describe('ServiceClient', () => {
       ['get', 429],
       ['post', 'network'],
       ['patch', 503],
+      ['put', 'network'],
       ['del', 'network'],
     ] as const)('sends one %s attempt for %s failures', async (method, failure) => {
       const fetch = vi.fn<typeof globalThis.fetch>(async () => {
@@ -239,7 +240,9 @@ describe('ServiceClient', () => {
             ? client.post('/once')
             : method === 'patch'
               ? client.patch('/once')
-              : client.del('/once');
+              : method === 'put'
+                ? client.put('/once')
+                : client.del('/once');
       await expect(result).rejects.toMatchObject({
         name:
           failure === 'network'

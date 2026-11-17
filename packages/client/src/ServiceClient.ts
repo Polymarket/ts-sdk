@@ -31,7 +31,7 @@ import {
 } from './request-options';
 import { parseResponse } from './response';
 
-export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 export type ServiceRequest = {
   signal?: AbortSignal;
@@ -151,6 +151,13 @@ export type ServiceClientPostOptions<T = unknown> =
 
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientPatchOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
+    headers?: HeadersInit;
+    json?: unknown;
+  };
+
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientPutOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
@@ -390,6 +397,24 @@ export class ServiceClient {
   }
 
   /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  put<T = unknown>(
+    path: string,
+    options?: ServiceClientPutOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  put<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPutOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  put(path: string, options: ServiceClientPutOptions): Promise<unknown>;
+  put(path: string, options: ServiceClientPutOptions = {}): Promise<unknown> {
+    return this.#request('PUT', path, options);
+  }
+
+  /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
    */
@@ -423,6 +448,7 @@ export class ServiceClient {
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions
+      | ServiceClientPutOptions
     ) &
       RequestOptions,
   ): Promise<unknown> {
@@ -539,7 +565,8 @@ export class ServiceClient {
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
-      | ServiceClientPostOptions,
+      | ServiceClientPostOptions
+      | ServiceClientPutOptions,
     retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
@@ -621,7 +648,8 @@ export class ServiceClient {
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
-      | ServiceClientPostOptions,
+      | ServiceClientPostOptions
+      | ServiceClientPutOptions,
   ): ServiceRequest {
     return {
       signal: options.signal,

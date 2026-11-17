@@ -110,6 +110,7 @@ export type {
   ServiceClientNonJsonResponseType,
   ServiceClientPatchOptions,
   ServiceClientPostOptions,
+  ServiceClientPutOptions,
   ServiceClientRequestOptions,
   ServiceClientResponse,
   ServiceClientResponseOptions,

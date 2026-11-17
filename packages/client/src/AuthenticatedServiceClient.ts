@@ -18,6 +18,7 @@ import {
   type ServiceClientNonJsonResponseType,
   type ServiceClientPatchOptions,
   type ServiceClientPostOptions,
+  type ServiceClientPutOptions,
   type ServiceClientResponse,
   type ServiceRequest,
   type ServiceRequestMethod,
@@ -122,6 +123,30 @@ export class AuthenticatedServiceClient extends ServiceClient {
   }
 
   /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   */
+  override put<T = unknown>(
+    path: string,
+    options?: ServiceClientPutOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  override put<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPutOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  override put(
+    path: string,
+    options: ServiceClientPutOptions,
+  ): Promise<unknown>;
+  override put(
+    path: string,
+    options: ServiceClientPutOptions = {},
+  ): Promise<unknown> {
+    return this.#dispatch('put', path, options);
+  }
+
+  /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
    */
@@ -147,12 +172,13 @@ export class AuthenticatedServiceClient extends ServiceClient {
   }
 
   #dispatch(
-    method: 'get' | 'post' | 'patch' | 'del',
+    method: 'get' | 'post' | 'patch' | 'put' | 'del',
     path: string,
     options:
       | ServiceClientGetOptions
       | ServiceClientPostOptions
       | ServiceClientPatchOptions
+      | ServiceClientPutOptions
       | ServiceClientDeleteOptions,
   ): Promise<unknown> {
     // Validate retries before resolving headers or renewing the session.
@@ -170,6 +196,7 @@ export class AuthenticatedServiceClient extends ServiceClient {
     if (method === 'get') return client.get(path, controls);
     if (method === 'post') return client.post(path, controls);
     if (method === 'patch') return client.patch(path, controls);
+    if (method === 'put') return client.put(path, controls);
     return client.del(path, controls);
   }
 }
@@ -269,6 +296,7 @@ async function sendAttempt(
       return await client.get(path, { ...options, retries: 0 });
     if (request.method === 'POST') return await client.post(path, options);
     if (request.method === 'PATCH') return await client.patch(path, options);
+    if (request.method === 'PUT') return await client.put(path, options);
     if (request.method === 'DELETE') return await client.del(path, options);
     throw new TransportError('Unsupported authenticated request method.');
   } catch (error) {
