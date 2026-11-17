@@ -232,6 +232,7 @@ export type { ClientCredentials } from './credentials';
 
 const SecureClientInputSchema = AuthenticationInputSchema.extend({
   credentials: ClientCredentialsSchema.optional(),
+  walletSetup: z.boolean().optional(),
   onCredentialsChanged: z
     .custom<CredentialsChanged>((value) => typeof value === 'function')
     .optional(),
@@ -1001,6 +1002,21 @@ export type SecureClientOptions = PublicClientOptions & {
   verificationToken?: string;
   /** Called after adoption of a refreshed token pair. Sync/async failures are ignored; handle persistence failures inside the callback. */
   onCredentialsChanged?: CredentialsChanged;
+  /**
+   * Whether client creation completes wallet setup: wallet discovery, binding
+   * a session that has no wallet, and deploying the default Deposit Wallet.
+   *
+   * Pass `false` to create the client from the session as it is, for example
+   * when the application runs its own onboarding. A new sign-in or migration
+   * then includes `wallet` only when you pass it. For a session without a
+   * wallet, `account.wallet` is the `wallet` you pass, or otherwise the
+   * signer's default Deposit Wallet address, which may not be deployed yet.
+   * Once onboarding completes, create a client from the saved credentials
+   * with wallet setup enabled to bind the wallet.
+   *
+   * @defaultValue true
+   */
+  walletSetup?: boolean;
 } & (
     | {
         /**
@@ -1082,11 +1098,25 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
  * failures reject client creation. Saved bearer credentials are renewed once
  * before the client is returned, and credentials without a wallet are bound to
  * the requested wallet. The returned client always has an account wallet.
+ * Pass `walletSetup: false` to skip wallet discovery, binding and deployment.
  *
  * @example
  * ```ts
  * const secureClient = await createSecureClient({
  *   signer,
+ * });
+ * ```
+ *
+ * @example
+ * ```ts
+ * const credentials = await publicClient.login({ signer });
+ * await saveCredentials(credentials);
+ *
+ * const secureClient = await createSecureClient({
+ *   signer,
+ *   credentials,
+ *   walletSetup: false,
+ *   onCredentialsChanged: saveCredentials,
  * });
  * ```
  *
@@ -1116,6 +1146,7 @@ export async function createSecureClient(
   // Set for sessions issued by this call; restored sessions have no known lifetime.
   let issued: TokenResponse | undefined;
   let bindWallet = false;
+  const walletSetup = params.walletSetup ?? true;
   const restored =
     params.credentials !== undefined && 'accessToken' in params.credentials;
   if (params.credentials !== undefined && 'accessToken' in params.credentials) {
@@ -1126,8 +1157,12 @@ export async function createSecureClient(
         'The saved credentials belong to a different signer.',
       );
     if (claims.wallet === undefined) {
-      wallet = await resolveRequestedWallet(client, options, signerAddress);
-      bindWallet = true;
+      if (walletSetup) {
+        wallet = await resolveRequestedWallet(client, options, signerAddress);
+        bindWallet = true;
+      } else {
+        wallet = params.wallet ?? defaultDepositWallet(client, signerAddress);
+      }
     } else {
       if (
         params.wallet !== undefined &&
@@ -1140,7 +1175,11 @@ export async function createSecureClient(
     }
     account = resolveAccountIdentity(client.environment, signerAddress, wallet);
   } else {
-    wallet = await resolveRequestedWallet(client, options, signerAddress);
+    // Without wallet setup, a new session carries only a wallet the caller names.
+    const requested = walletSetup
+      ? await resolveRequestedWallet(client, options, signerAddress)
+      : params.wallet;
+    wallet = requested ?? defaultDepositWallet(client, signerAddress);
     // Validate supported wallet identity before authentication has any side effects.
     account = resolveAccountIdentity(client.environment, signerAddress, wallet);
     issued =
@@ -1148,12 +1187,12 @@ export async function createSecureClient(
         ? await issueMigratedSession(client, {
             credentials: params.credentials,
             signerAddress,
-            wallet,
+            wallet: requested,
             verificationToken: params.verificationToken,
           })
         : await issueLoginSession(client, {
             signer: options.signer,
-            wallet,
+            wallet: requested,
             nonce: params.nonce,
             verificationToken: params.verificationToken,
           });
@@ -1161,6 +1200,17 @@ export async function createSecureClient(
       accessToken: issued.accessToken,
       refreshToken: issued.refreshToken,
     };
+    // A session issued without a requested wallet may still carry one.
+    const issuedWallet =
+      requested === undefined ? issuedWalletClaim(issued) : undefined;
+    if (issuedWallet !== undefined) {
+      wallet = issuedWallet;
+      account = resolveAccountIdentity(
+        client.environment,
+        signerAddress,
+        wallet,
+      );
+    }
   }
   let secureClient: SecureClient<PublicActions, SecureActions> | undefined;
   let publishCredentialChanges = restored;
@@ -1174,7 +1224,10 @@ export async function createSecureClient(
     return onCredentialsChanged?.(next);
   };
   try {
-    if (issued !== undefined && !issuedFor(issued, signerAddress, wallet))
+    if (
+      issued !== undefined &&
+      !issuedFor(issued, signerAddress, walletSetup ? wallet : params.wallet)
+    )
       throw new UnexpectedResponseError(
         'The issued session does not match the requested signer and wallet.',
       );
@@ -1210,7 +1263,7 @@ export async function createSecureClient(
     secureClient.session.start();
     // The session's wallet decides the account, including a wallet bound elsewhere.
     const sessionAccount = secureClient.account;
-    if (sessionAccount.walletType !== WalletType.EOA) {
+    if (walletSetup && sessionAccount.walletType !== WalletType.EOA) {
       const deployed = await isWalletDeployed(secureClient, {
         wallet: sessionAccount.wallet,
         type: sessionAccount.walletType,
@@ -1258,11 +1311,14 @@ export async function createSecureClient(
   }
 }
 
-/** Checks that a login or migration issued a session for the requested identity. */
+/**
+ * Checks that a login or migration issued a session for the requested signer
+ * and, when one was requested, the requested wallet.
+ */
 function issuedFor(
   issued: TokenResponse,
   signer: EvmAddress,
-  wallet: EvmAddress,
+  wallet: EvmAddress | undefined,
 ): boolean {
   let claims: AccessTokenClaims;
   try {
@@ -1270,10 +1326,29 @@ function issuedFor(
   } catch {
     return false;
   }
-  return (
-    isSameEvmAddress(claims.sub, signer) &&
-    claims.wallet !== undefined &&
-    isSameEvmAddress(claims.wallet, wallet)
+  if (!isSameEvmAddress(claims.sub, signer)) return false;
+  if (wallet === undefined) return true;
+  return claims.wallet !== undefined && isSameEvmAddress(claims.wallet, wallet);
+}
+
+/** Reads the wallet an issued session is bound to, if any. */
+function issuedWalletClaim(issued: TokenResponse): EvmAddress | undefined {
+  try {
+    return accessTokenClaims(issued.accessToken).wallet;
+  } catch {
+    // An unreadable token fails the identity check after construction.
+    return undefined;
+  }
+}
+
+/** Derives the signer's current Deposit Wallet address without network access. */
+function defaultDepositWallet(
+  client: BasePublicClient,
+  signerAddress: EvmAddress,
+): EvmAddress {
+  return deriveBeaconDepositWalletAddress(
+    signerAddress,
+    client.environment.walletDerivation,
   );
 }
 

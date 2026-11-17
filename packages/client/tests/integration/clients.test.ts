@@ -313,6 +313,76 @@ describe('clients', () => {
       ).toEqual([platformKey, null]);
     });
 
+    it('creates a client from a signer-only login without wallet setup, then binds the wallet later', async ({
+      environment,
+      publicClient,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const credentials = await publicClient.login({ signer: randomEoaSigner });
+      const signTypedData = vi.spyOn(randomEoaSigner, 'signTypedData');
+      const changed = vi.fn();
+
+      const onboardingClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        credentials,
+        walletSetup: false,
+        onCredentialsChanged: changed,
+      });
+
+      try {
+        expect(signTypedData).not.toHaveBeenCalled();
+        expect(onboardingClient.account.signer).toBe(signerAddress);
+        expect(onboardingClient.account.walletType).toBe(
+          WalletType.DEPOSIT_WALLET,
+        );
+        // The session stays signer-only and the default wallet is not deployed.
+        expect(
+          walletClaim(onboardingClient.credentials.accessToken),
+        ).toBeUndefined();
+        await expect(isWalletDeployed(onboardingClient)).resolves.toBe(false);
+        expect(changed).toHaveBeenLastCalledWith(onboardingClient.credentials);
+
+        // Once onboarding completes, wallet setup binds the saved session.
+        const boundClient = await createSecureClient({
+          environment,
+          signer: randomEoaSigner,
+          wallet: signerAddress,
+          credentials: onboardingClient.credentials,
+        });
+        expect(signTypedData).not.toHaveBeenCalled();
+        expect(walletClaim(boundClient.credentials.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
+        await boundClient.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        await onboardingClient.endAuthentication().catch(() => undefined);
+      }
+    });
+
+    it('signs in without a wallet when wallet setup is disabled', async ({
+      environment,
+      randomEoaSigner,
+    }) => {
+      const secureClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+
+      try {
+        expect(
+          walletClaim(secureClient.credentials.accessToken),
+        ).toBeUndefined();
+        expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+        await expect(isWalletDeployed(secureClient)).resolves.toBe(false);
+      } finally {
+        await secureClient.endAuthentication();
+      }
+    });
+
     // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.
   });
 
@@ -466,4 +536,11 @@ async function obtainL2Credentials(
     passphrase: string;
   };
   return { key: body.apiKey, secret: body.secret, passphrase: body.passphrase };
+}
+
+function walletClaim(accessToken: string): string | undefined {
+  const [, payload = ''] = accessToken.split('.');
+  const wallet = JSON.parse(Buffer.from(payload, 'base64url').toString())
+    .wallet as string | undefined;
+  return wallet?.toLowerCase();
 }

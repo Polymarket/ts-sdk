@@ -69,6 +69,24 @@ Restoring saved bearer credentials does not hand the existing session to the fac
 
 Saved credentials bound to a wallet keep that wallet. Passing a different `wallet` rejects with `UserInputError`. Saved credentials without a wallet, such as the pair from `publicClient.login({ signer })`, are bound to the requested wallet (or the default Deposit Wallet) through `/v1/auth/upgrade` before the client is returned. Binding needs no new signature and keeps the refresh token, and the new access token reaches `onCredentialsChanged`. A secure client always has an account wallet.
 
+### Skipping wallet setup
+
+Applications that run their own onboarding can pass `walletSetup: false`. Client creation then skips wallet discovery, wallet binding and Deposit Wallet deployment, and uses the session as it is. The option defaults to `true`, because saved credentials do not prove that wallet setup is complete.
+
+```ts
+const credentials = await publicClient.login({ signer, verificationToken });
+await saveCredentials(credentials);
+
+const secureClient = await createSecureClient({
+  signer,
+  credentials,
+  walletSetup: false,
+  onCredentialsChanged: saveCredentials,
+});
+```
+
+Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, create a client from the saved credentials with wallet setup enabled to bind the wallet.
+
 ## Renewal
 
 The SDK renews the access token 30 seconds before it expires. It schedules renewal from the lifetime the server returns with each token, so a device clock that runs fast or slow does not end the session. The timer, request recovery and socket reconnects share one renewal, and requests started while it runs wait for its result. Every adopted response replaces both tokens. `onCredentialsChanged` runs after adoption. Its synchronous exceptions and rejected promises are ignored, so handle storage failures inside the callback. A slow callback does not block requests.
