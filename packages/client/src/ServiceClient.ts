@@ -1,4 +1,7 @@
-import { ErrorResponseSchema } from '@polymarket/bindings';
+import {
+  ErrorResponseMetadataSchema,
+  ErrorResponseSchema,
+} from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
 import ky, { type KyInstance } from 'ky';
 import { z } from 'zod';
@@ -472,10 +475,15 @@ export class ServiceClient {
       if (options.responseType === 'raw') return response;
       if (!response.ok) {
         const retryAfter = this.#parseRetryAfterHeader(response);
+        const error = await withAbort(
+          this.#extractResponseError(response, path),
+          signal,
+        );
+        const { retryable, traceId, parameter } = error;
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
-            { rateLimit, retryAfter },
+            { rateLimit, retryAfter, retryable, traceId, parameter },
           );
         }
         const {
@@ -483,12 +491,19 @@ export class ServiceClient {
           message,
           heartbeatId,
           retryAfter: retryAfterSeconds,
-        } = await withAbort(this.#extractResponseError(response, path), signal);
+        } = error;
         if (heartbeatId !== undefined) {
-          throw new OrderHeartbeatMismatchError(heartbeatId);
+          throw new OrderHeartbeatMismatchError(heartbeatId, {
+            retryable,
+            traceId,
+            parameter,
+          });
         }
         throw new RequestRejectedError(message, {
           code,
+          retryable,
+          traceId,
+          parameter,
           retryAfter: retryAfter ?? retryAfterSeconds,
           status: response.status,
         });
@@ -711,7 +726,17 @@ export class ServiceClient {
     code?: string;
     retryAfter?: number;
     heartbeatId?: string;
+    retryable?: boolean;
+    traceId?: string;
+    parameter?: string;
   }> {
+    let metadata: {
+      retryable?: boolean;
+      traceId?: string;
+      parameter?: string;
+    } = {
+      traceId: response.headers.get('x-trace-id') || undefined,
+    };
     const contentType = response.headers.get('content-type')?.toLowerCase();
 
     if (contentType?.includes('application/json')) {
@@ -719,6 +744,13 @@ export class ServiceClient {
         .clone()
         .json()
         .catch(() => undefined);
+      const diagnostics = ErrorResponseMetadataSchema.safeParse(body);
+      if (diagnostics.success) {
+        metadata = {
+          ...diagnostics.data,
+          traceId: diagnostics.data.traceId ?? metadata.traceId,
+        };
+      }
       if (
         response.status === 400 &&
         this.#normalizePath(path) === 'v1/heartbeats'
@@ -726,6 +758,7 @@ export class ServiceClient {
         const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(body);
         if (parsed.success) {
           return {
+            ...metadata,
             message: parsed.data.error_msg,
             heartbeatId: parsed.data.heartbeat_id,
           };
@@ -741,6 +774,7 @@ export class ServiceClient {
             ? message
             : undefined;
         return {
+          ...metadata,
           message: `${message} (${response.url})`,
           code: code ?? inferredCode,
           retryAfter,
@@ -758,13 +792,14 @@ export class ServiceClient {
         );
 
       if (text) {
-        return { message: `${text} (${response.url})` };
+        return { ...metadata, message: `${text} (${response.url})` };
       }
     }
 
     const server = response.headers.get('server')?.toLowerCase();
     if (server?.includes('cloudflare')) {
       return {
+        ...metadata,
         message: `Request to ${response.url} was blocked by Cloudflare with status ${response.status}`,
       };
     }
@@ -774,11 +809,13 @@ export class ServiceClient {
       contentType?.includes('application/xhtml+xml')
     ) {
       return {
+        ...metadata,
         message: `Request to ${response.url} failed with status ${response.status} and an unexpected HTML response body`,
       };
     }
 
     return {
+      ...metadata,
       message: `Request to ${response.url} failed with status ${response.status} and unreadable response body`,
     };
   }
