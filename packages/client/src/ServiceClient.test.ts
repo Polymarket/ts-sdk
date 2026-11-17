@@ -4,7 +4,6 @@ import {
   afterAll,
   afterEach,
   beforeAll,
-  beforeEach,
   describe,
   expect,
   it,
@@ -342,8 +341,9 @@ describe('ServiceClient', () => {
 
     it.each([
       undefined,
-      '2',
+      ' \t2\t ',
       '6',
+      'Thu, 10 Sep 2026 06:02:00 GMT',
     ])('honors the server delay %s or surfaces long waits', async (retryAfter) => {
       vi.useFakeTimers();
       const fetch = vi
@@ -369,7 +369,7 @@ describe('ServiceClient', () => {
         });
         expect(vi.getTimerCount()).toBe(0);
       } else {
-        const delay = Number(retryAfter ?? '1') * 1000;
+        const delay = retryAfter?.trim() === '2' ? 2000 : 1000;
         await vi.advanceTimersByTimeAsync(delay - 1);
         expect(fetch).toHaveBeenCalledTimes(1);
         await vi.advanceTimersByTimeAsync(1);
@@ -1700,85 +1700,61 @@ describe('ServiceClient', () => {
     });
   });
 
-  describe('HTTP-date Retry-After values', () => {
-    // 2026-09-10T06:02:00Z is 119.6 s after this clock, so a correct
-    // conversion reports 120 whole seconds, never 119.
-    const now = new Date('2026-09-10T06:00:00.400Z');
-    beforeEach(() => {
-      vi.useFakeTimers();
-      vi.setSystemTime(now);
-    });
+  it.each([
+    { header: '0', retryAfter: 0 },
+    { header: '0017', retryAfter: 17 },
+    { header: ' \t17\t ', retryAfter: 17 },
+    { header: '9007199254740991', retryAfter: 9007199254740991 },
+    { header: '9007199254740992', retryAfter: undefined },
+    { header: '9'.repeat(400), retryAfter: undefined },
+    { header: '', retryAfter: undefined },
+    { header: '-1', retryAfter: undefined },
+    { header: '-0', retryAfter: undefined },
+    { header: '+1', retryAfter: undefined },
+    { header: '1.5', retryAfter: undefined },
+    { header: '1e2', retryAfter: undefined },
+    { header: 'Infinity', retryAfter: undefined },
+    { header: 'NaN', retryAfter: undefined },
+    { header: '²', retryAfter: undefined },
+    { header: '\u00a017', retryAfter: undefined },
+    { header: 'Thu, 10 Sep 2026 06:02:00 GMT', retryAfter: undefined },
+  ])('parses Retry-After $header as delay seconds only', async ({
+    header,
+    retryAfter,
+  }) => {
+    const fetch = async () =>
+      new Response(null, {
+        status: 429,
+        headers: { 'retry-after': header },
+      });
+    await expect(
+      new ServiceClient({ root, fetch }).get('/read', { retries: 0 }),
+    ).rejects.toMatchObject({ name: 'RateLimitError', retryAfter });
+  });
 
-    function rejectedWith(header: string, status = 503, body?: object) {
-      server.use(
-        http.get(`${root}/retry-after-date`, () =>
-          body === undefined
-            ? new HttpResponse(null, {
-                headers: { 'retry-after': header },
-                status,
-              })
-            : HttpResponse.json(body, {
-                headers: { 'retry-after': header },
-                status,
-              }),
-        ),
+  it.each([
+    'Thu, 10 Sep 2026 06:02:00 GMT',
+    '9007199254740992',
+  ])('uses the body delay and preserves rejection metadata for invalid Retry-After %s', async (header) => {
+    const fetch = async () =>
+      Response.json(
+        {
+          error: 'Post-only mode is enabled',
+          code: 'post_only_mode',
+          retry_after_seconds: 79,
+        },
+        {
+          status: 503,
+          headers: { 'retry-after': header },
+        },
       );
-      return expect(
-        new ServiceClient({ root }).get('/retry-after-date', { retries: 0 }),
-      ).rejects;
-    }
-
-    it.each([
-      ['IMF-fixdate', 'Thu, 10 Sep 2026 06:02:00 GMT'],
-      ['RFC 850', 'Thursday, 10-Sep-26 06:02:00 GMT'],
-      ['asctime', 'Thu Sep 10 06:02:00 2026'],
-    ])('converts a %s header to whole seconds from now', async (_, header) => {
-      await rejectedWith(header).toMatchObject({
-        name: 'RequestRejectedError',
-        retryAfter: 120,
-        status: 503,
-      });
-    });
-
-    it('applies the same conversion on rate limited requests', async () => {
-      await rejectedWith('Thu, 10 Sep 2026 06:02:00 GMT', 429).toMatchObject({
-        name: 'RateLimitError',
-        retryAfter: 120,
-      });
-    });
-
-    it('clamps a past date to zero', async () => {
-      await rejectedWith('Thu, 10 Sep 2026 05:00:00 GMT').toMatchObject({
-        retryAfter: 0,
-      });
-    });
-
-    it('reads a two-digit year more than fifty years ahead as the past century', async () => {
-      await rejectedWith('Thursday, 10-Sep-77 06:02:00 GMT').toMatchObject({
-        retryAfter: 0,
-      });
-    });
-
-    it('prefers a valid date header over the body retry delay', async () => {
-      await rejectedWith('Thu, 10 Sep 2026 06:02:00 GMT', 503, {
-        code: 'post_only_mode',
-        error: 'Post-only mode is enabled',
-        retry_after_seconds: 79,
-      }).toMatchObject({ code: 'post_only_mode', retryAfter: 120 });
-    });
-
-    it.each([
-      ['garbage', 'not-a-date'],
-      ['an impossible calendar day', 'Thu, 31 Feb 2026 06:02:00 GMT'],
-      ['a leap second', 'Thu, 10 Sep 2026 23:59:60 GMT'],
-      ['a bare date', '10 Sep 2026'],
-      ['two headers', '120, Thu, 10 Sep 2026 06:02:00 GMT'],
-    ])('falls back to the body delay for %s', async (_, header) => {
-      await rejectedWith(header, 503, {
-        code: 'post_only_mode',
-        error: 'Post-only mode is enabled',
-        retry_after_seconds: 79,
-      }).toMatchObject({ retryAfter: 79 });
+    await expect(
+      new ServiceClient({ root, fetch }).get('/read', { retries: 0 }),
+    ).rejects.toMatchObject({
+      name: 'RequestRejectedError',
+      status: 503,
+      code: 'post_only_mode',
+      retryAfter: 79,
     });
   });
 
