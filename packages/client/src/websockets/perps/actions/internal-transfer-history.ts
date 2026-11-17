@@ -1,5 +1,8 @@
 import { toPaginationCursor } from '@polymarket/bindings';
-import type { PerpsInternalTransfer } from '@polymarket/bindings/perps';
+import type {
+  PerpsInternalTransfer,
+  PerpsInternalTransferDirection,
+} from '@polymarket/bindings/perps';
 import { UnexpectedResponseError } from '../../../errors';
 import type { Page } from '../../../pagination';
 
@@ -9,6 +12,7 @@ export type PerpsInternalTransfersCursorState = {
   startTimestamp: number;
   endTimestamp: number;
   seenKeys: string[];
+  direction?: PerpsInternalTransferDirection;
 };
 
 /**

@@ -7,6 +7,7 @@ import {
 import {
   type PerpsBuilderApproval,
   type PerpsCredentials,
+  PerpsInternalTransferDirection,
   PerpsKnownInternalTransferType,
   PerpsPnlInterval,
   PerpsSortDirection,
@@ -3265,7 +3266,11 @@ describe('PerpsSession', () => {
       ]);
     });
 
-    it('lists normalized internal transfers and dedupes timestamp boundaries', async () => {
+    it.each([
+      undefined,
+      PerpsInternalTransferDirection.In,
+      PerpsInternalTransferDirection.Out,
+    ])('lists internal transfers in direction %s and preserves the filter on continuation', async (direction) => {
       const requests: URLSearchParams[] = [];
       server.use(
         http.get(
@@ -3301,12 +3306,18 @@ describe('PerpsSession', () => {
       for await (const page of session.listInternalTransfers({
         end: 3000,
         start: 0,
+        direction,
       })) {
         pages.push(page.items.map((transfer) => transfer.transferId));
         types.push(...page.items.map((transfer) => transfer.type));
         if (pages.length > MAX_EXPECTED_PAGES) break;
       }
 
+      expect(
+        requests.every(
+          (params) => params.get('direction') === (direction ?? null),
+        ),
+      ).toBe(true);
       expect(pages).toEqual([[3, 2], [1]]);
       expect(types).toEqual([
         PerpsKnownInternalTransferType.Transfer,
@@ -3317,6 +3328,37 @@ describe('PerpsSession', () => {
         '3000',
         '2001',
       ]);
+    });
+
+    it('retains transfer direction during millisecond boundary verification', async () => {
+      const requests: URLSearchParams[] = [];
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/internal-transfers`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+            const atBoundary = params.get('start_timestamp') === '1000';
+            return HttpResponse.json({
+              data: [internalTransfer(1, 1000, 'transfer')],
+              more: !atBoundary,
+            });
+          },
+        ),
+      );
+      const pages = createSession().listInternalTransfers({
+        start: 999,
+        end: 1001,
+        direction: PerpsInternalTransferDirection.Out,
+      });
+      const first = await pages.firstPage();
+      await pages.from(first.nextCursor).firstPage();
+      expect(requests.map((params) => params.get('direction'))).toEqual([
+        'out',
+        'out',
+        'out',
+      ]);
+      expect(requests.at(-1)?.get('start_timestamp')).toBe('1000');
     });
 
     it('stops paging at the requested start timestamp', async () => {

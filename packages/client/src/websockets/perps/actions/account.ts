@@ -36,6 +36,8 @@ import {
   type PerpsInstrumentId,
   PerpsInstrumentIdSchema,
   type PerpsInternalTransfer,
+  type PerpsInternalTransferDirection,
+  PerpsInternalTransferDirectionSchema,
   type PerpsNotificationEntry,
   type PerpsOrder,
   PerpsOrderIdSchema,
@@ -639,6 +641,7 @@ export function listPerpsWithdrawals(
 const ListPerpsInternalTransfersInitialRequestSchema =
   PerpsHistoryRequestBaseSchema.extend({
     cursor: PaginationCursorSchema.optional(),
+    direction: PerpsInternalTransferDirectionSchema.optional(),
   }) satisfies z.ZodType<
     Exclude<ListPerpsInternalTransfersRequest, { cursor: PaginationCursor }>
   >;
@@ -648,6 +651,7 @@ const PerpsInternalTransfersCursorStateSchema = z.object({
   startTimestamp: TimestampInputSchema,
   endTimestamp: TimestampInputSchema,
   seenKeys: z.array(z.string()),
+  direction: PerpsInternalTransferDirectionSchema.optional(),
 }) satisfies z.ZodType<PerpsInternalTransfersCursorState>;
 
 const ListPerpsInternalTransfersCursorRequestSchema = z.object({
@@ -674,6 +678,8 @@ const ListPerpsInternalTransfersRequestSchema = z.union([
  */
 export type ListPerpsInternalTransfersRequest =
   | {
+      /** Transfer direction relative to this account. Omission includes both directions. */
+      direction?: PerpsInternalTransferDirection;
       /** Inclusive start timestamp in milliseconds. */
       start?: number;
       /** Inclusive end timestamp in milliseconds. */
@@ -734,7 +740,10 @@ export function listPerpsInternalTransfers(
           async (bounds) => {
             const boundary = await api.get('/v1/account/internal-transfers', {
               schema: ListPerpsInternalTransfersResponseSchema,
-              params: toPerpsSearchParams(bounds),
+              params: toPerpsSearchParams({
+                ...bounds,
+                direction: state.direction,
+              }),
             });
             return { transfers: boundary.data, hasMore: boundary.more };
           },
