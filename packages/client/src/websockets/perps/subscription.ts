@@ -264,7 +264,7 @@ function channelFor(subscription: PerpsMarketDataSubscription): string {
     case 'perps.bbo':
       return `bbo::${subscription.instrumentId}`;
     case 'perps.book':
-      return `book::${subscription.instrumentId}`;
+      return `book::${subscription.instrumentId}${subscription.depth === 50 ? '::50' : ''}`;
     case 'perps.candles':
       return `klines::${subscription.instrumentId}::${subscription.interval}`;
     case 'perps.tickers':
@@ -290,8 +290,13 @@ function matcherFor(
       return (event) =>
         event.topic === 'perps.trades' &&
         event.channel === `trades::${subscription.instrumentId}`;
-    case 'perps.bbo':
     case 'perps.book':
+      return (event) =>
+        event.topic === 'perps.book' &&
+        (event.channel === channelFor(subscription) ||
+          (subscription.depth !== 50 &&
+            event.channel === `${channelFor(subscription)}::20`));
+    case 'perps.bbo':
       return (event) =>
         event.topic === subscription.topic &&
         event.payload.instrumentId === subscription.instrumentId;

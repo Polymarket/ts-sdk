@@ -129,6 +129,64 @@ describe('PerpsSubscriptionManager', () => {
     });
   });
 
+  it('subscribes book depths independently and routes matching frames', async () => {
+    const connection = captureConnection(server, perpsSubscriptions);
+    const shallow = await manager.subscribe({
+      topic: 'perps.book',
+      instrumentId: 1,
+    });
+    const deep = await manager.subscribe({
+      topic: 'perps.book',
+      instrumentId: 1,
+      depth: 50,
+    });
+    const nextShallow = waitForNextEvent(shallow);
+    const nextDeep = waitForNextEvent(deep);
+    const frame = {
+      ts: 1700000000000,
+      ets: 1700000000000,
+      data: { a: [['101', '2']], b: [['100', '1']] },
+    };
+    await connection.send({ ...frame, ch: 'book::1::50', sq: 50 });
+    await connection.send({ ...frame, ch: 'book::1::20', sq: 20 });
+    await expect(nextDeep).resolves.toMatchObject({
+      value: {
+        channel: 'book::1::50',
+        sequence: 50,
+        payload: { instrumentId: 1 },
+      },
+    });
+    await expect(nextShallow).resolves.toMatchObject({
+      value: {
+        channel: 'book::1::20',
+        sequence: 20,
+        payload: { instrumentId: 1 },
+      },
+    });
+  });
+
+  it('adds and removes the 50-level channel without disturbing the default book', async () => {
+    const frames = collectFrames(server, perpsSubscriptions);
+    await manager.subscribe({ topic: 'perps.book', instrumentId: 1 });
+    const deep = await manager.subscribe({
+      topic: 'perps.book',
+      instrumentId: 1,
+      depth: 50,
+    });
+    await vi.waitFor(() =>
+      expect(frames).toEqual([
+        { id: expect.any(Number), req: 'sub', chs: ['book::1'] },
+        { id: expect.any(Number), req: 'sub', chs: ['book::1::50'] },
+      ]),
+    );
+    await deep.close();
+    expect(frames.at(-1)).toEqual({
+      id: expect.any(Number),
+      req: 'unsub',
+      chs: ['book::1::50'],
+    });
+  });
+
   it('drops unknown frames without closing the shared socket', async () => {
     await expectDropsUnknownFrame({
       // Request acknowledgements echo the request id and are expected

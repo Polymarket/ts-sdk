@@ -38,7 +38,7 @@ const PerpsEventHorizonSchema = EpochMillisecondsSchema.refine(
 
 const TradesChannelSchema = z.string().regex(/^trades::\d+$/);
 const BboChannelSchema = z.string().regex(/^bbo::\d+$/);
-const BookChannelSchema = z.string().regex(/^book::\d+$/);
+const BookChannelSchema = z.string().regex(/^book::\d+(::(20|50))?$/);
 const TickersChannelSchema = z.string().regex(/^tickers::(all|\d+)$/);
 const StatisticsChannelSchema = z.string().regex(/^statistics::(all|\d+)$/);
 const CandlesChannelSchema = z
