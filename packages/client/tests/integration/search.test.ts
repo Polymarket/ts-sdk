@@ -16,6 +16,22 @@ describe('Search', () => {
   });
 
   describe('search', () => {
+    it('parses optimized summaries and follows public continuation', async ({
+      publicClient,
+    }) => {
+      const pages = publicClient.search({
+        q: 'bitcoin',
+        optimized: true,
+        pageSize: 1,
+      });
+      const first = await pages.firstPage();
+      expect(first.items.events.length).toBeGreaterThan(0);
+      expect(first.items.events[0]?.markets.length).toBeGreaterThan(0);
+      if (first.hasMore) {
+        const second = await pages.from(first.nextCursor).firstPage();
+        expect(second.items.events).toEqual(expect.any(Array));
+      }
+    });
     it('fetches public search results', async ({ publicClient }) => {
       const paginator = publicClient.search({
         q: 'trump',

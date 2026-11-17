@@ -490,7 +490,14 @@ export type FetchMarketTagsResponse = z.infer<
   typeof FetchMarketTagsResponseSchema
 >;
 
-export function normalizeMarket(market: GammaMarket): Market {
+/** A search result may omit the market identifier. */
+export type SearchMarket = Omit<Market, 'id'> & { id?: MarketId };
+
+type SearchGammaMarket = Omit<GammaMarket, 'id'> & { id?: MarketId };
+
+export function normalizeMarket(market: GammaMarket): Market;
+export function normalizeMarket(market: SearchGammaMarket): SearchMarket;
+export function normalizeMarket(market: SearchGammaMarket): SearchMarket {
   return {
     id: market.id,
     version: market.version,
@@ -595,11 +602,16 @@ function parseJsonString(value: unknown): unknown {
  * Whether a raw market has exactly the two outcomes required by the binary
  * {@link Market} model. Callers must check this before {@link normalizeMarket}.
  */
-export function hasBinaryOutcomes(market: GammaMarket): boolean {
+export function hasBinaryOutcomes(market: { outcomes: string[] }): boolean {
   return market.outcomes.length === 2;
 }
 
-function normalizeOutcomes(market: GammaMarket) {
+function normalizeOutcomes(
+  market: Pick<
+    GammaMarket,
+    'outcomes' | 'clobTokenIds' | 'positionIds' | 'outcomePrices'
+  >,
+) {
   if (!hasBinaryOutcomes(market)) {
     throw new TypeError(
       `Expected binary market outcomes, received ${market.outcomes.length}`,
