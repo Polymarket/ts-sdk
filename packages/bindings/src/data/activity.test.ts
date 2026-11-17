@@ -33,6 +33,66 @@ function activityRow(overrides: Record<string, unknown>) {
 }
 
 describe('ActivitySchema', () => {
+  it('parses event-level directional activity without inventing a market or labels', () => {
+    const eventId =
+      '0x0400112233445566778899aabbccddeeff000600000000000000000000';
+    for (const type of [
+      ActivityType.DIRECTIONAL_SPLIT,
+      ActivityType.DIRECTIONAL_MERGE,
+    ]) {
+      for (const condition_id of [eventId, `${eventId}000000`]) {
+        const activity = ActivitySchema.parse(
+          activityRow({ type, condition_id, size: 10, usdc_size: 10 }),
+        );
+        expect(activity).toMatchObject({
+          type,
+          eventId,
+          pairs: '10',
+          amount: '10',
+          title: undefined,
+        });
+        expect(activity).not.toHaveProperty('conditionId');
+        expect(activity).not.toHaveProperty('outcomeIndex');
+      }
+    }
+  });
+
+  it('preserves threshold inventory quantity and side when no collateral moves', () => {
+    const eventId =
+      '0x0400112233445566778899aabbccddeeff000600000000000000000000';
+    for (const type of [
+      ActivityType.THRESHOLD_COMPOSE,
+      ActivityType.THRESHOLD_DECOMPOSE,
+    ]) {
+      for (const [outcome_index, side] of [
+        [0, 'above'],
+        [1, 'below'],
+      ] as const) {
+        const row = activityRow({
+          type,
+          condition_id: `${eventId}8004`,
+          outcome_index,
+          size: '12.5',
+        });
+        expect(ActivitySchema.parse(row)).toMatchObject({
+          type,
+          eventId,
+          line: 4,
+          side,
+          shares: '12.5',
+          outcomeIndex: outcome_index,
+        });
+        expect(
+          ActivitySchema.parse({ ...row, condition_id: `${eventId}0004` }),
+        ).not.toHaveProperty('line');
+        expect(
+          ActivitySchema.parse({ ...row, outcome_index: 999 }),
+        ).not.toHaveProperty('side');
+        expect(ActivitySchema.parse(row)).not.toHaveProperty('amount');
+      }
+    }
+  });
+
   it('normalizes ordinary trade assets without assuming the protocol', () => {
     const assetId = '456';
     const activity = ActivitySchema.parse(

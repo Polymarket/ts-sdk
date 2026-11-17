@@ -162,6 +162,108 @@ import { ResultAsync, ok } from "@polymarket/types";
 import { ResultAsync, ok } from "neverthrow";
 ```
 
+## Directional collateral return
+
+After ABOVE on a lower line and BELOW on a higher line settle in your wallet:
+
+```ts
+await client.setupTradingApprovals();
+const pairs = await client.findDirectionalPairs();
+const selected = pairs[0]; // User or agent chooses a candidate.
+if (!selected) throw new Error('No mergeable directional pair found');
+await (
+  await client.mergeDirectional(
+    selected.abovePositionId,
+    selected.belowPositionId,
+    selected.amount,
+  )
+).wait();
+```
+
+Both `mergeDirectional(positionIdA, positionIdB, amount?)` and
+`splitDirectional(positionIdA, positionIdB, amount?)` accept the position IDs in
+either order. They must identify ABOVE on a lower line and BELOW on a higher
+line in the same event. Amounts are bigint values in six-decimal base units;
+omitting the amount or passing `'max'` uses fresh maximum balances.
+
+Each merged pair returns 1 pUSD and YES positions on the middle buckets. Reverse
+with `splitDirectional` using the same IDs and explicit merged amount; it consumes
+pUSD plus those buckets. Pair discovery scans this account's indexed holdings
+and refreshes balances on chain. Candidates may overlap: choose a pair and
+refresh discovery after execution rather than treating all results as a batch.
+
+To inspect this wallet's middle-bucket YES holdings before restoring threshold
+positions:
+
+```ts
+const buckets = await client.findDirectionalBuckets();
+console.table(buckets);
+const bucket = buckets[0]; // Choose after inspecting balance and requiredPusd.
+if (!bucket) throw new Error('No splittable directional bucket found');
+await client.setupTradingApprovals();
+await (
+  await client.splitDirectional(
+    bucket.abovePositionId,
+    bucket.belowPositionId,
+    bucket.balance,
+  )
+).wait();
+```
+
+`findDirectionalBuckets(request?, options?)` optionally accepts `{ eventId }`
+and request options. Each result includes the bucket's position ID, protocol event
+ID and index, the two threshold position IDs, and bigint `balance` and
+`requiredPusd` in six-decimal base units. `requiredPusd` equals the full bucket
+balance; discovery does not read pUSD or check affordability. It returns only
+positive middle-bucket YES holdings (indices `1..B-2`), ranked by descending balance
+with deterministic event/index ties. Execution checks collateral. Contiguous ranges
+can share collateral, so singleton requirements should not be summed as an
+optimal total cost.
+
+For the whole authenticated wallet, these methods discover inventory, execute
+sequentially and wait for each transaction:
+
+```ts
+await client.setupTradingApprovals();
+const merged = await client.mergeAllUserPositionsDirectional();
+console.table(merged.outcomes);
+console.log(merged.errors);
+```
+
+To restore threshold positions from bucket inventory instead:
+
+```ts
+const split = await client.splitAllUserPositionsDirectional();
+console.table(split.outcomes);
+console.log(split.errors);
+```
+
+Both take no arguments and return `{ outcomes, errors }` as a
+`DirectionalBulkResult`. Outcomes are confirmed transactions; errors retain
+failure details and known transaction identifiers. Merge repeatedly chooses
+the pair returning the most collateral and merges its maximum amount. Split
+independently discovers
+contiguous middle-bucket YES ranges and spends available pUSD to restore
+threshold pairs, choosing the largest feasible amount and then the widest
+range when amounts tie. Each flow refreshes discovery after confirmation.
+
+These flows depend on indexed holdings, use greedy allocation and are not
+atomic or guaranteed to find a global optimum. Split does not replay merge
+history. Definite pair failures are recorded and skipped while other candidates
+continue, up to 25 failed pairs. Transient discovery, preparation and confirmation reads have
+up to three total attempts with backoff; confirmation retries use the same
+handle without resubmitting transactions.
+
+Ambiguous submission or unresolved confirmation pauses further mutations and
+returns the partial summary. Persistent discovery failures and cancelled signing
+also return accumulated outcomes and errors. Previously confirmed transactions
+remain in effect. Inspect errors and reconcile uncertain transactions before
+rerunning; an interrupted summary does not mean all inventory was processed.
+The caller must set up approvals first.
+
+See the [directional integration guide](../../docs/directional-markets.md) for
+wallet setup, inventory operations, data semantics and staging acceptance checks.
+
 ## Neg-risk positions (protocol V2)
 
 An authenticated client can convert a NO position into YES positions for every

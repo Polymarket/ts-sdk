@@ -15,6 +15,49 @@ import {
   planCollateralReturn,
 } from '../actions/collateral-return';
 import {
+  type ComposeThresholdWorkflow,
+  composeThreshold,
+  type DecomposeThresholdWorkflow,
+  decomposeThreshold,
+  type MergeDirectionalWorkflow,
+  mergeDirectional,
+  type PrepareComposeThresholdRequest,
+  type PrepareDecomposeThresholdRequest,
+  prepareComposeThreshold,
+  prepareDecomposeThreshold,
+  prepareMergeDirectional,
+  prepareSplitDirectional,
+  type SplitDirectionalWorkflow,
+  splitDirectional,
+} from '../actions/directional';
+import {
+  type DirectionalBulkResult,
+  mergeAllUserPositionsDirectional,
+  splitAllUserPositionsDirectional,
+} from '../actions/directional-bulk';
+import {
+  type DirectionalBucketHolding,
+  type DirectionalPair,
+  type FindDirectionalBucketsRequest,
+  type FindDirectionalPairsRequest,
+  findDirectionalBuckets,
+  findDirectionalPairs,
+} from '../actions/directional-pairs';
+import {
+  type ConvertPositionWorkflow,
+  convertPosition,
+  type MergeEventPositionsWorkflow,
+  mergeEventPositions,
+  type PrepareConvertPositionRequest,
+  type PrepareMergeEventPositionsRequest,
+  type PrepareSplitEventPositionsRequest,
+  prepareConvertPosition,
+  prepareMergeEventPositions,
+  prepareSplitEventPositions,
+  type SplitEventPositionsWorkflow,
+  splitEventPositions,
+} from '../actions/event-positions';
+import {
   type ConvertWorkflow,
   convert,
   type HorizontalMergeWorkflow,
@@ -73,6 +116,110 @@ export type PublicWalletActions = {
 };
 
 export type SecureWalletActions = {
+  /**
+   * Returns collateral from indexed threshold holdings, choosing the largest
+   * return first. Confirms each merge and rediscovers before the next.
+   * Uses existing approvals. Greedy selection does not guarantee a global optimum.
+   * Returns outcomes and errors. Skips failed pairs and retries transient reads.
+   * Uncertain transactions pause submissions; confirmed transactions persist.
+   * Operational failures are reported in the returned errors array.
+   */
+  mergeAllUserPositionsDirectional(): Promise<DirectionalBulkResult>;
+  /**
+   * Spends available collateral and indexed middle-bucket YES holdings to restore
+   * threshold pairs. Chooses the largest feasible amount, widest range on ties,
+   * confirms each split, then rediscovers until inventory or collateral is exhausted.
+   * Uses existing approvals. Does not reconstruct a particular previous merge.
+   * Returns outcomes and errors. Skips failed pairs and retries transient reads.
+   * Uncertain transactions pause submissions; confirmed transactions persist.
+   * Operational failures are reported in the returned errors array.
+   */
+  splitAllUserPositionsDirectional(): Promise<DirectionalBulkResult>;
+  /**
+   * Finds indexed middle-bucket YES holdings with fresh balances and the pUSD
+   * needed to split each full holding into adjacent threshold wings.
+   * Ranks by balance descending. Does not read or filter by wallet pUSD balance.
+   * Only indexed positive splittable bucket YES holdings are returned.
+   * @throws {@link FindDirectionalBucketsError} Thrown on invalid input, read failure or incomplete pagination.
+   */
+  findDirectionalBuckets(
+    request?: FindDirectionalBucketsRequest,
+    options?: RequestOptions,
+  ): Promise<DirectionalBucketHolding[]>;
+  /**
+   * Finds collateral-return pairs in this wallet's indexed holdings, with fresh on-chain balances.
+   * Pairs may overlap; their amounts cannot be added into an execution plan.
+   * Unindexed holdings cannot be discovered. No funds are moved.
+   * @throws {@link FindDirectionalPairsError} Thrown on failure or incomplete pagination.
+   */
+  findDirectionalPairs(
+    request?: FindDirectionalPairsRequest,
+  ): Promise<DirectionalPair[]>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.composeThreshold | composeThreshold}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareComposeThresholdError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareComposeThreshold(
+    request: PrepareComposeThresholdRequest,
+  ): Promise<ComposeThresholdWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.decomposeThreshold | decomposeThreshold}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareDecomposeThresholdError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareDecomposeThreshold(
+    request: PrepareDecomposeThresholdRequest,
+  ): Promise<DecomposeThresholdWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.splitDirectional | splitDirectional}.
+   * Accepts threshold position IDs in either order. Amount uses six-decimal
+   * bigint base units; omitted or 'max' uses available collateral and bucket balances.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareSplitDirectionalError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareSplitDirectional(
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
+  ): Promise<SplitDirectionalWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.mergeDirectional | mergeDirectional}.
+   * Accepts threshold position IDs in either order. Amount uses six-decimal
+   * bigint base units; omitted or 'max' uses the minimum held threshold balance.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareMergeDirectionalError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareMergeDirectional(
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
+  ): Promise<MergeDirectionalWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.splitEventPositions | splitEventPositions}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareSplitEventPositionsError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareSplitEventPositions(
+    request: PrepareSplitEventPositionsRequest,
+  ): Promise<SplitEventPositionsWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.mergeEventPositions | mergeEventPositions}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareMergeEventPositionsError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareMergeEventPositions(
+    request: PrepareMergeEventPositionsRequest,
+  ): Promise<MergeEventPositionsWorkflow>;
+  /**
+   * Prepares the signing steps for {@link SecureWalletActions.convertPosition | convertPosition}.
+   * Does not submit until the workflow is advanced.
+   * @throws {@link PrepareConvertPositionError} Thrown on failure, including while advancing the workflow.
+   */
+  prepareConvertPosition(
+    request: PrepareConvertPositionRequest,
+  ): Promise<ConvertPositionWorkflow>;
+
   /**
    * Converts NO into YES for all other conditions.
    * Derives the event and NO condition index from the market's condition ID.
@@ -230,6 +377,9 @@ export type SecureWalletActions = {
   /**
    * Splits collateral into positions.
    *
+   * Directional bucket, Void, and threshold condition IDs work without a market
+   * listing. A threshold produces complementary ABOVE/BELOW positions.
+   *
    * @throws {@link SplitPositionError}
    * Thrown on failure.
    *
@@ -263,6 +413,9 @@ export type SecureWalletActions = {
   /**
    * Merges complementary positions back into collateral.
    *
+   * Directional bucket, Void, and threshold condition IDs work without a market
+   * listing. A threshold consumes complementary ABOVE/BELOW positions.
+   *
    * @throws {@link MergePositionsError}
    * Thrown on failure.
    *
@@ -295,6 +448,9 @@ export type SecureWalletActions = {
   ): Promise<TransactionHandle>;
   /**
    * Redeems held positions for a market or a specific position by ID.
+   *
+   * Directional bucket, Void, and threshold IDs work without a market listing.
+   * Whether a directional position can be redeemed yet is decided on chain.
    *
    * @throws {@link RedeemPositionsError}
    * Thrown on failure.
@@ -335,6 +491,193 @@ export type SecureWalletActions = {
    */
   redeemPositions(
     request: PrepareRedeemPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Splits collateral into the complete YES set of a directional event.
+   *
+   * The set includes every real bucket and the Void bucket.
+   *
+   * @throws {@link SplitEventPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.splitEventPositions({
+   *   amount: 1_000_000n,
+   *   eventId: '0x04…',
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  splitEventPositions(
+    request: PrepareSplitEventPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Merges the complete YES set of a directional event back into collateral.
+   *
+   * Consumes every real bucket YES position and the Void YES position.
+   * Use `'max'` to merge the minimum held balance across the set.
+   *
+   * @throws {@link MergeEventPositionsError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.mergeEventPositions({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  mergeEventPositions(
+    request: PrepareMergeEventPositionsRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Converts a directional bucket NO position into YES positions for every
+   * other bucket in its event.
+   *
+   * Accepts real bucket and Void NO positions. Threshold positions cannot be
+   * converted. Use
+   * `'max'` to convert the full held balance.
+   *
+   * @throws {@link ConvertPositionError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const { noPositionId } = deriveDirectionalBucketPositions({
+   *   bucketIndex: 1,
+   *   eventId: '0x04…',
+   * });
+   *
+   * const handle = await client.convertPosition({
+   *   amount: 'max',
+   *   positionId: noPositionId,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  convertPosition(
+    request: PrepareConvertPositionRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Composes bucket YES positions into one side of a directional threshold.
+   *
+   * ABOVE consumes the real buckets at or past the line. BELOW consumes the
+   * real buckets before the line and Void. Use `'max'` to compose the minimum
+   * held balance across the basket.
+   *
+   * @throws {@link ComposeThresholdError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.composeThreshold({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   *   line: 2,
+   *   side: ThresholdSide.Below,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  composeThreshold(
+    request: PrepareComposeThresholdRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Decomposes one side of a directional threshold into its bucket YES
+   * positions.
+   *
+   * ABOVE returns the real buckets at or past the line. BELOW returns the real
+   * buckets before the line and Void. Use `'max'` to decompose the full held
+   * balance.
+   *
+   * @throws {@link DecomposeThresholdError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.decomposeThreshold({
+   *   amount: 'max',
+   *   eventId: '0x04…',
+   *   line: 2,
+   *   side: ThresholdSide.Below,
+   * });
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  decomposeThreshold(
+    request: PrepareDecomposeThresholdRequest,
+  ): Promise<TransactionHandle>;
+  /**
+   * Splits collateral and middle-bucket YES positions into ABOVE at `lowLine`
+   * and BELOW at `highLine`.
+   *
+   * Consumes `amount` of collateral and of each real bucket YES position in
+   * `[lowLine, highLine)`. Omit amount or use 'max' for the minimum of
+   * pUSD and every required bucket balance. Amounts use six-decimal bigint base units.
+   * The two position IDs may be in either order; they must identify ABOVE on a
+   * lower threshold and BELOW on a higher threshold in the same directional event.
+   *
+   * @throws {@link SplitDirectionalError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.splitDirectional(positionIdA, positionIdB, 1_000_000n);
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  splitDirectional(
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
+  ): Promise<TransactionHandle>;
+  /**
+   * Merges ABOVE at `lowLine` and BELOW at `highLine` into collateral and
+   * middle-bucket YES positions.
+   *
+   * Returns `amount` of collateral and of each real bucket YES position in
+   * `[lowLine, highLine)`. Omit amount or use `'max'` to merge the minimum held balance of
+   * the two threshold positions. Amounts use six-decimal bigint base units.
+   * The two position IDs may be in either order; they must identify ABOVE on a
+   * lower threshold and BELOW on a higher threshold in the same directional event.
+   *
+   * @throws {@link MergeDirectionalError}
+   * Thrown on failure.
+   *
+   * @example
+   * ```ts
+   * const handle = await client.mergeDirectional(positionIdA, positionIdB, 1_000_000n);
+   *
+   * const outcome = await handle.wait();
+   *
+   * // outcome.transactionHash: TxHash
+   * ```
+   */
+  mergeDirectional(
+    positionIdA: string,
+    positionIdB: string,
+    amount?: bigint | 'max',
   ): Promise<TransactionHandle>;
   /**
    * Plans a collateral return for the authenticated account.
@@ -430,6 +773,30 @@ export function walletActions(
     splitPosition: splitPosition.bind(null, client),
     mergePositions: mergePositions.bind(null, client),
     redeemPositions: redeemPositions.bind(null, client),
+    prepareComposeThreshold: prepareComposeThreshold.bind(null, client),
+    prepareDecomposeThreshold: prepareDecomposeThreshold.bind(null, client),
+    prepareSplitDirectional: prepareSplitDirectional.bind(null, client),
+    prepareMergeDirectional: prepareMergeDirectional.bind(null, client),
+    prepareSplitEventPositions: prepareSplitEventPositions.bind(null, client),
+    prepareMergeEventPositions: prepareMergeEventPositions.bind(null, client),
+    prepareConvertPosition: prepareConvertPosition.bind(null, client),
+    splitEventPositions: splitEventPositions.bind(null, client),
+    mergeEventPositions: mergeEventPositions.bind(null, client),
+    convertPosition: convertPosition.bind(null, client),
+    composeThreshold: composeThreshold.bind(null, client),
+    decomposeThreshold: decomposeThreshold.bind(null, client),
+    findDirectionalBuckets: findDirectionalBuckets.bind(null, client),
+    findDirectionalPairs: findDirectionalPairs.bind(null, client),
+    mergeAllUserPositionsDirectional: mergeAllUserPositionsDirectional.bind(
+      null,
+      client,
+    ),
+    splitAllUserPositionsDirectional: splitAllUserPositionsDirectional.bind(
+      null,
+      client,
+    ),
+    splitDirectional: splitDirectional.bind(null, client),
+    mergeDirectional: mergeDirectional.bind(null, client),
     planCollateralReturn: planCollateralReturn.bind(null, client),
     executeCollateralReturnPlan: executeCollateralReturnPlan.bind(null, client),
   };
@@ -466,6 +833,56 @@ export {
   ExecuteCollateralReturnPlanError,
   PlanCollateralReturnError,
 } from '../actions/collateral-return';
+export type {
+  ComposeThresholdWorkflow,
+  DecomposeThresholdWorkflow,
+  MergeDirectionalWorkflow,
+  PrepareComposeThresholdRequest,
+  PrepareDecomposeThresholdRequest,
+  SplitDirectionalWorkflow,
+} from '../actions/directional';
+export {
+  ComposeThresholdError,
+  DecomposeThresholdError,
+  MergeDirectionalError,
+  PrepareComposeThresholdError,
+  PrepareDecomposeThresholdError,
+  PrepareMergeDirectionalError,
+  PrepareSplitDirectionalError,
+  SplitDirectionalError,
+} from '../actions/directional';
+export {
+  type DirectionalBulkFailure,
+  type DirectionalBulkResult,
+  MergeAllUserPositionsDirectionalError,
+  SplitAllUserPositionsDirectionalError,
+} from '../actions/directional-bulk';
+export type {
+  DirectionalBucketHolding,
+  DirectionalPair,
+  FindDirectionalBucketsRequest,
+  FindDirectionalPairsRequest,
+} from '../actions/directional-pairs';
+export {
+  FindDirectionalBucketsError,
+  FindDirectionalPairsError,
+} from '../actions/directional-pairs';
+export type {
+  ConvertPositionWorkflow,
+  MergeEventPositionsWorkflow,
+  PrepareConvertPositionRequest,
+  PrepareMergeEventPositionsRequest,
+  PrepareSplitEventPositionsRequest,
+  SplitEventPositionsWorkflow,
+} from '../actions/event-positions';
+export {
+  ConvertPositionError,
+  MergeEventPositionsError,
+  PrepareConvertPositionError,
+  PrepareMergeEventPositionsError,
+  PrepareSplitEventPositionsError,
+  SplitEventPositionsError,
+} from '../actions/event-positions';
 export type {
   ConvertWorkflow,
   HorizontalMergeWorkflow,
