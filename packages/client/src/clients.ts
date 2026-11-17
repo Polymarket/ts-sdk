@@ -510,11 +510,35 @@ export const RefreshCredentialsError = makeErrorGuard(
   UnexpectedResponseError,
 );
 
+export type UpgradeCredentialsRequest = {
+  /** Wallet to bind to the session, such as a Deposit Wallet the application has deployed. */
+  wallet: string;
+};
+const UpgradeCredentialsRequestSchema = z.object({ wallet: EvmAddressSchema });
+
+export type UpgradeCredentialsError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const UpgradeCredentialsError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
 class BaseSecureClient<
   TPublicActions extends ClientActions = ClientActions,
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
+  readonly #onCredentialsChanged: CredentialsChanged | undefined;
+  #upgrading = false;
   readonly #requestTokens = new WeakMap<AbortSignal, string>();
   #endingAuthentication:
     | Promise<PublicClient<TPublicActions, TSecureActions>>
@@ -651,6 +675,7 @@ class BaseSecureClient<
         }),
       },
     });
+    this.#onCredentialsChanged = config.onCredentialsChanged;
   }
 
   override get predictions(): AuthenticatedServiceClient {
@@ -736,6 +761,93 @@ class BaseSecureClient<
    */
   async refreshCredentials(): Promise<BearerCredentials> {
     return this.session.refresh();
+  }
+
+  /**
+   * Binds a wallet to a session that has none and returns a client for that
+   * wallet.
+   *
+   * @remarks
+   * Use this after creating the client with `walletSetup: false` and
+   * completing your own onboarding, such as deploying the Deposit Wallet.
+   * Binding needs no new signature and keeps the refresh token.
+   * `onCredentialsChanged` receives the new access token, and the returned
+   * client keeps reporting renewals to it. This client and its subscriptions
+   * are closed without ending the session, so use the returned client from now
+   * on. A session already bound to `wallet` is returned as a new client without
+   * a request. A session bound to a different wallet is rejected. If binding
+   * fails, this client stays usable.
+   *
+   * @example
+   * ```ts
+   * const upgradedClient = await secureClient.upgradeCredentials({ wallet });
+   * await saveCredentials(upgradedClient.credentials);
+   * ```
+   * @throws {@link UpgradeCredentialsError} Thrown if the wallet cannot be bound.
+   */
+  async upgradeCredentials(
+    request: UpgradeCredentialsRequest,
+  ): Promise<SecureClient<TPublicActions, TSecureActions>> {
+    const { wallet } = parseUserInput(request, UpgradeCredentialsRequestSchema);
+    const { apiKey, auth, environment, fetch, onRateLimitUpdate, session } =
+      this.context;
+    // Validate the wallet identity before the session changes.
+    const account = resolveAccountIdentity(
+      environment,
+      this.account.signer,
+      wallet,
+    );
+    if (this.#upgrading)
+      throw new UserInputError('A credential upgrade is already in progress.');
+    const bound = session.claims.wallet;
+    if (bound !== undefined && !isSameEvmAddress(bound, wallet))
+      throw new UserInputError(
+        `The session is already bound to wallet ${bound}.`,
+      );
+    this.#upgrading = true;
+    try {
+      if (bound === undefined)
+        await session.bindWallet(wallet, (accessToken) =>
+          auth.post('/v1/auth/upgrade', {
+            headers: { Authorization: `Bearer ${accessToken}` },
+            json: { wallet },
+            schema: AccessTokenResponseSchema,
+          }),
+        );
+    } finally {
+      this.#upgrading = false;
+    }
+
+    const { accessToken } = session.credentials;
+    const expiresIn = Math.floor(
+      (session.expiresAt(accessToken) - Date.now()) / 1000,
+    );
+    const publicClient = new BasePublicClient<TPublicActions, TSecureActions>({
+      apiKey,
+      environment,
+      fetch,
+      onRateLimitUpdate,
+    });
+    for (const decorator of this.decorators) publicClient.extend(decorator);
+    const upgraded = publicClient.createAuthenticatedClient(
+      session.credentials,
+      expiresIn,
+      account,
+      this.signer,
+      this.#onCredentialsChanged,
+    );
+    upgraded.session.start();
+
+    // The returned client owns the session from now on. Close this one locally.
+    const closingResources = Promise.allSettled([
+      this.closeSubscriptions(),
+      this.webSockets.perpsSession.shutdown(),
+      this.webSockets.rfqQuoter.shutdown(),
+    ]);
+    this.endAuthenticationLifecycle();
+    session.close();
+    await closingResources;
+    return upgraded;
   }
 
   /** @internal */
@@ -1011,8 +1123,9 @@ export type SecureClientOptions = PublicClientOptions & {
    * then includes `wallet` only when you pass it. For a session without a
    * wallet, `account.wallet` is the `wallet` you pass, or otherwise the
    * signer's default Deposit Wallet address, which may not be deployed yet.
-   * Once onboarding completes, create a client from the saved credentials
-   * with wallet setup enabled to bind the wallet.
+   * Once onboarding completes, call `secureClient.upgradeCredentials` to
+   * bind the wallet, or create a client from the saved credentials with
+   * wallet setup enabled.
    *
    * @defaultValue true
    */

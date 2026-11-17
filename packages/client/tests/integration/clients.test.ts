@@ -362,15 +362,19 @@ describe('clients', () => {
       }
     });
 
-    it('signs in without a wallet when wallet setup is disabled', async ({
+    it('signs in without a wallet when wallet setup is disabled, then upgrades the credentials', async ({
       environment,
       randomEoaSigner,
     }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const changed = vi.fn();
       const secureClient = await createSecureClient({
         environment,
         signer: randomEoaSigner,
         walletSetup: false,
+        onCredentialsChanged: changed,
       });
+      let client = secureClient;
 
       try {
         expect(
@@ -378,8 +382,31 @@ describe('clients', () => {
         ).toBeUndefined();
         expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
         await expect(isWalletDeployed(secureClient)).resolves.toBe(false);
+
+        const signTypedData = vi.spyOn(randomEoaSigner, 'signTypedData');
+        client = await secureClient.upgradeCredentials({
+          wallet: signerAddress,
+        });
+
+        expect(signTypedData).not.toHaveBeenCalled();
+        expect(client.account.wallet).toBe(signerAddress);
+        expect(client.account.walletType).toBe(WalletType.EOA);
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(changed).toHaveBeenLastCalledWith(client.credentials);
+        // The upgraded client owns the session, and the original one is closed.
+        expect(() => secureClient.credentials).toThrow(InvariantError);
+        await client.listOpenOrders().firstPage();
+        // Renewal keeps the bound wallet.
+        const renewed = await client.refreshCredentials();
+        expect(renewed).toEqual(client.credentials);
+        expect(walletClaim(renewed.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
       } finally {
-        await secureClient.endAuthentication();
+        vi.restoreAllMocks();
+        await client.endAuthentication();
       }
     });
 

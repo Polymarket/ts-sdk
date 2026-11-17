@@ -73,6 +73,7 @@ export {
   EndAuthenticationError,
   RefreshCredentialsError,
   SetupGaslessWalletError,
+  UpgradeCredentialsError,
 } from './clients';
 export type { ClientCredentials } from './credentials';
 export * from './decorators';
