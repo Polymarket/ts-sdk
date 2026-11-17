@@ -3325,10 +3325,14 @@ describe('PerpsSession', () => {
         http.get(
           `${production.perps.rest}/v1/account/funding`,
           ({ request }) => {
-            requests.push(new URL(request.url).searchParams);
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
 
             return HttpResponse.json({
-              data: [fundingPayment('1', 2000), fundingPayment('2', 1000)],
+              data:
+                params.get('end_timestamp') === '3000'
+                  ? [fundingPayment('1', 2000), fundingPayment('2', 1000)]
+                  : [fundingPayment('2', 1000)],
               more: true,
             });
           },
@@ -3345,8 +3349,122 @@ describe('PerpsSession', () => {
         if (pages.length > MAX_EXPECTED_PAGES) break;
       }
 
-      expect(pages).toEqual([['1', '2']]);
-      expect(requests).toHaveLength(1);
+      expect(pages).toEqual([['1', '2'], []]);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '1000',
+      ]);
+    });
+
+    it.each([
+      1000, 2000,
+    ])('preserves deposit identity through inclusive start %s', async (start) => {
+      const hash = `0x${'1'.repeat(64)}`;
+      const requests: URLSearchParams[] = [];
+      function deposit(logIndex?: number | null) {
+        return {
+          hash,
+          ...(logIndex === undefined ? {} : { log_index: logIndex }),
+          asset: 'USDC',
+          amount: '10',
+          status: 'confirmed',
+          from: `0x${'2'.repeat(40)}`,
+          to: `0x${'3'.repeat(40)}`,
+          confirmations: 3,
+          required_confirmations: 3,
+          created_timestamp: 2000,
+          confirmed_timestamp: 2000,
+        };
+      }
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/deposits`,
+          ({ request }) => {
+            requests.push(new URL(request.url).searchParams);
+            const indices =
+              requests.length === 1
+                ? [undefined, null, 0, 0]
+                : [undefined, null, 0, 1, 1];
+            return HttpResponse.json({
+              data: indices.map(deposit),
+              more: requests.length < 3 || start === 2000,
+            });
+          },
+        ),
+      );
+      const pages = createSession().listDeposits({ start, end: 3000 });
+      const first = await pages.firstPage();
+      expect(first.hasMore).toBe(true);
+      const second = await pages.from(first.nextCursor).firstPage();
+      expect(first.items.map((item) => item.logIndex)).toEqual([
+        undefined,
+        undefined,
+        0,
+      ]);
+      expect(first.items[0]).not.toHaveProperty('logIndex');
+      expect(first.items[1]).not.toHaveProperty('logIndex');
+      expect(second.items.map((item) => item.logIndex)).toEqual([1]);
+      expect(second.hasMore).toBe(true);
+      const third = await pages.from(second.nextCursor).firstPage();
+      expect(third.items).toEqual([]);
+      expect(third.hasMore).toBe(false);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+        '2000',
+      ]);
+    });
+
+    it('continues withdrawals through an inclusive start timestamp', async () => {
+      const requests: URLSearchParams[] = [];
+      function withdrawal(withdrawalId: number) {
+        return {
+          withdraw_id: withdrawalId,
+          asset: 'USDC',
+          amount: '10',
+          fee: '0',
+          status: 'confirmed',
+          to: `0x${'3'.repeat(40)}`,
+          hash: `0x${String(withdrawalId).repeat(64)}`,
+          confirmations: 3,
+          required_confirmations: 3,
+          created_timestamp: 2000,
+          confirmed_timestamp: 2000,
+        };
+      }
+      server.use(
+        http.get(
+          `${production.perps.rest}/v1/account/withdrawals`,
+          ({ request }) => {
+            const params = new URL(request.url).searchParams;
+            requests.push(params);
+            return HttpResponse.json({
+              data:
+                params.get('end_timestamp') === '3000'
+                  ? [withdrawal(2)]
+                  : [withdrawal(2), withdrawal(1)],
+              more: true,
+            });
+          },
+        ),
+      );
+      const session = createSession();
+
+      const pages: number[][] = [];
+      for await (const page of session.listWithdrawals({
+        end: 3000,
+        start: 2000,
+      })) {
+        pages.push(page.items.map((item) => item.withdrawalId));
+        if (pages.length > MAX_EXPECTED_PAGES) break;
+      }
+
+      expect(pages).toEqual([[2], [1], []]);
+      expect(requests.map((params) => params.get('end_timestamp'))).toEqual([
+        '3000',
+        '2000',
+        '2000',
+      ]);
     });
 
     it('continues ascending interval account history pages', async () => {
