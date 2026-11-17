@@ -49,6 +49,10 @@ export const ProfileSchema = z
 
 export const PublicProfileSchema = z
   .object({
+    /** Taker fee tier, when supplied by the profile response. */
+    takerTier: z.number().int().optional(),
+    takerTierName: z.string().optional(),
+    weightedVolume: z.number().optional(),
     createdAt: IsoDateTimeStringSchema.nullish(),
     proxyWallet: EvmAddressSchema.nullish(),
     profileImage: z.string().nullish(),
