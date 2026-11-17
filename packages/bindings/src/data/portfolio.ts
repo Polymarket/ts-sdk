@@ -573,7 +573,10 @@ export const ComboPositionMarketSchema = z
     category: z.string().nullish(),
     subcategory: z.string().nullish(),
     tags: z.array(z.string()).nullish(),
-    end_date: IsoDateTimeStringSchema.nullish(),
+    end_date: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      IsoDateTimeStringSchema.nullish(),
+    ),
     event: ComboPositionMarketEventSchema.nullish(),
   })
   .transform(
@@ -600,7 +603,10 @@ export const ComboPositionLegSchema = z
   .object({
     leg_index: z.number().int(),
     leg_position_id: PositionIdSchema,
-    leg_condition_id: ConditionIdSchema,
+    leg_condition_id: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      ConditionIdSchema.optional(),
+    ),
     leg_outcome_index: z.number().int(),
     leg_outcome_label: z.string().nullish(),
     leg_status: ComboPositionStatusSchema,
@@ -650,7 +656,10 @@ export const ComboPositionSchema = z
     realized_payout_usdc: DecimalishSchema,
     status: ComboPositionStatusSchema,
     redeemable: z.boolean(),
-    first_entry_at: IsoDateTimeStringSchema,
+    first_entry_at: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      IsoDateTimeStringSchema.optional(),
+    ),
     resolved_at: IsoDateTimeStringSchema.nullish(),
     legs_total: z.number().int(),
     legs_resolved: z.number().int(),

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ComboPositionLegSchema,
   ComboPositionMarketSchema,
   FetchPortfolioValueResponseSchema,
   FetchUserPnlResponseSchema,
   FetchUserStatsResponseSchema,
   FetchUserVolumeResponseSchema,
+  ListComboPositionsResponseSchema,
   PositionSchema,
 } from './portfolio';
 
@@ -240,4 +242,57 @@ describe('ComboPositionMarketSchema', () => {
     expect(market).not.toHaveProperty('group_item_title');
     expect(market).not.toHaveProperty('sports_market_type');
   });
+});
+
+it('keeps a combination with missing leg enrichment and first entry in a mixed page', () => {
+  const row = {
+    combo_condition_id: `0x03${'ab'.repeat(30)}`,
+    combo_position_id: '123',
+    proxy_wallet: WALLET,
+    outcome_index: 0,
+    outcome_label: 'Yes',
+    current_size: 1,
+    entry_avg_price_usdc: 0.5,
+    entry_cost_usdc: 0.5,
+    gross_entry_cost_usdc: 0.5,
+    entry_fees_usdc: 0,
+    realized_payout_usdc: 0,
+    status: 'OPEN',
+    redeemable: false,
+    first_entry_at: '2026-01-01T00:00:00Z',
+    legs_total: 1,
+    legs_resolved: 0,
+    legs_pending: 1,
+    legs: [
+      {
+        leg_index: 0,
+        leg_position_id: '456',
+        leg_condition_id: `0x${'a'.repeat(64)}`,
+        leg_outcome_index: 0,
+        leg_status: 'OPEN',
+        market: { end_date: '2026-02-01T00:00:00Z' },
+      },
+    ],
+    updated_at: '2026-01-02T00:00:00Z',
+  };
+  const empty = {
+    ...row,
+    first_entry_at: '',
+    legs: [{ ...row.legs[0], leg_condition_id: '', market: { end_date: '' } }],
+  };
+  const page = ListComboPositionsResponseSchema.parse({
+    data: [row, empty, row],
+    pagination: { limit: 10, offset: 0, has_more: false, next_cursor: null },
+  });
+  expect(page.items).toHaveLength(3);
+  expect(page.items[1]?.firstEntryAt).toBeUndefined();
+  expect(page.items[1]?.legs[0]?.legConditionId).toBeUndefined();
+  expect(page.items[1]?.legs[0]?.market?.endDate).toBeUndefined();
+  expect(page.items[2]?.firstEntryAt).toBe(row.first_entry_at);
+  expect(
+    ComboPositionLegSchema.safeParse({
+      ...empty.legs[0],
+      leg_condition_id: 'invalid',
+    }).success,
+  ).toBe(false);
 });
