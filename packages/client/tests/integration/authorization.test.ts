@@ -647,5 +647,119 @@ describe('authorization', () => {
       },
       120_000,
     );
+
+    it.runIf(runMeteredTests)(
+      'places and cancels an order from a browser session signed in through the challenge proxy',
+      // Side effect: places one post-only BUY at the market's minimum price and
+      // size, which rests without filling, then cancels it.
+      async ({
+        builderCredentials,
+        depositWalletAddress,
+        depositWalletSigner,
+        environment,
+        onTestFinished,
+        platformKey,
+        publicClient,
+      }) => {
+        const market = await findHighVolumeLowPriceMarket(publicClient);
+        const backend = createPublicClient({
+          apiKey: platformApiKey(platformKey),
+          environment,
+        });
+        const signed: string[] = [];
+        server.use(
+          http.post(challengeUrl, async ({ request }) =>
+            HttpResponse.json(
+              await createPlatformChallenge(
+                backend,
+                (await request.json()) as PlatformChallengeRequest,
+              ),
+            ),
+          ),
+          http.post(signerUrl, async ({ request }) => {
+            const payload = (await request.json()) as {
+              body?: string;
+              method: 'DELETE' | 'GET' | 'POST';
+              path: string;
+            };
+            signed.push(`${payload.method} ${payload.path}`);
+            const timestamp = Math.floor(Date.now() / 1000);
+
+            return HttpResponse.json({
+              POLY_BUILDER_API_KEY: builderCredentials.key,
+              POLY_BUILDER_PASSPHRASE: builderCredentials.passphrase,
+              POLY_BUILDER_SIGNATURE: await buildHmacSignature(
+                builderCredentials.secret,
+                timestamp,
+                payload.method,
+                payload.path,
+                payload.body,
+              ),
+              POLY_BUILDER_TIMESTAMP: `${timestamp}`,
+            });
+          }),
+        );
+        // The browser holds neither the platform key nor the builder secret.
+        const secureClient = await createSecureClient({
+          apiKey: remotePlatformApiKey({
+            submissionApiKey: remoteBuilderSigning({ url: signerUrl }),
+            url: challengeUrl,
+          }),
+          environment,
+          signer: depositWalletSigner,
+          wallet: depositWalletAddress,
+        });
+        let restingOrderId: string | undefined;
+        onTestFinished(async () => {
+          if (restingOrderId !== undefined)
+            await secureClient
+              .cancelOrder({ orderId: restingOrderId })
+              .catch(() => undefined);
+          await secureClient.endAuthentication();
+        });
+        expect(clientIdOf(secureClient.credentials.accessToken)).toEqual(
+          expect.any(String),
+        );
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+        const response = await secureClient.placeLimitOrder({
+          postOnly: true,
+          price: expectPresent(market.trading.minimumTickSize),
+          side: OrderSide.BUY,
+          size: expectPresent(market.trading.minimumOrderSize),
+          tokenId: expectPresent(market.outcomes.yes.tokenId),
+        });
+        const { orderId, status } = expectAcceptedOrderResponse(response);
+        restingOrderId = orderId;
+        expect(status).toBe(OrderPostStatus.LIVE);
+
+        const result = await secureClient.cancelOrder({ orderId });
+        expect(result.canceled).toContain(orderId);
+        restingOrderId = undefined;
+        vi.restoreAllMocks();
+
+        // Orders go directly to the API on the bearer session, without the
+        // application key, and are builder-signed by the remote signer.
+        expect(signed).toEqual(['POST /order', 'DELETE /order']);
+        const orderRequests = sentRequests(fetchSpy).filter((request) =>
+          request.url.pathname.endsWith('/v1/orders'),
+        );
+        expect(orderRequests).toHaveLength(2);
+        for (const request of orderRequests) {
+          expect(request.url.origin).toBe(
+            new URL(environment.predictions.rest).origin,
+          );
+          expect(request.headers.get('authorization')).toMatch(/^Bearer /);
+          expect(request.headers.get('x-api-key')).toBeNull();
+          expect(request.headers.get('poly_builder_api_key')).toBe(
+            builderCredentials.key,
+          );
+          expect(request.headers.get('poly_builder_signature')).toEqual(
+            expect.any(String),
+          );
+        }
+      },
+      120_000,
+    );
   });
 });
