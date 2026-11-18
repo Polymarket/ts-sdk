@@ -1,10 +1,12 @@
 // biome-ignore-all lint/style/noRestrictedImports: msw's Node test server lives at this entrypoint.
 
+import { OrderSide } from '@polymarket/bindings';
 import { RelayerTransactionType } from '@polymarket/bindings/relayer';
 import {
   buildHmacSignature,
   createPublicClient,
   createSecureClient,
+  OrderPostStatus,
   remoteBuilderSigning,
   remotePlatformApiKey,
   SigningError,
@@ -19,10 +21,13 @@ import {
   type PlatformChallengeRequest,
   platformApiKey,
 } from '@polymarket/client/node';
+import { expectPresent } from '@polymarket/types';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, vi } from 'vitest';
-import { describe, expect, it } from './fixtures';
+import { describe, expect, it, runMeteredTests } from './fixtures';
+import { expectAcceptedOrderResponse } from './helpers';
+import { findHighVolumeLowPriceMarket } from './markets';
 import {
   clientIdOf,
   headerValues,
@@ -570,5 +575,77 @@ describe('authorization', () => {
         await client.endAuthentication();
       }
     });
+
+    it.runIf(runMeteredTests)(
+      'places and cancels an order on the bearer session with the key and builder signing',
+      // Side effect: places one post-only BUY at the market's minimum price and
+      // size, which rests without filling, then cancels it.
+      async ({
+        builderAuthentication,
+        builderCredentials,
+        depositWalletAddress,
+        depositWalletSigner,
+        environment,
+        onTestFinished,
+        platformKey,
+        publicClient,
+      }) => {
+        const market = await findHighVolumeLowPriceMarket(publicClient);
+        const secureClient = await createSecureClient({
+          apiKey: platformApiKey(platformKey, {
+            submissionApiKey: builderAuthentication,
+          }),
+          environment,
+          signer: depositWalletSigner,
+          wallet: depositWalletAddress,
+        });
+        let restingOrderId: string | undefined;
+        onTestFinished(async () => {
+          if (restingOrderId !== undefined)
+            await secureClient
+              .cancelOrder({ orderId: restingOrderId })
+              .catch(() => undefined);
+          await secureClient.endAuthentication();
+        });
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+        const response = await secureClient.placeLimitOrder({
+          postOnly: true,
+          price: expectPresent(market.trading.minimumTickSize),
+          side: OrderSide.BUY,
+          size: expectPresent(market.trading.minimumOrderSize),
+          tokenId: expectPresent(market.outcomes.yes.tokenId),
+        });
+        const { orderId, status } = expectAcceptedOrderResponse(response);
+        restingOrderId = orderId;
+        expect(status).toBe(OrderPostStatus.LIVE);
+
+        const result = await secureClient.cancelOrder({ orderId });
+        expect(result.canceled).toContain(orderId);
+        restingOrderId = undefined;
+        vi.restoreAllMocks();
+
+        // Placement and cancellation both ride on the bearer session, carry the
+        // application key, and are builder-signed by the submission key.
+        const orderRequests = sentRequests(fetchSpy).filter((request) =>
+          request.url.pathname.endsWith('/v1/orders'),
+        );
+        expect(orderRequests).toHaveLength(2);
+        for (const request of orderRequests) {
+          expect(request.headers.get('authorization')).toMatch(/^Bearer /);
+          expect(request.headers.get('x-api-key')).toBe(platformKey);
+          expect(request.headers.get('poly_builder_api_key')).toBe(
+            builderCredentials.key,
+          );
+          expect(request.headers.get('poly_builder_signature')).toEqual(
+            expect.any(String),
+          );
+        }
+        expect(clientIdOf(secureClient.credentials.accessToken)).toEqual(
+          expect.any(String),
+        );
+      },
+      120_000,
+    );
   });
 });
