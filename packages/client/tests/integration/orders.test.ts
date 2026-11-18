@@ -576,6 +576,39 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
   });
 
+  describe('fetchOrder', () => {
+    it.runIf(runMeteredTests)(
+      'fetches a resting order and its scoring state, then cancels it',
+      // Side effect: places one resting BUY at the minimum price and size, then cancels it.
+      async ({ annotate, secureClientWithDepositWallet }) => {
+        annotate(`Market ID: ${market.id}`);
+        const { orderId, tokenId } = await createRestingLimitOrder(
+          secureClientWithDepositWallet,
+          market,
+        );
+
+        try {
+          const order = await secureClientWithDepositWallet.fetchOrder({
+            orderId,
+          });
+          expect(order).toMatchObject({ id: orderId, assetId: tokenId });
+
+          const scoring = await secureClientWithDepositWallet.fetchOrderScoring(
+            { orderId },
+          );
+          expect(typeof scoring).toBe('boolean');
+          await expect(
+            secureClientWithDepositWallet.fetchOrdersScoring({
+              orderIds: [orderId],
+            }),
+          ).resolves.toEqual({ [orderId]: scoring });
+        } finally {
+          await secureClientWithDepositWallet.cancelOrder({ orderId });
+        }
+      },
+    );
+  });
+
   describe('postOrders', () => {
     it('posts multiple resting limit orders', async ({
       annotate,
