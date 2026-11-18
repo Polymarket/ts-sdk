@@ -1,10 +1,10 @@
 import { never } from '@polymarket/types';
 import { TransportError } from './errors';
 import type { RateLimitUpdateListener } from './rate-limit';
-import type { RequestOptions } from './request-options';
 import {
   assertNotAborted,
   type Fetch,
+  parsePostRetries,
   parseRequestOptions,
   withAbort,
 } from './request-options';
@@ -18,17 +18,10 @@ import {
   type ServiceClientNonJsonResponseType,
   type ServiceClientPatchOptions,
   type ServiceClientPostOptions,
-  type ServiceClientRequestOptions,
   type ServiceClientResponse,
   type ServiceRequest,
   type ServiceRequestMethod,
 } from './ServiceClient';
-
-type ServiceClientWorkflowGetOptions<T = unknown> =
-  ServiceClientRequestOptions<T> & {
-    headers?: HeadersInit;
-    params?: URLSearchParams;
-  };
 
 /** Callback-owned authentication; this transport never stores credentials. @internal */
 export type AuthenticatedServiceClientConfig = {
@@ -77,48 +70,6 @@ export class AuthenticatedServiceClient extends ServiceClient {
     options: ServiceClientGetOptions = {},
   ): Promise<unknown> {
     return this.#dispatch('get', path, options);
-  }
-
-  /**
-   * Sends a workflow GET with its existing transport policy and no optional
-   * data-read retries. Some command and authentication endpoints require GET.
-   * @internal
-   */
-  override getWorkflow<T = unknown>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions<T> &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  /** @internal */
-  override getWorkflow<TResponse extends ServiceClientNonJsonResponseType>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions &
-      ServiceClientNonJsonResponseOptions<TResponse>,
-  ): Promise<ServiceClientResponse<TResponse>>;
-  /** @internal */
-  override getWorkflow(
-    path: string,
-    options: ServiceClientWorkflowGetOptions,
-  ): Promise<unknown> {
-    return this.#dispatch('getWorkflow', path, options);
-  }
-
-  /**
-   * Sends an idempotent JSON read whose endpoint requires POST.
-   * Actions own the decision that replay is safe.
-   * @internal
-   */
-  override postRead<T = unknown>(
-    path: string,
-    options: ServiceClientPostOptions<T> &
-      RequestOptions &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  override postRead(
-    path: string,
-    options: ServiceClientPostOptions & RequestOptions,
-  ): Promise<unknown> {
-    return this.#dispatch('postRead', path, options);
   }
 
   /**
@@ -196,7 +147,7 @@ export class AuthenticatedServiceClient extends ServiceClient {
   }
 
   #dispatch(
-    method: 'get' | 'getWorkflow' | 'postRead' | 'post' | 'patch' | 'del',
+    method: 'get' | 'post' | 'patch' | 'del',
     path: string,
     options:
       | ServiceClientGetOptions
@@ -204,7 +155,10 @@ export class AuthenticatedServiceClient extends ServiceClient {
       | ServiceClientPatchOptions
       | ServiceClientDeleteOptions,
   ): Promise<unknown> {
-    if (method === 'postRead') parseRequestOptions(options);
+    // Validate retries before resolving headers or renewing the session.
+    if (method === 'get') parseRequestOptions(options);
+    if (method === 'post')
+      parsePostRetries((options as ServiceClientPostOptions).retries);
     const client = new ServiceClient({
       root: this.#config.root,
       headers: this.#config.headers,
@@ -214,19 +168,6 @@ export class AuthenticatedServiceClient extends ServiceClient {
     // Only actual HTTP attempts get a deadline, not header resolution or refresh.
     const controls = { ...options, timeout: false as const };
     if (method === 'get') return client.get(path, controls);
-    if (method === 'getWorkflow')
-      return client.getWorkflow(
-        path,
-        controls as ServiceClientWorkflowGetOptions &
-          ServiceClientJsonResponseOptions,
-      );
-    if (method === 'postRead')
-      return client.postRead(
-        path,
-        controls as ServiceClientPostOptions &
-          RequestOptions &
-          ServiceClientJsonResponseOptions,
-      );
     if (method === 'post') return client.post(path, controls);
     if (method === 'patch') return client.patch(path, controls);
     return client.del(path, controls);
@@ -308,7 +249,9 @@ async function sendAttempt(
     responseType: 'raw' as const,
   };
   try {
-    if (request.method === 'GET') return await client.get(path, options);
+    // The outer client owns the caller's retry budget. Send each attempt once.
+    if (request.method === 'GET')
+      return await client.get(path, { ...options, retries: 0 });
     if (request.method === 'POST') return await client.post(path, options);
     if (request.method === 'PATCH') return await client.patch(path, options);
     if (request.method === 'DELETE') return await client.del(path, options);

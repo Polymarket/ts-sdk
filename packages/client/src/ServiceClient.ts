@@ -1,5 +1,6 @@
 import { ErrorResponseSchema } from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
+import { PolymarketError } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { z } from 'zod';
 import {
@@ -547,7 +548,15 @@ export class ServiceClient {
           retries > 0 && {
             // One transport-owned counter covers both network failures and 429s.
             // A new call (including each page) starts with a fresh counter.
-            retry: { limit: retries, methods: [method.toLowerCase()] },
+            retry: {
+              limit: retries,
+              methods: [method.toLowerCase()],
+              // An error the SDK raised, such as a rejected session renewal
+              // inside an authenticated fetch, is final. Only network
+              // failures and retryable statuses use the budget.
+              shouldRetry: ({ error }) =>
+                error instanceof PolymarketError ? false : undefined,
+            },
             hooks: {
               afterResponse: [
                 (_request, _options, response, { retryCount }) => {

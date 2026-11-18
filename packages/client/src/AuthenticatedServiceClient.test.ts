@@ -209,8 +209,8 @@ it('preserves serialized JSON bytes without rounding numbers on dispatch or repl
 
 it.each([
   'get',
-  'postRead',
-] as const)('preserves opt-in read retries for %s', async (method) => {
+  'post',
+] as const)('preserves per-call retries for %s', async (method) => {
   const fetch = vi
     .fn(async () => Response.json('accepted'))
     .mockRejectedValueOnce(new TypeError('Network request failed'));
@@ -220,8 +220,8 @@ it.each([
     refreshToken: async () => false,
   });
   const pending =
-    method === 'postRead'
-      ? service.postRead('/batch', { retries: 1, json: ['1'] })
+    method === 'post'
+      ? service.post('/batch', { retries: 1, json: ['1'] })
       : service.get('/batch', { retries: 1 });
   await expect(pending).resolves.toBe('accepted');
   expect(fetch).toHaveBeenCalledTimes(2);
@@ -230,15 +230,15 @@ it.each([
 it.each([
   '/command',
   '/v1/auth/session',
-])('does not apply read retries to workflow GET %s', async (path) => {
+])('does not retry workflow GET %s with retries set to 0', async (path) => {
   const fetch = vi
     .fn(async () => Response.json('accepted'))
     .mockRejectedValueOnce(new TypeError('Network request failed'));
   const refreshToken = vi.fn(async () => false);
   const service = new AuthenticatedServiceClient({ root, fetch, refreshToken });
-  const options = { retries: 1, responseType: 'json' as const };
+  const options = { retries: 0, responseType: 'json' as const };
 
-  await expect(service.getWorkflow(path, options)).rejects.toMatchObject({
+  await expect(service.get(path, options)).rejects.toMatchObject({
     name: 'TransportError',
     cause: { message: 'Network request failed' },
   });
@@ -248,8 +248,8 @@ it.each([
 
 it.each([
   'get',
-  'postRead',
-] as const)('does not spend the %s read retry budget on HTTP timeouts', async (method) => {
+  'post',
+] as const)('does not spend the %s retry budget on HTTP timeouts', async (method) => {
   vi.useFakeTimers();
   const fetch = vi.fn(async () => new Promise<Response>(() => {}));
   const service = new AuthenticatedServiceClient({
@@ -259,8 +259,8 @@ it.each([
   });
   const options = { retries: 1, timeout: 50 };
   const pending =
-    method === 'postRead'
-      ? service.postRead('/batch', options)
+    method === 'post'
+      ? service.post('/batch', options)
       : service.get('/batch', options);
   const rejected = expect(pending).rejects.toMatchObject({
     name: 'TransportError',
