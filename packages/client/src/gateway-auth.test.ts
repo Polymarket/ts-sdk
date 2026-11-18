@@ -14,6 +14,8 @@ import {
 import type { ClientCredentials } from './credentials';
 import { forkEnvironmentConfig } from './environments';
 import { RequestRejectedError, TransportError } from './errors';
+// biome-ignore lint/style/noRestrictedImports: This test sends requests through the server-only platform key adapter.
+import { platformApiKey } from './node';
 import { protectRequestErrors } from './request-errors';
 import { AuthSession } from './session';
 import type { Signer } from './types';
@@ -672,6 +674,61 @@ it.each([
   });
   try {
     await expect(client.predictions.post(path)).resolves.toBe(true);
+  } finally {
+    client.closeAuthenticationSession();
+    await client.closeSubscriptions();
+  }
+});
+
+it('sends predictions PUT requests with the session, application key and body, and replays them after renewal', async () => {
+  const platformKey = 'pm_sk_synthetic-server-only';
+  const pair = tokens();
+  const rotated = tokens(1);
+  const body = { theme: 'dark', alerts: ['fills'] };
+  let refreshRequests = 0;
+  const puts: Request[] = [];
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const request = new Request(input, init);
+    const path = new URL(request.url).pathname;
+    if (path === '/v1/auth/refresh') {
+      refreshRequests++;
+      return Response.json(refreshRequests === 1 ? pair : rotated);
+    }
+    if (path === '/v1/auth/logout') return new Response(null, { status: 204 });
+    if (path === '/v1/me/preferences') {
+      puts.push(request);
+      return puts.length === 1
+        ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+        : Response.json({ saved: true });
+    }
+    throw new Error(`Unexpected mock route: ${path}`);
+  });
+  const client = await createSecureClient({
+    apiKey: platformApiKey(platformKey),
+    credentials: saved(pair),
+    environment,
+    fetch,
+    signer: signer(),
+    wallet: address,
+  });
+
+  try {
+    await expect(
+      client.predictions.put('/v1/me/preferences', { json: body }),
+    ).resolves.toEqual({ saved: true });
+
+    // The rejected PUT is replayed once, unchanged, with the renewed token.
+    expect(refreshRequests).toBe(2);
+    expect(puts.map((request) => request.headers.get('authorization'))).toEqual(
+      [`Bearer ${pair.accessToken}`, `Bearer ${rotated.accessToken}`],
+    );
+    for (const request of puts) {
+      expect(request.method).toBe('PUT');
+      expect(request.headers.get('x-api-key')).toBe(platformKey);
+      expect(request.headers.get('content-type')).toContain('application/json');
+      expect(request.headers.get('polymarket_client')).not.toBeNull();
+      await expect(request.json()).resolves.toEqual(body);
+    }
   } finally {
     client.closeAuthenticationSession();
     await client.closeSubscriptions();
