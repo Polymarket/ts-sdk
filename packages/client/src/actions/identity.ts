@@ -1,6 +1,7 @@
 import {
   type BearerCredentials,
   EvmAddressSchema,
+  type OwnershipChallenge,
   type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
@@ -84,12 +85,28 @@ export async function issueLoginSession(
     throw new SigningError('Could not obtain signer address.');
   }
   const signer = parseUserInput(address, EvmAddressSchema);
-  const challenge = await client.requestOwnershipChallenge({
-    signer,
-    wallet: params.wallet,
-    verification_token: params.verificationToken,
-    nonce: params.nonce,
-  });
+  let challenge: OwnershipChallenge;
+  try {
+    challenge = await client.requestOwnershipChallenge({
+      signer,
+      wallet: params.wallet,
+      verification_token: params.verificationToken,
+      nonce: params.nonce,
+    });
+  } catch (error) {
+    // A wallet the signer cannot use, such as one that was never deployed,
+    // is rejected before anything is signed.
+    if (
+      params.wallet !== undefined &&
+      error instanceof RequestRejectedError &&
+      error.code === 'wallet_not_authorized'
+    )
+      throw new UserInputError(
+        `Wallet ${params.wallet} cannot be used by this signer. Provide an existing wallet the signer controls, or omit wallet to use the default Deposit Wallet.`,
+        { cause: error },
+      );
+    throw error;
+  }
   // The signature must prove control of this signer on this network only.
   if (
     challenge.typedData.domain.chainId !== client.environment.chainId ||

@@ -126,14 +126,36 @@ describe('clients', () => {
     it('rejects an undeployed non-default wallet with UserInputError', async ({
       depositWalletSigner,
       environment,
+      publicClient,
     }) => {
-      await expect(
-        createSecureClient({
-          environment,
-          wallet: ZERO_ADDRESS,
-          signer: depositWalletSigner,
-        }),
-      ).rejects.toThrow(UserInputError);
+      const signTypedData = vi.spyOn(depositWalletSigner, 'signTypedData');
+
+      try {
+        for (const walletSetup of [true, false]) {
+          await expect(
+            createSecureClient({
+              environment,
+              wallet: ZERO_ADDRESS,
+              signer: depositWalletSigner,
+              walletSetup,
+            }),
+          ).rejects.toThrow(UserInputError);
+        }
+        // The API's rejection stays available as the cause.
+        await expect(
+          publicClient.login({
+            signer: depositWalletSigner,
+            wallet: ZERO_ADDRESS,
+          }),
+        ).rejects.toMatchObject({
+          name: 'UserInputError',
+          cause: { status: 401, code: 'wallet_not_authorized' },
+        });
+        // The wallet is rejected before anything is signed.
+        expect(signTypedData).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+      }
     });
 
     it('restores saved credentials and reports the renewed pair', async ({
