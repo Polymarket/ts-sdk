@@ -52,6 +52,12 @@ export type JsonRpcClientConfig = {
   url: string;
 };
 
+/**
+ * Largest JSON-RPC batch sent in one request. Public RPC plans commonly reject
+ * larger batches, including the default endpoint.
+ */
+const MAX_BATCH_SIZE = 10;
+
 /** @internal */
 export class JsonRpcClient {
   readonly #fetch: Fetch | undefined;
@@ -106,7 +112,15 @@ export class JsonRpcClient {
       return [];
     }
 
-    return this.#ethCallBatchWithSplit(requests, options);
+    const batches: (readonly EthCallRequest[])[] = [];
+    for (let start = 0; start < requests.length; start += MAX_BATCH_SIZE) {
+      batches.push(requests.slice(start, start + MAX_BATCH_SIZE));
+    }
+    const results = await Promise.all(
+      batches.map((batch) => this.#ethCallBatchWithSplit(batch, options)),
+    );
+
+    return results.flat();
   }
 
   async ethEstimateGas(
