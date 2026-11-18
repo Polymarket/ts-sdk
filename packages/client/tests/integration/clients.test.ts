@@ -581,63 +581,32 @@ describe('clients', () => {
       randomEoaSigner,
     }) => {
       const signerAddress = await randomEoaSigner.getAddress();
-      const onboardingClient = await createSecureClient({
+      const secureClient = await createSecureClient({
         environment,
         signer: randomEoaSigner,
         walletSetup: false,
       });
-      const depositWallet = onboardingClient.account.wallet;
-      const client = await onboardingClient.upgradeCredentials({
-        wallet: signerAddress,
-      });
+      const depositWallet = secureClient.account.wallet;
 
       try {
+        const bound = await secureClient.upgradeCredentials({
+          wallet: signerAddress,
+        });
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
         await expect(
-          client.upgradeCredentials({ wallet: depositWallet }),
+          secureClient.upgradeCredentials({ wallet: depositWallet }),
         ).rejects.toThrow(UserInputError);
         expect(fetchSpy).not.toHaveBeenCalled();
         vi.restoreAllMocks();
 
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        expect(secureClient.credentials).toEqual(bound);
+        expect(walletClaim(secureClient.credentials.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
-        await client.listOpenOrders().firstPage();
+        await secureClient.listOpenOrders().firstPage();
       } finally {
         vi.restoreAllMocks();
-        await client.endAuthentication();
-      }
-    });
-
-    it('hands over a session already bound to the same wallet without a request', async ({
-      environment,
-      randomEoaSigner,
-    }) => {
-      const signerAddress = await randomEoaSigner.getAddress();
-      const boundClient = await createSecureClient({
-        environment,
-        signer: randomEoaSigner,
-        wallet: signerAddress,
-      });
-      let client = boundClient;
-
-      try {
-        const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        client = await boundClient.upgradeCredentials({
-          wallet: signerAddress,
-        });
-        await client.listOpenOrders().firstPage();
-
-        expect(
-          sentRequests(fetchSpy).filter((request) =>
-            request.url.pathname.endsWith('/v1/auth/upgrade'),
-          ),
-        ).toHaveLength(0);
-        expect(client.account.wallet).toBe(signerAddress);
-        expect(() => boundClient.credentials).toThrow(InvariantError);
-      } finally {
-        vi.restoreAllMocks();
-        await client.endAuthentication();
+        await secureClient.endAuthentication();
       }
     });
 
@@ -661,15 +630,12 @@ describe('clients', () => {
         signer: randomEoaSigner,
         walletSetup: false,
       });
-      let upgradedTab = firstTab;
 
       try {
         expect(secondTab.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
 
         // The first tab finishes onboarding and binds the wallet.
-        upgradedTab = await firstTab.upgradeCredentials({
-          wallet: signerAddress,
-        });
+        await firstTab.upgradeCredentials({ wallet: signerAddress });
 
         // The second tab renews later and adopts the wallet the server bound.
         const renewed = await secondTab.refreshCredentials();
@@ -702,52 +668,40 @@ describe('clients', () => {
       } finally {
         vi.restoreAllMocks();
         // Ending one tab revokes the shared refresh session for all of them.
-        await upgradedTab.endAuthentication().catch(() => undefined);
+        await firstTab.endAuthentication().catch(() => undefined);
       }
     });
 
-    it('ends user subscriptions of the original client and subscribes again on the upgraded client', async ({
+    it('keeps a user subscription open across an upgrade', async ({
       environment,
       randomEoaSigner,
     }) => {
       const signerAddress = await randomEoaSigner.getAddress();
-      const onboardingClient = await createSecureClient({
+      const secureClient = await createSecureClient({
         environment,
         signer: randomEoaSigner,
         walletSetup: false,
       });
-      let client = onboardingClient;
 
       try {
-        const original = await onboardingClient.subscribe([{ topic: 'user' }]);
-        const originalEnded = (async () => {
-          for await (const _event of original) {
-            // No account activity is expected before the upgrade.
+        const handle = await secureClient.subscribe([{ topic: 'user' }]);
+        const consumed = (async () => {
+          for await (const _event of handle) {
+            // No account activity is expected.
           }
           return 'ended';
         })();
 
-        client = await onboardingClient.upgradeCredentials({
-          wallet: signerAddress,
-        });
-        await expect(originalEnded).resolves.toBe('ended');
+        await secureClient.upgradeCredentials({ wallet: signerAddress });
 
-        const upgraded = await client.subscribe([{ topic: 'user' }]);
-        // A connected stream stays open. A rejected connection ends or throws.
-        const outcome = await Promise.race([
-          (async () => {
-            for await (const _event of upgraded) {
-              // Any event means the stream is connected.
-              return 'open';
-            }
-            return 'ended';
-          })(),
-          delay(5_000).then(() => 'open'),
-        ]);
-        expect(outcome).toBe('open');
-        await upgraded.close();
+        // The stream re-authenticates with the bound token and stays open.
+        await expect(
+          Promise.race([consumed, delay(5_000).then(() => 'open')]),
+        ).resolves.toBe('open');
+        await handle.close();
+        await expect(consumed).resolves.toBe('ended');
       } finally {
-        await client.endAuthentication();
+        await secureClient.endAuthentication();
       }
     });
 
@@ -769,38 +723,37 @@ describe('clients', () => {
           environment,
         }).login({ signer: randomEoaSigner });
         const applicationId = clientIdOf(credentials.accessToken);
-        const onboardingClient = await createSecureClient({
+        const secureClient = await createSecureClient({
           apiKey,
           credentials,
           environment,
           signer: randomEoaSigner,
           walletSetup: false,
         });
-        const depositWallet = onboardingClient.account.wallet;
-        let client = onboardingClient;
+        const depositWallet = secureClient.account.wallet;
 
         try {
           expect(applicationId).toEqual(expect.any(String));
-          await expect(isWalletDeployed(onboardingClient)).resolves.toBe(false);
+          await expect(isWalletDeployed(secureClient)).resolves.toBe(false);
 
-          const deployment = await deployDepositWallet(onboardingClient);
+          const deployment = await deployDepositWallet(secureClient);
           await deployment.wait();
-          await expect(isWalletDeployed(onboardingClient)).resolves.toBe(true);
+          await expect(isWalletDeployed(secureClient)).resolves.toBe(true);
 
-          client = await onboardingClient.upgradeCredentials({
+          const bound = await secureClient.upgradeCredentials({
             wallet: depositWallet,
           });
 
-          expect(client.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
-          expect(walletClaim(client.credentials.accessToken)).toBe(
+          expect(secureClient.account.walletType).toBe(
+            WalletType.DEPOSIT_WALLET,
+          );
+          expect(walletClaim(bound.accessToken)).toBe(
             depositWallet.toLowerCase(),
           );
-          expect(clientIdOf(client.credentials.accessToken)).toBe(
-            applicationId,
-          );
-          await client.listOpenOrders().firstPage();
+          expect(clientIdOf(bound.accessToken)).toBe(applicationId);
+          await secureClient.listOpenOrders().firstPage();
         } finally {
-          await client.endAuthentication();
+          await secureClient.endAuthentication();
         }
       },
       120_000,

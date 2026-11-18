@@ -319,7 +319,6 @@ describe('authorization', () => {
         signer: randomEoaSigner,
         walletSetup: false,
       });
-      let client = restored;
 
       try {
         expect(clientIdOf(restored.credentials.accessToken)).toBe(
@@ -328,14 +327,16 @@ describe('authorization', () => {
         const renewed = await restored.refreshCredentials();
         expect(clientIdOf(renewed.accessToken)).toBe(applicationId);
 
-        client = await restored.upgradeCredentials({ wallet: signerAddress });
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        await restored.upgradeCredentials({ wallet: signerAddress });
+        expect(walletClaim(restored.credentials.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
-        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
+        expect(clientIdOf(restored.credentials.accessToken)).toBe(
+          applicationId,
+        );
       } finally {
         await Promise.allSettled([
-          client.endAuthentication(),
+          restored.endAuthentication(),
           createSecureClient({
             credentials: unattributed,
             environment,
@@ -410,7 +411,6 @@ describe('authorization', () => {
         signer: depositWalletSigner,
         walletSetup: false,
       });
-      let client = onboardingClient;
 
       try {
         const applicationId = clientIdOf(
@@ -421,19 +421,21 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        client = await onboardingClient.upgradeCredentials({
+        await onboardingClient.upgradeCredentials({
           wallet: depositWalletAddress,
         });
 
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        expect(walletClaim(onboardingClient.credentials.accessToken)).toBe(
           depositWalletAddress.toLowerCase(),
         );
-        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
-        await client.listOpenOrders().firstPage();
+        expect(clientIdOf(onboardingClient.credentials.accessToken)).toBe(
+          applicationId,
+        );
+        await onboardingClient.listOpenOrders().firstPage();
         expect(signTypedData).not.toHaveBeenCalled();
       } finally {
         vi.restoreAllMocks();
-        await client.endAuthentication();
+        await onboardingClient.endAuthentication();
       }
 
       expect(
@@ -475,7 +477,6 @@ describe('authorization', () => {
         signer: depositWalletSigner,
         walletSetup: false,
       });
-      let client = onboardingClient;
 
       try {
         const applicationId = clientIdOf(
@@ -486,18 +487,20 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        client = await onboardingClient.upgradeCredentials({
+        await onboardingClient.upgradeCredentials({
           wallet: depositWalletAddress,
         });
 
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        expect(walletClaim(onboardingClient.credentials.accessToken)).toBe(
           depositWalletAddress.toLowerCase(),
         );
-        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
-        await client.listOpenOrders().firstPage();
+        expect(clientIdOf(onboardingClient.credentials.accessToken)).toBe(
+          applicationId,
+        );
+        await onboardingClient.listOpenOrders().firstPage();
       } finally {
         vi.restoreAllMocks();
-        await client.endAuthentication();
+        await onboardingClient.endAuthentication();
       }
 
       expect(proxied).toHaveLength(1);
@@ -549,7 +552,6 @@ describe('authorization', () => {
         signer: depositWalletSigner,
         walletSetup: false,
       });
-      let client = onboardingClient;
 
       try {
         expect(applicationId).toEqual(expect.any(String));
@@ -560,19 +562,21 @@ describe('authorization', () => {
           applicationId,
         );
 
-        client = await onboardingClient.upgradeCredentials({
+        await onboardingClient.upgradeCredentials({
           wallet: depositWalletAddress,
         });
 
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        expect(walletClaim(onboardingClient.credentials.accessToken)).toBe(
           depositWalletAddress.toLowerCase(),
         );
-        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
-        await client.listOpenOrders().firstPage();
+        expect(clientIdOf(onboardingClient.credentials.accessToken)).toBe(
+          applicationId,
+        );
+        await onboardingClient.listOpenOrders().firstPage();
         expect(signTypedData).not.toHaveBeenCalled();
       } finally {
         vi.restoreAllMocks();
-        await client.endAuthentication();
+        await onboardingClient.endAuthentication();
       }
     });
 
