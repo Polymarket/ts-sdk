@@ -641,6 +641,71 @@ describe('clients', () => {
       }
     });
 
+    it('follows a wallet that another client bound to the shared session', async ({
+      environment,
+      publicClient,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      // Two tabs restore the same signer-only session.
+      const saved = await publicClient.login({ signer: randomEoaSigner });
+      const firstTab = await createSecureClient({
+        credentials: saved,
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+      const secondTab = await createSecureClient({
+        credentials: saved,
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+      let upgradedTab = firstTab;
+
+      try {
+        expect(secondTab.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+
+        // The first tab finishes onboarding and binds the wallet.
+        upgradedTab = await firstTab.upgradeCredentials({
+          wallet: signerAddress,
+        });
+
+        // The second tab renews later and adopts the wallet the server bound.
+        const renewed = await secondTab.refreshCredentials();
+        expect(walletClaim(renewed.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(secondTab.account.wallet.toLowerCase()).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(secondTab.account.walletType).toBe(WalletType.EOA);
+        await secondTab.listOpenOrders().firstPage();
+
+        // Restoring the saved signer-only pair with wallet setup does not bind again.
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const restoredTab = await createSecureClient({
+          credentials: saved,
+          environment,
+          signer: randomEoaSigner,
+        });
+        vi.restoreAllMocks();
+        expect(
+          sentRequests(fetchSpy).filter((request) =>
+            request.url.pathname.endsWith('/v1/auth/upgrade'),
+          ),
+        ).toHaveLength(0);
+        expect(restoredTab.account.wallet.toLowerCase()).toBe(
+          signerAddress.toLowerCase(),
+        );
+        await restoredTab.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        // Ending one tab revokes the shared refresh session for all of them.
+        await upgradedTab.endAuthentication().catch(() => undefined);
+      }
+    });
+
     it('ends user subscriptions of the original client and subscribes again on the upgraded client', async ({
       environment,
       randomEoaSigner,
