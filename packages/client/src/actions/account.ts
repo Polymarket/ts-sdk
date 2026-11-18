@@ -755,9 +755,10 @@ export async function updateBalanceAllowance(
     snakeCase(),
   );
 
-  await client.secureClob.getWorkflow('/balance-allowance/update', {
+  await client.secureClob.get('/balance-allowance/update', {
     responseType: 'empty',
     params: searchParams,
+    retries: 0,
   });
 
   return fetchBalanceAllowance(client, params);
@@ -868,7 +869,7 @@ export async function fetchOrdersScoring(
   const params = parseUserInput(request, FetchOrdersScoringRequestSchema);
   const body = params.orderIds;
 
-  return client.secureClob.postRead('/orders-scoring', {
+  return client.secureClob.post('/orders-scoring', {
     schema: OrdersScoringResponseSchema,
     ...requestOptions,
     json: body,

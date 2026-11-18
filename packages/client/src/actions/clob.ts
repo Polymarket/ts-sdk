@@ -192,7 +192,7 @@ export async function fetchMidpoints(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchMidpointsRequestSchema);
 
-  return client.clob.postRead('midpoints', {
+  return client.clob.post('midpoints', {
     ...requestOptions,
     json: toTokenRequestPayload(params),
     schema: MidpointsSchema,
@@ -620,7 +620,7 @@ export async function fetchPrices(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchPricesRequestSchema);
 
-  return client.clob.postRead('prices', {
+  return client.clob.post('prices', {
     ...requestOptions,
     json: toTokenWithSideRequestPayload(params),
     schema: PricesSchema,
@@ -751,7 +751,7 @@ export async function fetchOrderBooks(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderBooksRequestSchema);
 
-  return client.clob.postRead('books', {
+  return client.clob.post('books', {
     ...requestOptions,
     json: toTokenRequestPayload(params),
     schema: OrderBooksSchema,
@@ -885,7 +885,7 @@ export async function fetchSpreads(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchSpreadsRequestSchema);
 
-  return client.clob.postRead('spreads', {
+  return client.clob.post('spreads', {
     ...requestOptions,
     json: toTokenRequestPayload(params),
     schema: SpreadsSchema,
@@ -1019,7 +1019,7 @@ export async function fetchLastTradePrices(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchLastTradePricesRequestSchema);
 
-  return client.clob.postRead('last-trades-prices', {
+  return client.clob.post('last-trades-prices', {
     ...requestOptions,
     json: toTokenRequestPayload(params),
     schema: LastTradePricesSchema,

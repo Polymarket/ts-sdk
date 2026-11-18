@@ -138,7 +138,7 @@ async function fetchSnapshots(
   options: RequestOptions = {},
 ): Promise<PerpsPositionSnapshots> {
   const requestOptions = parseRequestOptions(options);
-  return api.postRead('/v1/info/position-snapshots', {
+  return api.post('/v1/info/position-snapshots', {
     schema: PerpsPositionSnapshotsSchema,
     ...requestOptions,
     json: {

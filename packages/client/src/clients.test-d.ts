@@ -33,10 +33,12 @@ it('keeps retry budgets on reads rather than clients or mutations', () => {
   publicClient.retry;
   // @ts-expect-error Clients have no retry state or getter.
   secureClient.retry;
-  // @ts-expect-error Mutation options cannot opt into optional read retries.
-  publicClient.predictions.post('/mutation', { retries: 5 });
-  // @ts-expect-error Mutation options cannot opt into optional read retries.
+  // An idempotent POST can opt into retries per call.
+  publicClient.predictions.post('/read', { retries: 5 });
+  // @ts-expect-error Other mutations cannot retry.
   publicClient.predictions.del('/mutation', { retries: 5 });
+  // @ts-expect-error Other mutations cannot retry.
+  publicClient.predictions.patch('/mutation', { retries: 5 });
 });
 
 describe('predictions service types', () => {

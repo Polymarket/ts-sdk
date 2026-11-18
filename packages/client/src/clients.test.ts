@@ -139,7 +139,11 @@ describe('predictions gateway service', () => {
         const result =
           method === 'get'
             ? client.predictions.get('/metadata', { ...options, retries: 0 })
-            : client.predictions[method]('/metadata', options);
+            : method === 'post'
+              ? client.predictions.post('/metadata', options)
+              : method === 'patch'
+                ? client.predictions.patch('/metadata', options)
+                : client.predictions.del('/metadata', options);
         await expect(result).rejects.toMatchObject({ cause: failure });
         const request = requests.at(-1);
         expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);

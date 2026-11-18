@@ -59,6 +59,18 @@ const ReadRetryOptionsSchema = z.object({
   retries: z.number().int().min(0).max(5).default(2),
 });
 
+const PostRetriesSchema = z.object({
+  retries: z.number().int().min(0).max(5).default(0),
+});
+
+/**
+ * Validates a POST's retries. A POST may change state, so it is sent once
+ * unless the caller asks for retries. @internal
+ */
+export function parsePostRetries(retries: number | undefined): number {
+  return parseUserInput({ retries }, PostRetriesSchema).retries;
+}
+
 /** Validates and snapshots controls at the read boundary. @internal */
 export function parseRequestOptions(options: RequestOptions): RequestOptions {
   assertNotAborted(options.signal);

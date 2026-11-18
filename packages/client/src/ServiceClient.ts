@@ -23,6 +23,7 @@ import {
   assertNotAborted,
   DEFAULT_REQUEST_TIMEOUT_MS,
   type Fetch,
+  parsePostRetries,
   parseRequestOptions,
   type RequestOptions,
   withAbort,
@@ -132,17 +133,19 @@ export type ServiceClientGetOptions<T = unknown> =
       params?: URLSearchParams;
     };
 
-type ServiceClientWorkflowGetOptions<T = unknown> =
-  ServiceClientRequestOptions<T> & {
-    headers?: HeadersInit;
-    params?: URLSearchParams;
-  };
-
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientPostOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
+    /**
+     * Retries after the first attempt, from 0 to 5. A POST may change state,
+     * so it is sent once unless the caller marks it safe to replay, such as a
+     * read whose endpoint requires POST.
+     *
+     * @defaultValue 0
+     */
+    retries?: number;
   };
 
 /** @experimental See {@link ServiceClient}. */
@@ -313,49 +316,7 @@ export class ServiceClient {
   ): Promise<ServiceClientResponse<TResponse>>;
   get(path: string, options: ServiceClientGetOptions): Promise<unknown>;
   get(path: string, options: ServiceClientGetOptions = {}): Promise<unknown> {
-    return this.#request('GET', path, options, true);
-  }
-
-  /**
-   * Sends a workflow GET with its existing transport policy and no optional
-   * data-read retries. Some command and authentication endpoints require GET.
-   * @internal
-   */
-  getWorkflow<T = unknown>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions<T> &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  /** @internal */
-  getWorkflow<TResponse extends ServiceClientNonJsonResponseType>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions &
-      ServiceClientNonJsonResponseOptions<TResponse>,
-  ): Promise<ServiceClientResponse<TResponse>>;
-  /** @internal */
-  getWorkflow(
-    path: string,
-    options: ServiceClientWorkflowGetOptions,
-  ): Promise<unknown> {
     return this.#request('GET', path, options);
-  }
-
-  /**
-   * Sends an idempotent JSON read whose endpoint requires POST.
-   * Actions own the decision that replay is safe.
-   * @internal
-   */
-  postRead<T = unknown>(
-    path: string,
-    options: ServiceClientPostOptions<T> &
-      RequestOptions &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  postRead(
-    path: string,
-    options: ServiceClientPostOptions & RequestOptions,
-  ): Promise<unknown> {
-    return this.#request('POST', path, options, true);
   }
 
   /**
@@ -434,7 +395,6 @@ export class ServiceClient {
       | ServiceClientPostOptions
     ) &
       RequestOptions,
-    readOnly = false,
   ): Promise<unknown> {
     const signal = options.signal;
     try {
@@ -443,9 +403,13 @@ export class ServiceClient {
         { responseType: options.responseType, schema: options.schema },
         ServiceClientResponseControlsSchema,
       );
-      const retries = readOnly
-        ? parseRequestOptions(options).retries
-        : undefined;
+      // Reads retry by default. A POST retries only when the caller asks.
+      const retries =
+        method === 'GET'
+          ? parseRequestOptions(options).retries
+          : method === 'POST'
+            ? parsePostRetries(options.retries)
+            : undefined;
       const response = await this.#send(method, path, options, retries);
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(

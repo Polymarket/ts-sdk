@@ -96,9 +96,10 @@ export async function deriveApiKey(
   client: BaseClient,
   request: ApiKeyAuthRequest,
 ): Promise<ApiKeyCreds> {
-  return client.clob.getWorkflow('/auth/derive-api-key', {
+  return client.clob.get('/auth/derive-api-key', {
     headers: toL1Headers(request),
     schema: ApiKeyCredsSchema,
+    retries: 0,
   });
 }
 

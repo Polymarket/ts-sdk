@@ -24,8 +24,6 @@ const server = setupServer();
 describe('ServiceClient', () => {
   it.each([
     'get',
-    'postRead',
-    'getWorkflow',
     'post',
     'patch',
     'del',
@@ -40,10 +38,6 @@ describe('ServiceClient', () => {
       switch (method) {
         case 'get':
           return client.get('/slow', { timeout, retries: 0 });
-        case 'postRead':
-          return client.postRead('/slow', { timeout, retries: 0 });
-        case 'getWorkflow':
-          return client.getWorkflow('/slow', { timeout });
         case 'post':
           return client.post('/slow', { timeout });
         case 'patch':
@@ -257,8 +251,8 @@ describe('ServiceClient', () => {
 
     it.each([
       'get',
-      'postRead',
-    ] as const)('recovers %s reads within their retry budget', async (method) => {
+      'post',
+    ] as const)('recovers %s requests within their retry budget', async (method) => {
       vi.useFakeTimers();
       const fetch = vi
         .fn<typeof globalThis.fetch>()
@@ -275,7 +269,7 @@ describe('ServiceClient', () => {
       const result =
         method === 'get'
           ? client.get('/read', options)
-          : client.postRead('/read', options);
+          : client.post('/read', options);
       await vi.runAllTimersAsync();
       expect(await result).toEqual({ count: 42 });
       expect(fetch).toHaveBeenCalledTimes(3);
@@ -308,9 +302,11 @@ describe('ServiceClient', () => {
       const fetch = vi.fn<typeof globalThis.fetch>();
       const resolveHeaders = vi.fn(async () => ({}));
       const client = new ServiceClient({ root, fetch, resolveHeaders });
-      await expect(
+      for (const request of [
         client.get('/read', { retries: retries as number }),
-      ).rejects.toMatchObject({ name: 'UserInputError' });
+        client.post('/read', { retries: retries as number }),
+      ])
+        await expect(request).rejects.toMatchObject({ name: 'UserInputError' });
       expect(fetch).not.toHaveBeenCalled();
       expect(resolveHeaders).not.toHaveBeenCalled();
     });
@@ -349,18 +345,23 @@ describe('ServiceClient', () => {
       'post',
       'patch',
       'del',
-    ] as const)('never replays a prediction %s after a dropped connection', async (method) => {
+    ] as const)('never replays a prediction %s after a dropped connection unless it opts in', async (method) => {
       vi.useFakeTimers();
       const failure = new TypeError('connection dropped after dispatch');
       const fetch = vi.fn<typeof globalThis.fetch>(async () => {
         throw failure;
       });
       const client = createPublicClient({ fetch });
-      // A JavaScript caller's stray read control must not enable mutation replay.
+      // A POST retries only when asked. A JavaScript caller's stray retry
+      // control must not enable replay of any other mutation.
       const options = { json: {}, retries: 5 };
-      const result = client.predictions[method]('/mutation', options).catch(
-        (error: unknown) => error,
-      );
+      const request =
+        method === 'post'
+          ? client.predictions.post('/mutation', { json: {} })
+          : method === 'patch'
+            ? client.predictions.patch('/mutation', options)
+            : client.predictions.del('/mutation', options);
+      const result = request.catch((error: unknown) => error);
       await vi.advanceTimersByTimeAsync(1_000);
       expect(await result).toMatchObject({
         name: 'TransportError',
@@ -624,7 +625,11 @@ describe('ServiceClient', () => {
       const result =
         method === 'get'
           ? client.get('/unused')
-          : client[method]('/unused', {});
+          : method === 'post'
+            ? client.post('/unused', {})
+            : method === 'patch'
+              ? client.patch('/unused', {})
+              : client.del('/unused', {});
       await expect(result).rejects.toMatchObject({
         name: 'UserInputError',
         message: 'This service client has no configured endpoint',
@@ -896,7 +901,11 @@ describe('ServiceClient', () => {
       const result =
         method === 'get'
           ? client.get('/transform', { schema })
-          : client[method]('/transform', { schema });
+          : method === 'post'
+            ? client.post('/transform', { schema })
+            : method === 'patch'
+              ? client.patch('/transform', { schema })
+              : client.del('/transform', { schema });
       await expect(result).resolves.toEqual({
         count: 42,
       });
