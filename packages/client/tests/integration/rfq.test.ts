@@ -1407,7 +1407,7 @@ describe('RFQ sessions', () => {
     });
   });
 
-  describe('when reopening immediately after an unexpected close', () => {
+  describe('when the connection closes unexpectedly', () => {
     beforeEach(() => {
       server.resetHandlers();
       server.use(
@@ -1432,35 +1432,34 @@ describe('RFQ sessions', () => {
       );
     });
 
-    it('opens a fresh session instead of returning the closed session', async ({
+    it('rejects the pending quote, keeps the session open and reconnects it', async ({
       secureClientWithDepositWallet,
     }) => {
       const session = await secureClientWithDepositWallet.openRfqSession();
 
       try {
-        let nextSession: typeof session | undefined;
+        let quoteRequests = 0;
 
         for await (const event of session) {
           if (event.type !== 'quote_request') continue;
+          quoteRequests += 1;
+          if (quoteRequests > 1) break;
 
-          try {
-            await event.quote({ price: 0.45 });
-            throw new Error('Expected RFQ quote rejection.');
-          } catch {
-            nextSession = await secureClientWithDepositWallet.openRfqSession();
-          }
-          break;
+          // The quote in flight when the connection drops is never replayed.
+          await expect(event.quote({ price: 0.45 })).rejects.toBeInstanceOf(
+            ConnectionLostError,
+          );
+          // The session reconnects on its own, so reopening returns it.
+          await expect(
+            secureClientWithDepositWallet.openRfqSession(),
+          ).resolves.toBe(session);
         }
 
-        if (nextSession === undefined) {
-          throw new Error('Expected reopened RFQ session.');
-        }
-
-        expect(nextSession).not.toBe(session);
+        // The next quote request arrives on the same session after reconnecting.
+        expect(quoteRequests).toBe(2);
         expect(connectionCount).toBe(2);
-
-        await nextSession.close();
       } finally {
+        await session.close();
         await secureClientWithDepositWallet.closeSubscriptions();
       }
     });
