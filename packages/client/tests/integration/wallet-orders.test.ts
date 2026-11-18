@@ -222,12 +222,21 @@ describe('Wallet-wide orders', { timeout: 600_000 }, () => {
       expect(all.canceled).toContain(ownerOrderId);
       ordersMayRemain = false;
 
-      const remaining = await collect(owner.listWalletOpenOrders({ assetId }));
-      expect(
-        remaining.some(
-          (order) => order.id === sessionOrderId || order.id === ownerOrderId,
-        ),
-      ).toBe(false);
+      // The wallet-wide listing can lag a cancellation briefly, as it does placement.
+      await vi.waitFor(
+        async () => {
+          const remaining = await collect(
+            owner.listWalletOpenOrders({ assetId }),
+          );
+          expect(
+            remaining.some(
+              (order) =>
+                order.id === sessionOrderId || order.id === ownerOrderId,
+            ),
+          ).toBe(false);
+        },
+        { timeout: 20_000, interval: 1_000 },
+      );
 
       await revokeSessionKeyAndWait(owner, sessionAddress, environment);
       revoked = true;
