@@ -1,18 +1,26 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import {
+  createPublicClient,
   createSecureClient,
-  type EnvironmentConfig,
   remotePlatformApiKey,
-  type Signer,
   UserInputError,
   WalletType,
 } from '@polymarket/client';
-import { isWalletDeployed } from '@polymarket/client/actions';
+import {
+  deployDepositWallet,
+  isWalletDeployed,
+} from '@polymarket/client/actions';
 import { platformApiKey } from '@polymarket/client/node';
 import { expectPresent, InvariantError, ZERO_ADDRESS } from '@polymarket/types';
 import { afterEach, vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 import { findHighVolumeLowPriceMarket } from './markets';
+import {
+  clientIdOf,
+  obtainL2Credentials,
+  sentRequests,
+  walletClaim,
+} from './session';
 
 describe('clients', () => {
   describe('createSecureClient', () => {
@@ -567,6 +575,173 @@ describe('clients', () => {
     });
   });
 
+  describe('SecureClient.upgradeCredentials', () => {
+    it('rejects a different wallet for a bound session without a request and keeps the client usable', async ({
+      environment,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const onboardingClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+      const depositWallet = onboardingClient.account.wallet;
+      const client = await onboardingClient.upgradeCredentials({
+        wallet: signerAddress,
+      });
+
+      try {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        await expect(
+          client.upgradeCredentials({ wallet: depositWallet }),
+        ).rejects.toThrow(UserInputError);
+        expect(fetchSpy).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
+
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
+        await client.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        await client.endAuthentication();
+      }
+    });
+
+    it('hands over a session already bound to the same wallet without a request', async ({
+      environment,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const boundClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        wallet: signerAddress,
+      });
+      let client = boundClient;
+
+      try {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        client = await boundClient.upgradeCredentials({
+          wallet: signerAddress,
+        });
+        await client.listOpenOrders().firstPage();
+
+        expect(
+          sentRequests(fetchSpy).filter((request) =>
+            request.url.pathname.endsWith('/v1/auth/upgrade'),
+          ),
+        ).toHaveLength(0);
+        expect(client.account.wallet).toBe(signerAddress);
+        expect(() => boundClient.credentials).toThrow(InvariantError);
+      } finally {
+        vi.restoreAllMocks();
+        await client.endAuthentication();
+      }
+    });
+
+    it('ends user subscriptions of the original client and subscribes again on the upgraded client', async ({
+      environment,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const onboardingClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+      let client = onboardingClient;
+
+      try {
+        const original = await onboardingClient.subscribe([{ topic: 'user' }]);
+        const originalEnded = (async () => {
+          for await (const _event of original) {
+            // No account activity is expected before the upgrade.
+          }
+          return 'ended';
+        })();
+
+        client = await onboardingClient.upgradeCredentials({
+          wallet: signerAddress,
+        });
+        await expect(originalEnded).resolves.toBe('ended');
+
+        const upgraded = await client.subscribe([{ topic: 'user' }]);
+        // A connected stream stays open. A rejected connection ends or throws.
+        const outcome = await Promise.race([
+          (async () => {
+            for await (const _event of upgraded) {
+              // Any event means the stream is connected.
+              return 'open';
+            }
+            return 'ended';
+          })(),
+          delay(5_000).then(() => 'open'),
+        ]);
+        expect(outcome).toBe('open');
+        await upgraded.close();
+      } finally {
+        await client.endAuthentication();
+      }
+    });
+
+    it.runIf(runMeteredTests)(
+      'onboards a new account under a platform key: signs in without a wallet, deploys the Deposit Wallet, then binds it',
+      // Side effect: deploys a new Deposit Wallet on Polygon for a random signer
+      // through the gasless relayer, metered against the builder API key.
+      async ({
+        builderAuthentication,
+        environment,
+        platformKey,
+        randomEoaSigner,
+      }) => {
+        const apiKey = platformApiKey(platformKey, {
+          submissionApiKey: builderAuthentication,
+        });
+        const credentials = await createPublicClient({
+          apiKey,
+          environment,
+        }).login({ signer: randomEoaSigner });
+        const applicationId = clientIdOf(credentials.accessToken);
+        const onboardingClient = await createSecureClient({
+          apiKey,
+          credentials,
+          environment,
+          signer: randomEoaSigner,
+          walletSetup: false,
+        });
+        const depositWallet = onboardingClient.account.wallet;
+        let client = onboardingClient;
+
+        try {
+          expect(applicationId).toEqual(expect.any(String));
+          await expect(isWalletDeployed(onboardingClient)).resolves.toBe(false);
+
+          const deployment = await deployDepositWallet(onboardingClient);
+          await deployment.wait();
+          await expect(isWalletDeployed(onboardingClient)).resolves.toBe(true);
+
+          client = await onboardingClient.upgradeCredentials({
+            wallet: depositWallet,
+          });
+
+          expect(client.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
+          expect(walletClaim(client.credentials.accessToken)).toBe(
+            depositWallet.toLowerCase(),
+          );
+          expect(clientIdOf(client.credentials.accessToken)).toBe(
+            applicationId,
+          );
+          await client.listOpenOrders().firstPage();
+        } finally {
+          await client.endAuthentication();
+        }
+      },
+      120_000,
+    );
+  });
+
   describe('Predictions routing', () => {
     afterEach(() => {
       vi.restoreAllMocks();
@@ -598,71 +773,3 @@ describe('clients', () => {
     });
   });
 });
-
-/**
- * Obtains L2 credentials for the signer directly from the trading service.
- * The SDK no longer manages these credentials, so the migration test sets them up itself.
- */
-async function obtainL2Credentials(
-  environment: EnvironmentConfig,
-  signer: Signer,
-  nonce: number,
-): Promise<{ key: string; secret: string; passphrase: string }> {
-  const address = await signer.getAddress();
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = await signer.signTypedData({
-    domain: {
-      name: 'ClobAuthDomain',
-      version: '1',
-      chainId: environment.chainId,
-    },
-    primaryType: 'ClobAuth',
-    types: {
-      EIP712Domain: [
-        { name: 'name', type: 'string' },
-        { name: 'version', type: 'string' },
-        { name: 'chainId', type: 'uint256' },
-      ],
-      ClobAuth: [
-        { name: 'address', type: 'address' },
-        { name: 'timestamp', type: 'string' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'message', type: 'string' },
-      ],
-    },
-    message: {
-      address,
-      timestamp,
-      nonce,
-      message: 'This message attests that I control the given wallet',
-    },
-  });
-  const headers = {
-    POLY_ADDRESS: address,
-    POLY_SIGNATURE: signature,
-    POLY_TIMESTAMP: timestamp,
-    POLY_NONCE: String(nonce),
-  };
-  let response = await fetch(`${environment.clob.rest}/auth/api-key`, {
-    method: 'POST',
-    headers,
-  });
-  if (!response.ok)
-    response = await fetch(`${environment.clob.rest}/auth/derive-api-key`, {
-      headers,
-    });
-  expect(response.ok).toBe(true);
-  const body = (await response.json()) as {
-    apiKey: string;
-    secret: string;
-    passphrase: string;
-  };
-  return { key: body.apiKey, secret: body.secret, passphrase: body.passphrase };
-}
-
-function walletClaim(accessToken: string): string | undefined {
-  const [, payload = ''] = accessToken.split('.');
-  const wallet = JSON.parse(Buffer.from(payload, 'base64url').toString())
-    .wallet as string | undefined;
-  return wallet?.toLowerCase();
-}

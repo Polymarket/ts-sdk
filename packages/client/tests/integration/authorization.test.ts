@@ -21,11 +21,21 @@ import {
 } from '@polymarket/client/node';
 import { HttpResponse, http } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, type MockInstance, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { describe, expect, it } from './fixtures';
+import {
+  clientIdOf,
+  headerValues,
+  obtainL2Credentials,
+  sentRequests,
+  walletClaim,
+} from './session';
 
 const signerUrl = 'http://localhost:4010/api/builder/sign';
 const challengeUrl = 'http://localhost:4010/api/auth/challenge';
+// Optional: when set, attributed sessions must carry exactly this application ID.
+const expectedApplicationId =
+  process.env.POLYMARKET_PLATFORM_APPLICATION_ID?.trim() || undefined;
 
 const server = setupServer();
 
@@ -275,30 +285,290 @@ describe('authorization', () => {
         null,
       ]);
     });
+
+    it('attributes sessions to the application and keeps the application ID across restore, renewal and upgrade', async ({
+      environment,
+      platformKey,
+      publicClient,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const apiKey = platformApiKey(platformKey);
+      const backend = createPublicClient({ apiKey, environment });
+      const attributed = await backend.login({ signer: randomEoaSigner });
+      const unattributed = await publicClient.login({
+        signer: randomEoaSigner,
+        nonce: 1,
+      });
+      const applicationId = clientIdOf(attributed.accessToken);
+
+      expect(applicationId).toEqual(expect.any(String));
+      if (expectedApplicationId !== undefined)
+        expect(applicationId).toBe(expectedApplicationId);
+      expect(clientIdOf(unattributed.accessToken)).not.toEqual(applicationId);
+
+      const restored = await createSecureClient({
+        apiKey,
+        credentials: attributed,
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+      let client = restored;
+
+      try {
+        expect(clientIdOf(restored.credentials.accessToken)).toBe(
+          applicationId,
+        );
+        const renewed = await restored.refreshCredentials();
+        expect(clientIdOf(renewed.accessToken)).toBe(applicationId);
+
+        client = await restored.upgradeCredentials({ wallet: signerAddress });
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
+      } finally {
+        await Promise.allSettled([
+          client.endAuthentication(),
+          createSecureClient({
+            credentials: unattributed,
+            environment,
+            signer: randomEoaSigner,
+            walletSetup: false,
+          }).then((secureClient) => secureClient.endAuthentication()),
+        ]);
+      }
+    });
+
+    it('attributes account reads to the key and authorizes relayer reads with a relayer key', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      platformKey,
+      relayerAuthentication,
+    }) => {
+      const secureClient = await createSecureClient({
+        apiKey: platformApiKey(platformKey, {
+          submissionApiKey: relayerAuthentication,
+        }),
+        environment,
+        signer: depositWalletSigner,
+        wallet: depositWalletAddress,
+      });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+      try {
+        await secureClient.listOpenOrders().firstPage();
+        // Reading execution parameters is relayer-authorized and has no side effect.
+        await fetchExecuteParams(secureClient, {
+          address: depositWalletAddress,
+          type: RelayerTransactionType.WALLET,
+        });
+      } finally {
+        vi.restoreAllMocks();
+        await secureClient.endAuthentication();
+      }
+
+      const requests = sentRequests(fetchSpy);
+      const [orders] = requests.filter((request) =>
+        request.url.pathname.endsWith('/v1/me/orders'),
+      );
+      expect(orders?.headers.get('x-api-key')).toBe(platformKey);
+      expect(orders?.headers.get('authorization')).toMatch(/^Bearer /);
+      const [executeParams] = requests.filter((request) =>
+        request.url.pathname.endsWith('/execute-params'),
+      );
+      expect(executeParams?.headers.get('relayer_api_key')).toBe(
+        process.env.POLYMARKET_RELAYER_API_KEY,
+      );
+      expect(executeParams?.headers.get('relayer_api_key_address')).toBe(
+        process.env.POLYMARKET_RELAYER_API_KEY_ADDRESS,
+      );
+    });
+
+    it('restores a signer-only session without wallet setup, then binds the deployed Deposit Wallet under the key', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      platformKey,
+    }) => {
+      const apiKey = platformApiKey(platformKey);
+      const backend = createPublicClient({ apiKey, environment });
+      const credentials = await backend.login({ signer: depositWalletSigner });
+      const signTypedData = vi.spyOn(depositWalletSigner, 'signTypedData');
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const onboardingClient = await createSecureClient({
+        apiKey,
+        credentials,
+        environment,
+        signer: depositWalletSigner,
+        walletSetup: false,
+      });
+      let client = onboardingClient;
+
+      try {
+        const applicationId = clientIdOf(
+          onboardingClient.credentials.accessToken,
+        );
+        expect(applicationId).toEqual(expect.any(String));
+        expect(
+          walletClaim(onboardingClient.credentials.accessToken),
+        ).toBeUndefined();
+
+        client = await onboardingClient.upgradeCredentials({
+          wallet: depositWalletAddress,
+        });
+
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          depositWalletAddress.toLowerCase(),
+        );
+        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
+        await client.listOpenOrders().firstPage();
+        expect(signTypedData).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await client.endAuthentication();
+      }
+
+      expect(
+        headerValues(sentRequests(fetchSpy), '/v1/auth/upgrade', 'x-api-key'),
+      ).toEqual([platformKey]);
+    });
+
+    it('signs in through a backend challenge proxy without wallet setup, then binds the deployed Deposit Wallet directly', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      platformKey,
+    }) => {
+      const backend = createPublicClient({
+        apiKey: platformApiKey(platformKey),
+        environment,
+      });
+      const proxied: PlatformChallengeRequest[] = [];
+      server.use(
+        http.post(challengeUrl, async ({ request }) => {
+          const body = (await request.json()) as PlatformChallengeRequest;
+          proxied.push(body);
+
+          return HttpResponse.json(
+            await createPlatformChallenge(backend, body),
+          );
+        }),
+      );
+      const apiKey = remotePlatformApiKey({ url: challengeUrl });
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const credentials = await createPublicClient({
+        apiKey,
+        environment,
+      }).login({ signer: depositWalletSigner });
+      const onboardingClient = await createSecureClient({
+        apiKey,
+        credentials,
+        environment,
+        signer: depositWalletSigner,
+        walletSetup: false,
+      });
+      let client = onboardingClient;
+
+      try {
+        const applicationId = clientIdOf(
+          onboardingClient.credentials.accessToken,
+        );
+        expect(applicationId).toEqual(expect.any(String));
+        expect(
+          walletClaim(onboardingClient.credentials.accessToken),
+        ).toBeUndefined();
+
+        client = await onboardingClient.upgradeCredentials({
+          wallet: depositWalletAddress,
+        });
+
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          depositWalletAddress.toLowerCase(),
+        );
+        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
+        await client.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        await client.endAuthentication();
+      }
+
+      expect(proxied).toHaveLength(1);
+      expect(Object.keys(proxied[0] ?? {})).toEqual(['signer']);
+      const requests = sentRequests(fetchSpy);
+      // Only the backend's challenge carries the key. The browser sends
+      // everything else directly to the API without it.
+      expect(headerValues(requests, '/v1/auth/challenge', 'x-api-key')).toEqual(
+        [platformKey],
+      );
+      const direct = requests.filter((request) =>
+        ['/v1/auth/login', '/v1/auth/upgrade', '/v1/me/orders'].some((path) =>
+          request.url.pathname.endsWith(path),
+        ),
+      );
+      expect(direct).toHaveLength(3);
+      for (const request of direct) {
+        expect(request.url.origin).toBe(
+          new URL(environment.predictions.rest).origin,
+        );
+        expect(request.headers.get('x-api-key')).toBeNull();
+      }
+    });
+
+    it('migrates L2 credentials without a wallet under the key, then binds the deployed Deposit Wallet without signing', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      platformKey,
+    }) => {
+      const saved = await obtainL2Credentials(
+        environment,
+        depositWalletSigner,
+        3,
+      );
+      const signTypedData = vi.spyOn(depositWalletSigner, 'signTypedData');
+      const backend = createPublicClient({
+        apiKey: platformApiKey(platformKey),
+        environment,
+      });
+      const migrated = await backend.migrateCredentials({
+        credentials: saved,
+        signerAddress: await depositWalletSigner.getAddress(),
+      });
+      const applicationId = clientIdOf(migrated.accessToken);
+      const onboardingClient = await createSecureClient({
+        credentials: migrated,
+        environment,
+        signer: depositWalletSigner,
+        walletSetup: false,
+      });
+      let client = onboardingClient;
+
+      try {
+        expect(applicationId).toEqual(expect.any(String));
+        expect(
+          walletClaim(onboardingClient.credentials.accessToken),
+        ).toBeUndefined();
+        expect(clientIdOf(onboardingClient.credentials.accessToken)).toBe(
+          applicationId,
+        );
+
+        client = await onboardingClient.upgradeCredentials({
+          wallet: depositWalletAddress,
+        });
+
+        expect(walletClaim(client.credentials.accessToken)).toBe(
+          depositWalletAddress.toLowerCase(),
+        );
+        expect(clientIdOf(client.credentials.accessToken)).toBe(applicationId);
+        await client.listOpenOrders().firstPage();
+        expect(signTypedData).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
+        await client.endAuthentication();
+      }
+    });
   });
 });
-
-type SentRequest = { headers: Headers; url: URL };
-
-function sentRequests(spy: MockInstance<typeof fetch>): SentRequest[] {
-  return spy.mock.calls.map(([input, init]) =>
-    input instanceof Request
-      ? { headers: input.headers, url: new URL(input.url) }
-      : { headers: new Headers(init?.headers), url: new URL(String(input)) },
-  );
-}
-
-function headerValues(
-  requests: SentRequest[],
-  path: string,
-  header: string,
-): (string | null)[] {
-  return requests
-    .filter((request) => request.url.pathname.endsWith(path))
-    .map((request) => request.headers.get(header));
-}
-
-function clientIdOf(accessToken: string): unknown {
-  const [, payload = ''] = accessToken.split('.');
-  return JSON.parse(Buffer.from(payload, 'base64url').toString()).client_id;
-}
