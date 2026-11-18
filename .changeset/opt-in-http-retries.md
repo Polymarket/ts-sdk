@@ -1,5 +1,5 @@
 ---
-'@polymarket/client': minor
+'@polymarket/client': patch
 ---
 
-**Breaking:** reads no longer retry by default. `retries` now defaults to 0 instead of 2. To keep the previous behavior, pass `{ retries: 2 }` to each read. Mutations are never retried.
+Mutations are no longer retried by the transport. Reads keep retrying twice by default; pass `retries` (0 to 5) per read to change that, such as `{ retries: 0 }` when a query library owns retries.

@@ -100,8 +100,8 @@ export const ListTradesError = makeErrorGuard(
  * applies unless `filterType`/`filterAmount` say otherwise — either may be
  * sent alone. `conditionId` accepts at most 20 distinct ids. `pageSize`
  * defaults to 100 (max 1000). `window: 'full'` requests the complete
- * history; an omitted window serves the recent feed. Set `retries` to
- * retry transient failures.
+ * history; an omitted window serves the recent feed. Transient rate limits
+ * are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -227,7 +227,7 @@ export const ListActivityError = makeErrorGuard(
  * results. `window: 'full'`
  * requests the complete history (an omitted window serves the service's
  * default range — the most recent three years). `pageSize` defaults to 100
- * (max 1000). Set `retries` to retry transient failures.
+ * (max 1000). Transient rate limits are retried by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -332,8 +332,8 @@ export const ListComboActivityError = makeErrorGuard(
  *
  * Every row carries the Combo position id and its legs enriched with market
  * metadata; redeem rows additionally carry payout semantics. `pageSize`
- * defaults to 100 (max 1000). Set `retries` to
- * retry transient failures.
+ * defaults to 100 (max 1000). Transient rate limits are retried
+ * by default.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.

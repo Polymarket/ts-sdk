@@ -220,7 +220,8 @@ describe('ServiceClient', () => {
     );
   });
 
-  describe('disabled transport retries', () => {
+  describe('transport retries', () => {
+    // Mutations never retry, and a read retries only within its own budget.
     it.each([
       ['get', 429],
       ['post', 'network'],
@@ -237,7 +238,7 @@ describe('ServiceClient', () => {
       const client = new ServiceClient({ root, fetch });
       const result =
         method === 'get'
-          ? client.get('/once')
+          ? client.get('/once', { retries: 0 })
           : method === 'post'
             ? client.post('/once')
             : method === 'patch'
@@ -257,7 +258,7 @@ describe('ServiceClient', () => {
     it.each([
       'get',
       'postRead',
-    ] as const)('recovers %s reads through an opt-in retry budget', async (method) => {
+    ] as const)('recovers %s reads within their retry budget', async (method) => {
       vi.useFakeTimers();
       const fetch = vi
         .fn<typeof globalThis.fetch>()
@@ -1051,7 +1052,7 @@ describe('ServiceClient', () => {
 
   it.each([
     [0, 1],
-    [undefined, 1],
+    [undefined, 3],
   ])('uses retries=%s for transport failures (%i attempts)', async (retries, attempts) => {
     let requests = 0;
     server.use(

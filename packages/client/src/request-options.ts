@@ -43,19 +43,20 @@ export type RequestOptions = {
   timeout?: number | false;
   /**
    * Retries after the first attempt. Must be an integer from 0 to 5.
-   * Retries are disabled by default. Set a value above 0 to retry network
-   * failures and short rate-limit waits (up to 5 seconds); both share this
-   * budget for each request, and every pagination request gets a fresh budget.
-   * Authentication recovery and workflow retry policies are unaffected.
+   * Reads retry network failures, server errors and short rate-limit waits
+   * (up to 5 seconds) twice by default; they share this budget for each
+   * request, and every pagination request gets a fresh budget. Set 0 when the
+   * caller owns retries, such as a query library. Authentication recovery is
+   * unaffected.
    *
-   * @defaultValue 0
+   * @defaultValue 2
    * @experimental This API may change in a breaking way in any release, including patch releases.
    */
   retries?: number;
 };
 
 const ReadRetryOptionsSchema = z.object({
-  retries: z.number().int().min(0).max(5).default(0),
+  retries: z.number().int().min(0).max(5).default(2),
 });
 
 /** Validates and snapshots controls at the read boundary. @internal */

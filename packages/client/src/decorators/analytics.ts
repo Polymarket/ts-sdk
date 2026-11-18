@@ -72,7 +72,7 @@ export type AnalyticsActions = {
    * Builders are ranked by attributed share volume within `window`, which
    * defaults to one day. `builderCode` is the stable identifier; names and
    * profile images are display metadata. `pageSize` defaults to 100 (max 1000).
-   * Set `retries` to retry transient failures.
+   * Transient rate limits are retried by default.
    *
    * @throws {@link ListBuilderLeaderboardError}
    * Thrown on failure.
@@ -118,7 +118,7 @@ export type AnalyticsActions = {
    * {@link BuilderVolumeInterval.Year} for one bucket per calendar year.
    * `bucketLimit` returns that many complete recent buckets (default 30, max 90),
    * not that many builder rows. Results are newest bucket first, and volume is
-   * measured in shares. Set `retries` to retry transient failures.
+   * measured in shares. Transient rate limits are retried by default.
    *
    * @throws {@link FetchBuilderVolumeError}
    * Thrown on failure.
