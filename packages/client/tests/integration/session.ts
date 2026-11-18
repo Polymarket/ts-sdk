@@ -35,6 +35,12 @@ export function walletClaim(accessToken: string): string | undefined {
 }
 
 /**
+ * Trading service that still issues the legacy L2 credentials migration tests
+ * start from. The SDK itself no longer calls this host.
+ */
+const L2_CREDENTIALS_URL = 'https://clob.polymarket.com';
+
+/**
  * Obtains L2 credentials for the signer directly from the trading service.
  * The SDK no longer manages these credentials, so migration tests set them up themselves.
  */
@@ -78,12 +84,12 @@ export async function obtainL2Credentials(
     POLY_TIMESTAMP: timestamp,
     POLY_NONCE: String(nonce),
   };
-  let response = await fetch(`${environment.clob.rest}/auth/api-key`, {
+  let response = await fetch(`${L2_CREDENTIALS_URL}/auth/api-key`, {
     method: 'POST',
     headers,
   });
   if (!response.ok)
-    response = await fetch(`${environment.clob.rest}/auth/derive-api-key`, {
+    response = await fetch(`${L2_CREDENTIALS_URL}/auth/derive-api-key`, {
       headers,
     });
   expect(response.ok).toBe(true);
