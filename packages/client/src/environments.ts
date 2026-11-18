@@ -21,7 +21,8 @@ export type WebSocketEndpoint = {
   headers?: Record<string, string>;
 };
 
-export type ClobEndpoints = RestEndpoint & {
+/** Order book and account sockets. Every REST operation uses the Predictions endpoint. */
+export type ClobEndpoints = {
   market: WebSocketEndpoint;
   user: WebSocketEndpoint;
 };
@@ -89,7 +90,7 @@ export type EnvironmentConfigFork = {
   walletDerivation?: Partial<WalletDerivationConfig>;
   contracts?: Partial<EnvironmentContracts>;
   predictions?: Partial<RestEndpoint>;
-  clob?: Partial<RestEndpoint> & {
+  clob?: {
     market?: Partial<WebSocketEndpoint>;
     user?: Partial<WebSocketEndpoint>;
   };
@@ -181,7 +182,6 @@ export const production: EnvironmentConfig = {
   },
   predictions: { rest: 'https://api.defi.polymarket.com' },
   clob: {
-    rest: 'https://clob.polymarket.com',
     market: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/market' },
     user: { ws: 'wss://ws-subscriptions-clob.polymarket.com/ws/user' },
   },
@@ -221,7 +221,6 @@ export function forkEnvironmentConfig(
       ...fork.contracts,
     },
     clob: {
-      ...forkRestEndpoint(base.clob, fork.clob),
       market: forkWebSocketEndpoint(base.clob.market, fork.clob?.market),
       user: forkWebSocketEndpoint(base.clob.user, fork.clob?.user),
     },
@@ -278,5 +277,4 @@ function forkHeaders(
 export const preproduction = forkEnvironmentConfig({
   name: 'preproduction',
   predictions: { rest: 'https://api-defi-staging.polymarket.dev' },
-  clob: { rest: 'https://clob-preprod-int-v2.polymarket.com' },
 });

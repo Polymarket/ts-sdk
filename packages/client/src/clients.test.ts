@@ -33,7 +33,7 @@ import {
 
 const rpcRoot = 'http://localhost:4014';
 const relayerRoot = 'http://localhost:4016';
-const clobRoot = 'http://localhost:4016';
+const predictionsRoot = 'http://localhost:4016';
 const server = setupServer();
 const signerAddress = expectEvmAddress(
   '0x0000000000000000000000000000000000000001',
@@ -41,8 +41,7 @@ const signerAddress = expectEvmAddress(
 
 const environment = forkEnvironmentConfig({
   name: 'test',
-  predictions: { rest: clobRoot },
-  clob: { rest: clobRoot },
+  predictions: { rest: predictionsRoot },
   rpc: rpcRoot,
 });
 
@@ -150,14 +149,12 @@ describe('predictions gateway service', () => {
       }));
       expect(extended.predictions).toBe(client.predictions);
       expect(extended.predictionService).toBe(client.predictions);
-      for (const service of [client.clob, client.perps]) {
-        await expect(
-          service.get('/direct', { retries: 0 }),
-        ).rejects.toMatchObject({
-          cause: failure,
-        });
-        expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
-      }
+      await expect(
+        client.perps.get('/direct', { retries: 0 }),
+      ).rejects.toMatchObject({
+        cause: failure,
+      });
+      expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }
@@ -240,12 +237,12 @@ describe('public client HTTP reads', () => {
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {
     server.use(
-      http.post(`${clobRoot}/v1/auth/migrate`, async ({ request }) => {
+      http.post(`${predictionsRoot}/v1/auth/migrate`, async ({ request }) => {
         const body = (await request.json()) as { wallet: string };
         return HttpResponse.json(testTokens(body.wallet));
       }),
       http.post(
-        `${clobRoot}/v1/auth/logout`,
+        `${predictionsRoot}/v1/auth/logout`,
         () => new HttpResponse(null, { status: 204 }),
       ),
     );
@@ -255,12 +252,12 @@ describe('secure client gasless wallet setup', () => {
   afterEach(() => {
     server.resetHandlers();
     server.use(
-      http.post(`${clobRoot}/v1/auth/migrate`, async ({ request }) => {
+      http.post(`${predictionsRoot}/v1/auth/migrate`, async ({ request }) => {
         const body = (await request.json()) as { wallet: string };
         return HttpResponse.json(testTokens(body.wallet));
       }),
       http.post(
-        `${clobRoot}/v1/auth/logout`,
+        `${predictionsRoot}/v1/auth/logout`,
         () => new HttpResponse(null, { status: 204 }),
       ),
     );
@@ -404,7 +401,7 @@ describe('secure client gasless wallet setup', () => {
     };
 
     server.use(
-      http.post(`${clobRoot}/v1/auth/challenge`, async ({ request }) => {
+      http.post(`${predictionsRoot}/v1/auth/challenge`, async ({ request }) => {
         expect(await request.json()).toMatchObject({
           signer: signerAddress,
           wallet: signerAddress,
@@ -442,7 +439,7 @@ describe('secure client gasless wallet setup', () => {
           },
         });
       }),
-      http.post(`${clobRoot}/v1/auth/login`, () =>
+      http.post(`${predictionsRoot}/v1/auth/login`, () =>
         HttpResponse.json(testTokens(signerAddress)),
       ),
     );

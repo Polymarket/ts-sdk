@@ -140,8 +140,9 @@ describe('predictions service types', () => {
     expectTypeOf(
       publicClient.predictions.del('/reserved', { responseType: 'empty' }),
     ).toEqualTypeOf<Promise<void>>();
-    expectTypeOf(publicClient.clob).toEqualTypeOf<ServiceClient>();
-    expectTypeOf(secureClient.secureClob).toEqualTypeOf<ServiceClient>();
+    // Every REST operation uses the Predictions endpoint.
+    expectTypeOf(publicClient).not.toHaveProperty('clob');
+    expectTypeOf(secureClient).not.toHaveProperty('secureClob');
   });
 
   it('exports the service type without its constructor from the root entry point', () => {

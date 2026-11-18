@@ -99,8 +99,6 @@ type PublicContext = {
   /** @internal */
   auth: ServiceClient;
   /** @internal */
-  clob: ServiceClient;
-  /** @internal */
   rpc: JsonRpcClient;
   /** @internal */
   perps: ServiceClient;
@@ -187,11 +185,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get clob(): ServiceClient {
-    return this.context.clob;
-  }
-
-  /** @internal */
   get rpc(): JsonRpcClient {
     return this.context.rpc;
   }
@@ -219,18 +212,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   constructor(context: TContext) {
     this.#context = context;
     this.#decorators = [];
-  }
-
-  protected async resolveClobHeaders(
-    request: ServiceRequest,
-  ): Promise<HeadersInit> {
-    if (this.context.apiKey?.isBuilderKey) {
-      return this.context.apiKey.authorize(request, {
-        fetch: this.context.fetch,
-        signal: request.signal,
-      });
-    }
-    return Promise.resolve({});
   }
 
   protected resolveRequestHeaders(
@@ -308,13 +289,6 @@ class BasePublicClient<
         this.resolveRequestHeaders(request),
       ),
       auth: createAuthService(config),
-      clob: new ServiceClient({
-        fetch: config.fetch,
-        headers: config.environment.clob.headers,
-        onRateLimitUpdate: config.onRateLimitUpdate,
-        root: config.environment.clob.rest,
-        resolveHeaders: (request) => this.resolveClobHeaders(request),
-      }),
       perps: new ServiceClient({
         fetch: config.fetch,
         headers: config.environment.perps.headers,
@@ -554,17 +528,6 @@ class BaseSecureClient<
       signer: config.signer,
       predictions,
       auth,
-      clob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.clob.headers,
-        onRateLimitUpdate: config.onRateLimitUpdate,
-        root: config.environment.clob.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveClobHeaders(request),
-          ),
-      }),
       rpc: new JsonRpcClient({
         url: config.environment.rpc,
         fetch: config.fetch,
@@ -573,17 +536,6 @@ class BaseSecureClient<
         fetch: config.fetch,
         headers: config.environment.perps.headers,
         root: config.environment.perps.rest,
-      }),
-      secureClob: new AuthenticatedServiceClient({
-        fetch: protectRequestErrors(config.fetch),
-        headers: config.environment.clob.headers,
-        onRateLimitUpdate: config.onRateLimitUpdate,
-        resolveHeaders: (request) =>
-          this.resolveSecureHeaders(request, (request) =>
-            this.resolveClobHeaders(request),
-          ),
-        root: config.environment.clob.rest,
-        refreshToken: (signal) => this.refreshTokens(signal),
       }),
       webSockets: {
         clobMarket: new ClobMarketWebSocketManager({
@@ -702,11 +654,6 @@ class BaseSecureClient<
   /** @internal */
   get signer(): Signer {
     return this.context.signer;
-  }
-
-  /** @internal */
-  get secureClob(): ServiceClient {
-    return this.context.secureClob;
   }
 
   /** @internal Shared managers for public and authenticated realtime subscriptions. */
@@ -855,8 +802,6 @@ type SecureContext = PublicContext & {
   session: AuthSession;
   /** @internal */
   signer: Signer;
-  /** @internal */
-  secureClob: ServiceClient;
   /** @internal */
   webSockets: SecureWebSocketManagers;
 };
