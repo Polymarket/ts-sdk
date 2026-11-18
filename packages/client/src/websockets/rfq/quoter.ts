@@ -58,7 +58,8 @@ const AUTH_TIMEOUT_MS = 30_000;
 const ACK_TIMEOUT_MS = 30_000;
 
 export type RfqQuoterWebSocketManagerOptions = {
-  account: AccountIdentity;
+  /** Returns the current account, which can change when the session is bound to a wallet. */
+  account: () => AccountIdentity;
   chainId: number;
   session: AuthSession;
   exchange: EvmAddress;
@@ -68,7 +69,7 @@ export type RfqQuoterWebSocketManagerOptions = {
 };
 
 export class RfqQuoterWebSocketManager {
-  readonly #account: AccountIdentity;
+  readonly #account: () => AccountIdentity;
   readonly #chainId: number;
   readonly #sessionAuth: AuthSession;
   readonly #exchange: EvmAddress;
@@ -168,7 +169,7 @@ export class RfqQuoterWebSocketManager {
 }
 
 type RfqWebSocketSessionConfig = {
-  account: AccountIdentity;
+  account: () => AccountIdentity;
   chainId: number;
   session: AuthSession;
   exchange: EvmAddress;
@@ -179,7 +180,7 @@ type RfqWebSocketSessionConfig = {
 };
 
 class RfqWebSocketSession implements RfqSession, RfqEventController {
-  readonly #account: AccountIdentity;
+  readonly #account: () => AccountIdentity;
   readonly #chainId: number;
   readonly #sessionAuth: AuthSession;
   readonly #exchange: EvmAddress;
@@ -492,7 +493,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     this.#assertAuthorized();
     const parsedResponse = parseRfqQuoteResponse(response);
     const quote = await createRfqQuote({
-      account: this.#account,
+      account: this.#account(),
       chainId: this.#chainId,
       exchange: this.#exchange,
       request,
@@ -521,7 +522,7 @@ class RfqWebSocketSession implements RfqSession, RfqEventController {
     try {
       await this.#send(
         createQuoteCancelMessage(
-          this.#account,
+          this.#account(),
           reference.rfqId,
           reference.quoteId,
         ),

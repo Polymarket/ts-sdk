@@ -5,6 +5,7 @@ import {
 } from '@polymarket/client';
 import { isWalletDeployed } from '@polymarket/client/actions';
 import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
+import { vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
 
 describe('clients', () => {
@@ -148,6 +149,50 @@ describe('clients', () => {
       });
 
       await secureClient.listOpenOrders().firstPage();
+    });
+
+    it('restores a saved signer-only session that another client already bound', async ({
+      environment,
+      publicClient,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      // Two tabs hold the same saved signer-only session.
+      const saved = await publicClient.login({ signer: randomEoaSigner });
+      const firstTab = await createSecureClient({
+        credentials: saved,
+        environment,
+        signer: randomEoaSigner,
+        wallet: signerAddress,
+      });
+
+      try {
+        // The first tab bound the wallet, so the second restores a bound session.
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const secondTab = await createSecureClient({
+          credentials: saved,
+          environment,
+          signer: randomEoaSigner,
+          wallet: signerAddress,
+        });
+        const upgrades = fetchSpy.mock.calls.filter(([input]) =>
+          new URL(
+            input instanceof Request ? input.url : String(input),
+          ).pathname.endsWith('/v1/auth/upgrade'),
+        );
+        vi.restoreAllMocks();
+
+        expect(upgrades).toHaveLength(0);
+        expect(secondTab.account.wallet.toLowerCase()).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(secondTab.account.walletType).toBe(WalletType.EOA);
+        await secondTab.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        // Ending one tab revokes the shared refresh session for both.
+        await firstTab.endAuthentication().catch(() => undefined);
+      }
     });
 
     // Invalid/expired restoration is covered deterministically in gateway-auth.test.ts.

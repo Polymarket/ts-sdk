@@ -215,6 +215,42 @@ describe('shared session policy', () => {
     session.close();
   });
 
+  it('adopts a renewal that carries a wallet bound by another client', async () => {
+    const boundElsewhere = tokens(1, 900, {
+      wallet,
+      signature_type: 3,
+      clob_api_key: 'synthetic-api-key',
+    });
+    const changed = vi.fn();
+    const session = new AuthSession({
+      credentials: tokens(),
+      refresh: async () => issue(boundElsewhere),
+    });
+    session.onChange(changed);
+
+    await expect(session.refresh()).resolves.toEqual(boundElsewhere);
+    expect(session.claims.wallet).toBe(wallet);
+    expect(changed).toHaveBeenCalledExactlyOnceWith(boundElsewhere);
+    expect(() => session.assertActive()).not.toThrow();
+    session.close();
+  });
+
+  it.each([
+    ['signer', { sub: '0x0000000000000000000000000000000000000003' }],
+    ['application', { client_id: 'other-client' }],
+  ])('ends the session when a renewal belongs to a different %s', async (_owner, claims) => {
+    const session = new AuthSession({
+      credentials: tokens(),
+      refresh: async () => issue(tokens(1, 900, claims)),
+    });
+
+    await expect(session.refresh()).rejects.toBeInstanceOf(
+      UnexpectedResponseError,
+    );
+    expect(() => session.assertActive()).toThrow(UnexpectedResponseError);
+    session.close();
+  });
+
   it('close rejects a started refresh even if the dependency ignores cancellation', async () => {
     const original = tokens();
     const changed = vi.fn();

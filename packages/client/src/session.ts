@@ -225,7 +225,7 @@ export class AuthSession {
     const claims = issuedClaims(next.accessToken);
     if (
       next.expiresIn * 1000 <= RENEWAL_LEAD_MS ||
-      !sameSessionIdentity(this.#claims, claims)
+      !sameSessionOwner(this.#claims, claims)
     )
       throw new UnexpectedResponseError(
         'Session renewal returned a different identity or an unusable expiry.',
@@ -311,7 +311,7 @@ export class AuthSession {
         credentials,
         new AbortController().signal,
       );
-      if (!sameSessionIdentity(identity, issuedClaims(next.accessToken)))
+      if (!sameSessionOwner(identity, issuedClaims(next.accessToken)))
         throw new UnexpectedResponseError(
           'Logout renewal returned a different session identity.',
         );
@@ -378,17 +378,13 @@ function retryAfterSeconds(error: unknown): number | undefined {
     : undefined;
 }
 
-function sameSessionIdentity(
-  a: AccessTokenClaims,
-  b: AccessTokenClaims,
-): boolean {
-  return (
-    isSameEvmAddress(a.sub, b.sub) &&
-    a.client_id === b.client_id &&
-    a.wallet?.toLowerCase() === b.wallet?.toLowerCase() &&
-    a.signature_type === b.signature_type &&
-    a.clob_api_key === b.clob_api_key
-  );
+/**
+ * Checks that a renewed token belongs to the same signer and application.
+ * Wallet claims are not compared: another client sharing this refresh session
+ * can bind a wallet, and the server owns which wallet a session may use.
+ */
+function sameSessionOwner(a: AccessTokenClaims, b: AccessTokenClaims): boolean {
+  return isSameEvmAddress(a.sub, b.sub) && a.client_id === b.client_id;
 }
 
 function wait(delay: number, signal: AbortSignal): Promise<void> {

@@ -62,12 +62,12 @@ function maker(session: AuthSession, signTypedData = vi.fn()) {
   return new RfqQuoterWebSocketManager({
     session,
     url: 'wss://synthetic.invalid/maker',
-    account: {
+    account: () => ({
       signer: address,
       wallet: address,
       signerType: SignerType.OWNER,
       walletType: WalletType.EOA,
-    },
+    }),
     chainId: 137,
     exchange: address,
     signer: {

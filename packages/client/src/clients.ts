@@ -561,6 +561,18 @@ class BaseSecureClient<
           signal,
         }),
     });
+    let account = config.account;
+    // Another client sharing this refresh session can bind a wallet. Follow
+    // the wallet the server issued so the account matches the session.
+    session.onChange(() => {
+      const { wallet } = session.claims;
+      if (wallet !== undefined && !isSameEvmAddress(wallet, account.wallet))
+        account = resolveAccountIdentity(
+          config.environment,
+          account.signer,
+          wallet,
+        );
+    });
     predictions = new AuthenticatedServiceClient({
       fetch: protectRequestErrors(config.fetch),
       headers: config.environment.predictions.headers,
@@ -579,7 +591,9 @@ class BaseSecureClient<
       session,
     });
     super({
-      account: config.account,
+      get account() {
+        return account;
+      },
       session,
       apiKey: config.apiKey,
       environment: config.environment,
@@ -681,7 +695,7 @@ class BaseSecureClient<
           url: config.environment.clob.user.ws,
         }),
         rfqQuoter: new RfqQuoterWebSocketManager({
-          account: config.account,
+          account: () => account,
           chainId: config.environment.chainId,
           session,
           exchange: config.environment.contracts.exchangeV3,
@@ -1255,7 +1269,18 @@ export async function createSecureClient(
     );
     if (restored) await secureClient.session.refresh();
     else await secureClient.session.ready();
-    if (bindWallet)
+    // Another client may have bound the saved session since it was stored.
+    const boundWallet = secureClient.session.claims.wallet;
+    if (
+      bindWallet &&
+      boundWallet !== undefined &&
+      params.wallet !== undefined &&
+      !isSameEvmAddress(boundWallet, params.wallet)
+    )
+      throw new UserInputError(
+        `The saved credentials are bound to wallet ${boundWallet}. Omit wallet or pass that wallet.`,
+      );
+    if (bindWallet && boundWallet === undefined)
       await secureClient.session.bindWallet(wallet, (accessToken) =>
         client.auth.post('/v1/auth/upgrade', {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -1264,17 +1289,19 @@ export async function createSecureClient(
         }),
       );
     secureClient.session.start();
-    if (account.walletType !== WalletType.EOA) {
+    // The session's wallet decides the account, including a wallet bound elsewhere.
+    const sessionAccount = secureClient.account;
+    if (sessionAccount.walletType !== WalletType.EOA) {
       const deployed = await isWalletDeployed(secureClient, {
-        wallet: account.wallet,
-        type: account.walletType,
+        wallet: sessionAccount.wallet,
+        type: sessionAccount.walletType,
       });
       if (!deployed) {
-        if (account.walletType === WalletType.DEPOSIT_WALLET)
+        if (sessionAccount.walletType === WalletType.DEPOSIT_WALLET)
           await deployDefaultDepositWallet(secureClient);
         else
           throw new UserInputError(
-            `Wallet ${account.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
+            `Wallet ${sessionAccount.wallet} does not exist. Provide an existing wallet address, or omit wallet to use the default Deposit Wallet flow.`,
           );
       }
     }
