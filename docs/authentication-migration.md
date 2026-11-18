@@ -85,14 +85,14 @@ const secureClient = await createSecureClient({
 });
 ```
 
-Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.upgradeCredentials`. It needs no new signature and keeps the refresh token. The new access token reaches `onCredentialsChanged`, and the returned client keeps reporting renewals to it. The original client and its subscriptions are closed without ending the session, so use the returned client from then on. If binding fails, the original client stays usable.
+Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.upgradeCredentials`. It needs no new signature and keeps the refresh token. It updates the same client and returns the new credentials: `secureClient.account` moves to the wallet, open subscriptions stay open, and the new access token also reaches `onCredentialsChanged`. If binding fails, the client keeps its current session.
 
 ```ts
-const upgradedClient = await secureClient.upgradeCredentials({ wallet });
-await saveCredentials(upgradedClient.credentials);
+const credentials = await secureClient.upgradeCredentials({ wallet });
+await saveCredentials(credentials);
 ```
 
-A session already bound to `wallet` gives a new client without a request, and a session bound to another wallet is rejected with `UserInputError`. After a restart, creating a client from the saved credentials with wallet setup enabled binds the wallet the same way.
+A session already bound to `wallet` returns its current credentials without a request, and a session bound to another wallet is rejected with `UserInputError`. After a restart, creating a client from the saved credentials with wallet setup enabled binds the wallet the same way.
 
 ## Renewal
 

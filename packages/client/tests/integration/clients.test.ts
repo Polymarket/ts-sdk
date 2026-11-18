@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import {
   createSecureClient,
   type EnvironmentConfig,
@@ -8,9 +9,10 @@ import {
 } from '@polymarket/client';
 import { isWalletDeployed } from '@polymarket/client/actions';
 import { platformApiKey } from '@polymarket/client/node';
-import { InvariantError, ZERO_ADDRESS } from '@polymarket/types';
+import { expectPresent, InvariantError, ZERO_ADDRESS } from '@polymarket/types';
 import { afterEach, vi } from 'vitest';
 import { describe, expect, it, runMeteredTests } from './fixtures';
+import { findHighVolumeLowPriceMarket } from './markets';
 
 describe('clients', () => {
   describe('createSecureClient', () => {
@@ -362,7 +364,7 @@ describe('clients', () => {
       }
     });
 
-    it('signs in without a wallet when wallet setup is disabled, then upgrades the credentials', async ({
+    it('signs in without a wallet when wallet setup is disabled, then upgrades the same client', async ({
       environment,
       randomEoaSigner,
     }) => {
@@ -374,39 +376,110 @@ describe('clients', () => {
         walletSetup: false,
         onCredentialsChanged: changed,
       });
-      let client = secureClient;
 
       try {
-        expect(
-          walletClaim(secureClient.credentials.accessToken),
-        ).toBeUndefined();
+        const signerOnly = secureClient.credentials;
+        expect(walletClaim(signerOnly.accessToken)).toBeUndefined();
         expect(secureClient.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
         await expect(isWalletDeployed(secureClient)).resolves.toBe(false);
 
         const signTypedData = vi.spyOn(randomEoaSigner, 'signTypedData');
-        client = await secureClient.upgradeCredentials({
+        const credentials = await secureClient.upgradeCredentials({
           wallet: signerAddress,
         });
 
+        // The same client now holds the bound session and acts for the wallet.
         expect(signTypedData).not.toHaveBeenCalled();
-        expect(client.account.wallet).toBe(signerAddress);
-        expect(client.account.walletType).toBe(WalletType.EOA);
-        expect(walletClaim(client.credentials.accessToken)).toBe(
+        expect(Object.keys(credentials).sort()).toEqual([
+          'accessToken',
+          'refreshToken',
+        ]);
+        expect(credentials).toEqual(secureClient.credentials);
+        expect(credentials.refreshToken).toBe(signerOnly.refreshToken);
+        expect(walletClaim(credentials.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
-        expect(changed).toHaveBeenLastCalledWith(client.credentials);
-        // The upgraded client owns the session, and the original one is closed.
-        expect(() => secureClient.credentials).toThrow(InvariantError);
-        await client.listOpenOrders().firstPage();
+        expect(secureClient.account.wallet.toLowerCase()).toBe(
+          signerAddress.toLowerCase(),
+        );
+        expect(secureClient.account.walletType).toBe(WalletType.EOA);
+        expect(changed).toHaveBeenLastCalledWith(credentials);
+        await secureClient.listOpenOrders().firstPage();
         // Renewal keeps the bound wallet.
-        const renewed = await client.refreshCredentials();
-        expect(renewed).toEqual(client.credentials);
+        const renewed = await secureClient.refreshCredentials();
         expect(walletClaim(renewed.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
       } finally {
         vi.restoreAllMocks();
-        await client.endAuthentication();
+        await secureClient.endAuthentication();
+      }
+    });
+
+    it('returns the current credentials without a request when the session is already bound to the wallet', async ({
+      environment,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const secureClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        wallet: signerAddress,
+      });
+
+      try {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch');
+        const credentials = await secureClient.upgradeCredentials({
+          wallet: signerAddress,
+        });
+        expect(fetchSpy).not.toHaveBeenCalled();
+        vi.restoreAllMocks();
+
+        expect(credentials).toEqual(secureClient.credentials);
+        await secureClient.listOpenOrders().firstPage();
+      } finally {
+        vi.restoreAllMocks();
+        await secureClient.endAuthentication();
+      }
+    });
+
+    it('keeps subscriptions open while upgrading the credentials', async ({
+      environment,
+      publicClient,
+      randomEoaSigner,
+    }) => {
+      const signerAddress = await randomEoaSigner.getAddress();
+      const market = await findHighVolumeLowPriceMarket(publicClient);
+      const secureClient = await createSecureClient({
+        environment,
+        signer: randomEoaSigner,
+        walletSetup: false,
+      });
+
+      try {
+        const handle = await secureClient.subscribe([
+          {
+            tokenIds: [expectPresent(market.outcomes.yes.tokenId)],
+            topic: 'market',
+          },
+        ]);
+        const consumed = (async () => {
+          for await (const _event of handle) {
+            // Market events keep arriving until the handle is closed.
+          }
+          return 'ended';
+        })();
+
+        await secureClient.upgradeCredentials({ wallet: signerAddress });
+
+        // An upgrade that closed subscriptions would end the iterator here.
+        await expect(
+          Promise.race([consumed, delay(5_000).then(() => 'open')]),
+        ).resolves.toBe('open');
+        await handle.close();
+        await expect(consumed).resolves.toBe('ended');
+      } finally {
+        await secureClient.endAuthentication();
       }
     });
 
