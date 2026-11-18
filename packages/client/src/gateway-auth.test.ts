@@ -644,6 +644,7 @@ it.each([
 
 it.each([
   ['POLY_BUILDER_API_KEY', '/v1/orders'],
+  ['POLY_BUILDER_API_KEY', '/v1/trading/heartbeats'],
   ['RELAYER_API_KEY', '/v1/wallets/transactions'],
 ])('combines bearer and %s headers on %s', async (header, path) => {
   const pair = tokens();

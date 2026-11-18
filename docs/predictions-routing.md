@@ -19,16 +19,14 @@ Wallet-wide order methods follow the same rules: `listWalletOpenOrders` uses `GE
 
 `listComments` uses `GET /v1/comments`, which pages by server cursor and returns the cursor envelope. It sorts by `CommentSort.Id` or `CommentSort.CreatedAt` only. The gateway operation does not serve holder filtering, author positions or offsets, so `holdersOnly`, `getPositions`, other sorts and offset cursors saved from earlier versions are no longer accepted. `fetchCommentsById` still accepts `getPositions` for a single thread.
 
-## Direct endpoints
+## Order heartbeats
 
-The following action keeps its direct endpoint because the gateway has no equivalent operation:
-
-- `sendOrderHeartbeat`. It requires the V1 `{ heartbeat_id }` contract at `/v1/heartbeats`, but the gateway forwards `/v1/trading/heartbeats` to the legacy `/heartbeats` endpoint, which answers `{ status: "ok" }`. The action moves to the gateway once that operation serves the V1 contract.
+`sendOrderHeartbeat` uses `POST /v1/trading/heartbeats`. The gateway forwards it to the trading service's `POST /v1/heartbeats` with the V1 `{ heartbeat_id }` contract, so builder keys sign `POST /v1/heartbeats`. A stale heartbeat ID is still reported as `OrderHeartbeatMismatchError` with the expected ID.
 
 The SDK chooses the route before dispatch. It does not fall back to another endpoint after a request fails.
 
 Standalone credential administration is no longer provided by the SDK. Perps and websocket transports keep their independent configuration and lifecycle.
 
-The gateway origin may include an application proxy prefix. Keep `clob.rest` consistent with that environment, because heartbeats still use it.
+The gateway origin may include an application proxy prefix.
 
-Routing follows the gateway passthrough tables at `97867a07` (2026-11-10), including the wallet-order routes added in gateway PR #1277. SDK method coverage includes the merged changes through SDK PR #503. Gateway-only endpoints without corresponding SDK methods are outside this change.
+Routing follows the gateway passthrough tables at `97867a07` (2026-11-10), including the wallet-order routes added in gateway PR #1277 and the heartbeat route added in gateway PR #1323. SDK method coverage includes the merged changes through SDK PR #503. Gateway-only endpoints without corresponding SDK methods are outside this change.

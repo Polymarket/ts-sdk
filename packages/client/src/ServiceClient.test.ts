@@ -145,15 +145,17 @@ describe('ServiceClient', () => {
     expect(observed).toHaveLength(1);
   });
 
-  it.each([
-    [root, 'expected-id'],
-    [root, ''],
-    [`${root}/prefix`, 'expected-id'],
-    [`${root}/prefix`, ''],
-  ])('preserves expected heartbeat ID at %s (%j) in one attempt', async (serviceRoot, heartbeatId) => {
+  it.each(
+    ['/v1/heartbeats', '/v1/trading/heartbeats'].flatMap((path) => [
+      [root, 'expected-id', path],
+      [root, '', path],
+      [`${root}/prefix`, 'expected-id', path],
+      [`${root}/prefix`, '', path],
+    ]),
+  )('preserves expected heartbeat ID at %s (%j) on %s in one attempt', async (serviceRoot, heartbeatId, path) => {
     let requests = 0;
     server.use(
-      http.post(`${serviceRoot}/v1/heartbeats`, () => {
+      http.post(`${serviceRoot}${path}`, () => {
         requests++;
         return HttpResponse.json(
           { error_msg: 'Invalid Heartbeat ID', heartbeat_id: heartbeatId },
@@ -163,7 +165,7 @@ describe('ServiceClient', () => {
     );
     const client = new ServiceClient({ root: serviceRoot });
     const result = await client
-      .post('/v1/heartbeats', {
+      .post(path, {
         json: { heartbeat_id: 'stale-id' },
       })
       .catch((error: unknown) => error);

@@ -270,6 +270,9 @@ function parseHttpDate(value: string, now: number): number | undefined {
   return time;
 }
 
+/** Order heartbeat routes, direct and through the gateway, whose 400 reports the expected heartbeat ID. */
+const HEARTBEAT_PATHS = new Set(['v1/heartbeats', 'v1/trading/heartbeats']);
+
 /**
  * Sends requests and consumes and validates their responses.
  *
@@ -680,7 +683,7 @@ export class ServiceClient {
         .catch(() => undefined);
       if (
         response.status === 400 &&
-        this.#normalizePath(path) === 'v1/heartbeats'
+        HEARTBEAT_PATHS.has(this.#normalizePath(path))
       ) {
         const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(body);
         if (parsed.success) {

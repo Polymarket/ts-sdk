@@ -133,6 +133,7 @@ const SIGNING_ROUTES: readonly SigningRoute[] = [
   route('DELETE', '/v1/orders/all', '/cancel-all', 'trading'),
   route('DELETE', '/v1/orders/by-market', '/cancel-market-orders', 'trading'),
   route('DELETE', '/v1/orders/by-wallet', '/cancel-wallet-orders', 'trading'),
+  route('POST', '/v1/trading/heartbeats', '/v1/heartbeats', 'trading'),
   route(
     'POST',
     '/v1/combos/builder/requests',

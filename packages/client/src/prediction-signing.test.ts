@@ -89,6 +89,20 @@ describe('predictionSigningRequest', () => {
     ).toBeUndefined();
   });
 
+  it('signs gateway heartbeats as the upstream heartbeat with builder credentials only', () => {
+    const heartbeat = request(
+      'POST',
+      '/v1/trading/heartbeats',
+      '{"heartbeat_id":"current-id"}',
+    );
+    expect(predictionSigningRequest(heartbeat, builderKey)).toEqual({
+      method: 'POST',
+      path: '/v1/heartbeats',
+      body: '{"heartbeat_id":"current-id"}',
+    });
+    expect(predictionSigningRequest(heartbeat, relayerKey)).toBeUndefined();
+  });
+
   it('signs builder RFQ writes but not status reads', () => {
     expect(
       predictionSigningRequest(
