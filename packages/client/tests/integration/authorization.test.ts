@@ -739,8 +739,11 @@ describe('authorization', () => {
         vi.restoreAllMocks();
 
         // Orders go directly to the API on the bearer session, without the
-        // application key, and are builder-signed by the remote signer.
-        expect(signed).toEqual(['POST /order', 'DELETE /order']);
+        // application key, and are builder-signed by the remote signer. It also
+        // signs the other builder routes, such as market and wallet reads.
+        expect(signed).toEqual(
+          expect.arrayContaining(['POST /order', 'DELETE /order']),
+        );
         const orderRequests = sentRequests(fetchSpy).filter((request) =>
           request.url.pathname.endsWith('/v1/orders'),
         );
