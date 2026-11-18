@@ -4,9 +4,9 @@
  * After a login, the API rejects a new sign-in challenge for the same signer
  * and nonce with `409 challenge_consumed` for a short window, whatever the
  * wallet. Live tests reuse one test signer across files, so back-to-back
- * sign-ins would fail. This
- * wraps the global `fetch` to space those challenges out, and resends a
- * challenge that is still rejected. The SDK itself never retries sign-in.
+ * sign-ins would fail. This wraps the global `fetch` to space those challenges
+ * out, and resends a challenge that is still rejected. The SDK itself never
+ * retries sign-in.
  *
  * Installed through `setupFiles`, below any `fetch` spy or `msw` interceptor a
  * test adds, so those still observe exactly one challenge per sign-in.
@@ -17,9 +17,11 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 /** Time to wait after a login before requesting another challenge for the same signer and nonce. */
-export const SIGN_IN_COOLDOWN_MS = 11_000;
-const MAX_CHALLENGE_ATTEMPTS = 3;
-const MIN_RETRY_DELAY_MS = 2_000;
+export const SIGN_IN_COOLDOWN_MS = 2_000;
+/** Delay before resending a challenge that is still rejected, unless the API sends `Retry-After`. */
+const RETRY_DELAY_MS = 500;
+/** How long to keep resending a rejected challenge before letting the error through. */
+const MAX_RETRY_WINDOW_MS = 10_000;
 // Module state resets per test file, so login times are shared through a file.
 const SIGN_INS_FILE = join(tmpdir(), 'polymarket-ts-sdk-live-sign-ins.json');
 const INSTALLED = Symbol.for('polymarket.tests.signInGate');
@@ -63,7 +65,8 @@ async function sendChallenge(
   const key = `${signer.toLowerCase()}:${nonce}`;
 
   await delay(remainingCooldown(key));
-  for (let attempt = 1; ; attempt++) {
+  const deadline = Date.now() + MAX_RETRY_WINDOW_MS;
+  for (;;) {
     const response = await send(request.clone());
     if (response.ok) {
       const challenge = await readJson(response);
@@ -71,16 +74,14 @@ async function sendChallenge(
       if (typeof id === 'string') challengeKeys.set(id, key);
       return response;
     }
+    const wait = retryAfter(response) ?? RETRY_DELAY_MS;
     if (
-      attempt >= MAX_CHALLENGE_ATTEMPTS ||
       response.status !== 409 ||
-      (await readJson(response))?.code !== 'challenge_consumed'
+      (await readJson(response))?.code !== 'challenge_consumed' ||
+      Date.now() + wait > deadline
     )
       return response;
-    await delay(
-      retryAfter(response) ??
-        Math.max(remainingCooldown(key), MIN_RETRY_DELAY_MS),
-    );
+    await delay(wait);
   }
 }
 
