@@ -609,6 +609,39 @@ describe('Orders', { timeout: 60_000 }, () => {
     );
   });
 
+  describe('postOrder', () => {
+    it.runIf(runMeteredTests)(
+      'posts a signed resting limit order, then cancels it',
+      // Side effect: places one resting BUY at the minimum price and size, then cancels it.
+      async ({ annotate, secureClientWithDepositWallet }) => {
+        const tokenId = expectPresent(market.outcomes.yes.tokenId);
+        annotate(`Market ID: ${market.id}`);
+        annotate(`Token ID: ${tokenId}`);
+
+        const signedOrder = await createSignedRestingLimitOrder(
+          secureClientWithDepositWallet,
+          market,
+        );
+        const response =
+          await secureClientWithDepositWallet.postOrder(signedOrder);
+        const { orderId, status } = expectAcceptedOrderResponse(response);
+
+        try {
+          expect(orderId).not.toBe('');
+          expect(status).toBe(OrderPostStatus.LIVE);
+          await expect(
+            secureClientWithDepositWallet.fetchOrder({ orderId }),
+          ).resolves.toMatchObject({ id: orderId, assetId: tokenId });
+        } finally {
+          const result = await secureClientWithDepositWallet.cancelOrder({
+            orderId,
+          });
+          expect(result.canceled).toContain(orderId);
+        }
+      },
+    );
+  });
+
   describe('postOrders', () => {
     it('posts multiple resting limit orders', async ({
       annotate,
