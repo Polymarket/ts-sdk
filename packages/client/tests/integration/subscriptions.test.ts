@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises';
 import { OrderSide } from '@polymarket/bindings';
 import { UserOrderEventType } from '@polymarket/bindings/subscriptions';
 import { OrderPostStatus, type SecureClient } from '@polymarket/client';
@@ -75,6 +76,31 @@ describe('Subscriptions', () => {
         { topic: 'user' },
       ]);
       await handle.close();
+    } finally {
+      await secureClientWithDepositWallet.closeSubscriptions();
+    }
+  });
+
+  it('keeps a user stream authenticated with the session token', async ({
+    secureClientWithDepositWallet,
+  }) => {
+    try {
+      const handle = await secureClientWithDepositWallet.subscribe([
+        { topic: 'user' },
+      ]);
+      const consumed = (async () => {
+        for await (const _event of handle) {
+          // Account activity, if any, keeps the stream open.
+        }
+        return 'ended';
+      })();
+
+      // A rejected token closes the stream within moments.
+      await expect(
+        Promise.race([consumed, delay(5_000).then(() => 'open')]),
+      ).resolves.toBe('open');
+      await handle.close();
+      await expect(consumed).resolves.toBe('ended');
     } finally {
       await secureClientWithDepositWallet.closeSubscriptions();
     }
