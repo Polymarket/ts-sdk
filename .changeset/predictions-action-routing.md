@@ -1,5 +1,5 @@
 ---
-'@polymarket/client': minor
+'@polymarket/client': major
 ---
 
 Use the configured Predictions endpoint for supported discovery, trading, portfolio and wallet actions, including wallet-wide order listing and cancellation. API keys sign only the operations of their credential family, against the upstream method and path. Comment listings page by gateway cursor. Order heartbeats also go through the gateway.
