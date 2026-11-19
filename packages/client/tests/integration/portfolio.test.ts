@@ -150,14 +150,22 @@ describe('Portfolio', () => {
       depositWalletAddress,
       secureClientWithDepositWallet,
     }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
       const result = await secureClientWithDepositWallet
         .listPositions({ pageSize: 1 })
-        .firstPage()
-        .then(expectNonEmptyPage);
+        .firstPage();
 
-      expect(result.items[0]?.wallet).toSatisfy((wallet) =>
-        isSameEvmAddress(wallet, depositWalletAddress),
+      // The account may hold no positions, so check the request as well.
+      const [request] = fetchSpy.mock.calls
+        .map(([input]) => new URL(input instanceof Request ? input.url : input))
+        .filter((url) => url.pathname.endsWith('/v1/positions'));
+      expect(request?.searchParams.get('user')?.toLowerCase()).toBe(
+        depositWalletAddress.toLowerCase(),
       );
+      for (const position of result.items)
+        expect(position.wallet).toSatisfy((wallet) =>
+          isSameEvmAddress(wallet, depositWalletAddress),
+        );
     });
 
     it('rejects invalid secure client input', ({
