@@ -8,12 +8,12 @@
  * out, and resends a challenge that is still rejected. The SDK itself never
  * retries sign-in.
  *
+ * Login times live in memory, so each test file starts without them. A file's
+ * first sign-in that lands in the window is resent until it is accepted.
+ *
  * Installed through `setupFiles`, below any `fetch` spy or `msw` interceptor a
  * test adds, so those still observe exactly one challenge per sign-in.
  */
-import { readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 /** Time to wait after a login before requesting another challenge for the same signer and nonce. */
@@ -22,13 +22,11 @@ export const SIGN_IN_COOLDOWN_MS = 2_000;
 const RETRY_DELAY_MS = 500;
 /** How long to keep resending a rejected challenge before letting the error through. */
 const MAX_RETRY_WINDOW_MS = 10_000;
-// Module state resets per test file, so login times are shared through a file.
-const SIGN_INS_FILE = join(tmpdir(), 'polymarket-ts-sdk-live-sign-ins.json');
 const INSTALLED = Symbol.for('polymarket.tests.signInGate');
 
-type SignInTimes = Record<string, number>;
-
 const challengeKeys = new Map<string, string>();
+// Last successful login per signer and nonce.
+const signIns = new Map<string, number>();
 
 if (!(INSTALLED in globalThis.fetch)) {
   const gated = gateSignIns(globalThis.fetch);
@@ -97,38 +95,15 @@ async function sendLogin(
     typeof challengeId === 'string'
       ? challengeKeys.get(challengeId)
       : undefined;
-  if (response.ok && key !== undefined) recordSignIn(key);
+  if (response.ok && key !== undefined) signIns.set(key, Date.now());
   return response;
 }
 
 function remainingCooldown(key: string): number {
-  const last = readSignIns()[key];
+  const last = signIns.get(key);
   return last === undefined
     ? 0
     : Math.max(0, last + SIGN_IN_COOLDOWN_MS - Date.now());
-}
-
-function readSignIns(): SignInTimes {
-  try {
-    return JSON.parse(readFileSync(SIGN_INS_FILE, 'utf8')) as SignInTimes;
-  } catch {
-    return {};
-  }
-}
-
-function recordSignIn(key: string): void {
-  const now = Date.now();
-  // Keep only entries that can still delay a sign-in.
-  const times = Object.fromEntries(
-    Object.entries(readSignIns()).filter(
-      ([, time]) => now - time < SIGN_IN_COOLDOWN_MS,
-    ),
-  );
-  times[key] = now;
-  // Write a private file, then rename it over the shared one, so a crashed run never leaves it half written.
-  const pending = `${SIGN_INS_FILE}.${process.pid}.${now}`;
-  writeFileSync(pending, JSON.stringify(times));
-  renameSync(pending, SIGN_INS_FILE);
 }
 
 function retryAfter(response: Response): number | undefined {
