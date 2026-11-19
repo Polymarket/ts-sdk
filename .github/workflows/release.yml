@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # Publishes 1.0.0-next prereleases from the release branch before it merges.
+      - next/unified-api-release
 
 permissions:
   contents: write
@@ -26,6 +28,7 @@ jobs:
 
   integration-tests:
     name: Integration Tests
+    if: ${{ github.ref == 'refs/heads/main' }}
     needs: verify
     uses: ./.github/workflows/integration-tests.yml
     secrets: inherit
@@ -66,7 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - changesets
-    if: "${{ needs.changesets.outputs.has_changesets == 'true' && needs.changesets.outputs.published != 'true' }}"
+    if: "${{ github.ref == 'refs/heads/main' && needs.changesets.outputs.has_changesets == 'true' && needs.changesets.outputs.published != 'true' }}"
 
     steps:
       - name: Checkout Repository
