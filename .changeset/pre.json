@@ -7,5 +7,11 @@
     "@polymarket/client": "0.20.0",
     "@polymarket/types": "0.3.0"
   },
-  "changesets": []
+  "changesets": [
+    "bearer-sessions",
+    "platform-application-keys",
+    "predictions-action-routing",
+    "remove-direct-credential-auth",
+    "request-retries"
+  ]
 }
