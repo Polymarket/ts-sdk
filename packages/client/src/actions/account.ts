@@ -12,10 +12,10 @@ import {
   ClobTradesPageSchema,
   ClosedOnlyModeSchema,
   END_CURSOR,
+  FetchOrderResponseSchema,
   type NotificationsResponse,
   NotificationsResponseSchema,
   type OpenOrder,
-  OpenOrderSchema,
   OpenOrdersPageSchema,
   OrderScoringResponseSchema,
   type OrdersScoringResponse,
@@ -348,12 +348,14 @@ export const FetchOrderError = makeErrorGuard(
 );
 
 /**
- * Fetches a single order for the authenticated account.
+ * Fetches a single order for the authenticated account, in any status.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
  * @throws {@link FetchOrderError}
+ * Throws `RequestRejectedError` with status `404` when the authenticated account has
+ * no order with that ID, including when the order belongs to another account.
  *
  * @example
  * ```ts
@@ -370,10 +372,18 @@ export async function fetchOrder(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
-  return client.secureClob.get(`/data/order/${params.orderId}`, {
+  const order = await client.secureClob.get(`/data/order/${params.orderId}`, {
     ...requestOptions,
-    schema: OpenOrderSchema,
+    schema: FetchOrderResponseSchema,
   });
+
+  if (order === null) {
+    throw new RequestRejectedError(`Order ${params.orderId} not found`, {
+      status: 404,
+    });
+  }
+
+  return order;
 }
 
 const ListAccountTradesRequestFields = {
