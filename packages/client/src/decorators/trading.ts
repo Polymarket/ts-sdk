@@ -427,10 +427,12 @@ export type SecureTradingActions = {
     options?: RequestOptions,
   ): Paginated<WalletOpenOrder[]>;
   /**
-   * Fetches a single order for the authenticated account.
+   * Fetches a single order for the authenticated account, in any status.
    *
    * @throws {@link FetchOrderError}
-   * Thrown on failure.
+   * Thrown on failure. Throws `RequestRejectedError` with status `404` when the
+   * authenticated account has no order with that ID, including when the order
+   * belongs to another account.
    *
    * @example
    * ```ts

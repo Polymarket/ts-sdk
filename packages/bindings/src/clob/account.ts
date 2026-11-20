@@ -117,6 +117,12 @@ export const OpenOrderSchema = z
     },
   ) satisfies z.ZodType<OpenOrder>;
 
+/**
+ * A single order looked up by ID. The API answers `null` when no order with that ID
+ * belongs to the authenticated account.
+ */
+export const FetchOrderResponseSchema = OpenOrderSchema.nullable();
+
 export const OpenOrdersPageSchema = createCursorPageSchema(OpenOrderSchema);
 
 export type OpenOrdersPage = z.infer<typeof OpenOrdersPageSchema>;
