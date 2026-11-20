@@ -1,23 +1,8 @@
 import process from 'node:process';
-import {
-  EvmAddressSchema,
-  type OwnershipChallenge,
-} from '@polymarket/bindings';
 import { invariant } from '@polymarket/types';
 import { z } from 'zod';
-import { AuthenticationInputSchema } from './actions/identity';
 import { DirectApiKeyAuthorizationSchema } from './authorization';
-import type { BasePublicClient } from './clients';
-import {
-  makeErrorGuard,
-  RateLimitError,
-  RequestAbortedError,
-  RequestRejectedError,
-  SigningError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-} from './errors';
+import { makeErrorGuard, SigningError, UserInputError } from './errors';
 import { buildHmacSignature } from './hmac';
 import { parseUserInput } from './input';
 import type {
@@ -148,58 +133,4 @@ class PlatformAuthorization implements ApiKeyAuthorization {
       Promise.resolve({})
     );
   }
-}
-
-/** Challenge input that `remotePlatformApiKey` sends to your challenge proxy. */
-export type PlatformChallengeRequest = {
-  signer: string;
-  wallet?: string;
-  nonce?: number;
-  verificationToken?: string;
-};
-const PlatformChallengeRequestSchema = AuthenticationInputSchema.extend({
-  signer: EvmAddressSchema,
-});
-export type CreatePlatformChallengeError =
-  | RateLimitError
-  | RequestAbortedError
-  | RequestRejectedError
-  | TransportError
-  | UnexpectedResponseError
-  | UserInputError;
-export const CreatePlatformChallengeError = makeErrorGuard(
-  RateLimitError,
-  RequestAbortedError,
-  RequestRejectedError,
-  TransportError,
-  UnexpectedResponseError,
-  UserInputError,
-);
-
-/** Issues an ownership challenge attributed to your Platform API Key.
- * Call it from the backend route that `remotePlatformApiKey` targets, after
- * checking that the caller may authenticate `signer`, and return the challenge as JSON.
- * The client must be configured with `platformApiKey`.
- * @example
- * ```ts
- * const client = createPublicClient({
- *   apiKey: platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!),
- * });
- * const challenge = await createPlatformChallenge(client, await request.json());
- * return Response.json(challenge);
- * ```
- * @throws {@link CreatePlatformChallengeError} Thrown for invalid input or a rejected challenge.
- */
-export async function createPlatformChallenge(
-  client: BasePublicClient,
-  request: PlatformChallengeRequest,
-): Promise<OwnershipChallenge> {
-  const params = parseUserInput(request, PlatformChallengeRequestSchema);
-  client.assertPlatformChallengeSupported();
-  return client.requestOwnershipChallenge({
-    signer: params.signer,
-    wallet: params.wallet,
-    nonce: params.nonce,
-    verification_token: params.verificationToken,
-  });
 }

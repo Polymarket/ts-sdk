@@ -95,12 +95,20 @@ export type { Fetch, RequestOptions } from './request-options';
  */
 export type ServiceClient = ServiceClientInstance;
 
-export type { BearerCredentials } from '@polymarket/bindings';
 export type {
+  BearerCredentials,
+  OwnershipChallenge,
+} from '@polymarket/bindings';
+export type {
+  CreateOwnershipChallengeRequest,
   LoginRequest,
   MigrateCredentialsRequest,
 } from './actions/identity';
-export { LoginError, MigrateCredentialsError } from './actions/identity';
+export {
+  CreateOwnershipChallengeError,
+  LoginError,
+  MigrateCredentialsError,
+} from './actions/identity';
 export type { CredentialsChanged } from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {
