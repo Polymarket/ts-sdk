@@ -123,7 +123,7 @@ export async function fetchTokenReferences(
     request,
     FetchTokenReferencesRequestSchema,
   );
-  return client.data.get('/v2/tokens', {
+  return client.predictions.get('/v1/tokens', {
     schema: FetchTokenReferencesResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({

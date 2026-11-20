@@ -233,19 +233,19 @@ describe('Leaderboards', () => {
 function builderLeaderboardRequests(
   fetchSpy: MockInstance<typeof fetch>,
 ): URLSearchParams[] {
-  return dataRequests(fetchSpy, '/v2/builders/leaderboard');
+  return dataRequests(fetchSpy, '/v1/builders/leaderboard');
 }
 
 function traderLeaderboardRequests(
   fetchSpy: MockInstance<typeof fetch>,
 ): URLSearchParams[] {
-  return dataRequests(fetchSpy, '/v2/leaderboard');
+  return dataRequests(fetchSpy, '/v1/leaderboards/traders');
 }
 
 function builderVolumeRequests(
   fetchSpy: MockInstance<typeof fetch>,
 ): URLSearchParams[] {
-  return dataRequests(fetchSpy, '/v2/builders/volume');
+  return dataRequests(fetchSpy, '/v1/builders/volume');
 }
 
 function dataRequests(

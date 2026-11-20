@@ -32,8 +32,8 @@ import {
 } from './wallet';
 
 const rpcRoot = 'http://localhost:4014';
-const relayerRoot = 'http://localhost:4015';
-const clobRoot = 'http://localhost:4016';
+const relayerRoot = 'http://localhost:4016';
+const predictionsRoot = 'http://localhost:4016';
 const server = setupServer();
 const signerAddress = expectEvmAddress(
   '0x0000000000000000000000000000000000000001',
@@ -41,8 +41,7 @@ const signerAddress = expectEvmAddress(
 
 const environment = forkEnvironmentConfig({
   name: 'test',
-  clob: { rest: clobRoot },
-  relayer: { rest: relayerRoot },
+  predictions: { rest: predictionsRoot },
   rpc: rpcRoot,
 });
 
@@ -129,103 +128,40 @@ describe('predictions gateway service', () => {
     });
     try {
       vi.stubGlobal('Bun', { version: '1.2.3' });
-      for (const method of ['get', 'post', 'patch', 'del'] as const) {
-        const options = {
+      await expect(
+        client.predictions.get('/metadata', {
+          retries: 0,
           headers: {
             POLYMARKET_CLIENT: 'request override',
             'x-request': 'retained',
           },
-        };
-        const result =
-          method === 'get'
-            ? client.predictions.get('/metadata', { ...options, retries: 0 })
-            : client.predictions[method]('/metadata', options);
-        await expect(result).rejects.toMatchObject({ cause: failure });
-        const request = requests.at(-1);
-        expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
-        expect(request?.headers.get('x-environment')).toBe('retained');
-        expect(request?.headers.get('x-request')).toBe('retained');
-        expect(request?.url).toBe(
-          'https://api-defi-staging.polymarket.dev/metadata',
-        );
-      }
-      for (const service of [
-        client.clob,
-        client.gamma,
-        client.data,
-        client.relayer,
-        client.perps,
-      ]) {
-        await expect(
-          service.get('/direct', { retries: 0 }),
-        ).rejects.toMatchObject({
-          cause: failure,
-        });
-        expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
-      }
-      const controller = new AbortController();
-      controller.abort('cancelled');
-      await expect(
-        client.predictions.get('/metadata', { signal: controller.signal }),
+        }),
       ).rejects.toMatchObject({
-        name: 'RequestAbortedError',
-        cause: 'cancelled',
+        name: TransportError.name,
+        cause: failure,
       });
-      expect(fetch).toHaveBeenCalledTimes(9);
+      const request = requests.at(-1);
+      expect(request?.headers.get('POLYMARKET_CLIENT')).toBe(expected);
+      expect(request?.headers.get('x-environment')).toBe('retained');
+      expect(request?.headers.get('x-request')).toBe('retained');
+      expect(request?.url).toBe(
+        'https://api-defi-staging.polymarket.dev/metadata',
+      );
+      const extended = client.extend(() => ({
+        predictionService: client.predictions,
+      }));
+      expect(extended.predictions).toBe(client.predictions);
+      expect(extended.predictionService).toBe(client.predictions);
+      await expect(
+        client.perps.get('/direct', { retries: 0 }),
+      ).rejects.toMatchObject({
+        cause: failure,
+      });
+      expect(requests.at(-1)?.headers.has('POLYMARKET_CLIENT')).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }
   });
-  it('dispatches every verb through custom fetch to the production gateway', async () => {
-    const failure = new Error('custom fetch stopped at the transport boundary');
-    const observedRequests: Request[] = [];
-    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
-      if (input instanceof Request) observedRequests.push(input.clone());
-      throw failure;
-    });
-    const client = createPublicClient({ fetch });
-    const predictions = client.predictions;
-    const extended = client.extend(() => ({ predictionService: predictions }));
-
-    expect(predictions).toBeInstanceOf(ServiceClient);
-    expect(extended.predictions).toBe(predictions);
-    expect(extended.predictionService).toBe(predictions);
-    expect(client.clob).toBeInstanceOf(ServiceClient);
-    expect(client.gamma).toBeInstanceOf(ServiceClient);
-    expect(client.data).toBeInstanceOf(ServiceClient);
-    expect(client.relayer).toBeInstanceOf(ServiceClient);
-    const controller = new AbortController();
-    for (const operation of [
-      () => predictions.get('/ping', { signal: controller.signal, retries: 0 }),
-      () => predictions.post('/endpoint', { json: { value: 1 } }),
-      () => predictions.patch('/endpoint', { json: { value: 2 } }),
-      () => predictions.del('/endpoint'),
-    ]) {
-      await expect(operation()).rejects.toMatchObject({
-        name: TransportError.name,
-        cause: failure,
-      });
-    }
-    expect(fetch).toHaveBeenCalledTimes(4);
-    const requests = observedRequests;
-    expect(requests.map((request) => request.url)).toEqual([
-      'https://api.defi.polymarket.com/ping',
-      'https://api.defi.polymarket.com/endpoint',
-      'https://api.defi.polymarket.com/endpoint',
-      'https://api.defi.polymarket.com/endpoint',
-    ]);
-    expect(requests.map((request) => request.method)).toEqual([
-      'GET',
-      'POST',
-      'PATCH',
-      'DELETE',
-    ]);
-    expect(await requests[1]?.text()).toBe('{"value":1}');
-    expect(await requests[2]?.text()).toBe('{"value":2}');
-    controller.abort();
-    expect(requests[0]?.signal.aborted).toBe(true);
-  });
-
   it('merges gateway environment headers and respects pre-dispatch cancellation', async () => {
     const failure = new Error('custom fetch stopped at the transport boundary');
     const fetch = vi.fn<typeof globalThis.fetch>(async () => {
@@ -256,7 +192,10 @@ describe('predictions gateway service', () => {
         retries: 0,
         headers: { 'x-request': 'request' },
       }),
-    ).rejects.toMatchObject({ cause: failure });
+    ).rejects.toMatchObject({
+      name: TransportError.name,
+      cause: failure,
+    });
     const request = fetch.mock.calls[0]?.[0] as Request;
     expect(request.url).toBe('https://api-defi-staging.polymarket.dev/ping');
     expect(request.headers.get('x-base')).toBe('base');
@@ -303,11 +242,31 @@ describe('public client HTTP reads', () => {
 
 describe('secure client gasless wallet setup', () => {
   beforeAll(() => {
+    server.use(
+      http.post(`${predictionsRoot}/v1/auth/migrate`, async ({ request }) => {
+        const body = (await request.json()) as { wallet: string };
+        return HttpResponse.json(testTokens(body.wallet));
+      }),
+      http.post(
+        `${predictionsRoot}/v1/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
     server.listen({ onUnhandledRequest: 'bypass' });
   });
 
   afterEach(() => {
     server.resetHandlers();
+    server.use(
+      http.post(`${predictionsRoot}/v1/auth/migrate`, async ({ request }) => {
+        const body = (await request.json()) as { wallet: string };
+        return HttpResponse.json(testTokens(body.wallet));
+      }),
+      http.post(
+        `${predictionsRoot}/v1/auth/logout`,
+        () => new HttpResponse(null, { status: 204 }),
+      ),
+    );
   });
 
   afterAll(() => {
@@ -323,7 +282,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([
       { wallet: legacyWallet, deployed: false },
       { wallet: expectedWallet, deployed: false },
@@ -356,7 +314,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([
       { wallet: legacyWallet, deployed: false },
       { wallet: expectedWallet, deployed: true },
@@ -382,7 +339,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockDepositWalletDeployments([{ wallet: expectedWallet, deployed: true }]);
 
     const client = await createSecureClient({
@@ -405,7 +361,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     const deployedWallet = mockDeployedWallet(expectedWallet);
 
     const client = await createSecureClient({
@@ -426,8 +381,6 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('keeps an explicit EOA wallet bound to the EOA', async () => {
-    mockApiKeys();
-
     const client = await createSecureClient({
       apiKey,
       credentials,
@@ -448,21 +401,53 @@ describe('secure client gasless wallet setup', () => {
     const signingSigner: Signer = {
       ...signer,
       signTypedData(payload) {
-        expect(payload.message.nonce).toBe(0);
+        expect(payload.message.nonce).toBe('0');
         return Promise.resolve(expectEvmSignature(`0x${'1'.repeat(130)}`));
       },
     };
 
     server.use(
-      http.post(`${clobRoot}/auth/api-key`, ({ request }) => {
-        expect(request.headers.get('POLY_NONCE')).toBe('0');
-
+      http.post(`${predictionsRoot}/v1/auth/challenge`, async ({ request }) => {
+        expect(await request.json()).toMatchObject({
+          signer: signerAddress,
+          wallet: signerAddress,
+          nonce: 0,
+        });
         return HttpResponse.json({
-          apiKey: credentials.key,
-          passphrase: credentials.passphrase,
-          secret: credentials.secret,
+          challengeId: '00000000-0000-4000-8000-000000000001',
+          expiresAt: new Date(Date.now() + 90_000).toISOString(),
+          typedData: {
+            domain: {
+              name: 'ClobAuthDomain',
+              version: '1',
+              chainId: environment.chainId,
+            },
+            types: {
+              EIP712Domain: [
+                { name: 'name', type: 'string' },
+                { name: 'version', type: 'string' },
+                { name: 'chainId', type: 'uint256' },
+              ],
+              ClobAuth: [
+                { name: 'address', type: 'address' },
+                { name: 'timestamp', type: 'string' },
+                { name: 'nonce', type: 'uint256' },
+                { name: 'message', type: 'string' },
+              ],
+            },
+            primaryType: 'ClobAuth',
+            message: {
+              address: signerAddress.toLowerCase(),
+              timestamp: '1700000000',
+              nonce: '0',
+              message: 'This message attests that I control the given wallet',
+            },
+          },
         });
       }),
+      http.post(`${predictionsRoot}/v1/auth/login`, () =>
+        HttpResponse.json(testTokens(signerAddress)),
+      ),
     );
 
     const client = await createSecureClient({
@@ -485,7 +470,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(safeWallet, true);
 
     const client = await createSecureClient({
@@ -509,7 +493,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(proxyWallet, true);
 
     const client = await createSecureClient({
@@ -533,7 +516,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockAccountWalletDeployed(safeWallet, false);
 
     await expect(
@@ -559,7 +541,6 @@ describe('secure client gasless wallet setup', () => {
       signerAddress,
       environment.walletDerivation,
     );
-    mockApiKeys();
     mockUndeployedWallet(legacyWallet);
 
     await expect(
@@ -577,7 +558,6 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('does not shut down terminal managers when closing subscriptions', async () => {
-    mockApiKeys();
     const client = await createSecureClient({
       apiKey,
       credentials,
@@ -597,17 +577,10 @@ describe('secure client gasless wallet setup', () => {
   });
 
   it('shuts down terminal managers when ending authentication', async () => {
-    mockApiKeys();
-    server.use(
-      http.delete(`${clobRoot}/auth/api-key`, () => HttpResponse.json('OK')),
-    );
     const failure = new TypeError('gateway dispatch observed');
     const gatewayRequests: Request[] = [];
     const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
-      if (
-        input instanceof Request &&
-        input.url.startsWith(environment.predictions.rest)
-      ) {
+      if (input instanceof Request && input.url.endsWith('/cancel-all')) {
         gatewayRequests.push(input);
         throw failure;
       }
@@ -627,15 +600,22 @@ describe('secure client gasless wallet setup', () => {
     client.webSockets.rfqQuoter.shutdown = rfqShutdown;
 
     expect(client.predictions).toBeInstanceOf(ServiceClient);
-    await expect(client.predictions.del('/cancel-all')).rejects.toMatchObject({
+    const rejected = await client.predictions
+      .del('/cancel-all')
+      .catch((error: unknown) => error);
+    expect(rejected).toMatchObject({
       name: TransportError.name,
-      cause: failure,
+      message: failure.message,
     });
+    expect(rejected).not.toHaveProperty('cause');
     const publicClient = await client.endAuthentication();
     expect(publicClient.predictions).toBeInstanceOf(ServiceClient);
     await expect(
       publicClient.predictions.del('/cancel-all'),
-    ).rejects.toMatchObject({ name: TransportError.name, cause: failure });
+    ).rejects.toMatchObject({
+      name: TransportError.name,
+      cause: failure,
+    });
     expect(gatewayRequests).toHaveLength(2);
     for (const request of gatewayRequests) {
       expect(request.headers.get('POLYMARKET_CLIENT')).toBe(
@@ -644,6 +624,7 @@ describe('secure client gasless wallet setup', () => {
       expect(request.url).toBe(`${environment.predictions.rest}/cancel-all`);
       expect(request.headers.has('POLY_API_KEY')).toBe(false);
       expect(request.headers.has('POLY_SIGNATURE')).toBe(false);
+      // Order cancellation is not a wallet operation, so the relayer key stays local.
       expect(request.headers.has('RELAYER_API_KEY')).toBe(false);
     }
     expect(() => client.predictions).toThrow(
@@ -655,17 +636,19 @@ describe('secure client gasless wallet setup', () => {
   });
 });
 
-function mockApiKeys() {
-  server.use(
-    http.get(`${clobRoot}/auth/api-keys`, () =>
-      HttpResponse.json({ apiKeys: [credentials.key] }),
-    ),
-  );
+function testTokens(wallet: string) {
+  return {
+    accessToken: `test.${btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 900, sub: signerAddress, wallet, clob_api_key: credentials.key }))}.test`,
+    refreshToken: 'synthetic-refresh',
+    tokenType: 'Bearer',
+    expiresIn: 900,
+    refreshExpiresIn: 3600,
+  };
 }
 
 function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(wallet);
@@ -677,7 +660,7 @@ function mockAccountWalletDeployed(wallet: EvmAddress, deployed: boolean) {
 
 function mockUndeployedWallet(expectedWallet: EvmAddress) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
 
       expect(url.searchParams.get('address')).toBe(expectedWallet);
@@ -692,7 +675,7 @@ function mockDepositWalletDeployments(
   deployments: Array<{ wallet: EvmAddress; deployed: boolean }>,
 ) {
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       const url = new URL(request.url);
       const address = expectEvmAddress(url.searchParams.get('address') ?? '');
       const deployment = deployments.find(
@@ -713,7 +696,7 @@ function mockDeployDepositWallet() {
   const transactionHash = `0x${'1'.repeat(64)}`;
 
   server.use(
-    http.post(`${relayerRoot}/submit`, () => {
+    http.post(`${relayerRoot}/v1/wallets/transactions`, () => {
       state.called = true;
 
       return HttpResponse.json({
@@ -722,7 +705,7 @@ function mockDeployDepositWallet() {
         transactionID: transactionId,
       });
     }),
-    http.get(`${relayerRoot}/v1/account/transactions/${transactionId}`, () => {
+    http.get(`${relayerRoot}/v1/wallets/transactions/${transactionId}`, () => {
       state.transactionFetches += 1;
 
       return HttpResponse.json({
@@ -741,7 +724,7 @@ function mockDeployedWallet(expectedWallet: EvmAddress) {
   const state = { called: false };
 
   server.use(
-    http.get(`${relayerRoot}/deployed`, ({ request }) => {
+    http.get(`${relayerRoot}/v1/wallets/deployed`, ({ request }) => {
       state.called = true;
       const url = new URL(request.url);
 

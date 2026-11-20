@@ -182,6 +182,7 @@ export class RfqQuoteRejectedError extends PolymarketError {
 
 export type RfqQuoteError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqQuoteRejectedError
   | SigningError
   | TimeoutError
@@ -189,6 +190,7 @@ export type RfqQuoteError =
   | UserInputError;
 export const RfqQuoteError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqQuoteRejectedError,
   SigningError,
   TimeoutError,
@@ -232,11 +234,13 @@ export class RfqCancelQuoteRejectedError extends PolymarketError {
 
 export type RfqCancelQuoteError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqCancelQuoteRejectedError
   | TimeoutError
   | TransportError;
 export const RfqCancelQuoteError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqCancelQuoteRejectedError,
   TimeoutError,
   TransportError,
@@ -278,11 +282,13 @@ export class RfqConfirmationRejectedError extends PolymarketError {
 
 export type RfqConfirmationError =
   | ConnectionLostError
+  | RequestRejectedError
   | RfqConfirmationRejectedError
   | TimeoutError
   | TransportError;
 export const RfqConfirmationError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   RfqConfirmationRejectedError,
   TimeoutError,
   TransportError,
@@ -398,10 +404,12 @@ export interface RfqSession extends AsyncIterable<RfqEvent> {
 
 export type OpenRfqSessionError =
   | ConnectionLostError
+  | RequestRejectedError
   | TransportError
   | UserInputError;
 export const OpenRfqSessionError = makeErrorGuard(
   ConnectionLostError,
+  RequestRejectedError,
   TransportError,
   UserInputError,
 );
@@ -425,7 +433,7 @@ export async function openRfqSession(
   return client.webSockets.rfqQuoter.connect();
 }
 
-const BUILDER_RFQ_REQUESTS_PATH = '/v1/builder/rfq/requests';
+const BUILDER_RFQ_REQUESTS_PATH = '/v1/combos/builder/requests';
 // Quote requests are held through the quote competition and can take well
 // beyond the transport's standard timeout.
 const CREATE_QUOTE_TIMEOUT_MS = 30_000;
@@ -761,7 +769,7 @@ export async function requestComboQuote(
     signer_address: identity.signer,
   };
 
-  const response = await client.builderGateway
+  const response = await client.predictions
     .post(BUILDER_RFQ_REQUESTS_PATH, {
       json: request,
       timeout: CREATE_QUOTE_TIMEOUT_MS,
@@ -1069,7 +1077,7 @@ export async function acceptComboQuote(
   };
 
   function postAcceptance() {
-    return client.builderGateway.post(
+    return client.predictions.post(
       `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
       {
         json: request,
@@ -1422,7 +1430,7 @@ export function fetchRfqStatus(
 
   const input = parseUserInput(params, FetchRfqStatusParamsSchema);
 
-  return client.builderGateway
+  return client.predictions
     .get(`${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`, {
       ...requestOptions,
       schema: BuilderRfqStatusResponseSchema,

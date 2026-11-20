@@ -87,7 +87,7 @@ export async function fetchClosedOnlyMode(
   options: RequestOptions = {},
 ): Promise<boolean> {
   const requestOptions = parseRequestOptions(options);
-  const response = await client.secureClob.get('/auth/ban-status/closed-only', {
+  const response = await client.predictions.get('/v1/me/trading-status', {
     ...requestOptions,
     schema: ClosedOnlyModeSchema,
   });
@@ -206,8 +206,8 @@ export function listOpenOrders(
 
   return paginate(
     (nextCursor) =>
-      client.secureClob
-        .get('/data/orders', {
+      client.predictions
+        .get('/v1/me/orders', {
           schema: OpenOrdersPageSchema,
           ...requestOptions,
           params: toSearchParams(
@@ -295,8 +295,8 @@ export function listWalletOpenOrders(
   const requestOptions = parseRequestOptions(options);
   return paginate(
     (cursor) =>
-      client.secureClob
-        .get('/data/wallet-open-orders', {
+      client.predictions
+        .get('/v1/me/wallet-orders', {
           ...requestOptions,
           schema: WalletOpenOrdersPageSchema,
           params: toSearchParams(
@@ -370,7 +370,7 @@ export async function fetchOrder(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
-  return client.secureClob.get(`/data/order/${params.orderId}`, {
+  return client.predictions.get(`/v1/me/orders/${params.orderId}`, {
     ...requestOptions,
     schema: OpenOrderSchema,
   });
@@ -476,8 +476,8 @@ export function listAccountTrades(
 
   return paginate(
     (nextCursor) =>
-      client.secureClob
-        .get('/data/trades', {
+      client.predictions
+        .get('/v1/me/trades', {
           schema: ClobTradesPageSchema,
           ...requestOptions,
           params: toSearchParams(
@@ -552,7 +552,7 @@ export async function fetchNotifications(
   const requestOptions = parseRequestOptions(options);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return client.secureClob.get('/notifications', {
+  return client.predictions.get('/v1/me/notifications', {
     schema: NotificationsResponseSchema,
     ...requestOptions,
     params: toSearchParams({ signatureType }, snakeCase()),
@@ -605,7 +605,7 @@ export async function dropNotifications(
     snakeCase(),
   );
 
-  await client.secureClob.del('/notifications', {
+  await client.predictions.del('/v1/me/notifications', {
     responseType: 'empty',
     params: searchParams,
   });
@@ -676,7 +676,7 @@ export async function fetchBalanceAllowance(
   const params = parseUserInput(request, FetchBalanceAllowanceRequestSchema);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return client.secureClob.get('/balance-allowance', {
+  return client.predictions.get('/v1/me/balance-allowances', {
     schema: BalanceAllowanceResponseSchema,
     ...requestOptions,
     params: toSearchParams(
@@ -755,10 +755,12 @@ export async function updateBalanceAllowance(
     snakeCase(),
   );
 
-  await client.secureClob.getWorkflow('/balance-allowance/update', {
-    responseType: 'empty',
-    params: searchParams,
-  });
+  await client.predictions.post(
+    `/v1/me/balance-allowances/refresh?${searchParams}`,
+    {
+      responseType: 'empty',
+    },
+  );
 
   return fetchBalanceAllowance(client, params);
 }
@@ -810,7 +812,7 @@ export async function fetchOrderScoring(
 ): Promise<boolean> {
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderScoringRequestSchema);
-  const response = await client.secureClob.get('/order-scoring', {
+  const response = await client.predictions.get('/v1/orders/scoring', {
     schema: OrderScoringResponseSchema,
     ...requestOptions,
     params: toSearchParams(params, snakeCase()),
@@ -868,7 +870,7 @@ export async function fetchOrdersScoring(
   const params = parseUserInput(request, FetchOrdersScoringRequestSchema);
   const body = params.orderIds;
 
-  return client.secureClob.postRead('/orders-scoring', {
+  return client.predictions.post('/v1/orders/scoring', {
     schema: OrdersScoringResponseSchema,
     ...requestOptions,
     json: body,
@@ -950,8 +952,8 @@ export function listUserEarningsForDay(
 
   return paginate(
     (nextCursor) =>
-      client.secureClob
-        .get('/rewards/user', {
+      client.predictions
+        .get('/v1/rewards/user', {
           schema: UserEarningsPageSchema,
           ...requestOptions,
           params: toSearchParams(
@@ -1032,7 +1034,7 @@ export async function fetchTotalEarningsForUserForDay(
   );
   const signatureType = toSignatureType(client.account.walletType);
 
-  return client.secureClob.get('/rewards/user/total', {
+  return client.predictions.get('/v1/rewards/user/total', {
     schema: TotalUserEarningsResponseSchema,
     ...requestOptions,
     params: toSearchParams(
@@ -1124,8 +1126,8 @@ export function listUserEarningsAndMarketsConfig(
 
   return paginate(
     (nextCursor) =>
-      client.secureClob
-        .get('/rewards/user/markets', {
+      client.predictions
+        .get('/v1/rewards/user/markets', {
           schema: UserRewardsEarningsPageSchema,
           ...requestOptions,
           params: toSearchParams(
@@ -1187,7 +1189,7 @@ export async function fetchRewardPercentages(
   const requestOptions = parseRequestOptions(options);
   const signatureType = toSignatureType(client.account.walletType);
 
-  return client.secureClob.get('/rewards/user/percentages', {
+  return client.predictions.get('/v1/rewards/user/percentages', {
     schema: RewardsPercentagesSchema,
     ...requestOptions,
     params: toSearchParams({ signatureType }, snakeCase()),

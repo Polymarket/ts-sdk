@@ -148,7 +148,7 @@ export async function fetchExecuteParams(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchExecuteParamsRequestSchema);
 
-  return client.relayer.get('/v1/account/transactions/params', {
+  return client.predictions.get('/v1/wallets/execute-params', {
     ...requestOptions,
     params: toSearchParams(params, { address: 'address', type: 'type' }),
     schema: RelayerExecuteParamsSchema,
@@ -223,8 +223,8 @@ export async function isWalletDeployed(
     return false;
   }
 
-  return client.relayer
-    .get('/deployed', {
+  return client.predictions
+    .get('/v1/wallets/deployed', {
       ...requestOptions,
       params: toSearchParams(
         {
@@ -305,10 +305,10 @@ export const DeployDepositWalletError = makeErrorGuard(
 export async function deployDepositWallet(
   client: BaseSecureClient,
 ): Promise<TransactionHandle> {
-  invariant(
-    client.supportsGasless,
-    'Deposit Wallet deployment requires a Relayer API Key or Builder API Key in the client configuration.',
-  );
+  if (!client.supportsGasless)
+    throw new UserInputError(
+      'Deposit Wallet deployment requires a builder or relayer API key in the client configuration.',
+    );
 
   return executeGasless(client, {
     from: client.account.signer,
@@ -351,8 +351,8 @@ export async function fetchTransaction(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchGaslessTransactionRequestSchema);
 
-  return client.relayer.get(
-    `/v1/account/transactions/${params.transactionId}`,
+  return client.predictions.get(
+    `/v1/wallets/transactions/${params.transactionId}`,
     { ...requestOptions, schema: GaslessTransactionSchema },
   );
 }
@@ -420,10 +420,10 @@ export async function prepareGaslessTransaction(
     PrepareGaslessTransactionRequestSchema,
   );
 
-  invariant(
-    client.supportsGasless,
-    'Gasless transactions require a Relayer API Key or Builder API Key in the client configuration.',
-  );
+  if (!client.supportsGasless)
+    throw new UserInputError(
+      'Gasless transactions require a builder or relayer API key in the client configuration.',
+    );
   invariant(
     client.account.walletType === WalletType.GNOSIS_SAFE ||
       client.account.walletType === WalletType.POLY_PROXY ||
@@ -778,7 +778,7 @@ async function executeGasless(
 ): Promise<GaslessTransactionHandle> {
   const payload = parseUserInput(request, RelayerExecuteRequestSchema);
 
-  const response = await client.relayer.post('/submit', {
+  const response = await client.predictions.post('/v1/wallets/transactions', {
     json: payload,
     schema: RelayerExecuteResponseSchema,
   });

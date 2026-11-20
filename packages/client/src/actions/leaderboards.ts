@@ -120,7 +120,7 @@ export function listBuilderLeaderboard(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/builders/leaderboard', {
+      client.predictions.get('/v1/builders/leaderboard', {
         schema: ListBuilderLeaderboardResponseSchema,
         ...requestOptions,
         // Retain the original window across the cursor walk. The cursor pins
@@ -197,7 +197,7 @@ export async function fetchBuilderVolume(
     FetchBuilderVolumeRequestSchema,
   );
 
-  return client.data.get('/v2/builders/volume', {
+  return client.predictions.get('/v1/builders/volume', {
     schema: FetchBuilderVolumeResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({ interval, limit: bucketLimit }),
@@ -293,7 +293,7 @@ export function listTraderLeaderboard(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/leaderboard', {
+      client.predictions.get('/v1/leaderboards/traders', {
         schema: ListTraderLeaderboardResponseSchema,
         ...requestOptions,
         // Retain the selected board across the cursor walk. The cursor pins
@@ -369,7 +369,7 @@ export async function fetchTraderLeaderboardStanding(
     FetchTraderLeaderboardStandingRequestSchema,
   );
 
-  return client.data.get('/v2/leaderboard', {
+  return client.predictions.get('/v1/leaderboards/traders', {
     schema: FetchTraderLeaderboardStandingResponseSchema,
     ...requestOptions,
     params: toDataSearchParams({
@@ -449,7 +449,7 @@ export function listBiggestWinners(
 
   return paginate(
     (cursor) =>
-      client.data.get('/v2/biggest-winners', {
+      client.predictions.get('/v1/leaderboards/biggest-winners', {
         schema: ListBiggestWinnersResponseSchema,
         ...requestOptions,
         params: toDataSearchParams({

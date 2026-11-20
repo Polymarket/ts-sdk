@@ -1,6 +1,8 @@
 import type { WebSocketLink } from 'msw';
 import type { SetupServerApi } from 'msw/node';
 import { expect, vi } from 'vitest';
+import { TransportError } from '../errors';
+import { AuthSession } from '../session';
 
 export type CapturedConnection = {
   close(): Promise<void>;
@@ -117,4 +119,21 @@ export async function expectDropsUnknownFrame<TEvent>(
   } finally {
     await close();
   }
+}
+
+/** A bearer session whose access token carries only the claims sockets read. */
+export function testSession(): AuthSession {
+  const claims = {
+    sub: '0x0000000000000000000000000000000000000001',
+    exp: Math.floor(Date.now() / 1000) + 900,
+  };
+  return new AuthSession({
+    credentials: {
+      accessToken: `test.${btoa(JSON.stringify(claims))}.test`,
+      refreshToken: 'test-refresh',
+    },
+    expiresIn: 900,
+    refresh: () =>
+      Promise.reject(new TransportError('Renewal is not used in this test.')),
+  });
 }

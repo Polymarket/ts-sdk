@@ -211,6 +211,39 @@ describe('JsonRpcClient', () => {
     ).resolves.toBe(87_632n);
   });
 
+  it('sends at most 10 eth_call requests per batch and keeps result order', async () => {
+    const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
+    const batchSizes: number[] = [];
+    server.use(
+      http.post(root, async ({ request }) => {
+        const body = (await request.json()) as {
+          id: number;
+          params: [{ data: string }];
+        }[];
+        batchSizes.push(body.length);
+        if (body.length > 10) return new HttpResponse(null, { status: 400 });
+
+        return HttpResponse.json(
+          body.map((call) => ({
+            jsonrpc: '2.0',
+            id: call.id,
+            result: call.params[0].data,
+          })),
+        );
+      }),
+    );
+    const client = new JsonRpcClient({ url: root });
+    const data = Array.from(
+      { length: 17 },
+      (_, index) => `0x${index.toString(16).padStart(8, '0')}` as const,
+    );
+
+    await expect(
+      client.ethCallBatch(data.map((value) => ({ to, data: value }))),
+    ).resolves.toEqual(data);
+    expect(batchSizes.sort((a, b) => b - a)).toEqual([10, 7]);
+  });
+
   it('recovers failed eth_call batches while preserving result order', async () => {
     const to = expectEvmAddress('0x0000000000000000000000000000000000000001');
     let requestCount = 0;

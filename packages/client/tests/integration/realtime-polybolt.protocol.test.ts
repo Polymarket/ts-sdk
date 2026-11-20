@@ -36,12 +36,12 @@ describe.runIf(runMeteredTests)('realtime protocol', () => {
           { once: true },
         );
       });
-      const { key, secret, passphrase } =
-        secureClientWithDepositWallet.credentials;
+      const credentials = secureClientWithDepositWallet.credentials;
+      const auth = { accessToken: credentials.accessToken };
       socket.send(
         JSON.stringify({
           op: 'auth',
-          auth: { apiKey: key, secret, passphrase },
+          auth,
           rid: 'auth',
         }),
       );

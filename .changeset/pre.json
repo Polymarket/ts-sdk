@@ -1,0 +1,20 @@
+{
+  "mode": "pre",
+  "tag": "next",
+  "initialVersions": {
+    "@polymarket/examples": "0.0.0",
+    "@polymarket/bindings": "0.18.1",
+    "@polymarket/client": "0.20.0",
+    "@polymarket/types": "0.3.0"
+  },
+  "changesets": [
+    "bearer-sessions",
+    "experimental-auth-surfaces",
+    "ownership-challenge-action",
+    "platform-application-keys",
+    "predictions-action-routing",
+    "remove-direct-credential-auth",
+    "request-retries",
+    "secure-client-verification-token"
+  ]
+}

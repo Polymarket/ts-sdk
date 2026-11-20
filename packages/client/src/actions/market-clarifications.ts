@@ -117,8 +117,8 @@ export function listMarketClarifications(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
-      .get('/market-clarifications', {
+    return client.predictions
+      .get('/v1/markets/clarifications', {
         schema: ListMarketClarificationsResponseSchema,
         ...requestOptions,
         params: toSearchParams(

@@ -1,4 +1,8 @@
-import type { TransactionId } from '@polymarket/bindings';
+import type {
+  OwnershipChallenge,
+  OwnershipChallengeRequest,
+  TransactionId,
+} from '@polymarket/bindings';
 import {
   type EvmAddress,
   type EvmSignature,
@@ -56,7 +60,7 @@ export type SignerTransactionRequest = {
 
 /** @internal */
 export type ApiKeyAuthorizationRequest = {
-  method: 'DELETE' | 'GET' | 'PATCH' | 'POST';
+  method: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
   path: string;
   body?: string;
 };
@@ -68,6 +72,17 @@ export type ApiKeyAuthorizationOptions = {
 };
 
 export interface ApiKeyAuthorization {
+  /** Application-key headers for gateway requests only. @internal */
+  authorizeGateway?(
+    options?: ApiKeyAuthorizationOptions,
+  ): Promise<Record<string, string>>;
+
+  /** Optional challenge-only proxy; signatures and session tokens never enter this hook. @internal */
+  createChallenge?(
+    request: OwnershipChallengeRequest,
+    options?: ApiKeyAuthorizationOptions,
+  ): Promise<OwnershipChallenge>;
+
   /** @internal */
   get isBuilderKey(): boolean;
 

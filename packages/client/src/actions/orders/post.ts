@@ -91,8 +91,8 @@ export function postOrder(
     parseUserInput(order, PostOrderInputSchema);
     const payload = createSendOrderPayload(client, order);
 
-    return client.secureClob
-      .post('/order', {
+    return client.predictions
+      .post('/v1/orders', {
         json: payload,
         rateLimitBucket: 'order',
         schema: OrderResponseSchema,
@@ -131,8 +131,8 @@ export function postOrders(
       createSendOrderPayload(client, order),
     );
 
-    return client.secureClob
-      .post('/orders', {
+    return client.predictions
+      .post('/v1/orders/batch', {
         json: payload,
         rateLimitBucket: 'order',
         schema: OrderResponsesSchema,
@@ -169,9 +169,18 @@ function createSendOrderPayload(client: BaseSecureClient, order: SignedOrder) {
       tokenId: order.tokenId,
     },
     orderType: order.orderType,
-    owner: client.credentials.key,
+    owner: orderOwner(client),
     ...(order.postOnly === true ? { postOnly: true } : {}),
   };
+}
+
+function orderOwner(client: BaseSecureClient): string {
+  const owner = client.session.claims.clob_api_key;
+  if (!owner)
+    throw new UserInputError(
+      'This session has no trading identity. Sign in again to place orders.',
+    );
+  return owner;
 }
 
 function isClobSafeSalt(value: string): boolean {

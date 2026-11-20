@@ -53,6 +53,7 @@ export default defineConfig({
           exclude: [...configDefaults.exclude],
           environment: 'node',
           fileParallelism: false,
+          setupFiles: ['packages/client/tests/integration/sign-in-gate.ts'],
           testTimeout: 60_000,
         },
       },

@@ -76,6 +76,7 @@ function createClient(options: CreateClientOptions = {}) {
   } as unknown as Signer;
 
   const client = {
+    isSecureClient: () => false,
     account: {
       signer: SIGNER,
       signerType: SignerType.OWNER,
@@ -83,7 +84,7 @@ function createClient(options: CreateClientOptions = {}) {
       walletType: WalletType.DEPOSIT_WALLET,
     },
     environment,
-    relayer: relayerService,
+    predictions: relayerService,
     signer,
     supportsGasless: true,
   } as unknown as BaseSecureClient;
@@ -104,7 +105,7 @@ async function executeRepresentativeGaslessTransaction(
 
 function submitPayloads(relayerPost: MockInstance): unknown[] {
   return relayerPost.mock.calls
-    .filter(([path]) => path === '/submit')
+    .filter(([path]) => path === '/v1/wallets/transactions')
     .map(([, options]) => (options as { json?: unknown } | undefined)?.json);
 }
 

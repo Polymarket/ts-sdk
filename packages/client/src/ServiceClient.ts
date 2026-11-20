@@ -1,5 +1,6 @@
 import { ErrorResponseSchema } from '@polymarket/bindings';
 import { OrderHeartbeatMismatchResponseSchema } from '@polymarket/bindings/clob';
+import { PolymarketError } from '@polymarket/types';
 import ky, { type KyInstance } from 'ky';
 import { z } from 'zod';
 import {
@@ -23,13 +24,14 @@ import {
   assertNotAborted,
   DEFAULT_REQUEST_TIMEOUT_MS,
   type Fetch,
+  parsePostRetries,
   parseRequestOptions,
   type RequestOptions,
   withAbort,
 } from './request-options';
 import { parseResponse } from './response';
 
-export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST';
+export type ServiceRequestMethod = 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
 
 export type ServiceRequest = {
   signal?: AbortSignal;
@@ -47,8 +49,6 @@ export type RequestHeadersResolver = (
 
 export type ServiceClientConfig = {
   fetch?: Fetch;
-  /** Disable automatic replay of mutation requests. @internal */
-  retryMutations?: false;
   /** Omit the endpoint root to create an empty client whose requests reject with UserInputError. */
   root?: string;
   headers?: HeadersInit;
@@ -126,12 +126,6 @@ export type ServiceClientRequestOptions<T = unknown> =
     timeout?: ServiceClientTimeout;
   };
 
-type ServiceClientMutationOptions<T = unknown> =
-  ServiceClientRequestOptions<T> & {
-    /** Disable transport retries for commands whose outcome may be uncertain. */
-    retry?: false;
-  };
-
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientGetOptions<T = unknown> =
   ServiceClientRequestOptions<T> &
@@ -140,29 +134,38 @@ export type ServiceClientGetOptions<T = unknown> =
       params?: URLSearchParams;
     };
 
-type ServiceClientWorkflowGetOptions<T = unknown> =
+/** @experimental See {@link ServiceClient}. */
+export type ServiceClientPostOptions<T = unknown> =
   ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
-    params?: URLSearchParams;
+    json?: unknown;
+    /**
+     * Retries after the first attempt, from 0 to 5. A POST may change state,
+     * so it is sent once unless the caller marks it safe to replay, such as a
+     * read whose endpoint requires POST.
+     *
+     * @defaultValue 0
+     */
+    retries?: number;
   };
 
 /** @experimental See {@link ServiceClient}. */
-export type ServiceClientPostOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+export type ServiceClientPatchOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
 /** @experimental See {@link ServiceClient}. */
-export type ServiceClientPatchOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+export type ServiceClientPutOptions<T = unknown> =
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
   };
 
 /** @experimental See {@link ServiceClient}. */
 export type ServiceClientDeleteOptions<T = unknown> =
-  ServiceClientMutationOptions<T> & {
+  ServiceClientRequestOptions<T> & {
     headers?: HeadersInit;
     json?: unknown;
     params?: URLSearchParams;
@@ -274,6 +277,35 @@ function parseHttpDate(value: string, now: number): number | undefined {
   return time;
 }
 
+/** Order heartbeat routes, direct and through the gateway, whose 400 reports the expected heartbeat ID. */
+const HEARTBEAT_PATHS = new Set(['v1/heartbeats', 'v1/trading/heartbeats']);
+
+/**
+ * Reads a Retry-After header as whole seconds from now, or undefined when it is
+ * absent or malformed. @internal
+ */
+export function parseRetryAfter(headers: Headers): number | undefined {
+  const value = headers.get('retry-after');
+
+  if (value === null) {
+    return undefined;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return Number(value);
+  }
+
+  // RFC 9110 section 10.2.3 also allows an HTTP-date. Report whole seconds
+  // from now, never rounding a future deadline down, and clamp past dates.
+  const now = Date.now();
+  const deadline = parseHttpDate(value, now);
+  if (deadline === undefined) {
+    return undefined;
+  }
+
+  return Math.max(0, Math.ceil((deadline - now) / 1000));
+}
+
 /**
  * Sends requests and consumes and validates their responses.
  *
@@ -291,21 +323,14 @@ export class ServiceClient {
   readonly #onRateLimitUpdate?: RateLimitUpdateListener;
 
   constructor(config: ServiceClientConfig) {
-    const {
-      root,
-      headers,
-      resolveHeaders,
-      onRateLimitUpdate,
-      fetch,
-      retryMutations,
-    } = config;
+    const { root, headers, resolveHeaders, onRateLimitUpdate, fetch } = config;
     if (root !== undefined) {
       this.#client = ky.create({
         prefixUrl: root,
         timeout: DEFAULT_REQUEST_TIMEOUT_MS,
         throwHttpErrors: false,
+        retry: 0,
         ...(fetch === undefined ? {} : { fetch }),
-        ...(retryMutations === false && { retry: { methods: ['get'] } }),
       });
     }
     this.#headers = headers;
@@ -316,76 +341,56 @@ export class ServiceClient {
   /**
    * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   get<T = unknown>(
     path: string,
     options?: ServiceClientGetOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   get<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientGetOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   get(path: string, options: ServiceClientGetOptions): Promise<unknown>;
   get(path: string, options: ServiceClientGetOptions = {}): Promise<unknown> {
-    return this.#request('GET', path, options, true);
-  }
-
-  /**
-   * Sends a workflow GET with its existing transport policy and no optional
-   * data-read retries. Some command and authentication endpoints require GET.
-   * @internal
-   */
-  getWorkflow<T = unknown>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions<T> &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  /** @internal */
-  getWorkflow<TResponse extends ServiceClientNonJsonResponseType>(
-    path: string,
-    options: ServiceClientWorkflowGetOptions &
-      ServiceClientNonJsonResponseOptions<TResponse>,
-  ): Promise<ServiceClientResponse<TResponse>>;
-  /** @internal */
-  getWorkflow(
-    path: string,
-    options: ServiceClientWorkflowGetOptions,
-  ): Promise<unknown> {
     return this.#request('GET', path, options);
-  }
-
-  /**
-   * Sends an idempotent JSON read whose endpoint requires POST.
-   * Actions own the decision that replay is safe.
-   * @internal
-   */
-  postRead<T = unknown>(
-    path: string,
-    options: ServiceClientPostOptions<T> &
-      RequestOptions &
-      ServiceClientJsonResponseOptions<T>,
-  ): Promise<T>;
-  postRead(
-    path: string,
-    options: ServiceClientPostOptions & RequestOptions,
-  ): Promise<unknown> {
-    return this.#request('POST', path, options, true);
   }
 
   /**
    * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   post<T = unknown>(
     path: string,
     options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   post<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPostOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   post(path: string, options: ServiceClientPostOptions): Promise<unknown>;
   post(path: string, options: ServiceClientPostOptions = {}): Promise<unknown> {
     return this.#request('POST', path, options);
@@ -394,17 +399,28 @@ export class ServiceClient {
   /**
    * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   patch<T = unknown>(
     path: string,
     options?: ServiceClientPatchOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   patch<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPatchOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   patch(path: string, options: ServiceClientPatchOptions): Promise<unknown>;
   patch(
     path: string,
@@ -414,19 +430,59 @@ export class ServiceClient {
   }
 
   /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
+  put<T = unknown>(
+    path: string,
+    options?: ServiceClientPutOptions<T> & ServiceClientJsonResponseOptions<T>,
+  ): Promise<T>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
+  put<TResponse extends ServiceClientNonJsonResponseType>(
+    path: string,
+    options: ServiceClientPutOptions &
+      ServiceClientNonJsonResponseOptions<TResponse>,
+  ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
+  put(path: string, options: ServiceClientPutOptions): Promise<unknown>;
+  put(path: string, options: ServiceClientPutOptions = {}): Promise<unknown> {
+    return this.#request('PUT', path, options);
+  }
+
+  /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   del<T = unknown>(
     path: string,
     options?: ServiceClientDeleteOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   del<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientDeleteOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   del(path: string, options: ServiceClientDeleteOptions): Promise<unknown>;
   del(
     path: string,
@@ -447,9 +503,9 @@ export class ServiceClient {
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
       | ServiceClientPostOptions
+      | ServiceClientPutOptions
     ) &
       RequestOptions,
-    readOnly = false,
   ): Promise<unknown> {
     const signal = options.signal;
     try {
@@ -458,9 +514,13 @@ export class ServiceClient {
         { responseType: options.responseType, schema: options.schema },
         ServiceClientResponseControlsSchema,
       );
-      const retries = readOnly
-        ? parseRequestOptions(options).retries
-        : undefined;
+      // Reads retry by default. A POST retries only when the caller asks.
+      const retries =
+        method === 'GET'
+          ? parseRequestOptions(options).retries
+          : method === 'POST'
+            ? parsePostRetries(options.retries)
+            : undefined;
       const response = await this.#send(method, path, options, retries);
       assertNotAborted(signal);
       const rateLimit = parseRateLimitHeaders(
@@ -471,7 +531,7 @@ export class ServiceClient {
       // Raw callers inspect the status, headers and body themselves.
       if (options.responseType === 'raw') return response;
       if (!response.ok) {
-        const retryAfter = this.#parseRetryAfterHeader(response);
+        const retryAfter = parseRetryAfter(response.headers);
         if (response.status === 429) {
           throw new RateLimitError(
             `Request to ${response.url} was rate limited`,
@@ -560,7 +620,8 @@ export class ServiceClient {
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
-      | ServiceClientPostOptions,
+      | ServiceClientPostOptions
+      | ServiceClientPutOptions,
     retries?: number,
   ): Promise<Response> {
     assertNotAborted(options.signal);
@@ -594,34 +655,42 @@ export class ServiceClient {
         searchParams: request.params,
         signal: options.signal,
         ...(options.timeout !== undefined && { timeout: options.timeout }),
-        ...('retry' in options && options.retry === false && { retry: 0 }),
-        ...(retries !== undefined && {
-          // One transport-owned counter covers both network failures and 429s.
-          // A new call (including each page) starts with a fresh counter.
-          retry: { limit: retries, methods: [method.toLowerCase()] },
-          hooks: {
-            afterResponse: [
-              (_request, _options, response, { retryCount }) => {
-                if (
-                  options.responseType === 'raw' ||
-                  response.status !== 429 ||
-                  retryCount >= retries
-                )
-                  return;
-                const delaySeconds = this.#parseRetryAfterHeader(response) ?? 1;
-                // Never retry earlier than the server asks. Leave long waits to callers.
-                if (delaySeconds > 5) return;
-                const rateLimit = parseRateLimitHeaders(
-                  response.headers,
-                  options.rateLimitBucket,
-                );
-                if (rateLimit !== undefined)
-                  this.#notifyRateLimitUpdate(rateLimit);
-                return ky.retry({ delay: delaySeconds * 1000 });
-              },
-            ],
-          },
-        }),
+        ...(retries !== undefined &&
+          retries > 0 && {
+            // One transport-owned counter covers both network failures and 429s.
+            // A new call (including each page) starts with a fresh counter.
+            retry: {
+              limit: retries,
+              methods: [method.toLowerCase()],
+              // An error the SDK raised, such as a rejected session renewal
+              // inside an authenticated fetch, is final. Only network
+              // failures and retryable statuses use the budget.
+              shouldRetry: ({ error }) =>
+                error instanceof PolymarketError ? false : undefined,
+            },
+            hooks: {
+              afterResponse: [
+                (_request, _options, response, { retryCount }) => {
+                  if (
+                    options.responseType === 'raw' ||
+                    response.status !== 429 ||
+                    retryCount >= retries
+                  )
+                    return;
+                  const delaySeconds = parseRetryAfter(response.headers) ?? 1;
+                  // Never retry earlier than the server asks. Leave long waits to callers.
+                  if (delaySeconds > 5) return;
+                  const rateLimit = parseRateLimitHeaders(
+                    response.headers,
+                    options.rateLimitBucket,
+                  );
+                  if (rateLimit !== undefined)
+                    this.#notifyRateLimitUpdate(rateLimit);
+                  return ky.retry({ delay: delaySeconds * 1000 });
+                },
+              ],
+            },
+          }),
       }),
       options.signal,
     );
@@ -634,7 +703,8 @@ export class ServiceClient {
       | ServiceClientDeleteOptions
       | ServiceClientGetOptions
       | ServiceClientPatchOptions
-      | ServiceClientPostOptions,
+      | ServiceClientPostOptions
+      | ServiceClientPutOptions,
   ): ServiceRequest {
     return {
       signal: options.signal,
@@ -681,28 +751,6 @@ export class ServiceClient {
     }
   }
 
-  #parseRetryAfterHeader(response: Response): number | undefined {
-    const value = response.headers.get('retry-after');
-
-    if (value === null) {
-      return undefined;
-    }
-
-    if (/^\d+$/.test(value)) {
-      return Number(value);
-    }
-
-    // RFC 9110 section 10.2.3 also allows an HTTP-date. Report whole seconds
-    // from now, never rounding a future deadline down, and clamp past dates.
-    const now = Date.now();
-    const deadline = parseHttpDate(value, now);
-    if (deadline === undefined) {
-      return undefined;
-    }
-
-    return Math.max(0, Math.ceil((deadline - now) / 1000));
-  }
-
   async #extractResponseError(
     response: Response,
     path: string,
@@ -721,7 +769,7 @@ export class ServiceClient {
         .catch(() => undefined);
       if (
         response.status === 400 &&
-        this.#normalizePath(path) === 'v1/heartbeats'
+        HEARTBEAT_PATHS.has(this.#normalizePath(path))
       ) {
         const parsed = OrderHeartbeatMismatchResponseSchema.safeParse(body);
         if (parsed.success) {

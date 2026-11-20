@@ -1,4 +1,3 @@
-import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import type {
   MarketEvent,
   UserEvent,
@@ -154,18 +153,14 @@ function buildMarketUnsubscribeUpdate(assetsIds: readonly string[]): unknown {
 
 export function buildUserSubscribeMessage(
   subscription: UserServerSubscription,
-  credentials: ApiKeyCreds,
+  accessToken: string,
 ): unknown {
   const message: {
-    auth: { apiKey: string; passphrase: string; secret: string };
+    auth: { accessToken: string };
     markets?: string[];
     type: 'user';
   } = {
-    auth: {
-      apiKey: credentials.key,
-      passphrase: credentials.passphrase,
-      secret: credentials.secret,
-    },
+    auth: { accessToken },
     type: 'user',
   };
   if (!subscription.includeAllMarkets) {

@@ -1,5 +1,58 @@
 # @polymarket/client
 
+## 1.0.0-next.1
+
+### Minor Changes
+
+- 98f5f2b: Add `createOwnershipChallenge` to `@polymarket/client/actions`. Login and backend challenge proxies now create the challenge with the same action, attributed to the application key the client is configured with. It replaces `createPlatformChallenge` and `PlatformChallengeRequest` from `@polymarket/client/node` in `1.0.0-next.0`; `platformApiKey` stays in `@polymarket/client/node`.
+
+### Patch Changes
+
+- 1229750: Mark these surfaces `@experimental`, since they may change without notice: the `get`, `post`, `patch`, `put` and `del` methods of the `predictions` service client, `publicClient.login`, `publicClient.migrateCredentials`, `secureClient.refreshCredentials`, `secureClient.upgradeCredentials` and the `walletSetup` option of `createSecureClient`.
+- cd21cbb: Remove `verificationToken` from `createSecureClient` options, added in `1.0.0-next.0`. When sign-in requires a verification token, pass it to `publicClient.login` or `publicClient.migrateCredentials`, then create the client from the returned credentials with `walletSetup: false`.
+
+## 1.0.0-next.0
+
+### Major Changes
+
+- ab72845: **Breaking:** secure clients authenticate with bearer sessions from the unified API. `secureClient.credentials`, `publicClient.login`, `publicClient.migrateCredentials` and `onCredentialsChanged` use `{ accessToken, refreshToken }` pairs. Code that reads `.key`, `.secret` or `.passphrase` from `secureClient.credentials` must change. Save `secureClient.credentials` after creation and save renewals from `onCredentialsChanged`. See `docs/authentication-migration.md` before upgrading.
+
+  - Saved L2 credentials are exchanged for a bearer session during client creation, without a new wallet signature. `publicClient.migrateCredentials` does the same on its own and takes the owner as `signerAddress`.
+  - Saved credentials that no longer work reject `createSecureClient` with `RequestRejectedError` instead of falling back to a new signature. A saved bearer session ends after logout or when its refresh token expires (seven days without a renewal in production).
+  - Restoring saved bearer credentials sends one renewal request before the client is returned.
+  - Add `walletSetup` to `createSecureClient`, defaulting to `true`. With wallet setup, credentials without a wallet are bound to the requested wallet, or the default Deposit Wallet, without a new signature, and the default Deposit Wallet is deployed when needed. Pass `false` to use the session as it is, for example while the application runs its own onboarding.
+  - Add `secureClient.upgradeCredentials({ wallet })` to bind a wallet to a session that has none, without a new signature. It updates the same client and returns the new credentials: `account` moves to the wallet and subscriptions stay open. Failures are reported as `UpgradeCredentialsError`.
+  - Add `secureClient.refreshCredentials()` to renew the session on demand. A call made during a renewal joins it, and failures are reported as `RefreshCredentialsError`.
+  - Renewal follows the token lifetime returned by the server rather than the device clock, and keeps the session through transport failures, rate limits and server errors. Only a rejected refresh token or an invalid renewal response ends it. A request rejected for an expired access token is renewed and replayed once.
+  - When another client sharing the session binds a wallet, this client follows it on its next renewal.
+  - Login signs only the expected `ClobAuth` ownership challenge for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`. A wallet the signer cannot use is rejected with `UserInputError` before anything is signed.
+  - `endAuthentication()` ends the bearer session and reports failures as `EndAuthenticationError`. It does not revoke L2 credentials migrated into the session, and issued access tokens stay valid until they expire.
+  - `openRfqSession` rejects with `RequestRejectedError` when the quoter rejects the access token. `CreateSecureClientError` includes `RequestAbortedError`.
+
+  If creation fails after opening a new session, the client logs it out and closes local resources while keeping the original error. Notifications for a new session are deferred until setup succeeds. Caller-supplied bearer sessions are not logged out when restoration fails.
+
+- 3c6fba1: Use the configured Predictions endpoint for supported discovery, trading, portfolio and wallet actions, including wallet-wide order listing and cancellation. API keys sign only the operations of their credential family, against the upstream method and path. Comment listings page by gateway cursor. Order heartbeats also go through the gateway.
+
+  **Breaking:** `EnvironmentConfigFork` no longer accepts `data`, `relayer`, `gamma`, `clob.rest`, `clob.headers`, `combos.rest`, `combos.builderGateway` or `combos.collateralReturn`, and the `CombosEndpoints` type is removed. Those endpoints no longer served any action. Point `predictions.rest` at the environment's gateway instead. `combos` keeps the quoter socket (`ws` and `headers`), and `clob` keeps the market and user sockets.
+
+  **Breaking:** `listComments` no longer accepts `holdersOnly` or `getPositions`, because the gateway listing cannot serve them. `order` now takes `CommentSort.Id` or `CommentSort.CreatedAt`, the only orders a cursor walk supports. Every listing pages through the whole thread, so `listComments` no longer throws `PaginationLimitError` or reports `limitReached`. Offset cursors saved from earlier versions fail with `UserInputError`; start again from the first page.
+
+- 573a14c: **Breaking:** the SDK no longer supports API key or builder API key management. These exports are removed from `@polymarket/client/actions` and have no replacement in the SDK: `createApiKey`, `deriveApiKey`, `createOrDeriveApiKey`, `fetchApiKeys`, `deleteApiKey`, `createBuilderApiKey`, `fetchBuilderApiKeys`, `revokeBuilderApiKey`, their `...Error` guards and `ApiKeyAuthRequest`. The `BeginAuthenticationRequest` type is removed from the root entry point. Saved L2 credentials still work as input to `createSecureClient`, which exchanges them for a bearer session.
+
+### Minor Changes
+
+- e6172b5: Add server-only `platformApiKey` and browser-compatible `remotePlatformApiKey` adapters with challenge-only proxying and the shared bearer session lifecycle. Add `createPlatformChallenge` to `@polymarket/client/node` for the backend challenge route. Keep builder or submission authorization alongside the platform key with `submissionApiKey`. Authentication transport errors stay generic for untyped failures and redact credential values.
+
+### Patch Changes
+
+- ab72845: Mutations and workflow requests, such as Perps credential checks, are never retried by the transport. Reads keep retrying twice by default; pass `retries` (0 to 5) per read to change that, such as `{ retries: 0 }` when a query library owns retries.
+
+  The experimental `predictions` service client gains `put`, and its `post` accepts `retries` (0 to 5, default 0) for requests that are safe to replay. A PUT is sent once, like other mutations, and a secure client replays it once after an expired access token. Reads that use POST, such as fetching several order books or prices at once, keep the read default.
+
+- Updated dependencies [ab72845]
+- Updated dependencies [e6172b5]
+  - @polymarket/bindings@1.0.0-next.0
+
 ## 0.20.0
 
 ### Minor Changes

@@ -153,8 +153,8 @@ export function listTags(
   return paginate((cursor) => {
     const decoded = decodeOffsetCursor(cursor, pageSize);
 
-    return client.gamma
-      .get('/tags', {
+    return client.predictions
+      .get('/v1/tags', {
         schema: ListTagsResponseSchema,
         ...requestOptions,
         params: toSearchParams(
@@ -227,7 +227,7 @@ export async function fetchTag(
   const params = parseUserInput(request, FetchTagRequestSchema);
 
   if ('id' in params) {
-    return client.gamma.get(`tags/${params.id}`, {
+    return client.predictions.get(`/v1/tags/${params.id}`, {
       schema: TagSchema,
       ...requestOptions,
       params: toSearchParams(
@@ -240,7 +240,7 @@ export async function fetchTag(
     });
   }
 
-  return client.gamma.get(`tags/slug/${params.slug}`, {
+  return client.predictions.get(`/v1/tags/slug/${params.slug}`, {
     schema: TagSchema,
     ...requestOptions,
     params: toSearchParams(
@@ -297,7 +297,7 @@ export async function fetchRelatedTags(
   if ('id' in request) {
     const params = parseUserInput(request, RelatedTagsByIdRequestSchema);
 
-    return client.gamma.get(`tags/${params.id}/related-tags`, {
+    return client.predictions.get(`/v1/tags/${params.id}/related-tags`, {
       schema: ListRelatedTagsResponseSchema,
       ...requestOptions,
       params: toSearchParams(
@@ -312,7 +312,7 @@ export async function fetchRelatedTags(
 
   const params = parseUserInput(request, RelatedTagsBySlugRequestSchema);
 
-  return client.gamma.get(`tags/slug/${params.slug}/related-tags`, {
+  return client.predictions.get(`/v1/tags/slug/${params.slug}/related-tags`, {
     ...requestOptions,
     schema: ListRelatedTagsResponseSchema,
   });
@@ -366,7 +366,7 @@ export async function fetchRelatedTagResources(
       RelatedTagResourcesByIdRequestSchema,
     );
 
-    return client.gamma.get(`tags/${params.id}/related-tags/tags`, {
+    return client.predictions.get(`/v1/tags/${params.id}/related-tags/tags`, {
       schema: ListRelatedTagResourcesResponseSchema,
       ...requestOptions,
       params: toSearchParams(
@@ -385,16 +385,19 @@ export async function fetchRelatedTagResources(
     RelatedTagResourcesBySlugRequestSchema,
   );
 
-  return client.gamma.get(`tags/slug/${params.slug}/related-tags/tags`, {
-    schema: ListRelatedTagResourcesResponseSchema,
-    ...requestOptions,
-    params: toSearchParams(
-      {
-        locale: params.locale,
-        omitEmpty: params.omitEmpty,
-        status: params.status,
-      },
-      snakeCase(),
-    ),
-  });
+  return client.predictions.get(
+    `/v1/tags/slug/${params.slug}/related-tags/tags`,
+    {
+      schema: ListRelatedTagResourcesResponseSchema,
+      ...requestOptions,
+      params: toSearchParams(
+        {
+          locale: params.locale,
+          omitEmpty: params.omitEmpty,
+          status: params.status,
+        },
+        snakeCase(),
+      ),
+    },
+  );
 }

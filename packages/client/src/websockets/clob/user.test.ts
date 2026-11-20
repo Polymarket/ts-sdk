@@ -1,4 +1,3 @@
-import { ApiKeyCredsSchema } from '@polymarket/bindings/clob';
 import { ws } from 'msw';
 import { setupServer } from 'msw/node';
 import {
@@ -15,6 +14,7 @@ import {
   captureConnection,
   collectFrames,
   expectDropsUnknownFrame,
+  testSession,
   waitForNextEvent,
 } from '../testing';
 import { ClobUserWebSocketManager } from './user';
@@ -23,13 +23,10 @@ const MARKET_A = `0x${'aa'.repeat(32)}`;
 const MARKET_B = `0x${'bb'.repeat(32)}`;
 const clobUser = ws.link(production.clob.user.ws);
 const server = setupServer();
-const credentials = ApiKeyCredsSchema.parse({
-  apiKey: 'test-key',
-  passphrase: 'test-passphrase',
-  secret: 'test-secret',
-});
+const session = testSession();
+const auth = { accessToken: session.credentials.accessToken };
 const manager = new ClobUserWebSocketManager({
-  credentials,
+  session,
   url: production.clob.user.ws,
 });
 
@@ -57,11 +54,7 @@ describe('ClobUserWebSocketManager', () => {
     await vi.waitFor(() => {
       expect(frames).toEqual([
         {
-          auth: {
-            apiKey: 'test-key',
-            passphrase: 'test-passphrase',
-            secret: 'test-secret',
-          },
+          auth,
           markets: [MARKET_A],
           type: 'user',
         },
@@ -77,11 +70,7 @@ describe('ClobUserWebSocketManager', () => {
     await vi.waitFor(() => {
       expect(frames).toEqual([
         {
-          auth: {
-            apiKey: 'test-key',
-            passphrase: 'test-passphrase',
-            secret: 'test-secret',
-          },
+          auth,
           type: 'user',
         },
       ]);
@@ -97,11 +86,7 @@ describe('ClobUserWebSocketManager', () => {
     await vi.waitFor(() => {
       expect(frames).toEqual([
         {
-          auth: {
-            apiKey: 'test-key',
-            passphrase: 'test-passphrase',
-            secret: 'test-secret',
-          },
+          auth,
           markets: [MARKET_A],
           type: 'user',
         },
@@ -233,7 +218,7 @@ describe('ClobUserWebSocketManager', () => {
       server,
       subscribe: async () => {
         const observedManager = new ClobUserWebSocketManager({
-          credentials,
+          session,
           url: production.clob.user.ws,
         });
         const events = await observedManager.subscribe({ topic: 'user' });
@@ -251,7 +236,7 @@ describe('ClobUserWebSocketManager', () => {
       server,
       subscribe: async () => {
         const observedManager = new ClobUserWebSocketManager({
-          credentials,
+          session,
           url: production.clob.user.ws,
         });
         const events = await observedManager.subscribe({
@@ -322,11 +307,7 @@ describe('ClobUserWebSocketManager', () => {
     await vi.waitFor(() => {
       expect(connectionFrames[0] ?? []).toEqual([
         {
-          auth: {
-            apiKey: 'test-key',
-            passphrase: 'test-passphrase',
-            secret: 'test-secret',
-          },
+          auth,
           markets: [MARKET_A],
           type: 'user',
         },
@@ -339,11 +320,7 @@ describe('ClobUserWebSocketManager', () => {
     await vi.waitFor(() => {
       expect(connectionFrames[1] ?? []).toEqual([
         {
-          auth: {
-            apiKey: 'test-key',
-            passphrase: 'test-passphrase',
-            secret: 'test-secret',
-          },
+          auth,
           markets: [MARKET_A],
           type: 'user',
         },

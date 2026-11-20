@@ -466,9 +466,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
       this.#builderAddress !== undefined &&
       this.#builderAttribution === undefined
     ) {
-      const status = await this.#api.getWorkflow('/v1/info/builder', {
+      const status = await this.#api.get('/v1/info/builder', {
         schema: PerpsBuilderStatusSchema,
         params: new URLSearchParams({ address: this.#builderAddress }),
+        retries: 0,
       });
       if (!status.registered || !status.enabled || !status.admissionEnabled) {
         throw new UserInputError(
@@ -611,9 +612,10 @@ export class PerpsSession implements AsyncIterable<PerpsSessionEvent> {
             this.#builderAddress = undefined;
           }
         } else {
-          const status = await this.#api.getWorkflow('/v1/info/builder', {
+          const status = await this.#api.get('/v1/info/builder', {
             schema: PerpsBuilderStatusSchema,
             params: new URLSearchParams({ address: approval.builder }),
+            retries: 0,
           });
           this.#builderAddress = approval.builder;
           const feeRate = minPerpsBuilderFeeRate(

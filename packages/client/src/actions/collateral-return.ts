@@ -85,7 +85,7 @@ export async function planCollateralReturn(
 ): Promise<CollateralReturnPlanResponse> {
   assertCollateralReturnAccount(client);
 
-  return client.combos.post('/v1/collateral-return/plan', {
+  return client.predictions.post('/v1/wallets/collateral-return/plan', {
     json: { wallet: client.account.wallet },
     timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
     schema: CollateralReturnPlanResponseSchema,
@@ -142,10 +142,10 @@ export async function prepareCollateralReturnExecution(
     ExecuteCollateralReturnPlanRequestSchema,
   );
 
-  invariant(
-    client.supportsGasless,
-    'Collateral return execution requires a Relayer API Key or Builder API Key in the client configuration.',
-  );
+  if (!client.supportsGasless)
+    throw new UserInputError(
+      'Collateral return execution requires a builder or relayer API key in the client configuration.',
+    );
   assertCollateralReturnAccount(client);
 
   if (!isSameEvmAddress(plan.wallet, client.account.wallet)) {
@@ -305,11 +305,14 @@ async function submitCollateralReturnPlan(
   planHash: HexString,
   envelope: CollateralReturnEnvelope,
 ): Promise<TransactionHandle> {
-  const response = await client.combos.post('/v1/collateral-return/submit', {
-    json: { envelope, plan_hash: planHash },
-    timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
-    schema: RelayerExecuteResponseSchema,
-  });
+  const response = await client.predictions.post(
+    '/v1/wallets/collateral-return/submit',
+    {
+      json: { envelope, plan_hash: planHash },
+      timeout: COLLATERAL_RETURN_REQUEST_TIMEOUT_MS,
+      schema: RelayerExecuteResponseSchema,
+    },
+  );
 
   return new GaslessTransactionHandle(client, response);
 }

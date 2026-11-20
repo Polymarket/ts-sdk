@@ -315,7 +315,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
 
         expect(requestedUrls(fetchSpy)).toHaveLength(2);
-        expect(countRequests(fetchSpy, '/book')).toBe(2);
+        expect(countRequests(fetchSpy, '/v1/pricing/book')).toBe(2);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -345,8 +345,8 @@ describe('Orders', { timeout: 60_000 }, () => {
           client.createLimitOrder(request),
         ]);
 
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/0x')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -405,8 +405,8 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
         await client.createMarketOrder(request);
 
-        expect(countRequests(fetchSpy, '/markets-by-token/')).toBe(1);
-        expect(countRequests(fetchSpy, '/clob-markets/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/token/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/trading/markets/0x')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -437,7 +437,7 @@ describe('Orders', { timeout: 60_000 }, () => {
         await client.createMarketOrder(request);
         await client.createMarketOrder(request);
 
-        expect(countRequests(fetchSpy, '/fees/builder-fees/')).toBe(1);
+        expect(countRequests(fetchSpy, '/v1/fees/builder/')).toBe(1);
       } finally {
         fetchSpy.mockRestore();
       }
@@ -574,6 +574,72 @@ describe('Orders', { timeout: 60_000 }, () => {
 
       expect(items.some((order) => order.id === orderId)).toBe(false);
     });
+  });
+
+  describe('fetchOrder', () => {
+    it.runIf(runMeteredTests)(
+      'fetches a resting order and its scoring state, then cancels it',
+      // Side effect: places one resting BUY at the minimum price and size, then cancels it.
+      async ({ annotate, secureClientWithDepositWallet }) => {
+        annotate(`Market ID: ${market.id}`);
+        const { orderId, tokenId } = await createRestingLimitOrder(
+          secureClientWithDepositWallet,
+          market,
+        );
+
+        try {
+          const order = await secureClientWithDepositWallet.fetchOrder({
+            orderId,
+          });
+          expect(order).toMatchObject({ id: orderId, assetId: tokenId });
+
+          const scoring = await secureClientWithDepositWallet.fetchOrderScoring(
+            { orderId },
+          );
+          expect(typeof scoring).toBe('boolean');
+          await expect(
+            secureClientWithDepositWallet.fetchOrdersScoring({
+              orderIds: [orderId],
+            }),
+          ).resolves.toEqual({ [orderId]: scoring });
+        } finally {
+          await secureClientWithDepositWallet.cancelOrder({ orderId });
+        }
+      },
+    );
+  });
+
+  describe('postOrder', () => {
+    it.runIf(runMeteredTests)(
+      'posts a signed resting limit order, then cancels it',
+      // Side effect: places one resting BUY at the minimum price and size, then cancels it.
+      async ({ annotate, secureClientWithDepositWallet }) => {
+        const tokenId = expectPresent(market.outcomes.yes.tokenId);
+        annotate(`Market ID: ${market.id}`);
+        annotate(`Token ID: ${tokenId}`);
+
+        const signedOrder = await createSignedRestingLimitOrder(
+          secureClientWithDepositWallet,
+          market,
+        );
+        const response =
+          await secureClientWithDepositWallet.postOrder(signedOrder);
+        const { orderId, status } = expectAcceptedOrderResponse(response);
+
+        try {
+          expect(orderId).not.toBe('');
+          expect(status).toBe(OrderPostStatus.LIVE);
+          await expect(
+            secureClientWithDepositWallet.fetchOrder({ orderId }),
+          ).resolves.toMatchObject({ id: orderId, assetId: tokenId });
+        } finally {
+          const result = await secureClientWithDepositWallet.cancelOrder({
+            orderId,
+          });
+          expect(result.canceled).toContain(orderId);
+        }
+      },
+    );
   });
 
   describe('postOrders', () => {

@@ -42,10 +42,12 @@ export type RequestOptions = {
    */
   timeout?: number | false;
   /**
-   * Optional retries after the first attempt. Must be an integer from 0 to 5.
-   * Transport failures and rate limits share this budget for each request;
-   * every pagination request gets a fresh budget. Set 0 when the caller owns retries.
-   * Workflow recovery is unaffected.
+   * Retries after the first attempt. Must be an integer from 0 to 5.
+   * Reads retry network failures, server errors and short rate-limit waits
+   * (up to 5 seconds) twice by default; they share this budget for each
+   * request, and every pagination request gets a fresh budget. Set 0 when the
+   * caller owns retries, such as a query library. Authentication recovery is
+   * unaffected.
    *
    * @defaultValue 2
    * @experimental This API may change in a breaking way in any release, including patch releases.
@@ -56,6 +58,18 @@ export type RequestOptions = {
 const ReadRetryOptionsSchema = z.object({
   retries: z.number().int().min(0).max(5).default(2),
 });
+
+const PostRetriesSchema = z.object({
+  retries: z.number().int().min(0).max(5).default(0),
+});
+
+/**
+ * Validates a POST's retries. A POST may change state, so it is sent once
+ * unless the caller asks for retries. @internal
+ */
+export function parsePostRetries(retries: number | undefined): number {
+  return parseUserInput({ retries }, PostRetriesSchema).retries;
+}
 
 /** Validates and snapshots controls at the read boundary. @internal */
 export function parseRequestOptions(options: RequestOptions): RequestOptions {

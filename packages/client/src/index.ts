@@ -50,20 +50,32 @@ export {
   PerpsTimeInForce,
 } from '@polymarket/bindings/perps';
 export type * from '@polymarket/bindings/relayer';
+export type { AuthenticatedServiceClient } from './AuthenticatedServiceClient';
 export * from './abis';
+export { CommentSort } from './actions/comments';
 export { SearchSort } from './actions/search';
 export type {
   RelayerApiKeyConfig,
   RemoteBuilderSigningConfig,
+  RemotePlatformApiKeyConfig,
 } from './authorization';
-export { relayerApiKey, remoteBuilderSigning } from './authorization';
+export {
+  RemotePlatformApiKeyError,
+  relayerApiKey,
+  remoteBuilderSigning,
+  remotePlatformApiKey,
+} from './authorization';
 export type * from './clients';
 export {
   CreateSecureClientError,
   createPublicClient,
   createSecureClient,
+  EndAuthenticationError,
+  RefreshCredentialsError,
   SetupGaslessWalletError,
+  UpgradeCredentialsError,
 } from './clients';
+export type { ClientCredentials } from './credentials';
 export * from './decorators';
 export * from './environments';
 export * from './errors';
@@ -82,6 +94,22 @@ export type { Fetch, RequestOptions } from './request-options';
  * @experimental For the polymarket.com UI. External consumers should not adopt this API. Breaking changes may occur in any release, including patch releases.
  */
 export type ServiceClient = ServiceClientInstance;
+
+export type {
+  BearerCredentials,
+  OwnershipChallenge,
+} from '@polymarket/bindings';
+export type {
+  CreateOwnershipChallengeRequest,
+  LoginRequest,
+  MigrateCredentialsRequest,
+} from './actions/identity';
+export {
+  CreateOwnershipChallengeError,
+  LoginError,
+  MigrateCredentialsError,
+} from './actions/identity';
+export type { CredentialsChanged } from './credentials';
 /** @experimental See {@link ServiceClient}. */
 export type {
   ServiceClientDeleteOptions,
@@ -91,6 +119,7 @@ export type {
   ServiceClientNonJsonResponseType,
   ServiceClientPatchOptions,
   ServiceClientPostOptions,
+  ServiceClientPutOptions,
   ServiceClientRequestOptions,
   ServiceClientResponse,
   ServiceClientResponseOptions,
