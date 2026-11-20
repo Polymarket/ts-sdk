@@ -1,5 +1,11 @@
 # @polymarket/bindings
 
+## 0.18.2
+
+### Patch Changes
+
+- d53c77b: `fetchOrder` now throws `RequestRejectedError` with status `404` when the order is not found, instead of `UnexpectedResponseError`.
+
 ## 0.18.1
 
 ### Patch Changes
