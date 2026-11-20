@@ -8,6 +8,9 @@ export * from './comments';
 export * from './events';
 export * from './gasless';
 export {
+  CreateOwnershipChallengeError,
+  type CreateOwnershipChallengeRequest,
+  createOwnershipChallenge,
   LoginError,
   type LoginRequest,
   login,

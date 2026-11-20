@@ -7,6 +7,7 @@ import {
   WalletType,
 } from '@polymarket/client';
 import {
+  createOwnershipChallenge,
   deployDepositWallet,
   isWalletDeployed,
 } from '@polymarket/client/actions';
@@ -758,6 +759,37 @@ describe('clients', () => {
       },
       120_000,
     );
+  });
+
+  describe('createOwnershipChallenge', () => {
+    it('creates a challenge for the signer and network, and reports an unusable wallet by its code', async ({
+      depositWalletAddress,
+      depositWalletSigner,
+      environment,
+      publicClient,
+    }) => {
+      const signer = await depositWalletSigner.getAddress();
+
+      const challenge = await createOwnershipChallenge(publicClient, {
+        signer,
+        wallet: depositWalletAddress,
+      });
+
+      expect(challenge.typedData.domain.chainId).toBe(environment.chainId);
+      expect(challenge.typedData.message.address.toLowerCase()).toBe(
+        signer.toLowerCase(),
+      );
+      // Challenge proxies forward the code, and login maps it for the signer.
+      await expect(
+        createOwnershipChallenge(publicClient, {
+          signer,
+          wallet: ZERO_ADDRESS,
+        }),
+      ).rejects.toMatchObject({
+        name: 'RequestRejectedError',
+        code: 'wallet_not_authorized',
+      });
+    });
   });
 
   describe('Predictions routing', () => {

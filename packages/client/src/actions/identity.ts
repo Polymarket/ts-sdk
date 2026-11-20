@@ -2,6 +2,8 @@ import {
   type BearerCredentials,
   EvmAddressSchema,
   type OwnershipChallenge,
+  type OwnershipChallengeRequest,
+  OwnershipChallengeSchema,
   type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
@@ -23,17 +25,85 @@ import { buildHmacSignature } from '../hmac';
 import { parseUserInput } from '../input';
 import type { Signer } from '../types';
 
+export const AuthenticationInputSchema = z.object({
+  wallet: EvmAddressSchema.optional(),
+  verificationToken: z.string().min(1).max(2048).optional(),
+  nonce: z.number().int().min(0).max(4294967295).optional(),
+});
+
+export type CreateOwnershipChallengeRequest = {
+  /** Address of the signer that will sign the challenge. */
+  signer: string;
+  /** Wallet to bind to the session. Omit it for a session without a wallet. */
+  wallet?: string;
+  /** Selects which derived L2 credential set the login signature also covers. */
+  nonce?: number;
+  /** Bot-protection verification token, when sign-in requires one. */
+  verificationToken?: string;
+};
+const CreateOwnershipChallengeRequestSchema = AuthenticationInputSchema.extend({
+  signer: EvmAddressSchema,
+});
+export type CreateOwnershipChallengeError =
+  | RateLimitError
+  | RequestAbortedError
+  | RequestRejectedError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const CreateOwnershipChallengeError = makeErrorGuard(
+  RateLimitError,
+  RequestAbortedError,
+  RequestRejectedError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Creates the ownership challenge that `signer` signs to log in.
+ *
+ * The challenge is attributed to the application key the client is configured
+ * with, if any. With `remotePlatformApiKey`, the request goes to your challenge
+ * proxy. Call this action from that proxy's backend route, with a client
+ * configured with `platformApiKey`, after checking that the caller may
+ * authenticate `signer`, and return the challenge as JSON.
+ *
+ * @example
+ * ```ts
+ * const challenge = await createOwnershipChallenge(client, await request.json());
+ * return Response.json(challenge);
+ * ```
+ *
+ * @throws {@link CreateOwnershipChallengeError} Thrown for invalid input or a rejected challenge.
+ */
+export async function createOwnershipChallenge(
+  client: BasePublicClient,
+  request: CreateOwnershipChallengeRequest,
+): Promise<OwnershipChallenge> {
+  const params = parseUserInput(request, CreateOwnershipChallengeRequestSchema);
+  const challengeRequest: OwnershipChallengeRequest = {
+    signer: params.signer,
+    wallet: params.wallet,
+    nonce: params.nonce,
+    verification_token: params.verificationToken,
+  };
+  if (client.apiKey?.createChallenge !== undefined)
+    return client.apiKey.createChallenge(challengeRequest, {
+      fetch: client.fetch,
+    });
+  return client.auth.post('/v1/auth/challenge', {
+    json: challengeRequest,
+    schema: OwnershipChallengeSchema,
+  });
+}
+
 export type LoginRequest = {
   signer: Signer;
   wallet?: string;
   verificationToken?: string;
   nonce?: number;
 };
-export const AuthenticationInputSchema = z.object({
-  wallet: EvmAddressSchema.optional(),
-  verificationToken: z.string().min(1).max(2048).optional(),
-  nonce: z.number().int().min(0).max(4294967295).optional(),
-});
 export type LoginError =
   | CancelledSigningError
   | RateLimitError
@@ -87,11 +157,11 @@ export async function issueLoginSession(
   const signer = parseUserInput(address, EvmAddressSchema);
   let challenge: OwnershipChallenge;
   try {
-    challenge = await client.requestOwnershipChallenge({
+    challenge = await createOwnershipChallenge(client, {
       signer,
       wallet: params.wallet,
-      verification_token: params.verificationToken,
       nonce: params.nonce,
+      verificationToken: params.verificationToken,
     });
   } catch (error) {
     // A wallet the signer cannot use, such as one that was never deployed,

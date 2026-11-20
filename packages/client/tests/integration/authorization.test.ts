@@ -15,13 +15,13 @@ import {
   UserInputError,
 } from '@polymarket/client';
 import {
+  type CreateOwnershipChallengeRequest,
+  createOwnershipChallenge,
   deployDepositWallet,
   fetchExecuteParams,
 } from '@polymarket/client/actions';
 import {
   type BuilderApiKeyCreds,
-  createPlatformChallenge,
-  type PlatformChallengeRequest,
   platformApiKey,
 } from '@polymarket/client/node';
 import { expectPresent } from '@polymarket/types';
@@ -246,16 +246,17 @@ describe('authorization', () => {
         apiKey: platformApiKey(platformKey),
         environment,
       });
-      const proxied: PlatformChallengeRequest[] = [];
+      const proxied: CreateOwnershipChallengeRequest[] = [];
       server.use(
         http.post(challengeUrl, async ({ request }) => {
           expect(request.headers.get('x-app-auth')).toBe('test-session');
           expect(request.headers.has('x-api-key')).toBe(false);
-          const body = (await request.json()) as PlatformChallengeRequest;
+          const body =
+            (await request.json()) as CreateOwnershipChallengeRequest;
           proxied.push(body);
 
           return HttpResponse.json(
-            await createPlatformChallenge(backend, body),
+            await createOwnershipChallenge(backend, body),
           );
         }),
       );
@@ -456,14 +457,15 @@ describe('authorization', () => {
         apiKey: platformApiKey(platformKey),
         environment,
       });
-      const proxied: PlatformChallengeRequest[] = [];
+      const proxied: CreateOwnershipChallengeRequest[] = [];
       server.use(
         http.post(challengeUrl, async ({ request }) => {
-          const body = (await request.json()) as PlatformChallengeRequest;
+          const body =
+            (await request.json()) as CreateOwnershipChallengeRequest;
           proxied.push(body);
 
           return HttpResponse.json(
-            await createPlatformChallenge(backend, body),
+            await createOwnershipChallenge(backend, body),
           );
         }),
       );
@@ -884,9 +886,9 @@ describe('authorization', () => {
 function challengeProxy(backend: PublicClient) {
   return http.post(challengeUrl, async ({ request }) =>
     HttpResponse.json(
-      await createPlatformChallenge(
+      await createOwnershipChallenge(
         backend,
-        (await request.json()) as PlatformChallengeRequest,
+        (await request.json()) as CreateOwnershipChallengeRequest,
       ),
     ),
   );

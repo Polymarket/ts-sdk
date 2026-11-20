@@ -46,10 +46,10 @@ This illustrative server route assumes your application supplies `requireApplica
 ```ts
 import { createPublicClient, UserInputError } from '@polymarket/client';
 import {
-  CreatePlatformChallengeError,
-  createPlatformChallenge,
-  platformApiKey,
-} from '@polymarket/client/node';
+  CreateOwnershipChallengeError,
+  createOwnershipChallenge,
+} from '@polymarket/client/actions';
+import { platformApiKey } from '@polymarket/client/node';
 
 const polymarket = createPublicClient({
   apiKey: platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!),
@@ -66,10 +66,10 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const challenge = await createPlatformChallenge(polymarket, input);
+    const challenge = await createOwnershipChallenge(polymarket, input);
     return Response.json(challenge, { headers });
   } catch (error) {
-    if (!CreatePlatformChallengeError.isError(error)) throw error;
+    if (!CreateOwnershipChallengeError.isError(error)) throw error;
     const status = error instanceof UserInputError ? 400 : 502;
     return Response.json(
       { code: 'challenge_rejected', message: 'Challenge rejected' },
@@ -79,7 +79,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 ```
 
-`createPlatformChallenge` validates the input, sends the Platform API Key only to the gateway and returns only the challenge. Keep the key out of response bodies, headers, browser configuration, storage, logs and traces. Log request IDs and outcomes instead.
+`createOwnershipChallenge` validates the input, sends the Platform API Key only to the gateway and returns only the challenge. It is the same action the SDK uses to sign in, and the challenge is attributed to the application key the client is configured with. Keep the key out of response bodies, headers, browser configuration, storage, logs and traces. Log request IDs and outcomes instead.
 
 ## Migrating builder and submission authorization
 

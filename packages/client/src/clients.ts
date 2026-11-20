@@ -3,9 +3,6 @@ import {
   AccessTokenResponseSchema,
   type BearerCredentials,
   EvmAddressSchema,
-  type OwnershipChallenge,
-  type OwnershipChallengeRequest,
-  OwnershipChallengeSchema,
   type TokenResponse,
   TokenResponseSchema,
 } from '@polymarket/bindings';
@@ -200,6 +197,16 @@ abstract class AbstractClient<TContext extends PublicContext> {
   /** @internal Shared managers for realtime subscriptions. */
   get webSockets(): PublicWebSocketManagers {
     return this.context.webSockets;
+  }
+
+  /** @internal Application-key adapter the client is configured with. */
+  get apiKey(): ApiKeyAuthorization | undefined {
+    return this.context.apiKey;
+  }
+
+  /** @internal Fetch implementation the client is configured with. */
+  get fetch(): Fetch | undefined {
+    return this.context.fetch;
   }
 
   /** @internal */
@@ -412,28 +419,6 @@ class BasePublicClient<
       Prettify<TPublicActions & DecoratorPublicActions<TDecorator>>,
       Prettify<TSecureActions & DecoratorSecureActions<TDecorator>>
     >;
-  }
-
-  /** @internal */
-  assertPlatformChallengeSupported(): void {
-    if (this.context.apiKey?.authorizeGateway === undefined)
-      throw new UserInputError(
-        'Create platform challenges with a client configured with platformApiKey.',
-      );
-  }
-
-  /** @internal */
-  async requestOwnershipChallenge(
-    request: OwnershipChallengeRequest,
-  ): Promise<OwnershipChallenge> {
-    if (this.context.apiKey?.createChallenge !== undefined)
-      return this.context.apiKey.createChallenge(request, {
-        fetch: this.context.fetch,
-      });
-    return this.auth.post('/v1/auth/challenge', {
-      json: request,
-      schema: OwnershipChallengeSchema,
-    });
   }
 
   /** Opens a bearer session by signing a server-issued ownership challenge.
