@@ -52,16 +52,27 @@ export class AuthenticatedServiceClient extends ServiceClient {
   /**
    * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   override get<T = unknown>(
     path: string,
     options?: ServiceClientGetOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override get<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientGetOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override get(
     path: string,
     options: ServiceClientGetOptions,
@@ -76,16 +87,27 @@ export class AuthenticatedServiceClient extends ServiceClient {
   /**
    * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   override post<T = unknown>(
     path: string,
     options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override post<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPostOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override post(
     path: string,
     options: ServiceClientPostOptions,
@@ -100,17 +122,28 @@ export class AuthenticatedServiceClient extends ServiceClient {
   /**
    * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   override patch<T = unknown>(
     path: string,
     options?: ServiceClientPatchOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override patch<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPatchOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override patch(
     path: string,
     options: ServiceClientPatchOptions,
@@ -125,16 +158,27 @@ export class AuthenticatedServiceClient extends ServiceClient {
   /**
    * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   override put<T = unknown>(
     path: string,
     options?: ServiceClientPutOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override put<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPutOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override put(
     path: string,
     options: ServiceClientPutOptions,
@@ -149,17 +193,28 @@ export class AuthenticatedServiceClient extends ServiceClient {
   /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   override del<T = unknown>(
     path: string,
     options?: ServiceClientDeleteOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override del<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientDeleteOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   override del(
     path: string,
     options: ServiceClientDeleteOptions,

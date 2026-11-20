@@ -341,16 +341,27 @@ export class ServiceClient {
   /**
    * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   get<T = unknown>(
     path: string,
     options?: ServiceClientGetOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   get<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientGetOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a GET request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   get(path: string, options: ServiceClientGetOptions): Promise<unknown>;
   get(path: string, options: ServiceClientGetOptions = {}): Promise<unknown> {
     return this.#request('GET', path, options);
@@ -359,16 +370,27 @@ export class ServiceClient {
   /**
    * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   post<T = unknown>(
     path: string,
     options?: ServiceClientPostOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   post<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPostOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a POST request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   post(path: string, options: ServiceClientPostOptions): Promise<unknown>;
   post(path: string, options: ServiceClientPostOptions = {}): Promise<unknown> {
     return this.#request('POST', path, options);
@@ -377,17 +399,28 @@ export class ServiceClient {
   /**
    * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   patch<T = unknown>(
     path: string,
     options?: ServiceClientPatchOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   patch<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPatchOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PATCH request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   patch(path: string, options: ServiceClientPatchOptions): Promise<unknown>;
   patch(
     path: string,
@@ -399,16 +432,27 @@ export class ServiceClient {
   /**
    * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   put<T = unknown>(
     path: string,
     options?: ServiceClientPutOptions<T> & ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   put<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientPutOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a PUT request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   put(path: string, options: ServiceClientPutOptions): Promise<unknown>;
   put(path: string, options: ServiceClientPutOptions = {}): Promise<unknown> {
     return this.#request('PUT', path, options);
@@ -417,17 +461,28 @@ export class ServiceClient {
   /**
    * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
    * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
    */
   del<T = unknown>(
     path: string,
     options?: ServiceClientDeleteOptions<T> &
       ServiceClientJsonResponseOptions<T>,
   ): Promise<T>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   del<TResponse extends ServiceClientNonJsonResponseType>(
     path: string,
     options: ServiceClientDeleteOptions &
       ServiceClientNonJsonResponseOptions<TResponse>,
   ): Promise<ServiceClientResponse<TResponse>>;
+  /**
+   * Sends a DELETE request. JSON is parsed by default; a schema validates and transforms it.
+   * @throws {@link ServiceClientRequestError} Thrown on request, response or cancellation failure.
+   * @experimental May change without notice.
+   */
   del(path: string, options: ServiceClientDeleteOptions): Promise<unknown>;
   del(
     path: string,

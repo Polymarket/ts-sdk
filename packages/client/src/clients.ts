@@ -438,6 +438,7 @@ class BasePublicClient<
 
   /** Opens a bearer session by signing a server-issued ownership challenge.
    * @throws {@link LoginError} Thrown on authentication failure.
+   * @experimental May change without notice.
    */
   login(request: LoginRequest): Promise<BearerCredentials> {
     return login(this, request);
@@ -445,6 +446,7 @@ class BasePublicClient<
 
   /** Migrates saved L2 credentials without a new wallet signature.
    * @throws {@link MigrateCredentialsError} Thrown on migration failure.
+   * @experimental May change without notice.
    */
   migrateCredentials(
     request: MigrateCredentialsRequest,
@@ -756,6 +758,7 @@ class BaseSecureClient<
    * const credentials = await client.refreshCredentials();
    * ```
    * @throws {@link RefreshCredentialsError} Thrown if the session cannot be renewed.
+   * @experimental May change without notice.
    */
   async refreshCredentials(): Promise<BearerCredentials> {
     return this.session.refresh();
@@ -781,6 +784,7 @@ class BaseSecureClient<
    * await saveCredentials(credentials);
    * ```
    * @throws {@link UpgradeCredentialsError} Thrown if the wallet cannot be bound.
+   * @experimental May change without notice.
    */
   async upgradeCredentials(
     request: UpgradeCredentialsRequest,
@@ -1094,6 +1098,7 @@ export type SecureClientOptions = PublicClientOptions & {
    * wallet setup enabled.
    *
    * @defaultValue true
+   * @experimental May change without notice.
    */
   walletSetup?: boolean;
 } & (
