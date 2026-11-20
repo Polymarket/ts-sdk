@@ -1,5 +1,16 @@
 # @polymarket/client
 
+## 1.0.0-next.1
+
+### Minor Changes
+
+- 98f5f2b: Add `createOwnershipChallenge` to `@polymarket/client/actions`. Login and backend challenge proxies now create the challenge with the same action, attributed to the application key the client is configured with. It replaces `createPlatformChallenge` and `PlatformChallengeRequest` from `@polymarket/client/node` in `1.0.0-next.0`; `platformApiKey` stays in `@polymarket/client/node`.
+
+### Patch Changes
+
+- 1229750: Mark these surfaces `@experimental`, since they may change without notice: the `get`, `post`, `patch`, `put` and `del` methods of the `predictions` service client, `publicClient.login`, `publicClient.migrateCredentials`, `secureClient.refreshCredentials`, `secureClient.upgradeCredentials` and the `walletSetup` option of `createSecureClient`.
+- cd21cbb: Remove `verificationToken` from `createSecureClient` options, added in `1.0.0-next.0`. When sign-in requires a verification token, pass it to `publicClient.login` or `publicClient.migrateCredentials`, then create the client from the returned credentials with `walletSetup: false`.
+
 ## 1.0.0-next.0
 
 ### Major Changes

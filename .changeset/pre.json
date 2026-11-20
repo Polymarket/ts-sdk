@@ -9,9 +9,12 @@
   },
   "changesets": [
     "bearer-sessions",
+    "experimental-auth-surfaces",
+    "ownership-challenge-action",
     "platform-application-keys",
     "predictions-action-routing",
     "remove-direct-credential-auth",
-    "request-retries"
+    "request-retries",
+    "secure-client-verification-token"
   ]
 }
