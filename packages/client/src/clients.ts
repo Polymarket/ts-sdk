@@ -230,19 +230,23 @@ abstract class AbstractClient<TContext extends PublicContext> {
 
 export type { ClientCredentials } from './credentials';
 
-const SecureClientInputSchema = AuthenticationInputSchema.extend({
-  credentials: ClientCredentialsSchema.optional(),
-  walletSetup: z.boolean().optional(),
-  onCredentialsChanged: z
-    .custom<CredentialsChanged>((value) => typeof value === 'function')
-    .optional(),
-}).refine(
-  (value) => value.credentials === undefined || value.nonce === undefined,
-  {
-    path: ['nonce'],
-    message: '`credentials` and `nonce` are mutually exclusive.',
-  },
-);
+const SecureClientInputSchema = AuthenticationInputSchema.omit({
+  verificationToken: true,
+})
+  .extend({
+    credentials: ClientCredentialsSchema.optional(),
+    walletSetup: z.boolean().optional(),
+    onCredentialsChanged: z
+      .custom<CredentialsChanged>((value) => typeof value === 'function')
+      .optional(),
+  })
+  .refine(
+    (value) => value.credentials === undefined || value.nonce === undefined,
+    {
+      path: ['nonce'],
+      message: '`credentials` and `nonce` are mutually exclusive.',
+    },
+  );
 
 type PublicClientConfig = {
   fetch?: Fetch;
@@ -1076,8 +1080,6 @@ export type SecureClientOptions = PublicClientOptions & {
    * Wallet-library adapter used to authenticate and complete wallet operations.
    */
   signer: Signer;
-  /** Bot-protection verification token for browser sign-in, when one is required. */
-  verificationToken?: string;
   /** Called after adoption of a refreshed token pair. Sync/async failures are ignored; handle persistence failures inside the callback. */
   onCredentialsChanged?: CredentialsChanged;
   /**
@@ -1178,6 +1180,9 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
  * before the client is returned, and credentials without a wallet are bound to
  * the requested wallet. The returned client always has an account wallet.
  * Pass `walletSetup: false` to skip wallet discovery, binding and deployment.
+ * When sign-in requires a verification token, pass it to
+ * `publicClient.login` or `publicClient.migrateCredentials` and create the
+ * client from the returned credentials.
  *
  * @example
  * ```ts
@@ -1188,7 +1193,7 @@ export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
  *
  * @example
  * ```ts
- * const credentials = await publicClient.login({ signer });
+ * const credentials = await publicClient.login({ signer, verificationToken });
  * await saveCredentials(credentials);
  *
  * const secureClient = await createSecureClient({
@@ -1267,13 +1272,11 @@ export async function createSecureClient(
             credentials: params.credentials,
             signerAddress,
             wallet: requested,
-            verificationToken: params.verificationToken,
           })
         : await issueLoginSession(client, {
             signer: options.signer,
             wallet: requested,
             nonce: params.nonce,
-            verificationToken: params.verificationToken,
           });
     credentials = {
       accessToken: issued.accessToken,

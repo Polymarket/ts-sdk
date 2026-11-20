@@ -61,7 +61,7 @@ If login or migration succeeds but a later setup step fails, client creation log
 
 ## Signing in and restoring sessions
 
-A new login signs the server's ownership challenge. The SDK checks that the challenge is the expected `ClobAuth` attestation for the signer and the configured chain before asking the wallet to sign, and rejects any other payload with `UnexpectedResponseError`. `publicClient.login({ signer, wallet, verificationToken })` returns a bearer pair without creating a secure client. The wallet and the optional verification token belong to challenge creation.
+A new login signs the server's ownership challenge. The SDK checks that the challenge is the expected `ClobAuth` attestation for the signer and the configured chain before asking the wallet to sign, and rejects any other payload with `UnexpectedResponseError`. `publicClient.login({ signer, wallet, verificationToken })` returns a bearer pair without creating a secure client. The wallet and the optional verification token belong to challenge creation. `createSecureClient` takes no verification token: when sign-in requires one, pass it to `publicClient.login` or `publicClient.migrateCredentials`, then create the client from the returned credentials with `walletSetup: false`, as shown below.
 
 Without `wallet`, `createSecureClient` uses the signer's Deposit Wallet. It first checks the earlier Deposit Wallet address, otherwise derives the current one, and deploys it if needed. Passing the signer address selects an EOA. Existing Proxy and Safe wallets stay bound to their account.
 
