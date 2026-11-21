@@ -198,7 +198,7 @@ describe('Orders', { timeout: 60_000 }, () => {
       expect(order.builder).toBe(builderCode);
     });
 
-    it('keeps a protected BUY with an inexact amount within one tick of maxPrice', async ({
+    it('signs a protected BUY with an inexact amount at exactly maxPrice', async ({
       annotate,
       environment,
       randomEoaSigner,
@@ -222,12 +222,12 @@ describe('Orders', { timeout: 60_000 }, () => {
         side: OrderSide.BUY,
       });
 
-      // 12.34 never divides exactly by a price on the grid, so shares are
-      // floored and the implied bid lands at or just above maxPrice.
-      const implied = Number(order.makerAmount) / Number(order.takerAmount);
-      expect(Number(order.makerAmount)).toBe(12_340_000);
-      expect(implied).toBeGreaterThanOrEqual(maxPrice);
-      expect(implied).toBeLessThan(maxPrice + 0.0001);
+      // At seven ticks the amounts move in steps of 0.07, so 12.34 becomes
+      // 12.32 and the signed amounts encode maxPrice exactly.
+      expect(Number(order.makerAmount)).toBe(12_320_000);
+      expect(BigInt(order.makerAmount) * 1_000_000n).toBe(
+        BigInt(order.takerAmount) * BigInt(Math.round(maxPrice * 1_000_000)),
+      );
     });
 
     it('reports unknown builder codes as user input errors when resolving buy amounts against max spend', async ({
