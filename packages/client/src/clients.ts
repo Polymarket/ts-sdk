@@ -1163,9 +1163,6 @@ export const CreateSecureClientError = makeErrorGuard(
  * before the client is returned, and credentials without a wallet are bound to
  * the requested wallet. The returned client always has an account wallet.
  * Pass `walletSetup: false` to skip wallet discovery, binding and deployment.
- * When sign-in requires a verification token, pass it to
- * `publicClient.login` or `publicClient.migrateCredentials` and create the
- * client from the returned credentials.
  *
  * @example
  * ```ts
@@ -1176,7 +1173,7 @@ export const CreateSecureClientError = makeErrorGuard(
  *
  * @example
  * ```ts
- * const credentials = await publicClient.login({ signer, verificationToken });
+ * const credentials = await publicClient.login({ signer });
  * await saveCredentials(credentials);
  *
  * const secureClient = await createSecureClient({

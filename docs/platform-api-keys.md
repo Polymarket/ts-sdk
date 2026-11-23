@@ -37,7 +37,7 @@ const client = await createSecureClient({
 
 `url` is the complete endpoint, including any query string. The SDK calls it exactly once for challenge creation. Root-relative browser paths and absolute HTTP(S) URLs are supported. Configure application authentication or CSRF headers here; never configure a Platform API Key or SDK bearer credentials. The adapter rejects `X-API-Key` in browser-supplied headers.
 
-The proxy receives a JSON body with only `signerAddress` and optional `wallet`, `nonce` and `verificationToken`, and must return the challenge as JSON. The signer stays with the browser. Signatures, login tokens, refresh and logout go directly to the gateway. No timer or credential store exists in the adapter; the normal client session owns refresh, callbacks, cancellation and socket renewal. Failed proxy requests are not automatically replayed. Before the wallet signs, the SDK checks that the returned challenge is the `ClobAuth` attestation for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`.
+The proxy receives a JSON body with only `signerAddress` and optional `wallet` and `nonce`, and must return the challenge as JSON. The signer stays with the browser. Signatures, login tokens, refresh and logout go directly to the gateway. No timer or credential store exists in the adapter; the normal client session owns refresh, callbacks, cancellation and socket renewal. Failed proxy requests are not automatically replayed. Before the wallet signs, the SDK checks that the returned challenge is the `ClobAuth` attestation for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`.
 
 ## Migrating builder and submission authorization
 
@@ -69,7 +69,7 @@ The challenge endpoint never receives signatures or SDK tokens. The existing bui
 
 For saved bearer credentials, use the same `createSecureClient({ signer, credentials, apiKey })` workflow with the plain `{ accessToken, refreshToken }` pair; refresh preserves the server-bound application identity. Saved L2 credentials are automatically exchanged directly at `/v1/auth/migrate`, including when using `remotePlatformApiKey`. Migration bypasses the challenge proxy, keeps the L2 secret local, and needs no new wallet signature. The remote challenge adapter does not add application attribution to that exchange. When platform attribution is required, migrate on your server with `platformApiKey`, then restore the returned bearer pair in the browser; the gateway determines the resulting attribution.
 
-First-party `verificationToken` handling is preserved. A Platform API Key does not give an external session first-party requester socket privileges; external requesters may require REST. Browser price tickets remain separate. See [bearer-session migration](authentication-migration.md) for credential persistence, refresh failure policy and cleanup.
+A Platform API Key does not give an external session first-party requester socket privileges; external requesters may require REST. Browser price tickets remain separate. See [bearer-session migration](authentication-migration.md) for credential persistence, refresh failure policy and cleanup.
 
 ## Release gates
 

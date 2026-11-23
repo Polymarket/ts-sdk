@@ -38,7 +38,6 @@ export type CreateOwnershipChallengeRequest = {
   wallet?: string;
   /** Selects which derived L2 credential set the login signature also covers. */
   nonce?: number;
-  /** Bot-protection verification token, when sign-in requires one. */
   verificationToken?: string;
 };
 const CreateOwnershipChallengeRequestSchema = AuthenticationInputSchema.extend({

@@ -14,7 +14,6 @@
     "platform-application-keys",
     "predictions-action-routing",
     "remove-direct-credential-auth",
-    "request-retries",
-    "secure-client-verification-token"
+    "request-retries"
   ]
 }

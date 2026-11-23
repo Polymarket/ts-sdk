@@ -55,13 +55,13 @@ async function connect(saved?: ClientCredentials) {
 
 ## Migrating saved L2 credentials
 
-During client creation, saved L2 credentials are exchanged at `/v1/auth/migrate` with an HMAC ownership proof and the signer's address. The L2 secret never leaves the SDK, and migration asks for no wallet signature. A rejected migration throws `RequestRejectedError`. It does not return a client, sign, call the persistence callback or change the saved object. You can also call `publicClient.migrateCredentials({ credentials, signerAddress, wallet, verificationToken })`, save the returned pair and pass it to `createSecureClient`.
+During client creation, saved L2 credentials are exchanged at `/v1/auth/migrate` with an HMAC ownership proof and the signer's address. The L2 secret never leaves the SDK, and migration asks for no wallet signature. A rejected migration throws `RequestRejectedError`. It does not return a client, sign, call the persistence callback or change the saved object. You can also call `publicClient.migrateCredentials({ credentials, signerAddress, wallet })`, save the returned pair and pass it to `createSecureClient`.
 
 If login or migration succeeds but a later setup step fails, client creation logs out the new session, closes its local resources and rethrows the original error, even if logout fails. A failed creation does not call `onCredentialsChanged` for that new session. Renewals during setup are delivered only after creation succeeds. Migration does not revoke the L2 credentials, so the application can retry with its unchanged saved object.
 
 ## Signing in and restoring sessions
 
-A new login signs the server's ownership challenge. The SDK checks that the challenge is the expected `ClobAuth` attestation for the signer and the configured chain before asking the wallet to sign, and rejects any other payload with `UnexpectedResponseError`. `publicClient.login({ signer, wallet, verificationToken })` returns a bearer pair without creating a secure client. The wallet and the optional verification token belong to challenge creation. `createSecureClient` takes no verification token: when sign-in requires one, pass it to `publicClient.login` or `publicClient.migrateCredentials`, then create the client from the returned credentials with `walletSetup: false`, as shown below.
+A new login signs the server's ownership challenge. The SDK checks that the challenge is the expected `ClobAuth` attestation for the signer and the configured chain before asking the wallet to sign, and rejects any other payload with `UnexpectedResponseError`. `publicClient.login({ signer, wallet })` returns a bearer pair without creating a secure client.
 
 Without `wallet`, `createSecureClient` uses the signer's Deposit Wallet. It first checks the earlier Deposit Wallet address, otherwise derives the current one, and deploys it if needed. Passing the signer address selects an EOA. Existing Proxy and Safe wallets stay bound to their account.
 
@@ -74,7 +74,7 @@ Saved credentials bound to a wallet keep that wallet. Passing a different `walle
 Applications that run their own onboarding can pass `walletSetup: false`. Client creation then skips wallet discovery, wallet binding and Deposit Wallet deployment, and uses the session as it is. The option defaults to `true`, because saved credentials do not prove that wallet setup is complete.
 
 ```ts
-const credentials = await publicClient.login({ signer, verificationToken });
+const credentials = await publicClient.login({ signer });
 await saveCredentials(credentials);
 
 const secureClient = await createSecureClient({
