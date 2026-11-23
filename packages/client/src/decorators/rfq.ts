@@ -222,8 +222,10 @@ export type SecureRfqActions = {
    * A winning quote is self-contained JSON data and may be persisted or
    * routed to another process before acceptance.
    *
-   * Requires a Builder API Key in the client configuration, via
-   * `builderApiKey(...)` or `remoteBuilderSigning(...)`.
+   * With a Builder API Key in the client configuration, via
+   * `builderApiKey(...)` or `remoteBuilderSigning(...)`, the RFQ is
+   * attributed to that builder. Without one, the bearer session authorizes it
+   * with no builder attribution; EOA wallets aren't accepted in that case.
    *
    * @throws {@link RequestComboQuoteError}
    * Thrown on failure.

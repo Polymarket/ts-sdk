@@ -15,6 +15,10 @@ The signature covers the upstream method, path and exact body, even when the gat
 
 Wallet-wide order methods follow the same rules: `listWalletOpenOrders` uses `GET /v1/me/wallet-orders`, while `cancelWalletOrders` and `cancelAllWalletOrders` use `DELETE /v1/orders/by-wallet`. Builder keys sign the upstream `/data/wallet-open-orders` or `/cancel-wallet-orders` path. Filters, pagination and cancellation bodies stay unchanged; wallet-wide cancellation still requires the Deposit Wallet owner.
 
+## Combo RFQ
+
+With a builder key, `requestComboQuote`, `acceptComboQuote`, `fetchRfqStatus` and `waitForComboFill` use `/v1/combos/builder/requests` and attribute the RFQ to the builder. Without one, they use `/v1/combos/requester/requests`, which the bearer token authorizes on its own. Those RFQs have no builder attribution: their quotes carry the zero builder code, and EOA wallets aren't accepted. Accept and read an RFQ with a client configured like the one that requested it.
+
 ## Comments
 
 `listComments` uses `GET /v1/comments`, which pages by server cursor and returns the cursor envelope. It sorts by `CommentSort.Id` or `CommentSort.CreatedAt` only. The gateway operation does not serve holder filtering, author positions or offsets, so `holdersOnly`, `getPositions`, other sorts and offset cursors saved from earlier versions are no longer accepted. `fetchCommentsById` still accepts `getPositions` for a single thread.

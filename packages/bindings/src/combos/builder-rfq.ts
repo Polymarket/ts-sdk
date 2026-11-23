@@ -249,11 +249,18 @@ const BuilderRfqResponseRequestSchema = z
     }),
   );
 
+const NO_BUILDER_CODE =
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
+
 export type BuilderRfqQuoteReadyResponse = {
   rfqId: RfqId;
   status: RfqStatus.AwaitingRequesterAcceptance;
   /** Acceptance deadline (Unix ms). */
   expiresAt: EpochMilliseconds;
+  /**
+   * Builder code to sign into the acceptance order. The zero bytes32 value
+   * when the RFQ carries no builder attribution.
+   */
   builderCode: BuilderCode;
   request: BuilderRfqResponseRequest;
   quote: BuilderRfqQuote;
@@ -264,7 +271,8 @@ const BuilderRfqQuoteReadyResponseSchema = z
     rfq_id: RfqIdSchema,
     status: z.literal(RfqStatus.AwaitingRequesterAcceptance),
     expires_at: EpochMillisecondsSchema,
-    builder_code: BuilderCodeSchema,
+    // Requests without builder attribution omit the builder code.
+    builder_code: BuilderCodeSchema.prefault(NO_BUILDER_CODE),
     request: BuilderRfqResponseRequestSchema,
     quote: BuilderRfqQuoteSchema,
   })

@@ -290,14 +290,20 @@ describe('requestComboQuote', () => {
     expect(gatewayPost).not.toHaveBeenCalled();
   });
 
-  it('requires builder authorization before transport', async () => {
-    const { client, gatewayPost } = createClient({ hasBuilderApiKey: false });
-
-    await expect(requestComboQuote(client, buyRequest)).rejects.toMatchObject({
-      message: expect.stringContaining('require a Builder API Key'),
-      name: 'UserInputError',
+  it('quotes on the requester route with the zero builder code without a builder key', async () => {
+    const { builder_code: _omitted, ...requesterWire } = quoteReadyWire;
+    const { client, gatewayPost } = createClient({
+      hasBuilderApiKey: false,
+      postResults: [jsonResponse(requesterWire)],
     });
-    expect(gatewayPost).not.toHaveBeenCalled();
+
+    const result = await requestComboQuote(client, buyRequest);
+
+    expect(gatewayPost).toHaveBeenCalledWith(
+      '/v1/combos/requester/requests',
+      expect.anything(),
+    );
+    expect(result.quote?.builderCode).toBe(`0x${'0'.repeat(64)}`);
   });
 
   it('classifies request rejections and preserves their cause', async () => {

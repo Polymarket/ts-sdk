@@ -57,7 +57,12 @@ async function discoverComboLegPositionIds(
   return undefined;
 }
 
-describe('Builder gateway combo RFQ integration', () => {
+// With a builder key the RFQ goes to the builder routes; with only the bearer
+// session it goes to the requester routes.
+describe.for([
+  { label: 'with a builder key', withBuilderKey: true },
+  { label: 'with only the bearer session', withBuilderKey: false },
+])('Combo RFQ integration $label', ({ withBuilderKey }) => {
   it('rejects status reads for unknown RFQs', { timeout: 60_000 }, async ({
     builderAuthentication,
     depositWalletAddress,
@@ -65,7 +70,7 @@ describe('Builder gateway combo RFQ integration', () => {
     environment,
   }) => {
     const client = await createSecureClient({
-      apiKey: builderAuthentication,
+      ...(withBuilderKey ? { apiKey: builderAuthentication } : {}),
       environment,
       signer: depositWalletSigner,
       wallet: depositWalletAddress,
@@ -102,7 +107,7 @@ describe('Builder gateway combo RFQ integration', () => {
     }
 
     const client = await createSecureClient({
-      apiKey: builderAuthentication,
+      ...(withBuilderKey ? { apiKey: builderAuthentication } : {}),
       environment,
       signer: depositWalletSigner,
       wallet: depositWalletAddress,
@@ -152,7 +157,7 @@ describe('Builder gateway combo RFQ integration', () => {
       }
 
       const client = await createSecureClient({
-        apiKey: builderAuthentication,
+        ...(withBuilderKey ? { apiKey: builderAuthentication } : {}),
         environment,
         signer: depositWalletSigner,
         wallet: depositWalletAddress,

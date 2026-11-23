@@ -433,7 +433,13 @@ export async function openRfqSession(
   return client.webSockets.rfqQuoter.connect();
 }
 
-const BUILDER_RFQ_REQUESTS_PATH = '/v1/combos/builder/requests';
+// A builder key attributes the RFQ to its builder. Without one, the RFQ goes
+// to the requester routes, which the Access Token authorizes on its own.
+function rfqRequestsPath(client: BaseSecureClient): string {
+  return client.hasBuilderApiKey
+    ? '/v1/combos/builder/requests'
+    : '/v1/combos/requester/requests';
+}
 // Quote requests are held through the quote competition and can take well
 // beyond the transport's standard timeout.
 const CREATE_QUOTE_TIMEOUT_MS = 30_000;
@@ -505,14 +511,6 @@ function toRfqRejectionCode(code: string | undefined): RfqRejectionCode {
   }
 
   return RfqRejectionCode.RequestFailed;
-}
-
-function assertBuilderAuthorization(client: BaseSecureClient): void {
-  if (!client.hasBuilderApiKey) {
-    throw new UserInputError(
-      'Combo RFQ requests require a Builder API Key in the client configuration, via builderApiKey(...) or remoteBuilderSigning(...).',
-    );
-  }
 }
 
 const ComboLegPositionIdsSchema = z
@@ -727,6 +725,11 @@ export const RequestComboQuoteError = makeErrorGuard(
  * A winning quote is self-contained JSON data and may be persisted or routed
  * to another process before acceptance.
  *
+ * With a Builder API Key in the client configuration, via
+ * `builderApiKey(...)` or `remoteBuilderSigning(...)`, the RFQ is
+ * attributed to that builder. Without one, the bearer session authorizes it
+ * with no builder attribution; EOA wallets aren't accepted in that case.
+ *
  * @throws {@link RequestComboQuoteError}
  * Thrown on failure.
  *
@@ -752,7 +755,6 @@ export async function requestComboQuote(
   assertCombosSupportedForAccount(client);
 
   const input = parseUserInput(params, RequestComboQuoteParamsSchema);
-  assertBuilderAuthorization(client);
 
   const identity = resolveOrderIdentity(client.account);
   const request: BuilderRfqCreateRequest = {
@@ -770,7 +772,7 @@ export async function requestComboQuote(
   };
 
   const response = await client.predictions
-    .post(BUILDER_RFQ_REQUESTS_PATH, {
+    .post(rfqRequestsPath(client), {
       json: request,
       timeout: CREATE_QUOTE_TIMEOUT_MS,
       schema: BuilderRfqCreateResponseSchema,
@@ -1063,7 +1065,6 @@ export async function acceptComboQuote(
   assertCombosSupportedForAccount(client);
 
   const input = parseUserInput(params, AcceptComboQuoteParamsSchema);
-  assertBuilderAuthorization(client);
 
   const domain = createExchangeV3OrderDomain({
     chainId: client.environment.chainId,
@@ -1078,7 +1079,7 @@ export async function acceptComboQuote(
 
   function postAcceptance() {
     return client.predictions.post(
-      `${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}/accept`,
+      `${rfqRequestsPath(client)}/${encodeURIComponent(input.rfqId)}/accept`,
       {
         json: request,
         timeout: ACCEPT_QUOTE_TIMEOUT_MS,
@@ -1431,7 +1432,7 @@ export function fetchRfqStatus(
   const input = parseUserInput(params, FetchRfqStatusParamsSchema);
 
   return client.predictions
-    .get(`${BUILDER_RFQ_REQUESTS_PATH}/${encodeURIComponent(input.rfqId)}`, {
+    .get(`${rfqRequestsPath(client)}/${encodeURIComponent(input.rfqId)}`, {
       ...requestOptions,
       schema: BuilderRfqStatusResponseSchema,
     })
