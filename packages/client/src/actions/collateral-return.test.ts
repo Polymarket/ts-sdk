@@ -333,7 +333,6 @@ function createClient(options: CreateClientOptions = {}) {
     environment,
     rpc: { ethEstimateGas },
     signer,
-    supportsGasless: true,
   } as unknown as BaseSecureClient;
 
   return {

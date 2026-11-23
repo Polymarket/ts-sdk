@@ -210,11 +210,6 @@ abstract class AbstractClient<TContext extends PublicContext> {
   }
 
   /** @internal */
-  get supportsGasless(): boolean {
-    return this.context.apiKey?.supportGasless ?? false;
-  }
-
-  /** @internal */
   get hasBuilderApiKey(): boolean {
     return this.context.apiKey?.isBuilderKey ?? false;
   }

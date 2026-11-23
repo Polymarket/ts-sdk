@@ -85,7 +85,7 @@ export async function POST(request: Request): Promise<Response> {
 
 Use `platformApiKey` for application attribution and `remotePlatformApiKey` for a browser challenge proxy. The `apiKey` slot previously used for builder or submission authorization can now carry a platform adapter. Existing authorization adapters remain supported: `builderApiKey`, `relayerApiKey` and `remoteBuilderSigning` have not been retired or deprecated.
 
-Some operations still require builder signatures or submission credentials. Pass those through `submissionApiKey`:
+The bearer session authorizes gasless actions on its own. Pass a builder or relayer key through `submissionApiKey` when you want builder attribution or your integration still uses its submission credentials:
 
 ```ts
 import { builderApiKey, platformApiKey } from '@polymarket/client/node';
@@ -96,7 +96,7 @@ const apiKey = platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!, {
 const client = await createSecureClient({ signer, wallet, apiKey });
 ```
 
-`submissionApiKey` also accepts `relayerApiKey(...)` where your integration still uses its submission credentials. The existing API supports one builder/submission authorization adapter at a time. The platform adapter keeps the key on gateway requests and delegates the existing builder/submission headers to the supplied adapter. Direct endpoints do not receive the Platform API Key.
+`submissionApiKey` also accepts `relayerApiKey(...)`. The existing API supports one builder/submission authorization adapter at a time. The platform adapter keeps the key on gateway requests and delegates the existing builder/submission headers to the supplied adapter. Direct endpoints do not receive the Platform API Key.
 
 A browser can retain its existing signing endpoint:
 
@@ -107,7 +107,7 @@ const apiKey = remotePlatformApiKey({
 });
 ```
 
-The challenge endpoint never receives signatures or SDK tokens. The existing builder-signing endpoint retains its separate authorization and signing contract. Gasless actions (wallet deployment, gasless transactions, collateral return and session-key revocation) still need a builder or relayer API key, passed as `submissionApiKey`. A Platform API Key or a bearer session alone does not authorize wallet submissions.
+The challenge endpoint never receives signatures or SDK tokens. The existing builder-signing endpoint retains its separate authorization and signing contract. Gasless actions (Deposit Wallet deployment, transfers and other gasless transactions, collateral return, and session-key authorization and revocation) need only the bearer session. A builder or relayer key passed as `submissionApiKey` still adds its headers to them.
 
 For saved bearer credentials, use the same `createSecureClient({ signer, credentials, apiKey })` workflow with the plain `{ accessToken, refreshToken }` pair; refresh preserves the server-bound application identity. Saved L2 credentials are automatically exchanged directly at `/v1/auth/migrate`, including when using `remotePlatformApiKey`. Migration bypasses the challenge proxy, keeps the L2 secret local, and needs no new wallet signature. The remote challenge adapter does not add application attribution to that exchange. When platform attribution is required, migrate on your server with `platformApiKey`, then restore the returned bearer pair in the browser; the gateway determines the resulting attribution.
 
