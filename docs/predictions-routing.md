@@ -1,6 +1,6 @@
 # Predictions action routing
 
-Supported discovery, market data, trading, portfolio, wallet and combo actions use the existing `predictions.rest` endpoint. Public and authenticated clients share this route selection. Authenticated clients attach their current bearer access token. Saved L2 credentials are migration input: client creation exchanges them for bearer credentials before business requests.
+Supported discovery, market data, trading, portfolio, wallet and combo actions use the existing `predictions.rest` endpoint. Public and authenticated clients share this route selection. Authenticated clients attach their current bearer access token, which also authorizes gasless wallet, collateral return and session-signer operations without an API key. Saved L2 credentials are migration input: client creation exchanges them for bearer credentials before business requests.
 
 ## API-key headers
 
@@ -8,7 +8,7 @@ A configured API key adds headers only to the operations its credential family c
 
 - Builder keys sign trading, pricing, rewards and account operations.
 - Builder keys sign builder RFQ writes, but not RFQ status reads.
-- Keys that support gasless transactions sign wallet, collateral return and session-signer operations.
+- Builder and relayer keys sign wallet, collateral return and session-signer operations when one is configured.
 - Market discovery, comments, profiles, portfolio and leaderboard reads carry no API-key headers.
 
 The signature covers the upstream method, path and exact body, even when the gateway path or method differs. Order payload owners are trading identities. Bearer credentials never become order owners.

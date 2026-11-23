@@ -12,12 +12,10 @@ import {
   remotePlatformApiKey,
   type SecureClient,
   SigningError,
-  UserInputError,
 } from '@polymarket/client';
 import {
   type CreateOwnershipChallengeRequest,
   createOwnershipChallenge,
-  deployDepositWallet,
   fetchExecuteParams,
 } from '@polymarket/client/actions';
 import {
@@ -35,6 +33,7 @@ import {
   clientIdOf,
   headerValues,
   obtainL2Credentials,
+  type SentRequest,
   sentRequests,
   walletClaim,
 } from './session';
@@ -209,31 +208,6 @@ describe('authorization', () => {
       expect(orders?.headers.get('poly_builder_api_key')).toBe(
         builderCredentials.key,
       );
-    });
-
-    it('rejects gasless actions without a submission key before any request', async ({
-      depositWalletAddress,
-      depositWalletSigner,
-      environment,
-      platformKey,
-    }) => {
-      const secureClient = await createSecureClient({
-        apiKey: platformApiKey(platformKey),
-        environment,
-        signer: depositWalletSigner,
-        wallet: depositWalletAddress,
-      });
-
-      try {
-        const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        await expect(deployDepositWallet(secureClient)).rejects.toThrow(
-          UserInputError,
-        );
-        expect(fetchSpy).not.toHaveBeenCalled();
-      } finally {
-        vi.restoreAllMocks();
-        await secureClient.endAuthentication();
-      }
     });
 
     it('signs in through a backend challenge proxy and logs in directly', async ({
@@ -751,6 +725,58 @@ describe('authorization', () => {
     // Side effect for each test: transfers 1 base unit of collateral
     // (0.000001 pUSD) from the shared Deposit Wallet to its own signer.
     it.runIf(runMeteredTests)(
+      'reads and transfers with only the bearer session',
+      async ({ depositWalletAddress, depositWalletSigner, environment }) => {
+        const secureClient = await createSecureClient({
+          environment,
+          signer: depositWalletSigner,
+          wallet: depositWalletAddress,
+        });
+
+        try {
+          const { read, transfer } = await readAndTransfer(secureClient);
+          for (const request of [read, transfer]) {
+            expect(request.headers.get('authorization')).toMatch(/^Bearer /);
+            expect(submissionHeaders(request)).toEqual([]);
+            expect(request.headers.get('x-api-key')).toBeNull();
+          }
+        } finally {
+          await secureClient.endAuthentication();
+        }
+      },
+      120_000,
+    );
+
+    it.runIf(runMeteredTests)(
+      'reads and transfers under a platform key without a submission key',
+      async ({
+        depositWalletAddress,
+        depositWalletSigner,
+        environment,
+        platformKey,
+      }) => {
+        const secureClient = await createSecureClient({
+          apiKey: platformApiKey(platformKey),
+          environment,
+          signer: depositWalletSigner,
+          wallet: depositWalletAddress,
+        });
+
+        try {
+          const { read, transfer } = await readAndTransfer(secureClient);
+          for (const request of [read, transfer]) {
+            expect(request.headers.get('authorization')).toMatch(/^Bearer /);
+            expect(submissionHeaders(request)).toEqual([]);
+            expect(request.headers.get('x-api-key')).toBe(platformKey);
+          }
+        } finally {
+          await secureClient.endAuthentication();
+        }
+      },
+      120_000,
+    );
+
+    it.runIf(runMeteredTests)(
       'reads and transfers with remote builder signing and no platform key',
       async ({
         builderCredentials,
@@ -928,6 +954,13 @@ function remoteBuilderSigner(
  * wallet to its signer through a gasless transaction and waits for it.
  * Returns the read request and the gasless submission as sent.
  */
+/** Lists the builder and relayer key headers on a request. */
+function submissionHeaders(request: SentRequest): string[] {
+  return [...request.headers.keys()].filter(
+    (name) => name.startsWith('poly_builder_') || name.startsWith('relayer_'),
+  );
+}
+
 async function readAndTransfer(secureClient: SecureClient) {
   const fetchSpy = vi.spyOn(globalThis, 'fetch');
   try {

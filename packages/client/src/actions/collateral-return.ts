@@ -142,10 +142,6 @@ export async function prepareCollateralReturnExecution(
     ExecuteCollateralReturnPlanRequestSchema,
   );
 
-  if (!client.supportsGasless)
-    throw new UserInputError(
-      'Collateral return execution requires a builder or relayer API key in the client configuration.',
-    );
   assertCollateralReturnAccount(client);
 
   if (!isSameEvmAddress(plan.wallet, client.account.wallet)) {

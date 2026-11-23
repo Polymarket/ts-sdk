@@ -34,27 +34,6 @@ describe('Session keys', { timeout: 600_000 }, () => {
     ).rejects.toThrow('Session key address must not be the zero address.');
   });
 
-  it('requires gasless API-key authentication for session-key mutations', async ({
-    depositWalletAddress,
-    depositWalletSigner,
-    environment,
-  }) => {
-    const client = await createSecureClient({
-      environment,
-      signer: depositWalletSigner,
-      wallet: depositWalletAddress,
-    });
-    const sessionAddress = await privateKey(generatePrivateKey()).getAddress();
-
-    expect(client.supportsGasless).toBe(false);
-    await expect(
-      client.authorizeSessionKey({ address: sessionAddress }),
-    ).rejects.toThrow('Session-key authorization requires apiKey');
-    await expect(
-      client.revokeSessionKey({ address: sessionAddress }),
-    ).rejects.toThrow('Session-key revocation requires apiKey');
-  });
-
   it('authorizes, lists, uses, and revokes a default-scoped session key', async ({
     annotate,
     relayerAuthentication,
