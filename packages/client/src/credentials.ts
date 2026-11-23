@@ -6,8 +6,14 @@ import {
 import type { ApiKeyCreds } from '@polymarket/bindings/clob';
 import { z } from 'zod';
 
-/** Saved credentials for either supported authentication mechanism. */
-export type ClientCredentials = ApiKeyCreds | BearerCredentials;
+/**
+ * Saved credentials for either supported authentication mechanism: L2
+ * credentials from an earlier SDK version or a bearer pair. Plain strings, as
+ * loaded from storage; the SDK validates them when it uses them.
+ */
+export type ClientCredentials =
+  | { key: string; secret: string; passphrase: string }
+  | BearerCredentials;
 
 // ApiKeyCredsSchema parses the wire field `apiKey`; saved credentials use `key`.
 const ApiKeyCredentialsInputSchema: z.ZodType<ApiKeyCreds> = z.strictObject({

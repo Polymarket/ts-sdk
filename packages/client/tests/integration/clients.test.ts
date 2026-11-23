@@ -771,7 +771,7 @@ describe('clients', () => {
       const signer = await depositWalletSigner.getAddress();
 
       const challenge = await createOwnershipChallenge(publicClient, {
-        signer,
+        signerAddress: signer,
         wallet: depositWalletAddress,
       });
 
@@ -782,7 +782,7 @@ describe('clients', () => {
       // Challenge proxies forward the code, and login maps it for the signer.
       await expect(
         createOwnershipChallenge(publicClient, {
-          signer,
+          signerAddress: signer,
           wallet: ZERO_ADDRESS,
         }),
       ).rejects.toMatchObject({

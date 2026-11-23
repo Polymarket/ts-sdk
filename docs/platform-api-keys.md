@@ -37,7 +37,7 @@ const client = await createSecureClient({
 
 `url` is the complete endpoint, including any query string. The SDK calls it exactly once for challenge creation. Root-relative browser paths and absolute HTTP(S) URLs are supported. Configure application authentication or CSRF headers here; never configure a Platform API Key or SDK bearer credentials. The adapter rejects `X-API-Key` in browser-supplied headers.
 
-The proxy receives a JSON body with only `signer` and optional `wallet`, `nonce` and `verificationToken`, and must return the challenge as JSON. The signer stays with the browser. Signatures, login tokens, refresh and logout go directly to the gateway. No timer or credential store exists in the adapter; the normal client session owns refresh, callbacks, cancellation and socket renewal. Failed proxy requests are not automatically replayed. Before the wallet signs, the SDK checks that the returned challenge is the `ClobAuth` attestation for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`.
+The proxy receives a JSON body with only `signerAddress` and optional `wallet`, `nonce` and `verificationToken`, and must return the challenge as JSON. The signer stays with the browser. Signatures, login tokens, refresh and logout go directly to the gateway. No timer or credential store exists in the adapter; the normal client session owns refresh, callbacks, cancellation and socket renewal. Failed proxy requests are not automatically replayed. Before the wallet signs, the SDK checks that the returned challenge is the `ClobAuth` attestation for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`.
 
 ### Backend challenge route
 
@@ -61,7 +61,7 @@ export async function POST(request: Request): Promise<Response> {
   if (!caller) return new Response(null, { status: 401, headers });
 
   const input = await request.json();
-  if (!caller.canAuthenticateSigner(input.signer)) {
+  if (!caller.canAuthenticateSigner(input.signerAddress)) {
     return new Response(null, { status: 403, headers });
   }
 

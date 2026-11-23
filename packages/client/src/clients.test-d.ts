@@ -54,8 +54,11 @@ it('accepts plain bearer or L2 input and exposes bearer credentials', () => {
     signer,
     credentials: { key: 'k', secret: 's', passphrase: 'p' },
   });
-  const stored: object = { accessToken: 'a', refreshToken: 'r' };
-  createSecureClient({ signer, credentials: stored });
+  createSecureClient({
+    signer,
+    // @ts-expect-error Misspelled credential fields are rejected at compile time.
+    credentials: { accesToken: 'a', refreshToken: 'r' },
+  });
   expectTypeOf(publicClient.login({ signer })).toEqualTypeOf<
     Promise<BearerCredentials>
   >();

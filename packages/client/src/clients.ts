@@ -34,6 +34,7 @@ import {
 } from './actions/identity';
 import { createClientMetadata } from './client-metadata';
 import {
+  type ClientCredentials,
   ClientCredentialsSchema,
   type CredentialsChanged,
 } from './credentials';
@@ -1092,7 +1093,7 @@ export type SecureClientOptions = PublicClientOptions & {
          * creation without falling back to signing. Create the client without
          * credentials to sign in again.
          */
-        credentials?: object;
+        credentials?: ClientCredentials;
         nonce?: never;
       }
     | {
@@ -1152,9 +1153,6 @@ export const CreateSecureClientError = makeErrorGuard(
   UnexpectedResponseError,
   UserInputError,
 );
-
-export type SetupGaslessWalletError = UserInputError;
-export const SetupGaslessWalletError = makeErrorGuard(UserInputError);
 
 /**
  * Creates a new authenticated `SecureClient` instance.

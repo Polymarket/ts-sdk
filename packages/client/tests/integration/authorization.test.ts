@@ -256,7 +256,7 @@ describe('authorization', () => {
 
       expect(proxied).toHaveLength(1);
       expect(Object.keys(proxied[0] ?? {}).sort()).toEqual([
-        'signer',
+        'signerAddress',
         'wallet',
       ]);
       const requests = sentRequests(fetchSpy);
@@ -483,7 +483,7 @@ describe('authorization', () => {
       }
 
       expect(proxied).toHaveLength(1);
-      expect(Object.keys(proxied[0] ?? {})).toEqual(['signer']);
+      expect(Object.keys(proxied[0] ?? {})).toEqual(['signerAddress']);
       const requests = sentRequests(fetchSpy);
       // Only the backend's challenge carries the key. The browser sends
       // everything else directly to the API without it.

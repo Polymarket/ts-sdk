@@ -284,7 +284,7 @@ class RemotePlatformAuthorization implements ApiKeyAuthorization {
             headers,
             signal,
             body: JSON.stringify({
-              signer: request.signer,
+              signerAddress: request.signer,
               wallet: request.wallet,
               nonce: request.nonce,
               verificationToken: request.verification_token,

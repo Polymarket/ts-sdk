@@ -72,7 +72,6 @@ export {
   createSecureClient,
   EndAuthenticationError,
   RefreshCredentialsError,
-  SetupGaslessWalletError,
   UpgradeCredentialsError,
 } from './clients';
 export type { ClientCredentials } from './credentials';

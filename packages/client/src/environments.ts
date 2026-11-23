@@ -1,5 +1,6 @@
 import { type EvmAddress, expectEvmAddress } from '@polymarket/types';
 import type { Hex } from 'ox';
+import { UserInputError } from './errors';
 
 export type WalletDerivationConfig = {
   depositWalletFactory: EvmAddress;
@@ -209,6 +210,7 @@ export function forkEnvironmentConfig(
   fork: EnvironmentConfigFork,
   base: EnvironmentConfig = production,
 ): EnvironmentConfig {
+  rejectRemovedEndpoints(fork);
   return {
     ...base,
     ...fork,
@@ -231,6 +233,32 @@ export function forkEnvironmentConfig(
     rtds: forkWebSocketEndpoint(base.rtds, fork.rtds),
     sports: forkWebSocketEndpoint(base.sports, fork.sports),
   };
+}
+
+// Overrides for endpoints that no longer serve any operation. Every REST
+// operation uses `predictions.rest`; ignoring these would silently send
+// requests meant for another backend to the forked gateway.
+const REMOVED_ENDPOINTS: Record<string, readonly string[]> = {
+  '': ['data', 'gamma', 'relayer'],
+  clob: ['rest', 'headers'],
+  combos: ['rest', 'builderGateway', 'collateralReturn'],
+};
+
+function rejectRemovedEndpoints(fork: EnvironmentConfigFork): void {
+  const removed = Object.entries(REMOVED_ENDPOINTS).flatMap(
+    ([section, keys]) => {
+      const value: unknown =
+        section === '' ? fork : fork[section as keyof EnvironmentConfigFork];
+      if (typeof value !== 'object' || value === null) return [];
+      return keys
+        .filter((key) => key in value)
+        .map((key) => (section === '' ? key : `${section}.${key}`));
+    },
+  );
+  if (removed.length > 0)
+    throw new UserInputError(
+      `Removed environment endpoints: ${removed.join(', ')}. Every REST operation uses \`predictions.rest\`; point it at the environment's gateway instead.`,
+    );
 }
 
 function forkRestEndpoint(

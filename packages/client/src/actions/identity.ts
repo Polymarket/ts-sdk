@@ -33,7 +33,7 @@ export const AuthenticationInputSchema = z.object({
 
 export type CreateOwnershipChallengeRequest = {
   /** Address of the signer that will sign the challenge. */
-  signer: string;
+  signerAddress: string;
   /** Wallet to bind to the session. Omit it for a session without a wallet. */
   wallet?: string;
   /** Selects which derived L2 credential set the login signature also covers. */
@@ -42,7 +42,7 @@ export type CreateOwnershipChallengeRequest = {
   verificationToken?: string;
 };
 const CreateOwnershipChallengeRequestSchema = AuthenticationInputSchema.extend({
-  signer: EvmAddressSchema,
+  signerAddress: EvmAddressSchema,
 });
 export type CreateOwnershipChallengeError =
   | RateLimitError
@@ -83,7 +83,7 @@ export async function createOwnershipChallenge(
 ): Promise<OwnershipChallenge> {
   const params = parseUserInput(request, CreateOwnershipChallengeRequestSchema);
   const challengeRequest: OwnershipChallengeRequest = {
-    signer: params.signer,
+    signer: params.signerAddress,
     wallet: params.wallet,
     nonce: params.nonce,
     verification_token: params.verificationToken,
@@ -158,7 +158,7 @@ export async function issueLoginSession(
   let challenge: OwnershipChallenge;
   try {
     challenge = await createOwnershipChallenge(client, {
-      signer,
+      signerAddress: signer,
       wallet: params.wallet,
       nonce: params.nonce,
       verificationToken: params.verificationToken,
