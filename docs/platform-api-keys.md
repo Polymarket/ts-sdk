@@ -39,48 +39,6 @@ const client = await createSecureClient({
 
 The proxy receives a JSON body with only `signerAddress` and optional `wallet`, `nonce` and `verificationToken`, and must return the challenge as JSON. The signer stays with the browser. Signatures, login tokens, refresh and logout go directly to the gateway. No timer or credential store exists in the adapter; the normal client session owns refresh, callbacks, cancellation and socket renewal. Failed proxy requests are not automatically replayed. Before the wallet signs, the SDK checks that the returned challenge is the `ClobAuth` attestation for the signer and the configured chain, and rejects any other payload with `UnexpectedResponseError`.
 
-### Backend challenge route
-
-This illustrative server route assumes your application supplies `requireApplicationSession`, whose `canAuthenticateSigner` method checks the caller's permission for the requested signer. Keep that authorization check and CSRF protection appropriate to your application. Do not deploy an unauthenticated public key proxy.
-
-```ts
-import { createPublicClient, UserInputError } from '@polymarket/client';
-import {
-  CreateOwnershipChallengeError,
-  createOwnershipChallenge,
-} from '@polymarket/client/actions';
-import { platformApiKey } from '@polymarket/client/node';
-
-const polymarket = createPublicClient({
-  apiKey: platformApiKey(process.env.POLYMARKET_PLATFORM_API_KEY!),
-});
-
-export async function POST(request: Request): Promise<Response> {
-  const headers = { 'Cache-Control': 'no-store' };
-  const caller = await requireApplicationSession(request);
-  if (!caller) return new Response(null, { status: 401, headers });
-
-  const input = await request.json();
-  if (!caller.canAuthenticateSigner(input.signerAddress)) {
-    return new Response(null, { status: 403, headers });
-  }
-
-  try {
-    const challenge = await createOwnershipChallenge(polymarket, input);
-    return Response.json(challenge, { headers });
-  } catch (error) {
-    if (!CreateOwnershipChallengeError.isError(error)) throw error;
-    const status = error instanceof UserInputError ? 400 : 502;
-    return Response.json(
-      { code: 'challenge_rejected', message: 'Challenge rejected' },
-      { status, headers },
-    );
-  }
-}
-```
-
-`createOwnershipChallenge` validates the input, sends the Platform API Key only to the gateway and returns only the challenge. It is the same action the SDK uses to sign in, and the challenge is attributed to the application key the client is configured with. Keep the key out of response bodies, headers, browser configuration, storage, logs and traces. Log request IDs and outcomes instead.
-
 ## Migrating builder and submission authorization
 
 Use `platformApiKey` for application attribution and `remotePlatformApiKey` for a browser challenge proxy. The `apiKey` slot previously used for builder or submission authorization can now carry a platform adapter. Existing authorization adapters remain supported: `builderApiKey`, `relayerApiKey` and `remoteBuilderSigning` have not been retired or deprecated.
