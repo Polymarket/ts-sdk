@@ -9,6 +9,7 @@ import {
   DecimalStringSchema,
   EpochLikeToIsoDateTimeStringSchema,
   EpochMillisecondsToIsoDateTimeStringSchema,
+  type EvmAddress,
   EvmAddressSchema,
   emptyStringToNull,
   emptyStringToUndefined,
@@ -60,6 +61,7 @@ export type OpenOrder = {
   outcome: string;
   orderType: string;
   status: string;
+  /** @deprecated Use order sizeMatched or account trade records to track fills. May be empty when omitted by the API. */
   associateTrades: string[];
   createdAt: IsoDateTimeString;
   expiresAt?: IsoDateTimeString;
@@ -68,7 +70,7 @@ export type OpenOrder = {
 export const OpenOrderSchema = z
   .object({
     asset_id: ClobAssetIdSchema,
-    associate_trades: z.array(z.string()),
+    associate_trades: z.array(z.string()).default([]),
     created_at: EpochLikeToIsoDateTimeStringSchema,
     expiration: OptionalEpochLikeToIsoDateTimeStringSchema,
     id: z.string(),
@@ -115,9 +117,94 @@ export const OpenOrderSchema = z
     },
   ) satisfies z.ZodType<OpenOrder>;
 
+/**
+ * A single order looked up by ID. The API answers `null` when no order with that ID
+ * belongs to the authenticated account.
+ */
+export const FetchOrderResponseSchema = OpenOrderSchema.nullable();
+
 export const OpenOrdersPageSchema = createCursorPageSchema(OpenOrderSchema);
 
 export type OpenOrdersPage = z.infer<typeof OpenOrdersPageSchema>;
+
+/** An open order placed by any signer of a Deposit Wallet. */
+export type WalletOpenOrder = {
+  id: string;
+  assetId: TokenId | PositionId;
+  conditionId: ConditionId;
+  /** API-key identifier when disclosed, or null when withheld. */
+  owner: string | null;
+  makerAddress: EvmAddress;
+  /** Address of the owner or session signer that placed this order. */
+  signerAddress: EvmAddress;
+  side: string;
+  price: DecimalString;
+  originalSize: DecimalString;
+  sizeMatched: DecimalString;
+  outcome: string;
+  orderType: string;
+  status: string;
+  createdAt: IsoDateTimeString;
+  expiresAt?: IsoDateTimeString;
+};
+
+export const WalletOpenOrderSchema = z
+  .object({
+    asset_id: ClobAssetIdSchema,
+    created_at: EpochLikeToIsoDateTimeStringSchema,
+    expiration: OptionalEpochLikeToIsoDateTimeStringSchema,
+    id: z.string(),
+    maker_address: EvmAddressSchema,
+    market: ConditionIdSchema,
+    order_type: z.string(),
+    original_size: DecimalStringSchema,
+    outcome: z.string(),
+    owner: z
+      .string()
+      .nullish()
+      .transform((owner) => owner || null),
+    price: DecimalStringSchema,
+    side: z.string(),
+    signer_address: EvmAddressSchema,
+    size_matched: DecimalStringSchema,
+    status: z.string(),
+  })
+  .transform(
+    ({
+      asset_id,
+      created_at,
+      expiration,
+      maker_address,
+      market,
+      order_type,
+      original_size,
+      signer_address,
+      size_matched,
+      ...rest
+    }) => {
+      const order = {
+        ...rest,
+        assetId: asset_id,
+        conditionId: market,
+        createdAt: created_at,
+        makerAddress: maker_address,
+        orderType: order_type,
+        originalSize: original_size,
+        signerAddress: signer_address,
+        sizeMatched: size_matched,
+      };
+      return expiration === undefined
+        ? order
+        : { ...order, expiresAt: expiration };
+    },
+  ) satisfies z.ZodType<WalletOpenOrder>;
+
+export const WalletOpenOrdersPageSchema = z
+  .object({
+    data: z.array(WalletOpenOrderSchema),
+    next_cursor: z.string(),
+  })
+  .transform(({ data, next_cursor }) => ({ data, nextCursor: next_cursor }));
 
 export type MakerOrder = {
   assetId: TokenId | PositionId;

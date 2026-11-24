@@ -1,6 +1,7 @@
 import { ApiKeyCredsSchema } from '@polymarket/bindings/clob';
 import {
   KnownPriceSource,
+  type PolyboltSubscription,
   PriceProvider,
 } from '@polymarket/bindings/subscriptions';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,6 +39,7 @@ class TestWebSocket extends EventTarget {
   ) => string | undefined = () => undefined;
   readyState = 0;
   readonly operations: SentOperation[] = [];
+  readonly frames: Record<string, unknown>[] = [];
 
   constructor() {
     super();
@@ -49,7 +51,9 @@ class TestWebSocket extends EventTarget {
   }
 
   send(data: string): void {
-    const { op, rid, subscriptions } = JSON.parse(data) as SentOperation;
+    const frame = JSON.parse(data) as SentOperation & Record<string, unknown>;
+    const { op, rid, subscriptions } = frame;
+    this.frames.push(frame);
     this.operations.push({ op, rid, subscriptions });
     if (op === 'auth' || op === 'ping') {
       this.receive({ op: op === 'auth' ? 'authed' : 'pong', rid });
@@ -85,6 +89,102 @@ class TestWebSocket extends EventTarget {
     this.dispatchEvent(new Event('close'));
   }
 }
+
+describe('price authentication', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    TestWebSocket.connections = [];
+    TestWebSocket.servedProvider = () => undefined;
+    vi.stubGlobal('WebSocket', TestWebSocket);
+  });
+
+  const credentials = ApiKeyCredsSchema.parse({
+    apiKey: 'test-key',
+    secret: 'test-secret',
+    passphrase: 'test-passphrase',
+  });
+
+  it('authenticates each connection with its subscriptions Chainlink providerApiKey', async () => {
+    const pool = new SocketPool({
+      url: 'wss://example.test/prices',
+      credentials,
+    });
+    const pending = Promise.all([
+      pool.subscribe({ topic: 'prices.equity', symbol: 'aapl' }),
+      pool.subscribe({
+        topic: 'prices.equity',
+        symbol: 'nvda',
+        provider: PriceProvider.Chainlink,
+        providerApiKey: 'cl-key-0001',
+      }),
+      pool.subscribe({
+        topic: 'prices.equity',
+        symbol: 'msft',
+        provider: PriceProvider.Chainlink,
+        providerApiKey: 'cl-key-0001',
+      }),
+    ]);
+    await vi.advanceTimersByTimeAsync(250);
+    const handles = await pending;
+    // An accepted filter is not shared across provider API keys.
+    const rekeyed = pool.subscribe({
+      topic: 'prices.equity',
+      symbol: 'nvda',
+      provider: PriceProvider.Chainlink,
+      providerApiKey: 'cl-key-0002',
+    });
+    await vi.advanceTimersByTimeAsync(250);
+    handles.push(await rekeyed);
+    // Only Chainlink subscriptions send the key.
+    const pyth = pool.subscribe({
+      topic: 'prices.equity',
+      symbol: 'tsla',
+      provider: PriceProvider.Pyth,
+      providerApiKey: 'pyth-key-0001',
+    });
+    await vi.advanceTimersByTimeAsync(250);
+    handles.push(await pyth);
+    const sent = TestWebSocket.connections.map((connection) => ({
+      auth: connection.frames.find((frame) => frame.op === 'auth'),
+      symbols: connection.frames
+        .filter((frame) => frame.op === 'subscribe')
+        .flatMap((frame) => frame.subscriptions as PolyboltSubscription[])
+        .map((subscription) =>
+          'symbol' in subscription.filter ? subscription.filter.symbol : '',
+        ),
+    }));
+    const auth = {
+      op: 'auth',
+      auth: {
+        apiKey: 'test-key',
+        secret: 'test-secret',
+        passphrase: 'test-passphrase',
+      },
+      rid: expect.any(String),
+    };
+    expect(sent).toEqual([
+      { auth, symbols: ['aapl'] },
+      {
+        auth: { ...auth, chainlink_api_key: 'cl-key-0001' },
+        symbols: ['nvda', 'msft'],
+      },
+      {
+        auth: { ...auth, chainlink_api_key: 'cl-key-0002' },
+        symbols: ['nvda'],
+      },
+      { auth, symbols: ['tsla'] },
+    ]);
+    expect(
+      JSON.stringify(
+        TestWebSocket.connections[1]?.frames.filter(
+          (frame) => frame.op === 'subscribe',
+        ),
+      ),
+    ).not.toContain('cl-key-0001');
+    await Promise.all(handles.map((handle) => handle.close()));
+    await pool.close();
+  });
+});
 
 describe('price channel lifecycle', () => {
   let pool: SocketPool;

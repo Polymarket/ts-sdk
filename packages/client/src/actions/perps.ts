@@ -47,7 +47,9 @@ import {
   isSameEvmAddress,
   type PrivateKey,
 } from '@polymarket/types';
-import { Address, Secp256k1, TypedData } from 'ox';
+import * as Address from 'ox/Address';
+import * as Secp256k1 from 'ox/Secp256k1';
+import * as TypedData from 'ox/TypedData';
 import { z } from 'zod';
 import { MAX_UINT256, perpsDepositCall } from '../abis';
 import type { BaseClient, BaseSecureClient } from '../clients';

@@ -1,4 +1,5 @@
 import {
+  EvmAddressSchema,
   PaginationCursorSchema,
   toPaginationCursor,
 } from '@polymarket/bindings';
@@ -11,10 +12,10 @@ import {
   ClobTradesPageSchema,
   ClosedOnlyModeSchema,
   END_CURSOR,
+  FetchOrderResponseSchema,
   type NotificationsResponse,
   NotificationsResponseSchema,
   type OpenOrder,
-  OpenOrderSchema,
   OpenOrdersPageSchema,
   OrderScoringResponseSchema,
   type OrdersScoringResponse,
@@ -27,7 +28,10 @@ import {
   UserEarningsPageSchema,
   type UserRewardsEarning,
   UserRewardsEarningsPageSchema,
+  type WalletOpenOrder,
+  WalletOpenOrdersPageSchema,
 } from '@polymarket/bindings/clob';
+import { WalletType } from '@polymarket/bindings/gamma';
 import { z } from 'zod';
 import type { BaseSecureClient } from '../clients';
 import {
@@ -99,24 +103,41 @@ const ListOpenOrdersRequestFieldsSchema = z.object({
 
 const ListOpenOrdersRequestSchema = optionalExchangeAssetRequestSchema(
   ListOpenOrdersRequestFieldsSchema.shape,
-).default({});
+)
+  .refine(
+    (request) =>
+      (request.assetId === undefined && request.tokenId === undefined) ||
+      (request.market !== undefined && request.market.trim().length > 0),
+    {
+      path: ['market'],
+      message: 'market is required when filtering by assetId or tokenId',
+    },
+  )
+  .default({});
 
 export type ListOpenOrdersRequest =
   | {
-      /** Identifier for a CTF token or Polymarket V2 position. */
-      assetId?: string;
+      assetId?: never;
       tokenId?: never;
       cursor?: string;
       id?: string;
       market?: string;
     }
   | {
-      assetId?: never;
-      /** @deprecated Use `assetId`. */
-      tokenId?: string;
+      /** Identifier for a CTF token or Polymarket V2 position. Requires `market`. */
+      assetId: string;
+      tokenId?: never;
       cursor?: string;
       id?: string;
-      market?: string;
+      market: string;
+    }
+  | {
+      assetId?: never;
+      /** @deprecated Use `assetId`. Requires `market`. */
+      tokenId: string;
+      cursor?: string;
+      id?: string;
+      market: string;
     };
 export type ListOpenOrdersError =
   | RequestAbortedError
@@ -137,7 +158,10 @@ export const ListOpenOrdersError = makeErrorGuard(
 );
 
 /**
- * Lists open orders for the authenticated account across all pages.
+ * Lists open orders placed with this client's credentials across all pages.
+ * On a Deposit Wallet, use {@link listWalletOpenOrders} to include orders
+ * placed by the owner and its session keys.
+ * Supply the market condition ID in `market` when filtering by `assetId` or `tokenId`.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -208,6 +232,98 @@ export function listOpenOrders(
   );
 }
 
+/** Filters for open orders across the authenticated Deposit Wallet. */
+export type ListWalletOpenOrdersRequest = {
+  assetId?: string;
+  market?: string;
+  /**
+   * Restrict results to orders placed by these signers: the wallet owner or
+   * its session keys. Accepts 1 to 50 addresses. Omit to include every signer.
+   */
+  signerAddresses?: string[];
+  cursor?: string;
+};
+
+const ListWalletOpenOrdersRequestSchema = z
+  .object({
+    assetId: z.string().optional(),
+    market: z.string().optional(),
+    signerAddresses: z.array(EvmAddressSchema).min(1).max(50).optional(),
+    cursor: PaginationCursorSchema.optional(),
+  })
+  .default({});
+
+export type ListWalletOpenOrdersError =
+  | RequestAbortedError
+  | RateLimitError
+  | RequestRejectedError
+  | SigningError
+  | TransportError
+  | UnexpectedResponseError
+  | UserInputError;
+export const ListWalletOpenOrdersError = makeErrorGuard(
+  RequestAbortedError,
+  RateLimitError,
+  RequestRejectedError,
+  SigningError,
+  TransportError,
+  UnexpectedResponseError,
+  UserInputError,
+);
+
+/**
+ * Lists open orders across the Deposit Wallet, including other signers' orders.
+ * Owners and non-revoked session signers can read this collection.
+ * Pages can be empty while more results remain; iteration follows the cursor.
+ * @throws {@link ListWalletOpenOrdersError} Thrown on failure.
+ * @example
+ * ```ts
+ * for await (const page of listWalletOpenOrders(client, { signerAddresses: [sessionAddress] })) {
+ *   for (const order of page.items) console.log(order.id, order.signerAddress);
+ * }
+ * ```
+ */
+export function listWalletOpenOrders(
+  client: BaseSecureClient,
+  request?: ListWalletOpenOrdersRequest,
+  options: RequestOptions = {},
+): Paginated<WalletOpenOrder[]> {
+  if (client.account.walletType !== WalletType.DEPOSIT_WALLET) {
+    throw new UserInputError('Wallet-wide orders require a Deposit Wallet.');
+  }
+  const params = parseUserInput(request, ListWalletOpenOrdersRequestSchema);
+  const requestOptions = parseRequestOptions(options);
+  return paginate(
+    (cursor) =>
+      client.secureClob
+        .get('/data/wallet-open-orders', {
+          ...requestOptions,
+          schema: WalletOpenOrdersPageSchema,
+          params: toSearchParams(
+            {
+              assetId: params.assetId,
+              market: params.market,
+              signerAddresses: params.signerAddresses?.join(','),
+              cursor,
+            },
+            snakeCase({
+              assetId: 'asset_id',
+              signerAddresses: 'session_keys',
+            }),
+          ),
+        })
+        .then((response) => ({
+          items: response.data,
+          hasMore: response.nextCursor !== '',
+          nextCursor:
+            response.nextCursor === ''
+              ? undefined
+              : toPaginationCursor(response.nextCursor),
+        })),
+    params.cursor,
+  );
+}
+
 const FetchOrderRequestSchema = z.object({
   orderId: z.string(),
 });
@@ -232,12 +348,14 @@ export const FetchOrderError = makeErrorGuard(
 );
 
 /**
- * Fetches a single order for the authenticated account.
+ * Fetches a single order for the authenticated account, in any status.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
  *
  * @throws {@link FetchOrderError}
+ * Throws `RequestRejectedError` with status `404` when the authenticated account has
+ * no order with that ID, including when the order belongs to another account.
  *
  * @example
  * ```ts
@@ -254,10 +372,18 @@ export async function fetchOrder(
   const requestOptions = parseRequestOptions(options);
   const params = parseUserInput(request, FetchOrderRequestSchema);
 
-  return client.secureClob.get(`/data/order/${params.orderId}`, {
+  const order = await client.secureClob.get(`/data/order/${params.orderId}`, {
     ...requestOptions,
-    schema: OpenOrderSchema,
+    schema: FetchOrderResponseSchema,
   });
+
+  if (order === null) {
+    throw new RequestRejectedError(`Order ${params.orderId} not found`, {
+      status: 404,
+    });
+  }
+
+  return order;
 }
 
 const ListAccountTradesRequestFields = {

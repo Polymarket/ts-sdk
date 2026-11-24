@@ -17,29 +17,35 @@ import type { Prettify } from '@polymarket/types';
 import {
   type DropNotificationsRequest,
   dropNotifications,
-  type FetchPortfolioValueRequest,
+  fetchClosedOnlyMode,
+  fetchNotifications,
+  type ListAccountTradesRequest,
+  listAccountTrades,
+} from '../actions/account';
+import {
+  type ListActivityRequest,
+  type ListComboActivityRequest,
+  listActivity,
+  listComboActivity,
+} from '../actions/activity';
+import {
   type FetchTraderLeaderboardStandingRequest,
+  fetchTraderLeaderboardStanding,
+} from '../actions/leaderboards';
+import {
+  type FetchPortfolioValueRequest,
   type FetchUserPnlRequest,
   type FetchUserStatsRequest,
   type FetchUserVolumeRequest,
-  fetchClosedOnlyMode,
-  fetchNotifications,
   fetchPortfolioValue,
-  fetchTraderLeaderboardStanding,
   fetchUserPnl,
   fetchUserStats,
   fetchUserVolume,
-  type ListAccountTradesRequest,
-  type ListActivityRequest,
-  type ListComboActivityRequest,
   type ListComboPositionsRequest,
   type ListPositionsRequest,
-  listAccountTrades,
-  listActivity,
-  listComboActivity,
   listComboPositions,
   listPositions,
-} from '../actions';
+} from '../actions/portfolio';
 import type {
   BaseClient,
   BasePublicClient,
@@ -289,6 +295,11 @@ export type PublicAccountActions = Prettify<{
    * `isCombo` before using market-only metadata; a basket's outcome names its
    * token side, not a selected leg.
    *
+   * Rows with a type this SDK version does not list yet carry only the shared
+   * account fields and an `OpaqueActivityType`, so switches over `type` need a
+   * `default` branch. `activity.type` is not assignable to `string`. Read
+   * the served type with `String(activity.type)`.
+   *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
    * serves the most recent three years; `window: 'full'` requests the complete
@@ -511,6 +522,11 @@ export type SecureAccountActions = Prettify<{
    *
    * Defaults to the authenticated account's wallet when `user` is omitted.
    *
+   * Rows with a type this SDK version does not list yet carry only the shared
+   * account fields and an `OpaqueActivityType`, so switches over `type` need a
+   * `default` branch. `activity.type` is not assignable to `string`. Read
+   * the served type with `String(activity.type)`.
+   *
    * Every activity type is included by default, including deposits and
    * withdrawals; use the `type` filter to narrow results. An omitted `window`
    * serves the most recent three years; `window: 'full'` requests the complete
@@ -715,34 +731,34 @@ export function accountActions(
   };
 }
 
-// Error unions and runtime `isError` guards for every action bound above.
-// Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on PublicAccountActions / SecureAccountActions.
 export {
   DropNotificationsError,
   FetchClosedOnlyModeError,
   FetchNotificationsError,
-  FetchPortfolioValueError,
-  FetchTraderLeaderboardStandingError,
-  FetchUserPnlError,
-  FetchUserStatsError,
-  FetchUserVolumeError,
   ListAccountTradesError,
-  ListActivityError,
-  ListComboActivityError,
-  ListComboPositionsError,
-  ListPositionsError,
-} from '../actions';
+} from '../actions/account';
 export {
   ComboActivityType,
+  ListActivityError,
+  ListComboActivityError,
   SortDirection,
   TipSide,
   TradeFilterType,
 } from '../actions/activity';
+export { FetchTraderLeaderboardStandingError } from '../actions/leaderboards';
 export type { ComboPositionStatusFilter } from '../actions/portfolio';
+// Error unions and runtime `isError` guards for every action bound above.
+// Surfaced at the root entry point through `export * from './decorators'`.
+// Keep this list in sync with the methods on PublicAccountActions / SecureAccountActions.
 export {
   ComboPositionSortBy,
   ComboPositionStatus,
+  FetchPortfolioValueError,
+  FetchUserPnlError,
+  FetchUserStatsError,
+  FetchUserVolumeError,
+  ListComboPositionsError,
+  ListPositionsError,
   PositionFilterType,
   PositionSortBy,
   PositionStatus,

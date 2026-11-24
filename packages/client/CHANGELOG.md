@@ -1,5 +1,107 @@
 # @polymarket/client
 
+## 0.20.1
+
+### Patch Changes
+
+- d53c77b: `fetchOrder` now throws `RequestRejectedError` with status `404` when the order is not found, instead of `UnexpectedResponseError`.
+- Updated dependencies [d53c77b]
+  - @polymarket/bindings@0.18.2
+
+## 0.20.0
+
+### Minor Changes
+
+- 39d458b: Prepare for the December 14 order-query changes. Open-order queries filtered by `assetId` or the deprecated `tokenId` alias now require a nonblank market condition ID in `market`; invalid queries throw `UserInputError` before sending a request. Unfiltered and market-only queries remain supported.
+
+  Accept order responses without the deprecated `associate_trades` field, defaulting `associateTrades` to an empty array while preserving legacy values. Track cumulative fills with `sizeMatched` or individual fills with `listAccountTrades()`, matching `takerOrderId` or `makerOrders[].orderId` to the order ID. An empty `associateTrades` array does not mean an order has no fills.
+
+### Patch Changes
+
+- Updated dependencies [39d458b]
+  - @polymarket/bindings@0.18.1
+
+## 0.19.0
+
+### Minor Changes
+
+- 0a59fc2: Add the optional `providerApiKey` price subscription option, used when `provider` is `PriceProvider.Chainlink`.
+
+### Patch Changes
+
+- Updated dependencies [0a59fc2]
+  - @polymarket/bindings@0.18.0
+
+## 0.18.0
+
+### Minor Changes
+
+- cec0d2f: Add `listWalletOpenOrders` to list open orders across a Deposit Wallet, including orders placed by its session keys. Each order reports the `signerAddress` that placed it and a nullable `owner`. Filter by `market`, `assetId`, or 1 to 50 `signerAddresses`.
+
+  Add `cancelWalletOrders({ orderIds })` and `cancelAllWalletOrders()` so the Deposit Wallet owner can cancel orders placed by any of its signers. `listOpenOrders`, `cancelOrder`, `cancelOrders`, and `cancelAll` still cover only orders placed with the client's own credentials.
+
+  Allow session-key authorization with `relayerApiKey` as well as `builderApiKey` and `remoteBuilderSigning`. Account credentials alone remain insufficient for session-key authorization and revocation.
+
+### Patch Changes
+
+- Updated dependencies [cec0d2f]
+  - @polymarket/bindings@0.17.0
+
+## 0.17.0
+
+### Minor Changes
+
+- 6b9f4e4: Add the range-event activity types `DIRECTIONAL_SPLIT`, `DIRECTIONAL_MERGE`, `THRESHOLD_COMPOSE` and `THRESHOLD_DECOMPOSE` to `ActivityType` and `Activity`, and accept them in the `listActivity` `type` filter. Threshold rows always carry the line's `conditionId` and report the moved line position as `shares`, since no collateral moves. Titles, slugs and outcome labels are optional on all four types.
+
+  Activity rows with a type this SDK version does not list no longer fail the page. They carry only the shared account fields, and their `type` is an `OpaqueActivityType` that never matches an `ActivityType` member.
+
+  This is a breaking type change, and code that reads `activity.type` may need a migration.
+
+  Comparing `activity.type` with `ActivityType` members still narrows each row, but an exhaustive switch over `activity.type` needs cases for the new types and a `default` branch:
+
+  ```ts
+  switch (activity.type) {
+    case ActivityType.TIP:
+      console.log(activity.side);
+      break;
+    default:
+      console.log(activity.wallet, activity.transactionHash);
+  }
+  ```
+
+  `activity.type` is no longer assignable to `string` and can no longer index a record. Read the served type with `String(activity.type)`:
+
+  ```ts
+  const labels: Partial<Record<string, string>> = {
+    [ActivityType.TRADE]: "Trade",
+    [ActivityType.TIP]: "Tip",
+  };
+
+  // Before
+  const type: string = activity.type;
+  const label = labels[activity.type];
+
+  // After
+  const type = String(activity.type);
+  const label = labels[type] ?? "Other";
+  ```
+
+### Patch Changes
+
+- 458f5cd: Support Binance as an opt-in price provider and known price source. Binance serves USDT spot closes under canonical USD symbols on crypto spot subscriptions; omitted providers keep the existing default.
+- 1ba55c0: Reduce retained heap after importing `@polymarket/client` by about 20%.
+  Require `zod@^4.6.7` to address GHSA-mrhx-c7xc-m3w5.
+
+  Input that exceeds a collection limit, such as more than 15 orders in
+  `postOrders`, now fails on the limit alone, without per-item errors. When
+  invalid input is closest to one accepted shape, `UserInputError` now lists
+  only that shape's issues.
+
+- Updated dependencies [6b9f4e4]
+- Updated dependencies [458f5cd]
+- Updated dependencies [1ba55c0]
+  - @polymarket/bindings@0.16.0
+
 ## 0.16.0
 
 ### Minor Changes

@@ -6,13 +6,13 @@ import type {
   RfqSession,
   WaitForComboFillParams,
   WaitForComboFillResult,
-} from '../actions';
+} from '../actions/rfq';
 import {
   acceptComboQuote,
   openRfqSession,
   requestComboQuote,
   waitForComboFill,
-} from '../actions';
+} from '../actions/rfq';
 import type { BaseSecureClient } from '../clients';
 
 export type {

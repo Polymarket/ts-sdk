@@ -23,7 +23,7 @@ import {
 } from '../shared';
 import {
   ActivityType,
-  ActivityTypeSchema,
+  type OpaqueActivityType,
   type TipSide,
   TipSideSchema,
 } from './common';
@@ -312,6 +312,98 @@ export type TipActivity = ActivityBase & {
   side: TipSide | null;
 };
 
+/**
+ * Collateral plus the range-event buckets between two lines split into ABOVE
+ * the lower line and BELOW the higher one. The row belongs to the whole event,
+ * not one market.
+ */
+export type DirectionalSplitActivity = ActivityBase & {
+  /** A range-event directional split. */
+  type: 'DIRECTIONAL_SPLIT';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
+};
+
+/**
+ * ABOVE and BELOW line positions merged back into collateral plus the
+ * range-event buckets between the two lines. The row belongs to the whole
+ * event, not one market.
+ */
+export type DirectionalMergeActivity = ActivityBase & {
+  /** A range-event directional merge. */
+  type: 'DIRECTIONAL_MERGE';
+  /** The collateral amount in USD. */
+  amount: DecimalString;
+  /** Human-readable title of the range event, when available. */
+  title?: string;
+  /** Icon URL for the range event, when available. */
+  icon: string | null;
+  /** URL slug of the range event, when available. */
+  eventSlug?: string;
+};
+
+/**
+ * Range-event buckets composed into one line position. No collateral moves, so
+ * the row reports shares instead of a USD amount.
+ */
+export type ThresholdComposeActivity = ActivityBase & {
+  /** A range-event threshold compose. */
+  type: 'THRESHOLD_COMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of line-position shares composed. */
+  shares: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
+};
+
+/**
+ * A range-event line position decomposed back into buckets. No collateral
+ * moves, so the row reports shares instead of a USD amount.
+ */
+export type ThresholdDecomposeActivity = ActivityBase & {
+  /** A range-event threshold decompose. */
+  type: 'THRESHOLD_DECOMPOSE';
+  /** Condition id of the line's market. */
+  conditionId: ConditionId;
+  /** Number of line-position shares decomposed. */
+  shares: DecimalString;
+  /** Human-readable title of the line's market, when available. */
+  title?: string;
+  /** URL slug of the line's market, when available. */
+  slug?: string;
+  /** Icon URL for the line's market, when available. */
+  icon: string | null;
+  /** URL slug of the range event containing the line, when available. */
+  eventSlug?: string;
+  /** Label of the line side, when available. */
+  outcome?: string;
+  /** Index of the line side in the market's outcome list, when known. */
+  outcomeIndex?: number;
+};
+
+/**
+ * Wallet account history. New activity types can appear before this SDK
+ * version lists them in {@link ActivityType}. Those rows carry only the shared
+ * account fields and an {@link OpaqueActivityType}, so a switch over `type`
+ * needs a `default` branch.
+ */
 export type Activity =
   | TradeActivity
   | SplitActivity
@@ -326,7 +418,15 @@ export type Activity =
   | DepositActivity
   | WithdrawalActivity
   | TakerRebateActivity
-  | TipActivity;
+  | TipActivity
+  | DirectionalSplitActivity
+  | DirectionalMergeActivity
+  | ThresholdComposeActivity
+  | ThresholdDecomposeActivity
+  | (ActivityBase & {
+      /** A type this SDK version does not list in {@link ActivityType}. */
+      type: OpaqueActivityType;
+    });
 
 type ComboActivityBase = {
   /** Stable row id derived from the transaction hash and log index. */
@@ -505,7 +605,10 @@ const RawActivitySchema = z
       (value) => (value === '' ? undefined : value),
       ConditionIdSchema.optional(),
     ),
-    type: ActivityTypeSchema,
+    // New activity types ship independently of SDK releases. Rows with types
+    // missing from ActivityType parse with an opaque type instead of failing
+    // the page.
+    type: z.string().min(1),
     size: DecimalishSchema,
     usdc_size: DecimalishSchema,
     transaction_hash: TxHashSchema,
@@ -677,6 +780,37 @@ function normalizeActivity(activity: RawActivity): Activity {
           activity.side === undefined
             ? null
             : TipSideSchema.parse(activity.side),
+      };
+    case ActivityType.DIRECTIONAL_SPLIT:
+    case ActivityType.DIRECTIONAL_MERGE:
+      return {
+        ...base,
+        type: activity.type,
+        amount: activity.usdc_size,
+        title: activity.title,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+      };
+    case ActivityType.THRESHOLD_COMPOSE:
+    case ActivityType.THRESHOLD_DECOMPOSE:
+      return {
+        ...base,
+        type: activity.type,
+        conditionId: expectPresent(activity.condition_id, 'condition_id'),
+        shares: activity.size,
+        title: activity.title,
+        slug: activity.slug,
+        icon: activity.icon ?? null,
+        eventSlug: activity.event_slug,
+        outcome: activity.outcome,
+        outcomeIndex: activity.outcome_index,
+      };
+    default:
+      return {
+        ...base,
+        // The served string stays at runtime; the opaque type keeps it from
+        // overlapping the listed variants.
+        type: activity.type as unknown as OpaqueActivityType,
       };
   }
 }

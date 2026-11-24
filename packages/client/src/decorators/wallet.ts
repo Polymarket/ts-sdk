@@ -1,37 +1,45 @@
 import {
   approveErc20,
   approveErc1155ForAll,
-  type CollateralReturnPlanResponse,
-  type ConvertWorkflow,
-  convert,
-  type ExecuteCollateralReturnPlanRequest,
-  executeCollateralReturnPlan,
   type FetchTradingApprovalsStateRequest,
   fetchTradingApprovalsState,
+  type PrepareErc20ApprovalRequest,
+  type PrepareErc1155ApprovalForAllRequest,
+  setupTradingApprovals,
+  type TradingApprovalsState,
+} from '../actions/approvals';
+import {
+  type CollateralReturnPlanResponse,
+  type ExecuteCollateralReturnPlanRequest,
+  executeCollateralReturnPlan,
+  planCollateralReturn,
+} from '../actions/collateral-return';
+import {
+  type ConvertWorkflow,
+  convert,
   type HorizontalMergeWorkflow,
   type HorizontalSplitWorkflow,
   horizontalMerge,
   horizontalSplit,
-  mergePositions,
   type PrepareConvertRequest,
-  type PrepareErc20ApprovalRequest,
-  type PrepareErc20TransferRequest,
-  type PrepareErc1155ApprovalForAllRequest,
   type PrepareHorizontalMergeRequest,
   type PrepareHorizontalSplitRequest,
-  type PrepareMergePositionsRequest,
-  type PrepareRedeemPositionsRequest,
-  type PrepareSplitPositionRequest,
-  planCollateralReturn,
   prepareConvert,
   prepareHorizontalMerge,
   prepareHorizontalSplit,
+} from '../actions/neg-risk';
+import {
+  mergePositions,
+  type PrepareMergePositionsRequest,
+  type PrepareRedeemPositionsRequest,
+  type PrepareSplitPositionRequest,
   redeemPositions,
-  setupTradingApprovals,
   splitPosition,
-  type TradingApprovalsState,
+} from '../actions/positions';
+import {
+  type PrepareErc20TransferRequest,
   transferErc20,
-} from '../actions';
+} from '../actions/transfers';
 import type {
   BaseClient,
   BasePublicClient,
@@ -427,6 +435,22 @@ export function walletActions(
   };
 }
 
+export type {
+  Erc20TradingApproval,
+  Erc1155TradingApproval,
+  FetchTradingApprovalsStateRequest,
+  TradingApprovalRequirements,
+  TradingApprovalsState,
+} from '../actions/approvals';
+// Error unions and runtime `isError` guards for every action bound above.
+// Surfaced at the root entry point through `export * from './decorators'`.
+// Keep this list in sync with the methods on SecureWalletActions.
+export {
+  ApproveErc20Error,
+  ApproveErc1155ForAllError,
+  FetchTradingApprovalsStateError,
+  SetupTradingApprovalsError,
+} from '../actions/approvals';
 // Public collateral-return model types surfaced alongside the bound methods.
 export type {
   CollateralReturnOperation,
@@ -435,39 +459,33 @@ export type {
   CollateralReturnPositionAmount,
   CollateralReturnPositionSummary,
   CollateralReturnRouterCall,
-  ConvertWorkflow,
-  Erc20TradingApproval,
-  Erc1155TradingApproval,
   ExecuteCollateralReturnPlanRequest,
-  FetchTradingApprovalsStateRequest,
+} from '../actions/collateral-return';
+export {
+  CollateralReturnKnownOperationKind,
+  ExecuteCollateralReturnPlanError,
+  PlanCollateralReturnError,
+} from '../actions/collateral-return';
+export type {
+  ConvertWorkflow,
   HorizontalMergeWorkflow,
   HorizontalSplitWorkflow,
   NegRiskWorkflow,
   PrepareConvertRequest,
   PrepareHorizontalMergeRequest,
   PrepareHorizontalSplitRequest,
-  TradingApprovalRequirements,
-  TradingApprovalsState,
-} from '../actions';
-// Error unions and runtime `isError` guards for every action bound above.
-// Surfaced at the root entry point through `export * from './decorators'`.
-// Keep this list in sync with the methods on SecureWalletActions.
+} from '../actions/neg-risk';
 export {
-  ApproveErc20Error,
-  ApproveErc1155ForAllError,
-  CollateralReturnKnownOperationKind,
   ConvertError,
-  ExecuteCollateralReturnPlanError,
-  FetchTradingApprovalsStateError,
   HorizontalMergeError,
   HorizontalSplitError,
-  MergePositionsError,
-  PlanCollateralReturnError,
   PrepareConvertError,
   PrepareHorizontalMergeError,
   PrepareHorizontalSplitError,
+} from '../actions/neg-risk';
+export {
+  MergePositionsError,
   RedeemPositionsError,
-  SetupTradingApprovalsError,
   SplitPositionError,
-  TransferErc20Error,
-} from '../actions';
+} from '../actions/positions';
+export { TransferErc20Error } from '../actions/transfers';

@@ -23,47 +23,43 @@ enum PriceEventType {
   Update = 'update',
   Subscribe = 'subscribe',
 }
+const OnSubscribedSchema = z
+  .custom<
+    (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
+  >((value) => typeof value === 'function')
+  .optional();
+
+/** Provider fields; `providerApiKey` is only used with the Chainlink provider. */
+const ProviderShape = {
+  provider: z.enum(PriceProvider).optional(),
+  providerApiKey: z.string().optional(),
+};
+
 const PriceSubscriptionSchema = z.discriminatedUnion('topic', [
   z.strictObject({
     topic: z.literal('prices.crypto'),
     symbols: z.array(CryptoSymbolSchema).min(1),
-    provider: z.enum(PriceProvider).optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    ...ProviderShape,
+    onSubscribed: OnSubscribedSchema,
   }),
   z.strictObject({
     topic: z.literal('prices.crypto.twap'),
     symbols: z.array(CryptoSymbolSchema).min(1),
-    provider: z.enum(PriceProvider).optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    ...ProviderShape,
+    onSubscribed: OnSubscribedSchema,
   }),
   z.strictObject({
     topic: z.literal('prices.equity'),
     symbol: SymbolSchema,
     types: z.array(z.enum(PriceEventType)).optional(),
-    provider: z.enum(PriceProvider).optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    ...ProviderShape,
+    onSubscribed: OnSubscribedSchema,
   }),
   z.strictObject({
     topic: z.literal('prices.equity.twap'),
     symbol: SymbolSchema,
-    provider: z.enum(PriceProvider).optional(),
-    onSubscribed: z
-      .custom<
-        (confirmation: PriceSubscriptionConfirmation) => void | Promise<void>
-      >((value) => typeof value === 'function')
-      .optional(),
+    ...ProviderShape,
+    onSubscribed: OnSubscribedSchema,
   }),
 ]);
 

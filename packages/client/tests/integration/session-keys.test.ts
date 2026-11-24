@@ -22,22 +22,19 @@ import { findHighVolumeLowPriceMarket } from './markets';
 const SESSION_KEY_LIFETIME_SECONDS = 4_315 * 60 * 60;
 
 describe('Session keys', { timeout: 600_000 }, () => {
-  it('requires builder authentication before authorizing a session key', async ({
+  it('accepts relayer authentication for session-key authorization', async ({
     secureClientWithDepositWallet,
   }) => {
-    const sessionAddress = await privateKey(generatePrivateKey()).getAddress();
-
     expect(secureClientWithDepositWallet.hasBuilderApiKey).toBe(false);
+    // Past the auth guard, so input validation is what rejects.
     await expect(
       secureClientWithDepositWallet.authorizeSessionKey({
-        address: sessionAddress,
+        address: '0x0000000000000000000000000000000000000000',
       }),
-    ).rejects.toThrow(
-      'Session-key authorization requires builder API-key authentication.',
-    );
+    ).rejects.toThrow('Session key address must not be the zero address.');
   });
 
-  it('requires gasless authentication before revoking a session key', async ({
+  it('requires gasless API-key authentication for session-key mutations', async ({
     depositWalletAddress,
     depositWalletSigner,
     environment,
@@ -51,10 +48,11 @@ describe('Session keys', { timeout: 600_000 }, () => {
 
     expect(client.supportsGasless).toBe(false);
     await expect(
+      client.authorizeSessionKey({ address: sessionAddress }),
+    ).rejects.toThrow('Session-key authorization requires apiKey');
+    await expect(
       client.revokeSessionKey({ address: sessionAddress }),
-    ).rejects.toThrow(
-      'Session-key revocation requires API-key authentication that supports gasless transactions.',
-    );
+    ).rejects.toThrow('Session-key revocation requires apiKey');
   });
 
   it('authorizes, lists, uses, and revokes a default-scoped session key', async ({

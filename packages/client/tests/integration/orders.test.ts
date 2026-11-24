@@ -576,6 +576,50 @@ describe('Orders', { timeout: 60_000 }, () => {
     });
   });
 
+  describe('fetchOrder', () => {
+    it('fetches an owned order while live and after cancellation', async ({
+      annotate,
+      secureClientWithDepositWallet,
+    }) => {
+      annotate(`Market ID: ${market.id}`);
+
+      const { orderId } = await createRestingLimitOrder(
+        secureClientWithDepositWallet,
+        market,
+      );
+
+      try {
+        const liveOrder = await secureClientWithDepositWallet.fetchOrder({
+          orderId,
+        });
+
+        expect(liveOrder).toEqual(
+          expect.objectContaining({ id: orderId, status: 'LIVE' }),
+        );
+      } finally {
+        await secureClientWithDepositWallet.cancelOrder({ orderId });
+      }
+
+      const canceledOrder = await secureClientWithDepositWallet.fetchOrder({
+        orderId,
+      });
+
+      expect(canceledOrder).toEqual(
+        expect.objectContaining({ id: orderId, status: 'CANCELED' }),
+      );
+    });
+
+    it('rejects with status 404 for an order the account does not have', async ({
+      secureClientWithDepositWallet,
+    }) => {
+      await expect(
+        secureClientWithDepositWallet.fetchOrder({
+          orderId: `0x${'ab'.repeat(32)}`,
+        }),
+      ).rejects.toMatchObject({ name: 'RequestRejectedError', status: 404 });
+    });
+  });
+
   describe('postOrders', () => {
     it('posts multiple resting limit orders', async ({
       annotate,

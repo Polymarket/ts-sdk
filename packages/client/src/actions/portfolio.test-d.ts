@@ -6,9 +6,11 @@ import type {
   ConditionId,
   DecimalString,
   MergeActivity,
+  OpaqueActivityType,
   PublicClient,
   RedeemActivity,
   SplitActivity,
+  TipSide,
 } from '../index';
 import { ActivityType } from '../index';
 import type { ListComboPositionsRequest } from './portfolio';
@@ -86,6 +88,59 @@ describe('public activity result types', () => {
         expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
         expectTypeOf(activity.outcomeIndex).toEqualTypeOf<number | undefined>();
       }
+      if (
+        activity.type === ActivityType.DIRECTIONAL_SPLIT ||
+        activity.type === ActivityType.DIRECTIONAL_MERGE
+      ) {
+        expectTypeOf(activity.eventSlug).toEqualTypeOf<string | undefined>();
+        // @ts-expect-error A range-event row has no single market.
+        void activity.conditionId;
+      }
+      if (
+        activity.type === ActivityType.THRESHOLD_COMPOSE ||
+        activity.type === ActivityType.THRESHOLD_DECOMPOSE
+      ) {
+        expectTypeOf(activity.conditionId).toEqualTypeOf<ConditionId>();
+        expectTypeOf(activity.shares).toEqualTypeOf<DecimalString>();
+        expectTypeOf(activity.outcome).toEqualTypeOf<string | undefined>();
+        // @ts-expect-error No collateral moves, so there is no USD amount.
+        void activity.amount;
+      }
+      switch (activity.type) {
+        case ActivityType.TIP:
+          expectTypeOf(activity.side).toEqualTypeOf<TipSide | null>();
+          break;
+        case ActivityType.TRADE:
+        case ActivityType.SPLIT:
+        case ActivityType.MERGE:
+        case ActivityType.REDEEM:
+        case ActivityType.REWARD:
+        case ActivityType.CONVERSION:
+        case ActivityType.MIGRATION:
+        case ActivityType.MAKER_REBATE:
+        case ActivityType.REFERRAL_REWARD:
+        case ActivityType.YIELD:
+        case ActivityType.DEPOSIT:
+        case ActivityType.WITHDRAWAL:
+        case ActivityType.TAKER_REBATE:
+        case ActivityType.DIRECTIONAL_SPLIT:
+        case ActivityType.DIRECTIONAL_MERGE:
+        case ActivityType.THRESHOLD_COMPOSE:
+        case ActivityType.THRESHOLD_DECOMPOSE:
+          break;
+        default: {
+          // Every listed type is handled above, yet rows with types this
+          // version does not list still reach here with only shared fields.
+          expectTypeOf(activity).toEqualTypeOf<
+            ActivityBase & { type: OpaqueActivityType }
+          >();
+          // @ts-expect-error The activity union stays open to unlisted types.
+          const exhaustive: never = activity;
+          void exhaustive;
+        }
+      }
+      // @ts-expect-error An unlisted type cannot be matched by its string.
+      void (activity.type === 'NEW_ACTIVITY_TYPE');
     }
   });
 });

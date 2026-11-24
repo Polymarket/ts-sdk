@@ -34,7 +34,7 @@ describe('validation', () => {
       `);
     });
 
-    it('makes union issues easier to scan', () => {
+    it('formats the selected union branch when other branches cannot match', () => {
       const schema = z.union([
         z.strictObject({ id: z.string().uuid() }),
         z.strictObject({ slug: z.string().min(1) }),
@@ -53,10 +53,32 @@ describe('validation', () => {
 
       expect(formatInputZodError(result.error)).toMatchInlineSnapshot(`
         "Fix the following issues:
+        - Unrecognized key: "id"
+        - slug: Too small: expected string to have >=1 characters"
+      `);
+    });
+
+    it('makes all union branches easier to scan when none can match', () => {
+      const schema = z.union([
+        z.strictObject({ id: z.string().uuid() }),
+        z.strictObject({ slug: z.string().min(1) }),
+      ]);
+
+      const result = schema.safeParse({ id: 42, slug: 42 });
+
+      expect(result.success).toBe(false);
+
+      if (result.success) {
+        return;
+      }
+
+      expect(result.error.issues[0]?.code).toBe('invalid_union');
+      expect(formatInputZodError(result.error)).toMatchInlineSnapshot(`
+        "Fix the following issues:
         - Unrecognized key: "slug"
         - Unrecognized key: "id"
         - id: Invalid input: expected string, received number
-        - slug: Too small: expected string to have >=1 characters"
+        - slug: Invalid input: expected string, received number"
       `);
     });
   });

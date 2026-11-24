@@ -6,17 +6,19 @@ import type {
   TraderLeaderboardEntry,
 } from '@polymarket/bindings/data';
 import {
+  type ListBuilderTradesRequest,
+  listBuilderTrades,
+} from '../actions/builders';
+import {
   type FetchBuilderVolumeRequest,
   fetchBuilderVolume,
   type ListBiggestWinnersRequest,
   type ListBuilderLeaderboardRequest,
-  type ListBuilderTradesRequest,
   type ListTraderLeaderboardRequest,
   listBiggestWinners,
   listBuilderLeaderboard,
-  listBuilderTrades,
   listTraderLeaderboard,
-} from '../actions';
+} from '../actions/leaderboards';
 import type {
   BaseClient,
   BasePublicClient,
@@ -224,6 +226,7 @@ export function analyticsActions(client: BaseClient): AnalyticsActions {
   };
 }
 
+export { ListBuilderTradesError } from '../actions/builders';
 // Error unions and runtime `isError` guards for every action bound above.
 // Surfaced at the root entry point through `export * from './decorators'`.
 // Keep this list in sync with the methods on AnalyticsActions.
@@ -234,7 +237,6 @@ export {
   LeaderboardWindow,
   ListBiggestWinnersError,
   ListBuilderLeaderboardError,
-  ListBuilderTradesError,
   ListTraderLeaderboardError,
   TraderLeaderboardSort,
-} from '../actions';
+} from '../actions/leaderboards';

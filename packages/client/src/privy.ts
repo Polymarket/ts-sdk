@@ -10,7 +10,7 @@ import {
   type TxHash,
 } from '@polymarket/types';
 import type { AuthorizationContext, PrivyClient } from '@privy-io/node';
-import { Hex } from 'ox';
+import * as Hex from 'ox/Hex';
 import {
   type Chain,
   createPublicClient,

@@ -51,7 +51,7 @@ export {
 } from '@polymarket/bindings/perps';
 export type * from '@polymarket/bindings/relayer';
 export * from './abis';
-export { SearchSort } from './actions';
+export { SearchSort } from './actions/search';
 export type {
   RelayerApiKeyConfig,
   RemoteBuilderSigningConfig,
