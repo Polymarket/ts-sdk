@@ -236,7 +236,7 @@ describe('gateway public authentication boundary', () => {
       const path = new URL(request.url).pathname;
       paths.push(path);
       if (path === '/v1/auth/refresh') return Response.json(pair);
-      if (path === '/v1/auth/upgrade') {
+      if (path === '/v1/auth/bind') {
         expect(request.headers.get('authorization')).toBe(
           `Bearer ${pair.accessToken}`,
         );
@@ -258,7 +258,7 @@ describe('gateway public authentication boundary', () => {
       onCredentialsChanged: changed,
     });
     try {
-      expect(paths).toEqual(['/v1/auth/refresh', '/v1/auth/upgrade']);
+      expect(paths).toEqual(['/v1/auth/refresh', '/v1/auth/bind']);
       expect(client.account.wallet).toBe(address);
       expect(client.credentials).toEqual({
         accessToken: bound.accessToken,
@@ -270,6 +270,78 @@ describe('gateway public authentication boundary', () => {
       client.closeAuthenticationSession();
       await client.closeSubscriptions();
     }
+  });
+
+  it('rejects restored credentials that another client rebound to a wallet other than the requested one', async () => {
+    const depositWallet = deriveBeaconDepositWalletAddress(
+      address,
+      environment.walletDerivation,
+    );
+    const rebound = walletPair(depositWallet, 1);
+    const changed = vi.fn();
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const path = new URL(new Request(input, init).url).pathname;
+      if (path === '/v1/auth/refresh') return Response.json(rebound);
+      throw new Error(`Unexpected route: ${path}`);
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: address,
+        credentials: saved(tokens()),
+        walletSetup: false,
+        onCredentialsChanged: changed,
+      }),
+    ).rejects.toMatchObject({
+      name: 'UserInputError',
+      message: expect.stringContaining(depositWallet),
+    });
+    expect(fetch).toHaveBeenCalledOnce();
+    // The renewal itself succeeded, so the caller can still save the pair.
+    expect(changed).toHaveBeenCalledExactlyOnceWith(saved(rebound));
+  });
+
+  it('rejects a restored session that another client rebinds during the deployment lookup', async () => {
+    const depositWallet = deriveBeaconDepositWalletAddress(
+      address,
+      environment.walletDerivation,
+    );
+    const pair = walletPair(depositWallet, 0);
+    const paths: string[] = [];
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+      const path = new URL(new Request(input, init).url).pathname;
+      paths.push(path);
+      if (path === '/v1/auth/refresh')
+        // The second renewal names the wallet that another client bound.
+        return Response.json(
+          paths.length === 1 ? walletPair(depositWallet, 1) : tokens(2),
+        );
+      if (path === '/v1/wallets/deployed')
+        return paths.length === 2
+          ? Response.json({ code: 'expired_access_token' }, { status: 401 })
+          : Response.json({ deployed: true });
+      throw new Error(`Unexpected route: ${path}`);
+    });
+    await expect(
+      createSecureClient({
+        environment,
+        fetch,
+        signer: signer(),
+        wallet: depositWallet,
+        credentials: saved(pair),
+      }),
+    ).rejects.toMatchObject({
+      name: 'UserInputError',
+      message: expect.stringContaining(address),
+    });
+    expect(paths).toEqual([
+      '/v1/auth/refresh',
+      '/v1/wallets/deployed',
+      '/v1/auth/refresh',
+      '/v1/wallets/deployed',
+    ]);
   });
 
   it('rejects an ownership challenge for another signer or network before signing', async () => {

@@ -417,7 +417,7 @@ describe('authorization', () => {
       }
 
       expect(
-        headerValues(sentRequests(fetchSpy), '/v1/auth/upgrade', 'x-api-key'),
+        headerValues(sentRequests(fetchSpy), '/v1/auth/bind', 'x-api-key'),
       ).toEqual([platformKey]);
     });
 
@@ -491,7 +491,7 @@ describe('authorization', () => {
         [platformKey],
       );
       const direct = requests.filter((request) =>
-        ['/v1/auth/login', '/v1/auth/upgrade', '/v1/me/orders'].some((path) =>
+        ['/v1/auth/login', '/v1/auth/bind', '/v1/me/orders'].some((path) =>
           request.url.pathname.endsWith(path),
         ),
       );

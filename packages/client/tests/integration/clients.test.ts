@@ -276,14 +276,14 @@ describe('clients', () => {
           signer: randomEoaSigner,
           wallet: signerAddress,
         });
-        const upgrades = fetchSpy.mock.calls.filter(([input]) =>
+        const binds = fetchSpy.mock.calls.filter(([input]) =>
           new URL(
             input instanceof Request ? input.url : String(input),
-          ).pathname.endsWith('/v1/auth/upgrade'),
+          ).pathname.endsWith('/v1/auth/bind'),
         );
         vi.restoreAllMocks();
 
-        expect(upgrades).toHaveLength(0);
+        expect(binds).toHaveLength(0);
         expect(secondTab.account.wallet.toLowerCase()).toBe(
           signerAddress.toLowerCase(),
         );
@@ -577,7 +577,7 @@ describe('clients', () => {
   });
 
   describe('SecureClient.upgradeCredentials', () => {
-    it('rejects a different wallet for a bound session without a request and keeps the client usable', async ({
+    it('rebinds a bound session to another wallet and keeps the client usable', async ({
       environment,
       randomEoaSigner,
     }) => {
@@ -590,19 +590,21 @@ describe('clients', () => {
       const depositWallet = secureClient.account.wallet;
 
       try {
-        const bound = await secureClient.upgradeCredentials({
-          wallet: signerAddress,
-        });
+        await secureClient.upgradeCredentials({ wallet: signerAddress });
+        // The bind checks the wallet, not its deployment.
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        await expect(
-          secureClient.upgradeCredentials({ wallet: depositWallet }),
-        ).rejects.toThrow(UserInputError);
-        expect(fetchSpy).not.toHaveBeenCalled();
+        await secureClient.upgradeCredentials({ wallet: depositWallet });
+        const binds = sentRequests(fetchSpy).filter((request) =>
+          request.url.pathname.endsWith('/v1/auth/bind'),
+        );
         vi.restoreAllMocks();
 
-        expect(secureClient.credentials).toEqual(bound);
+        expect(binds).toHaveLength(1);
+        expect(secureClient.account.wallet.toLowerCase()).toBe(
+          depositWallet.toLowerCase(),
+        );
         expect(walletClaim(secureClient.credentials.accessToken)).toBe(
-          signerAddress.toLowerCase(),
+          depositWallet.toLowerCase(),
         );
         await secureClient.listOpenOrders().firstPage();
       } finally {
@@ -659,7 +661,7 @@ describe('clients', () => {
         vi.restoreAllMocks();
         expect(
           sentRequests(fetchSpy).filter((request) =>
-            request.url.pathname.endsWith('/v1/auth/upgrade'),
+            request.url.pathname.endsWith('/v1/auth/bind'),
           ),
         ).toHaveLength(0);
         expect(restoredTab.account.wallet.toLowerCase()).toBe(

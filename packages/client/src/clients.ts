@@ -750,8 +750,7 @@ class BaseSecureClient<
   }
 
   /**
-   * Binds a wallet to this client's session when the session has none and
-   * returns the new credentials.
+   * Binds a wallet to this client's session and returns the new credentials.
    *
    * @remarks
    * Use this after creating the client with `walletSetup: false` and
@@ -760,8 +759,12 @@ class BaseSecureClient<
    * stays open: `account` switches to `wallet`, subscriptions stay open, and
    * `onCredentialsChanged` receives the new access token. A session already
    * bound to `wallet` returns its current credentials without a request. A
-   * session bound to a different wallet is rejected. If binding fails, the
-   * client keeps its current session.
+   * session bound to another wallet binds `wallet` in its place. If binding
+   * fails, the client keeps its current session. A bind that times out may
+   * still apply on the server, so the session then renews and follows the
+   * wallet that the server reports. Before the bind, the session renews an
+   * access token that expires soon. If the server definitively rejects that
+   * renewal, the session ends, as it does for any request.
    *
    * @example
    * ```ts
@@ -781,22 +784,18 @@ class BaseSecureClient<
     if (this.#upgrading)
       throw new UserInputError('A credential upgrade is already in progress.');
     const bound = session.claims.wallet;
-    if (bound !== undefined) {
-      if (!isSameEvmAddress(bound, wallet))
-        throw new UserInputError(
-          `The session is already bound to wallet ${bound}.`,
-        );
+    if (bound !== undefined && isSameEvmAddress(bound, wallet))
       return session.credentials;
-    }
     this.#upgrading = true;
     try {
       // Adopting the bound token moves `account` to the wallet and
       // re-authenticates open subscriptions.
-      await session.bindWallet(wallet, (accessToken) =>
-        auth.post('/v1/auth/upgrade', {
+      await session.bindWallet(wallet, (accessToken, signal) =>
+        auth.post('/v1/auth/bind', {
           headers: { Authorization: `Bearer ${accessToken}` },
           json: { wallet },
           schema: AccessTokenResponseSchema,
+          signal,
         }),
       );
     } finally {
@@ -1285,6 +1284,20 @@ export async function createSecureClient(
     }
     return onCredentialsChanged?.(next);
   };
+  // Another client can bind or rebind a restored session while this call
+  // sets it up. The session must still name the requested wallet when setup
+  // checks the wallet and when the client is returned.
+  function assertRequestedWallet(bound: EvmAddress | undefined): void {
+    if (
+      restored &&
+      bound !== undefined &&
+      params.wallet !== undefined &&
+      !isSameEvmAddress(bound, params.wallet)
+    )
+      throw new UserInputError(
+        `The saved credentials are bound to wallet ${bound}. Omit wallet or pass that wallet.`,
+      );
+  }
   try {
     if (
       issued !== undefined &&
@@ -1303,23 +1316,17 @@ export async function createSecureClient(
     );
     if (restored) await secureClient.session.refresh();
     else await secureClient.session.ready();
-    // Another client may have bound the saved session since it was stored.
+    // Another client may have bound or rebound the saved session since it was
+    // stored.
     const boundWallet = secureClient.session.claims.wallet;
-    if (
-      bindWallet &&
-      boundWallet !== undefined &&
-      params.wallet !== undefined &&
-      !isSameEvmAddress(boundWallet, params.wallet)
-    )
-      throw new UserInputError(
-        `The saved credentials are bound to wallet ${boundWallet}. Omit wallet or pass that wallet.`,
-      );
+    assertRequestedWallet(boundWallet);
     if (bindWallet && boundWallet === undefined)
-      await secureClient.session.bindWallet(wallet, (accessToken) =>
-        client.auth.post('/v1/auth/upgrade', {
+      await secureClient.session.bindWallet(wallet, (accessToken, signal) =>
+        client.auth.post('/v1/auth/bind', {
           headers: { Authorization: `Bearer ${accessToken}` },
           json: { wallet },
           schema: AccessTokenResponseSchema,
+          signal,
         }),
       );
     secureClient.session.start();
@@ -1330,6 +1337,8 @@ export async function createSecureClient(
         wallet: sessionAccount.wallet,
         type: sessionAccount.walletType,
       });
+      // A renewal during the lookup can adopt a wallet that it did not check.
+      assertRequestedWallet(secureClient.session.claims.wallet);
       if (!deployed) {
         if (sessionAccount.walletType === WalletType.DEPOSIT_WALLET)
           await deployDefaultDepositWallet(secureClient);
@@ -1339,6 +1348,7 @@ export async function createSecureClient(
           );
       }
     }
+    assertRequestedWallet(secureClient.session.claims.wallet);
     const initialRotation = pendingCredentials;
     pendingCredentials = undefined;
     publishCredentialChanges = true;

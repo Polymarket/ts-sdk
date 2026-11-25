@@ -67,7 +67,7 @@ Without `wallet`, `createSecureClient` uses the signer's Deposit Wallet. It firs
 
 Restoring saved bearer credentials does not hand the existing session to the factory. If restoration or wallet setup fails, the client closes its local resources without logging out. Renewals that succeed during a failed restoration still reach the persistence callback, so the latest pair can be saved.
 
-Saved credentials bound to a wallet keep that wallet. Passing a different `wallet` rejects with `UserInputError`. Saved credentials without a wallet, such as the pair from `publicClient.login({ signer })`, are bound to the requested wallet (or the default Deposit Wallet) through `/v1/auth/upgrade` before the client is returned. Binding needs no new signature and keeps the refresh token, and the new access token reaches `onCredentialsChanged`. A secure client always has an account wallet.
+Saved credentials bound to a wallet keep that wallet. Passing a different `wallet` rejects with `UserInputError`. Saved credentials without a wallet, such as the pair from `publicClient.login({ signer })`, are bound to the requested wallet (or the default Deposit Wallet) through `/v1/auth/bind` before the client is returned. Binding needs no new signature and keeps the refresh token, and the new access token reaches `onCredentialsChanged`. A secure client always has an account wallet.
 
 ### Skipping wallet setup
 
@@ -85,14 +85,14 @@ const secureClient = await createSecureClient({
 });
 ```
 
-Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.upgradeCredentials`. It needs no new signature and keeps the refresh token. It updates the same client and returns the new credentials: `secureClient.account` moves to the wallet, open subscriptions stay open, and the new access token also reaches `onCredentialsChanged`. If binding fails, the client keeps its current session.
+Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.upgradeCredentials`. It needs no new signature and keeps the refresh token. It updates the same client and returns the new credentials: `secureClient.account` moves to the wallet, open subscriptions stay open, and the new access token also reaches `onCredentialsChanged`. If binding fails, the client keeps its current session. A bind that times out may still apply on the server, so the session then renews and follows the wallet that the server reports. Before the bind, the session renews an access token that expires soon. If the server definitively rejects that renewal, the session ends, as it does for any request.
 
 ```ts
 const credentials = await secureClient.upgradeCredentials({ wallet });
 await saveCredentials(credentials);
 ```
 
-A session already bound to `wallet` returns its current credentials without a request, and a session bound to another wallet is rejected with `UserInputError`. After a restart, creating a client from the saved credentials with wallet setup enabled binds the wallet the same way.
+A session already bound to `wallet` returns its current credentials without a request. A session bound to another wallet binds `wallet` in its place, for example after a wallet migration. After a restart, creating a client from the saved credentials with wallet setup enabled binds the wallet the same way.
 
 ## Renewal
 
