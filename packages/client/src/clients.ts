@@ -759,12 +759,13 @@ class BaseSecureClient<
    * stays open: `account` switches to `wallet`, subscriptions stay open, and
    * `onCredentialsChanged` receives the new access token. A session already
    * bound to `wallet` returns its current credentials without a request. A
-   * session bound to another wallet binds `wallet` in its place. If binding
-   * fails, the client keeps its current session. A bind that times out may
-   * still apply on the server, so the session then renews and follows the
-   * wallet that the server reports. Before the bind, the session renews an
-   * access token that expires soon. If the server definitively rejects that
-   * renewal, the session ends, as it does for any request.
+   * session bound to another wallet binds `wallet` in its place. Before the
+   * bind, the session renews a token close to expiry. After a transient
+   * renewal failure, it binds with the current token while that token is
+   * valid. If the bind request fails, the client keeps its current session.
+   * A bind that times out may still apply on the server, so the session then
+   * renews and follows the wallet that the server reports. If the server
+   * refuses the renewal, the session ends.
    *
    * @example
    * ```ts

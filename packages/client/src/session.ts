@@ -188,14 +188,17 @@ export class AuthSession {
   }
   /**
    * Binds `wallet` to this session and adopts the wallet-bound access token.
-   * The session can already name another wallet. The refresh token does not
-   * change. The bound token keeps the expiry of the token that the bind
-   * presents, so the session refreshes a token that expires within the
-   * renewal lead before the bind, and renews a short-lived bound token at once.
-   * The bind waits for a renewal in flight, and a renewal requested during the
-   * bind starts after it. The bind fails with `TransportError` when it does not
-   * finish within the request timeout. The session then ignores its answer and
-   * renews at once, because the server may have applied the bind.
+   * The session can already name another wallet. The bind keeps the refresh
+   * token. The bound token keeps the expiry of the token that the bind
+   * presents, so the bind first calls `ready()`, which renews a token that
+   * expires within the renewal lead. After a transient renewal failure,
+   * `ready()` returns the current token while it is still valid. The session
+   * renews a short-lived bound token at once, and each renewal replaces both
+   * tokens. The bind waits for a renewal in flight, and a renewal requested
+   * during the bind starts after it. The bind fails with `TransportError` when
+   * it does not finish within the request timeout. The session then ignores
+   * its answer and renews at once, because the server may have applied the
+   * bind.
    */
   async bindWallet(
     wallet: EvmAddress,
