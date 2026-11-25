@@ -1,3 +1,8 @@
+import type {
+  WalletLeftovers,
+  WalletMigration,
+  WalletMigrationPreview,
+} from '@polymarket/bindings/gamma';
 import {
   approveErc20,
   approveErc1155ForAll,
@@ -40,6 +45,15 @@ import {
   type PrepareErc20TransferRequest,
   transferErc20,
 } from '../actions/transfers';
+import {
+  cancelWalletMigration,
+  fetchWalletLeftovers,
+  fetchWalletMigration,
+  type MigrateWalletResult,
+  migrateWallet,
+  previewWalletMigration,
+  sweepWalletLeftovers,
+} from '../actions/wallet-migration';
 import type {
   BaseClient,
   BasePublicClient,
@@ -390,6 +404,134 @@ export type SecureWalletActions = {
   executeCollateralReturnPlan(
     request: ExecuteCollateralReturnPlanRequest,
   ): Promise<TransactionHandle>;
+  /**
+   * Fetches the wallet migration of the authenticated account: its state, the
+   * Deposit Wallet, the holdings of the current wallet and the next action.
+   * The read changes nothing.
+   *
+   * @example
+   * ```ts
+   * const migration = await client.fetchWalletMigration();
+   * ```
+   *
+   * @throws {@link FetchWalletMigrationError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  fetchWalletMigration(options?: RequestOptions): Promise<WalletMigration>;
+  /**
+   * Previews the wallet migration of the authenticated account: what it would
+   * move, and each blocker that stops it. The read changes nothing. An
+   * account that already trades from its Deposit Wallet is rejected with
+   * status `422`.
+   *
+   * @example
+   * ```ts
+   * const preview = await client.previewWalletMigration();
+   * ```
+   *
+   * @throws {@link PreviewWalletMigrationError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  previewWalletMigration(
+    options?: RequestOptions,
+  ): Promise<WalletMigrationPreview>;
+  /**
+   * Moves the authenticated account from its Safe or Proxy wallet to its
+   * Deposit Wallet, then binds the Deposit Wallet to this client's session.
+   *
+   * @remarks
+   * The migration asks the signer to sign each sweep that moves funds. A
+   * restart after a conflict can ask for another signature. A poll while a
+   * transaction confirms asks for none. The migration waits while the
+   * transactions confirm, and it continues a migration that an earlier call
+   * started. A migration that cannot start is rejected with status `422` and
+   * a blocker code, such as `SIBLING_FUNDED`. Call
+   * {@link SecureWalletActions.previewWalletMigration | previewWalletMigration}
+   * first to show the blockers. A failed migration throws
+   * `TransactionFailedError`, and a new call starts it again. A migration
+   * that ends in a state other than `COMPLETED`, such as `NOT_REQUIRED` for an
+   * account that already uses its Deposit Wallet, throws
+   * `UnexpectedResponseError` and binds nothing.
+   *
+   * This client stays open: `account` switches to the Deposit Wallet,
+   * subscriptions stay open, and `onCredentialsChanged` receives the new
+   * access token. The Deposit Wallet needs trading approvals before it
+   * trades: call `setupTradingApprovals`. If the bind fails after the
+   * migration completes, `migrateWallet` rejects, and a new call binds the
+   * Deposit Wallet while the session is usable. A bind that times out can
+   * still apply on the server, and the session then follows the Deposit
+   * Wallet.
+   *
+   * @example
+   * ```ts
+   * const { credentials } = await client.migrateWallet();
+   * await saveCredentials(credentials);
+   * await client.setupTradingApprovals();
+   * ```
+   *
+   * @throws {@link MigrateWalletError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  migrateWallet(): Promise<MigrateWalletResult>;
+  /**
+   * Cancels the wallet migration of the authenticated account before funds
+   * move. The account keeps its current wallet and can migrate later. A
+   * migration whose transaction is in flight, or whose funds reached the
+   * Deposit Wallet, is rejected with status `409`. A deployment that keeps
+   * the cancel off rejects it with status `503`.
+   *
+   * @example
+   * ```ts
+   * const migration = await client.cancelWalletMigration();
+   * ```
+   *
+   * @throws {@link CancelWalletMigrationError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  cancelWalletMigration(): Promise<WalletMigration>;
+  /**
+   * Fetches what the old wallet of a migrated account still holds, its value,
+   * the blockers of a leftover sweep and the state of the last sweep. The
+   * read changes nothing. An account whose wallet is no longer the Deposit
+   * Wallet of its migration is rejected with status `409`.
+   *
+   * @example
+   * ```ts
+   * const leftovers = await client.fetchWalletLeftovers();
+   * ```
+   *
+   * @throws {@link FetchWalletLeftoversError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  fetchWalletLeftovers(options?: RequestOptions): Promise<WalletLeftovers>;
+  /**
+   * Moves what the old wallet of a migrated account still holds to the
+   * Deposit Wallet, and returns the leftovers after the sweep. Check
+   * `hasLeftovers` and `lastSweep` in the result to see the outcome.
+   *
+   * @remarks
+   * The sweep asks the signer to sign it when funds must move, and it waits
+   * while the transaction confirms. A restart after a conflict can ask for
+   * another signature. It does not change the session. An account without a
+   * completed migration is rejected with status `409`, a blocked sweep with
+   * status `422`, and a deployment that keeps the sweep off rejects it with
+   * status `503`.
+   *
+   * @example
+   * ```ts
+   * const leftovers = await client.sweepWalletLeftovers();
+   * ```
+   *
+   * @throws {@link SweepWalletLeftoversError}
+   * Thrown on failure.
+   * @experimental May change without notice.
+   */
+  sweepWalletLeftovers(): Promise<WalletLeftovers>;
 };
 
 function publicWalletActions(client: BaseClient): PublicWalletActions {
@@ -432,6 +574,12 @@ export function walletActions(
     redeemPositions: redeemPositions.bind(null, client),
     planCollateralReturn: planCollateralReturn.bind(null, client),
     executeCollateralReturnPlan: executeCollateralReturnPlan.bind(null, client),
+    fetchWalletMigration: fetchWalletMigration.bind(null, client),
+    previewWalletMigration: previewWalletMigration.bind(null, client),
+    migrateWallet: migrateWallet.bind(null, client),
+    cancelWalletMigration: cancelWalletMigration.bind(null, client),
+    fetchWalletLeftovers: fetchWalletLeftovers.bind(null, client),
+    sweepWalletLeftovers: sweepWalletLeftovers.bind(null, client),
   };
 }
 
@@ -489,3 +637,13 @@ export {
   SplitPositionError,
 } from '../actions/positions';
 export { TransferErc20Error } from '../actions/transfers';
+// Public wallet-migration types surfaced alongside the bound methods.
+export type { MigrateWalletResult } from '../actions/wallet-migration';
+export {
+  CancelWalletMigrationError,
+  FetchWalletLeftoversError,
+  FetchWalletMigrationError,
+  MigrateWalletError,
+  PreviewWalletMigrationError,
+  SweepWalletLeftoversError,
+} from '../actions/wallet-migration';

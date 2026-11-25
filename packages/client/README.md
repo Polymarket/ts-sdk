@@ -212,4 +212,4 @@ MIT
 
 ## Authentication and application keys
 
-See [bearer-session migration](../../docs/authentication-migration.md) for saved credentials and refresh, and [Platform API Keys](../../docs/platform-api-keys.md) for server and browser configuration and builder and submission authorization.
+See [bearer-session migration](../../docs/authentication-migration.md) for saved credentials and refresh, [wallet migration](../../docs/wallet-migration.md) for moving an account to its Deposit Wallet, and [Platform API Keys](../../docs/platform-api-keys.md) for server and browser configuration and builder and submission authorization.

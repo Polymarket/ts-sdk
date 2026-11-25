@@ -56,3 +56,4 @@ export * from './tags';
 export * from './teams';
 export * from './tokens';
 export * from './transfers';
+export * from './wallet-migration';

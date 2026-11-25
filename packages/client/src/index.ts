@@ -23,6 +23,10 @@ export {
   MarketResolutionStatus,
   ProtocolVersion,
   TeamOrdering,
+  WalletMigrationKnownBlockerCode,
+  WalletMigrationKnownState,
+  WalletMigrationNextAction,
+  WalletMigrationSweepShape,
   WalletType,
 } from '@polymarket/bindings/gamma';
 /** @experimental This API may change in a breaking way in any release, including patch releases. */
