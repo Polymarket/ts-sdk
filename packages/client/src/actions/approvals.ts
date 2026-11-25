@@ -1,11 +1,9 @@
 import { type EvmAddress, EvmAddressSchema } from '@polymarket/bindings';
 import { FetchApprovalsResponseSchema } from '@polymarket/bindings/data';
 import { WalletType } from '@polymarket/bindings/gamma';
-import type { EvmSignature, HexString } from '@polymarket/types';
+import type { EvmSignature } from '@polymarket/types';
 import { z } from 'zod';
 import {
-  decodeErc20AllowanceResult,
-  decodeErc1155IsApprovedForAllResult,
   erc20AllowanceCall,
   erc20ApprovalCall,
   erc1155ApprovalForAllCall,
@@ -39,7 +37,11 @@ import {
   type SendErc1155ApprovalForAllTransactionRequest,
   signerTransactionRequest,
 } from '../workflow';
-import { resolveIndexedTradingApprovals } from './approvals-state';
+import {
+  resolveIndexedTradingApprovals,
+  resolveRpcTradingApprovals,
+} from './approvals-state';
+import { prepareEoaTradingApprovals } from './approvals-workflow';
 import {
   GaslessTransactionMetadataSchema,
   type GaslessWorkflowRequest,
@@ -463,25 +465,11 @@ export async function prepareTradingApprovals(
     }
 
     if (client.account.walletType === WalletType.EOA) {
-      for (const call of erc20ApprovalCalls) {
-        const handle = expectTransactionHandle(
-          yield sendErc20ApprovalTransaction(
-            signerTransactionRequest(client.environment.chainId, call),
-          ),
-        );
-
-        await handle.wait();
-      }
-
-      for (const call of erc1155ApprovalCalls) {
-        const handle = expectTransactionHandle(
-          yield sendErc1155ApprovalForAllTransaction(
-            signerTransactionRequest(client.environment.chainId, call),
-          ),
-        );
-
-        await handle.wait();
-      }
+      yield* prepareEoaTradingApprovals(
+        client.environment.chainId,
+        erc20ApprovalCalls,
+        erc1155ApprovalCalls,
+      );
 
       return;
     }
@@ -549,32 +537,7 @@ async function resolveMissingTradingApprovals(
     ),
   ];
   const results = await client.rpc.ethCallBatch(checkCalls);
-  const erc20Results = results.slice(0, requiredApprovals.erc20.length);
-  const erc1155Results = results.slice(requiredApprovals.erc20.length);
-
-  try {
-    return {
-      erc20: requiredApprovals.erc20.filter((approval, index) => {
-        const allowance = decodeErc20AllowanceResult(
-          erc20Results[index] as HexString,
-        );
-
-        return allowance < approval.amount;
-      }),
-      erc1155: requiredApprovals.erc1155.filter((_, index) => {
-        const approved = decodeErc1155IsApprovedForAllResult(
-          erc1155Results[index] as HexString,
-        );
-
-        return !approved;
-      }),
-    };
-  } catch (error) {
-    throw new UnexpectedResponseError(
-      'Expected JSON-RPC approval checks to return ABI-encoded values',
-      { cause: error },
-    );
-  }
+  return resolveRpcTradingApprovals(results, requiredApprovals);
 }
 
 function getRequiredTradingApprovals(
