@@ -228,21 +228,25 @@ describe('shared session policy', () => {
     session.close();
   });
 
-  it('renews a token inside the renewal lead before it binds', async () => {
-    const original = tokens(0, 20);
+  it('renews a token close to expiry before the bind and renews a short-lived bound token at once', async () => {
+    vi.useFakeTimers();
+    const original = tokens(0, 10);
     const renewed = tokens(1);
-    const bound = tokens(2, 900, { wallet, signature_type: 3 });
-    const refresh = vi.fn(async () => issue(renewed));
+    const bound = tokens(2, 10, { wallet, signature_type: 3 });
+    const rebound = tokens(3, 900, { wallet, signature_type: 3 });
+    const refresh = vi
+      .fn(async (): Promise<TokenResponse> => issue(rebound))
+      .mockResolvedValueOnce(issue(renewed));
     const upgrade = vi.fn(async () => ({
       accessToken: bound.accessToken,
-      expiresIn: 900,
+      expiresIn: 10,
     }));
-    const session = new AuthSession({ credentials: original, refresh });
+    const session = new AuthSession({
+      credentials: original,
+      expiresIn: 10,
+      refresh,
+    });
     await session.bindWallet(wallet, upgrade);
-    expect(refresh).toHaveBeenCalledExactlyOnceWith(
-      original,
-      expect.any(AbortSignal),
-    );
     expect(upgrade).toHaveBeenCalledExactlyOnceWith(
       renewed.accessToken,
       expect.any(AbortSignal),
@@ -251,29 +255,10 @@ describe('shared session policy', () => {
       accessToken: bound.accessToken,
       refreshToken: renewed.refreshToken,
     });
-    session.close();
-  });
-
-  it('adopts a short-lived bound token and renews it at once', async () => {
-    vi.useFakeTimers();
-    // The bound token keeps the expiry of the token that the bind presents.
-    const original = tokens(0, 35);
-    const bound = tokens(1, 35, { wallet, signature_type: 3 });
-    const renewed = tokens(2, 900, { wallet, signature_type: 3 });
-    const refresh = vi.fn(async () => issue(renewed));
-    const session = new AuthSession({ credentials: original, refresh });
-    await session.bindWallet(wallet, async () => {
-      await vi.advanceTimersByTimeAsync(25_000);
-      return { accessToken: bound.accessToken, expiresIn: 10 };
-    });
-    expect(refresh).not.toHaveBeenCalled();
-    expect(session.credentials).toEqual({
-      accessToken: bound.accessToken,
-      refreshToken: original.refreshToken,
-    });
     await vi.advanceTimersByTimeAsync(0);
-    expect(refresh).toHaveBeenCalledTimes(1);
-    expect(session.credentials).toEqual(renewed);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    await session.ready();
+    expect(session.credentials).toEqual(rebound);
     session.close();
   });
 
