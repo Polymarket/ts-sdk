@@ -32,6 +32,36 @@ describe('Comments', () => {
     vi.restoreAllMocks();
   });
 
+  for (const { order, path } of [
+    { order: 'createdAt', path: '/comments/keyset' },
+    { order: 'reactionCount', path: '/comments' },
+  ]) {
+    it(`requests PerpsAsset comments through ${path}`, async ({
+      publicClient,
+    }) => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      const page = await publicClient
+        .listComments({
+          parentEntityId: '1',
+          parentEntityType: CommentParentEntityType.PerpsAsset,
+          order,
+          pageSize: 1,
+        })
+        .firstPage();
+      expect(page.items).toEqual(expect.any(Array));
+      const urls = fetchSpy.mock.calls.map(
+        ([input]) =>
+          new URL(input instanceof Request ? input.url : String(input)),
+      );
+      expect(urls).toHaveLength(1);
+      expect(urls[0]?.pathname).toBe(path);
+      expect(urls[0]?.searchParams.get('parent_entity_type')).toBe(
+        'PerpsAsset',
+      );
+      expect(urls[0]?.searchParams.get('parent_entity_id')).toBe('1');
+    });
+  }
+
   describe('listComments', () => {
     it('fetches comments for an event', async ({ publicClient }) => {
       const firstPage = await publicClient
