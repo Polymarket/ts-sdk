@@ -7,12 +7,9 @@ import {
   type WalletMigrationPreview,
   WalletMigrationPreviewSchema,
   WalletMigrationSchema,
-  WalletMigrationStepSchema,
-  type WalletMigrationSweep,
-  WalletMigrationSweepShape,
   WalletType,
 } from '@polymarket/bindings/gamma';
-import { delay, type EvmAddress, type EvmSignature } from '@polymarket/types';
+import type { EvmAddress } from '@polymarket/types';
 import type { BaseSecureClient } from '../clients';
 import {
   CancelledSigningError,
@@ -27,17 +24,29 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from '../errors';
-import { parseRequestOptions, type RequestOptions } from '../request-options';
+import {
+  assertNotAborted,
+  parseRequestOptions,
+  type RequestOptions,
+} from '../request-options';
 import { resolveAccountIdentity, SignerType } from '../wallet';
 import {
   runWalletMigrationSteps,
-  safeCreateTypedData,
-  type WalletMigrationSteps,
+  walletMigrationSteps,
 } from './wallet-migration-steps';
 
-// An execute request waits while its transaction confirms. It can also answer
-// with a step that is still in progress.
-const WALLET_MIGRATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
+/**
+ * Controls a wallet migration, a leftover sweep or a cancel.
+ *
+ * @experimental May change without notice.
+ */
+export type WalletMigrationOptions = {
+  /**
+   * Aborts the operation, including the wait before a poll. The SDK stops
+   * waiting for a signature in progress, but it cannot cancel the signer.
+   */
+  signal?: AbortSignal;
+};
 
 export type FetchWalletMigrationError =
   | RequestAbortedError
@@ -57,8 +66,8 @@ export const FetchWalletMigrationError = makeErrorGuard(
 
 /**
  * Fetches the wallet migration of the authenticated account: its state, the
- * Deposit Wallet, the holdings of the current wallet and the next action. The
- * read changes nothing.
+ * Deposit Wallet and the holdings of the current wallet. The read changes
+ * nothing.
  *
  * @remarks
  * This is a low-level function. Most SDK consumers should prefer the client instance API.
@@ -113,9 +122,12 @@ export async function previewWalletMigration(
 }
 
 export type MigrateWalletResult = {
-  /** The Deposit Wallet that the account trades from now. */
+  /**
+   * The Deposit Wallet that the account trades from now. For an account that
+   * needs no migration, the current wallet.
+   */
   depositWallet: EvmAddress;
-  /** The credentials of the session, bound to the Deposit Wallet. */
+  /** The credentials of the session. */
   credentials: BearerCredentials;
 };
 
@@ -157,13 +169,17 @@ export const MigrateWalletError = makeErrorGuard(
  * started. A migration that cannot start is rejected with status `422` and a
  * blocker code, such as `SIBLING_FUNDED`. Call {@link previewWalletMigration}
  * first to show the blockers. A failed migration throws
- * `TransactionFailedError`, and a new call starts it again. A migration that
- * ends in a state other than `COMPLETED`, such as `NOT_REQUIRED` for an account
- * that already uses its Deposit Wallet, throws `UnexpectedResponseError` and
- * binds nothing. If the bind fails after the migration completes,
- * `migrateWallet` rejects, and a new call binds the Deposit Wallet while the
- * session is usable. A bind that times out can still apply on the server, and
- * the session then follows the Deposit Wallet.
+ * `TransactionFailedError`, and a new call starts it again. An account that
+ * needs no migration (`NOT_REQUIRED`), such as one that already uses its
+ * Deposit Wallet, binds nothing: the result names the current wallet and
+ * credentials. A migration that ends in another state throws
+ * `UnexpectedResponseError`. A flow that keeps restarting or asking for
+ * signatures throws `UnexpectedResponseError`, and a flow that reaches the
+ * poll limit throws `TimeoutError`. Pass `signal` to abort the flow,
+ * including the wait before a poll. If the bind fails after the migration
+ * completes, `migrateWallet` rejects, and a new call binds the Deposit Wallet
+ * while the session is usable. A bind that times out can still apply on the
+ * server, and the session then follows the Deposit Wallet.
  *
  * @example
  * ```ts
@@ -177,14 +193,23 @@ export const MigrateWalletError = makeErrorGuard(
  */
 export async function migrateWallet(
   client: BaseSecureClient,
+  options: WalletMigrationOptions = {},
 ): Promise<MigrateWalletResult> {
+  const { signal } = options;
+  assertNotAborted(signal);
   const step = await runWalletMigrationSteps(
     walletMigrationSteps(
       client,
       '/v1/wallets/migration/start',
       '/v1/wallets/migration/execute',
+      signal,
     ),
   );
+  if (step.state === WalletMigrationKnownState.NotRequired)
+    return {
+      depositWallet: client.account.wallet,
+      credentials: client.credentials,
+    };
   if (step.state !== WalletMigrationKnownState.Completed)
     throw new UnexpectedResponseError(
       `The wallet migration ended in state ${step.state}. The session bind requires state COMPLETED.`,
@@ -206,6 +231,7 @@ export async function migrateWallet(
     throw new UnexpectedResponseError(
       'The finished wallet migration names a wallet that is not a Deposit Wallet of the signer.',
     );
+  assertNotAborted(signal);
   const credentials = await client.upgradeCredentials({
     wallet: step.depositWallet,
   });
@@ -214,11 +240,13 @@ export async function migrateWallet(
 
 export type CancelWalletMigrationError =
   | RateLimitError
+  | RequestAbortedError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError;
 export const CancelWalletMigrationError = makeErrorGuard(
   RateLimitError,
+  RequestAbortedError,
   RequestRejectedError,
   TransportError,
   UnexpectedResponseError,
@@ -245,10 +273,13 @@ export const CancelWalletMigrationError = makeErrorGuard(
  */
 export async function cancelWalletMigration(
   client: BaseSecureClient,
+  options: WalletMigrationOptions = {},
 ): Promise<WalletMigration> {
+  assertNotAborted(options.signal);
   return client.predictions.post('/v1/wallets/migration/cancel', {
     json: {},
     schema: WalletMigrationSchema,
+    signal: options.signal,
   });
 }
 
@@ -299,7 +330,8 @@ export const SweepWalletLeftoversError = MigrateWalletError;
  * another signature. It does not change the session. An account without a
  * completed migration is rejected with status `409`, a blocked sweep with
  * status `422`, and a deployment that keeps the sweep off rejects it with
- * status `503`.
+ * status `503`. Pass `signal` to abort the sweep, including the wait before
+ * a poll.
  *
  * @example
  * ```ts
@@ -312,67 +344,17 @@ export const SweepWalletLeftoversError = MigrateWalletError;
  */
 export async function sweepWalletLeftovers(
   client: BaseSecureClient,
+  options: WalletMigrationOptions = {},
 ): Promise<WalletLeftovers> {
+  const { signal } = options;
+  assertNotAborted(signal);
   await runWalletMigrationSteps(
     walletMigrationSteps(
       client,
       '/v1/wallets/migration/sweep/start',
       '/v1/wallets/migration/sweep/execute',
+      signal,
     ),
   );
-  return fetchWalletLeftovers(client);
-}
-
-function walletMigrationSteps(
-  client: BaseSecureClient,
-  startPath: string,
-  executePath: string,
-): WalletMigrationSteps {
-  const { environment } = client;
-  return {
-    start: () =>
-      client.predictions.post(startPath, {
-        json: {},
-        timeout: WALLET_MIGRATION_REQUEST_TIMEOUT_MS,
-        schema: WalletMigrationStepSchema,
-      }),
-    execute: (body) =>
-      client.predictions.post(executePath, {
-        json: body,
-        timeout: WALLET_MIGRATION_REQUEST_TIMEOUT_MS,
-        schema: WalletMigrationStepSchema,
-      }),
-    sign: (sweep) => signWalletMigrationSweep(client, sweep),
-    wait: () => delay(environment.relayerPollFrequencyMs),
-    maxPolls: environment.relayerMaxPolls,
-  };
-}
-
-async function signWalletMigrationSweep(
-  client: BaseSecureClient,
-  sweep: WalletMigrationSweep,
-): Promise<EvmSignature> {
-  // Check the Safe deployment before the signer sees it.
-  const payload =
-    sweep.shape === WalletMigrationSweepShape.SafeCreate
-      ? safeCreateTypedData(
-          {
-            chainId: client.environment.chainId,
-            safeFactory: client.environment.walletDerivation.safeFactory,
-          },
-          sweep.typedData,
-        )
-      : undefined;
-  try {
-    // Proxy and Safe sweeps sign the raw digest as a personal message.
-    return payload === undefined
-      ? await client.signer.signMessage(sweep.digest)
-      : await client.signer.signTypedData(payload);
-  } catch (error) {
-    if (error instanceof CancelledSigningError) throw error;
-    throw SigningError.fromError(
-      error,
-      'Could not sign the wallet migration sweep.',
-    );
-  }
+  return fetchWalletLeftovers(client, { signal });
 }

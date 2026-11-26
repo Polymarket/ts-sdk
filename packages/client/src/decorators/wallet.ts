@@ -53,6 +53,7 @@ import {
   migrateWallet,
   previewWalletMigration,
   sweepWalletLeftovers,
+  type WalletMigrationOptions,
 } from '../actions/wallet-migration';
 import type {
   BaseClient,
@@ -406,8 +407,8 @@ export type SecureWalletActions = {
   ): Promise<TransactionHandle>;
   /**
    * Fetches the wallet migration of the authenticated account: its state, the
-   * Deposit Wallet, the holdings of the current wallet and the next action.
-   * The read changes nothing.
+   * Deposit Wallet and the holdings of the current wallet. The read changes
+   * nothing.
    *
    * @example
    * ```ts
@@ -450,15 +451,21 @@ export type SecureWalletActions = {
    * a blocker code, such as `SIBLING_FUNDED`. Call
    * {@link SecureWalletActions.previewWalletMigration | previewWalletMigration}
    * first to show the blockers. A failed migration throws
-   * `TransactionFailedError`, and a new call starts it again. A migration
-   * that ends in a state other than `COMPLETED`, such as `NOT_REQUIRED` for an
-   * account that already uses its Deposit Wallet, throws
-   * `UnexpectedResponseError` and binds nothing.
+   * `TransactionFailedError`, and a new call starts it again. An account that
+   * needs no migration (`NOT_REQUIRED`), such as one that already uses its
+   * Deposit Wallet, binds nothing: the result names the current wallet and
+   * credentials. A migration that ends in another state throws
+   * `UnexpectedResponseError`. A flow that keeps restarting or asking for
+   * signatures throws `UnexpectedResponseError`, and a flow that reaches the
+   * poll limit throws `TimeoutError`. Pass `signal` to abort the flow,
+   * including the wait before a poll.
    *
-   * This client stays open: `account` switches to the Deposit Wallet,
-   * subscriptions stay open, and `onCredentialsChanged` receives the new
-   * access token. The Deposit Wallet needs trading approvals before it
-   * trades: call `setupTradingApprovals`. If the bind fails after the
+   * This client stays open: `account` switches to the Deposit Wallet, and
+   * `onCredentialsChanged` receives the new access token. A bind from another
+   * wallet ends the open user subscriptions with `TransportError`, so
+   * subscribe again for the events of the Deposit Wallet. The Deposit Wallet
+   * needs trading approvals before it trades: call `setupTradingApprovals`.
+   * If the bind fails after the
    * migration completes, `migrateWallet` rejects, and a new call binds the
    * Deposit Wallet while the session is usable. A bind that times out can
    * still apply on the server, and the session then follows the Deposit
@@ -475,7 +482,7 @@ export type SecureWalletActions = {
    * Thrown on failure.
    * @experimental May change without notice.
    */
-  migrateWallet(): Promise<MigrateWalletResult>;
+  migrateWallet(options?: WalletMigrationOptions): Promise<MigrateWalletResult>;
   /**
    * Cancels the wallet migration of the authenticated account before funds
    * move. The account keeps its current wallet and can migrate later. A
@@ -492,7 +499,9 @@ export type SecureWalletActions = {
    * Thrown on failure.
    * @experimental May change without notice.
    */
-  cancelWalletMigration(): Promise<WalletMigration>;
+  cancelWalletMigration(
+    options?: WalletMigrationOptions,
+  ): Promise<WalletMigration>;
   /**
    * Fetches what the old wallet of a migrated account still holds, its value,
    * the blockers of a leftover sweep and the state of the last sweep. The
@@ -520,7 +529,8 @@ export type SecureWalletActions = {
    * another signature. It does not change the session. An account without a
    * completed migration is rejected with status `409`, a blocked sweep with
    * status `422`, and a deployment that keeps the sweep off rejects it with
-   * status `503`.
+   * status `503`. Pass `signal` to abort the sweep, including the wait before
+   * a poll.
    *
    * @example
    * ```ts
@@ -531,7 +541,9 @@ export type SecureWalletActions = {
    * Thrown on failure.
    * @experimental May change without notice.
    */
-  sweepWalletLeftovers(): Promise<WalletLeftovers>;
+  sweepWalletLeftovers(
+    options?: WalletMigrationOptions,
+  ): Promise<WalletLeftovers>;
 };
 
 function publicWalletActions(client: BaseClient): PublicWalletActions {
@@ -638,7 +650,10 @@ export {
 } from '../actions/positions';
 export { TransferErc20Error } from '../actions/transfers';
 // Public wallet-migration types surfaced alongside the bound methods.
-export type { MigrateWalletResult } from '../actions/wallet-migration';
+export type {
+  MigrateWalletResult,
+  WalletMigrationOptions,
+} from '../actions/wallet-migration';
 export {
   CancelWalletMigrationError,
   FetchWalletLeftoversError,

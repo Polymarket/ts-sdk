@@ -3,22 +3,29 @@ import {
   WalletMigrationNextAction,
   WalletMigrationSafeCreateTypedDataSchema,
   type WalletMigrationStep,
+  WalletMigrationStepSchema,
   type WalletMigrationSweep,
+  WalletMigrationSweepShape,
 } from '@polymarket/bindings/gamma';
 import {
+  delay,
   type EvmAddress,
   type EvmSignature,
   type HexString,
   isSameEvmAddress,
   ZERO_ADDRESS,
 } from '@polymarket/types';
+import type { BaseSecureClient } from '../clients';
 import {
+  CancelledSigningError,
   RequestRejectedError,
+  SigningError,
   TimeoutError,
   TransactionFailedError,
   TransportError,
   UnexpectedResponseError,
 } from '../errors';
+import { withAbort } from '../request-options';
 import type { TypedDataPayload } from '../types';
 
 /**
@@ -62,7 +69,9 @@ const MAX_SIGNATURES_PER_START = 2;
  * flow. A start step, or a sign step without a sweep, calls the start request
  * again. A conflict (`409`), a bad gateway answer (`502`) or a transport
  * failure of an execute request also calls the start request again, because
- * the start request is idempotent and names the step that is left.
+ * the start request is idempotent and names the step that is left. More than
+ * three restarts, or more than two signatures for one start request, throw
+ * `UnexpectedResponseError`. More than `maxPolls` polls throw `TimeoutError`.
  * @internal
  */
 export async function runWalletMigrationSteps(
@@ -72,11 +81,12 @@ export async function runWalletMigrationSteps(
   let polls = 0;
   let signatures = 0;
 
-  async function restart(): Promise<WalletMigrationStep> {
+  async function restart(cause?: unknown): Promise<WalletMigrationStep> {
     restarts += 1;
     if (restarts > MAX_RESTARTS)
-      throw new TimeoutError(
+      throw new UnexpectedResponseError(
         `The wallet migration did not settle after ${MAX_RESTARTS} restarts.`,
+        { cause },
       );
     signatures = 0;
     return steps.start();
@@ -88,7 +98,7 @@ export async function runWalletMigrationSteps(
       return await steps.execute(body);
     } catch (error) {
       if (!isUnsettledExecute(error)) throw error;
-      return restart();
+      return restart(error);
     }
   }
 
@@ -112,7 +122,7 @@ export async function runWalletMigrationSteps(
         }
         signatures += 1;
         if (signatures > MAX_SIGNATURES_PER_START)
-          throw new TimeoutError(
+          throw new UnexpectedResponseError(
             `The wallet migration asked for more than ${MAX_SIGNATURES_PER_START} signatures after one start request.`,
           );
         const signature = await steps.sign(sweep);
@@ -188,4 +198,70 @@ export function safeCreateTypedData(
       paymentReceiver: ZERO_ADDRESS,
     },
   };
+}
+
+// An execute request waits while its transaction confirms. It can also answer
+// with a step that is still in progress.
+const WALLET_MIGRATION_REQUEST_TIMEOUT_MS = 2 * 60_000;
+
+/**
+ * Builds the steps of a wallet migration or a leftover sweep for `client`.
+ * `signal` aborts each request, the signature and the wait before a poll.
+ * @internal
+ */
+export function walletMigrationSteps(
+  client: BaseSecureClient,
+  startPath: string,
+  executePath: string,
+  signal: AbortSignal | undefined,
+): WalletMigrationSteps {
+  const { environment } = client;
+  return {
+    start: () =>
+      client.predictions.post(startPath, {
+        json: {},
+        timeout: WALLET_MIGRATION_REQUEST_TIMEOUT_MS,
+        schema: WalletMigrationStepSchema,
+        signal,
+      }),
+    execute: (body) =>
+      client.predictions.post(executePath, {
+        json: body,
+        timeout: WALLET_MIGRATION_REQUEST_TIMEOUT_MS,
+        schema: WalletMigrationStepSchema,
+        signal,
+      }),
+    sign: (sweep) => withAbort(signWalletMigrationSweep(client, sweep), signal),
+    wait: () => withAbort(delay(environment.relayerPollFrequencyMs), signal),
+    maxPolls: environment.relayerMaxPolls,
+  };
+}
+
+async function signWalletMigrationSweep(
+  client: BaseSecureClient,
+  sweep: WalletMigrationSweep,
+): Promise<EvmSignature> {
+  // Check the Safe deployment before the signer sees it.
+  const payload =
+    sweep.shape === WalletMigrationSweepShape.SafeCreate
+      ? safeCreateTypedData(
+          {
+            chainId: client.environment.chainId,
+            safeFactory: client.environment.walletDerivation.safeFactory,
+          },
+          sweep.typedData,
+        )
+      : undefined;
+  try {
+    // Proxy and Safe sweeps sign the raw digest as a personal message.
+    return payload === undefined
+      ? await client.signer.signMessage(sweep.digest)
+      : await client.signer.signTypedData(payload);
+  } catch (error) {
+    if (error instanceof CancelledSigningError) throw error;
+    throw SigningError.fromError(
+      error,
+      'Could not sign the wallet migration sweep.',
+    );
+  }
 }

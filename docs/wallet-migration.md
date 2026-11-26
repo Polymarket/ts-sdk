@@ -4,7 +4,7 @@ A wallet migration moves an account from its Safe or Proxy wallet to its Deposit
 
 ## Before the migration
 
-`fetchWalletMigration` reads the migration of the authenticated account: its state, the Deposit Wallet, what the current wallet holds and the next action. `previewWalletMigration` lists what the migration would move and each blocker that stops it. Neither read changes anything. An account that already trades from its Deposit Wallet gets status `422` from the preview.
+`fetchWalletMigration` reads the migration of the authenticated account: its state, the Deposit Wallet and what the current wallet holds. `previewWalletMigration` lists what the migration would move and each blocker that stops it. Neither read changes anything. An account that already trades from its Deposit Wallet gets status `422` from the preview.
 
 ```ts
 const migration = await secureClient.fetchWalletMigration();
@@ -27,7 +27,7 @@ One `migrateWallet()` call runs the whole migration:
 2. It waits while the transactions confirm. This can take minutes.
 3. When the migration completes, it binds the Deposit Wallet to the session.
 
-`migrateWallet` asks the signer to sign each sweep that moves funds. A restart after a conflict can ask for another signature. A poll while a transaction confirms asks for none. The bind needs no signature and keeps the refresh token. The same client stays open: `secureClient.account` moves to the Deposit Wallet, open subscriptions stay open, and the new access token reaches `onCredentialsChanged`. The Deposit Wallet needs trading approvals before it trades.
+`migrateWallet` asks the signer to sign each sweep that moves funds. A restart after a conflict can ask for another signature. A poll while a transaction confirms asks for none. The bind needs no signature and keeps the refresh token. The same client stays open: `secureClient.account` moves to the Deposit Wallet, and the new access token reaches `onCredentialsChanged`. A bind from another wallet ends the open user subscriptions with `TransportError`, so subscribe again for the events of the Deposit Wallet. The Deposit Wallet needs trading approvals before it trades.
 
 ```ts
 const preview = await secureClient.previewWalletMigration();
@@ -40,7 +40,14 @@ if (preview.blockers.length === 0) {
 
 If the bind fails after the migration completes, `migrateWallet` rejects. While the session is usable, call `migrateWallet()` again to bind the Deposit Wallet. A bind that times out can still apply on the server. The session then renews and follows the Deposit Wallet. If the server refuses that renewal, the session ends, and the application signs in again.
 
-A failed migration throws `TransactionFailedError`, and a new call starts it again. A migration that ends in a state other than `COMPLETED`, such as `NOT_REQUIRED` for an account that already uses its Deposit Wallet, throws `UnexpectedResponseError` and binds nothing.
+A failed migration throws `TransactionFailedError`, and a new call starts it again. An account that needs no migration (`NOT_REQUIRED`), such as one that already uses its Deposit Wallet, binds nothing: the result names the current wallet and credentials. A migration that ends in another state throws `UnexpectedResponseError`. A flow that keeps restarting or asking for signatures also throws `UnexpectedResponseError`, and a flow that reaches the poll limit throws `TimeoutError`.
+
+Pass `signal` to stop the migration, for example when the user leaves the page. The abort also stops the wait before a poll, and the call rejects with `RequestAbortedError`. A migration that the server already started continues on the server, and a new `migrateWallet()` call continues it. The SDK stops waiting for a signature in progress, but it cannot cancel the signer.
+
+```ts
+const controller = new AbortController();
+const migration = secureClient.migrateWallet({ signal: controller.signal });
+```
 
 ## Cancel
 
@@ -52,7 +59,7 @@ const migration = await secureClient.cancelWalletMigration();
 
 ## Leftovers
 
-After a completed migration, the old wallet can still hold funds or positions. `fetchWalletLeftovers` reads what the old wallet holds, its value, the blockers of a sweep and the state of the last sweep. `sweepWalletLeftovers` moves the leftovers to the Deposit Wallet and returns the leftovers after the sweep. The sweep asks the signer to sign it when funds must move, and it does not change the session.
+After a completed migration, the old wallet can still hold funds or positions. `fetchWalletLeftovers` reads what the old wallet holds, its value, the blockers of a sweep and the state of the last sweep. `sweepWalletLeftovers` moves the leftovers to the Deposit Wallet and returns the leftovers after the sweep. The sweep asks the signer to sign it when funds must move, and it does not change the session. `sweepWalletLeftovers` and `cancelWalletMigration` also accept `signal`.
 
 ```ts
 const leftovers = await secureClient.fetchWalletLeftovers();

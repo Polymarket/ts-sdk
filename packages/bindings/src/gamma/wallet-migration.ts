@@ -2,7 +2,10 @@ import { type HexString, isHexString } from '@polymarket/types';
 import { z } from 'zod';
 import { EvmAddressSchema } from '../shared';
 
-/** The known states of a wallet migration and of a leftover sweep. */
+/**
+ * The known states of a wallet migration and of a leftover sweep.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export enum WalletMigrationKnownState {
   NotRequired = 'NOT_REQUIRED',
   Required = 'REQUIRED',
@@ -15,7 +18,10 @@ export enum WalletMigrationKnownState {
 /** A wallet migration state. A later release can add states. */
 export type WalletMigrationState = WalletMigrationKnownState | (string & {});
 
-/** The next step of a wallet migration or of a leftover sweep. */
+/**
+ * The next step of a wallet migration or of a leftover sweep.
+ * @internal
+ */
 export enum WalletMigrationNextAction {
   None = 'none',
   Start = 'start',
@@ -23,14 +29,20 @@ export enum WalletMigrationNextAction {
   Execute = 'execute',
 }
 
-/** How the account signs a sweep. */
+/**
+ * How the account signs a sweep.
+ * @internal
+ */
 export enum WalletMigrationSweepShape {
   Proxy = 'proxy',
   Safe = 'safe',
   SafeCreate = 'safe-create',
 }
 
-/** The known reasons that stop a wallet migration or a leftover sweep. */
+/**
+ * The known reasons that stop a wallet migration or a leftover sweep.
+ * @experimental This API may change in a breaking way in any release, including patch releases.
+ */
 export enum WalletMigrationKnownBlockerCode {
   MultipleAccounts = 'MULTIPLE_ACCOUNTS',
   UnsupportedWallet = 'UNSUPPORTED_WALLET',
@@ -100,7 +112,6 @@ export const WalletMigrationSchema = z.object({
   tradingPaused: z.boolean(),
   cancelable: z.boolean(),
   manifest: ManifestSchema,
-  nextAction: WalletMigrationNextActionSchema,
   sweepSubmitted: z.boolean().nullish(),
 });
 
@@ -119,6 +130,7 @@ export type WalletMigrationPreview = z.infer<
   typeof WalletMigrationPreviewSchema
 >;
 
+/** @internal */
 export const WalletMigrationSweepSchema = z.object({
   digest: z
     .string()
@@ -131,7 +143,10 @@ export const WalletMigrationSweepSchema = z.object({
   typedData: z.unknown().optional(),
 });
 
-/** A sweep that the account signs. */
+/**
+ * A sweep that the account signs.
+ * @internal
+ */
 export type WalletMigrationSweep = z.infer<typeof WalletMigrationSweepSchema>;
 
 function field<TName extends string, TType extends string>(
@@ -152,7 +167,10 @@ const TypedDataUintSchema = z
   .transform((value) => BigInt(value))
   .refine((value) => value <= 2n ** 256n - 1n, 'Expected a uint256 value');
 
-/** The typed data of a `safe-create` sweep: a Safe deployment with its payment fields. */
+/**
+ * The typed data of a `safe-create` sweep: a Safe deployment with its payment fields.
+ * @internal
+ */
 export const WalletMigrationSafeCreateTypedDataSchema = z
   .object({
     primaryType: z.literal('CreateProxy'),
@@ -189,6 +207,7 @@ export const WalletMigrationSafeCreateTypedDataSchema = z
   })
   .strict();
 
+/** @internal */
 export const WalletMigrationStepSchema = z.object({
   state: WalletMigrationStateSchema,
   depositWallet: OptionalEvmAddressSchema,
@@ -198,7 +217,10 @@ export const WalletMigrationStepSchema = z.object({
   sweepSubmitted: z.boolean().nullish(),
 });
 
-/** One step of a wallet migration or of a leftover sweep. */
+/**
+ * One step of a wallet migration or of a leftover sweep.
+ * @internal
+ */
 export type WalletMigrationStep = z.infer<typeof WalletMigrationStepSchema>;
 
 export const WalletSweepSummarySchema = z.object({

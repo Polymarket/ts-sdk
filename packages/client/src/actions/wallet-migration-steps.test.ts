@@ -123,6 +123,23 @@ describe('runWalletMigrationSteps', () => {
     expect(steps.calls).toEqual(['start', 'wait', 'execute {}', 'start']);
   });
 
+  it('stops a flow that keeps conflicting after three restarts and keeps the conflict as the cause', async () => {
+    const confirming = step(
+      WalletMigrationKnownState.RequiresFundsTransfers,
+      WalletMigrationNextAction.Execute,
+    );
+    const conflict = new RequestRejectedError('Conflict', { status: 409 });
+    const steps = fakeSteps(Array(4).fill(confirming), async () => {
+      throw conflict;
+    });
+    const failure = await runWalletMigrationSteps(steps).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(UnexpectedResponseError);
+    expect(failure).toMatchObject({ cause: conflict });
+    expect(steps.calls.filter((call) => call === 'start')).toHaveLength(4);
+  });
+
   it('waits before the first poll of a resumed migration and stops at the poll limit', async () => {
     const confirming = step(
       WalletMigrationKnownState.RequiresFundsTransfers,
@@ -144,7 +161,7 @@ describe('runWalletMigrationSteps', () => {
     );
     const steps = fakeSteps([signing], async () => signing);
     await expect(runWalletMigrationSteps(steps)).rejects.toBeInstanceOf(
-      TimeoutError,
+      UnexpectedResponseError,
     );
     expect(steps.calls.filter((call) => call === 'sign')).toHaveLength(2);
   });
