@@ -111,16 +111,13 @@ describe('wallet migration methods', () => {
         expiresIn: 900,
       });
     }
-    // A session without a wallet, so the bind is a first bind. The bind path
-    // moves from /v1/auth/upgrade to /v1/auth/bind with the session bind change.
-    const { client, paths } = await migrationClient(undefined, {
+    const { client, paths } = await migrationClient(proxyWallet, {
       '/v1/wallets/migration/start': () =>
         Response.json({
           state: 'COMPLETED',
           depositWallet,
           nextAction: { type: 'none' },
         }),
-      '/v1/auth/upgrade': bind,
       '/v1/auth/bind': bind,
     });
     try {
@@ -128,9 +125,7 @@ describe('wallet migration methods', () => {
         depositWallet,
         credentials: { accessToken: bound, refreshToken: 'synthetic-refresh' },
       });
-      expect(paths).toHaveLength(2);
-      expect(paths[0]).toBe('/v1/wallets/migration/start');
-      expect(paths[1]).toMatch(/^\/v1\/auth\/(upgrade|bind)$/);
+      expect(paths).toEqual(['/v1/wallets/migration/start', '/v1/auth/bind']);
       expect(client.account.wallet).toBe(depositWallet);
     } finally {
       await close(client);

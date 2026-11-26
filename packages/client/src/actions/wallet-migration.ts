@@ -232,7 +232,7 @@ export async function migrateWallet(
       'The finished wallet migration names a wallet that is not a Deposit Wallet of the signer.',
     );
   assertNotAborted(signal);
-  const credentials = await client.upgradeCredentials({
+  const credentials = await client.bindCredentials({
     wallet: step.depositWallet,
   });
   return { depositWallet: step.depositWallet, credentials };
