@@ -737,7 +737,9 @@ export class ServiceClient {
         const inferredCode =
           code === undefined &&
           response.status !== 400 &&
-          /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/.test(message)
+          /^(?:[a-z][a-z0-9]*(?:_[a-z0-9]+)*|[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*)$/.test(
+            message,
+          )
             ? message
             : undefined;
         return {
