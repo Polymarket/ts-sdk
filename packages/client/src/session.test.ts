@@ -294,11 +294,12 @@ describe('shared session policy', () => {
     session.close();
   });
 
-  it('gives up a bind that does not finish within the request timeout and then renews', async () => {
+  it('gives up a bind that does not finish within the request timeout and renews before it throws', async () => {
     vi.useFakeTimers();
     const original = tokens();
-    const renewed = tokens(1);
-    const refresh = vi.fn(async () => issue(renewed));
+    const renewed = tokens(1, 900, { wallet, signature_type: 3 });
+    const renewal = Promise.withResolvers<TokenResponse>();
+    const refresh = vi.fn(() => renewal.promise);
     const session = new AuthSession({ credentials: original, refresh });
     let bindSignal: AbortSignal | undefined;
     const binding = session.bindWallet(wallet, (_accessToken, signal) => {
@@ -306,16 +307,24 @@ describe('shared session policy', () => {
       // The answer never completes, and the callback ignores the signal.
       return new Promise<never>(() => undefined);
     });
-    const failed = expect(binding).rejects.toBeInstanceOf(TransportError);
+    let settled = false;
+    binding.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
     await vi.advanceTimersByTimeAsync(30_000);
-    await failed;
     expect(bindSignal?.aborted).toBe(true);
     // The server may have applied the bind, so the session renews at once.
-    await expect(session.ready()).resolves.toEqual(renewed);
     expect(refresh).toHaveBeenCalledExactlyOnceWith(
       original,
       expect.any(AbortSignal),
     );
+    expect(settled).toBe(false);
+    renewal.resolve(issue(renewed));
+    await expect(binding).rejects.toBeInstanceOf(TransportError);
+    // The renewal names the wallet that the server bound.
+    expect(session.credentials).toEqual(renewed);
+    expect(session.claims.wallet).toBe(wallet);
     session.close();
   });
 

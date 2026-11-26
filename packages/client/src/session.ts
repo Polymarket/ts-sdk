@@ -198,7 +198,7 @@ export class AuthSession {
    * during the bind starts after it. The bind fails with `TransportError` when
    * it does not finish within the request timeout. The session then ignores
    * its answer and renews at once, because the server may have applied the
-   * bind.
+   * bind. The bind throws when that renewal ends.
    */
   async bindWallet(
     wallet: EvmAddress,
@@ -216,6 +216,12 @@ export class AuthSession {
     this.#binding = binding;
     try {
       await binding;
+    } catch (error) {
+      // `ready()` waits for a renewal in flight. A bind that timed out
+      // started one, so the claims then name the wallet that the server
+      // reports when the bind throws.
+      await this.ready().catch(() => undefined);
+      throw error;
     } finally {
       if (this.#binding === binding) this.#binding = undefined;
     }

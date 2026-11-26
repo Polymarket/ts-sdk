@@ -1,8 +1,8 @@
 import type { BearerCredentials } from '@polymarket/bindings';
 import { WalletType } from '@polymarket/bindings/gamma';
-import { expectEvmAddress } from '@polymarket/types';
+import { type EvmAddress, expectEvmAddress } from '@polymarket/types';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { RequestRejectedError } from '../errors';
+import { RequestRejectedError, TransportError } from '../errors';
 import { AuthSession } from '../session';
 import { SignerType } from '../wallet';
 import { ClobUserWebSocketManager } from './clob/user';
@@ -123,6 +123,69 @@ describe('bearer socket boundaries', () => {
       JSON.stringify(ControlledSocket.sockets.map((s) => s.frames)),
     ).not.toContain('refresh');
     await handle.close();
+    session.close();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps a CLOB handle across a first bind and ends it when the session binds another wallet', async () => {
+    const first = expectEvmAddress(
+      '0x0000000000000000000000000000000000000002',
+    );
+    const second = expectEvmAddress(
+      '0x0000000000000000000000000000000000000003',
+    );
+    function token(sequence: number, wallet?: EvmAddress): string {
+      const claims = {
+        sub: address,
+        client_id: 'synthetic-client',
+        ...(wallet === undefined ? {} : { wallet, signature_type: 3 }),
+        exp: Math.floor(Date.now() / 1000) + 900,
+        jti: sequence,
+      };
+      return `test.${btoa(JSON.stringify(claims))}.test`;
+    }
+    const initial = token(0);
+    const firstBound = token(1, first);
+    const secondBound = token(2, second);
+    const session = new AuthSession({
+      credentials: { accessToken: initial, refreshToken: 'synthetic-refresh' },
+      refresh: vi.fn(),
+    });
+    const manager = new ClobUserWebSocketManager({
+      session,
+      url: 'wss://synthetic.invalid/user',
+    });
+    const handle = await manager.subscribe({ topic: 'user' });
+    const socket = ControlledSocket.sockets[0];
+    let settled = false;
+    const next = handle[Symbol.asyncIterator]().next();
+    next.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await session.bindWallet(first, async () => ({
+      accessToken: firstBound,
+      expiresIn: 900,
+    }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    expect(socket?.frames).toEqual([
+      { type: 'user', auth: { accessToken: initial } },
+      { type: 'auth', auth: { accessToken: firstBound } },
+    ]);
+    await session.bindWallet(second, async () => ({
+      accessToken: secondBound,
+      expiresIn: 900,
+    }));
+    await expect(next).rejects.toThrow(
+      new TransportError(
+        'The wallet binding changed. Subscribe again to receive the events of the new wallet.',
+      ),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    // The socket never receives the token of the second wallet.
+    expect(socket?.frames).toHaveLength(2);
+    expect(socket?.readyState).toBe(ControlledSocket.CLOSED);
     session.close();
     expect(vi.getTimerCount()).toBe(0);
   });

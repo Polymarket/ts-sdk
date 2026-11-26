@@ -269,7 +269,7 @@ describe('authorization', () => {
       ]);
     });
 
-    it('attributes sessions to the application and keeps the application ID across restore, renewal and upgrade', async ({
+    it('attributes sessions to the application and keeps the application ID across restore, renewal and bind', async ({
       environment,
       platformKey,
       publicClient,
@@ -305,7 +305,7 @@ describe('authorization', () => {
         const renewed = await restored.refreshCredentials();
         expect(clientIdOf(renewed.accessToken)).toBe(applicationId);
 
-        await restored.upgradeCredentials({ wallet: signerAddress });
+        await restored.bindCredentials({ wallet: signerAddress });
         expect(walletClaim(restored.credentials.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
@@ -399,7 +399,7 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 
@@ -466,7 +466,7 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 
@@ -541,7 +541,7 @@ describe('authorization', () => {
           applicationId,
         );
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 

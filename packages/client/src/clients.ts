@@ -497,20 +497,20 @@ export const RefreshCredentialsError = makeErrorGuard(
   UnexpectedResponseError,
 );
 
-export type UpgradeCredentialsRequest = {
+export type BindCredentialsRequest = {
   /** Wallet to bind to the session, such as a Deposit Wallet the application has deployed. */
   wallet: string;
 };
-const UpgradeCredentialsRequestSchema = z.object({ wallet: EvmAddressSchema });
+const BindCredentialsRequestSchema = z.object({ wallet: EvmAddressSchema });
 
-export type UpgradeCredentialsError =
+export type BindCredentialsError =
   | RequestAbortedError
   | RateLimitError
   | RequestRejectedError
   | TransportError
   | UnexpectedResponseError
   | UserInputError;
-export const UpgradeCredentialsError = makeErrorGuard(
+export const BindCredentialsError = makeErrorGuard(
   RequestAbortedError,
   RateLimitError,
   RequestRejectedError,
@@ -519,12 +519,19 @@ export const UpgradeCredentialsError = makeErrorGuard(
   UserInputError,
 );
 
+/** @deprecated Use `BindCredentialsRequest`. */
+export type UpgradeCredentialsRequest = BindCredentialsRequest;
+/** @deprecated Use `BindCredentialsError`. */
+export type UpgradeCredentialsError = BindCredentialsError;
+/** @deprecated Use `BindCredentialsError`. */
+export const UpgradeCredentialsError = BindCredentialsError;
+
 class BaseSecureClient<
   TPublicActions extends ClientActions = ClientActions,
   TSecureActions extends ClientActions = TPublicActions,
 > extends AbstractClient<SecureContext> {
   #hasEndedAuthentication = false;
-  #upgrading = false;
+  #binding = false;
   readonly #requestTokens = new WeakMap<AbortSignal, string>();
   #endingAuthentication:
     | Promise<PublicClient<TPublicActions, TSecureActions>>
@@ -756,41 +763,46 @@ class BaseSecureClient<
    * Use this after creating the client with `walletSetup: false` and
    * completing your own onboarding, such as deploying the Deposit Wallet.
    * Binding needs no new signature and keeps the refresh token. This client
-   * stays open: `account` switches to `wallet`, subscriptions stay open, and
-   * `onCredentialsChanged` receives the new access token. A session already
-   * bound to `wallet` returns its current credentials without a request. A
-   * session bound to another wallet binds `wallet` in its place. Before the
-   * bind, the session renews a token close to expiry. After a transient
-   * renewal failure, it binds with the current token while that token is
-   * valid. If the bind request fails, the client keeps its current session.
-   * A bind that times out may still apply on the server, so the session then
-   * renews and follows the wallet that the server reports. If the server
-   * refuses the renewal, the session ends.
+   * stays open: `account` switches to `wallet`, and `onCredentialsChanged`
+   * receives the new access token. After a first bind, open subscriptions
+   * stay open. A bind to another wallet ends the open user subscriptions with
+   * `TransportError`, so subscribe again for the events of the new wallet. A
+   * session already bound to `wallet` returns its current credentials without
+   * a request. A session bound to another wallet binds `wallet` in its place.
+   * Before the bind, the session renews a token close to expiry. After a
+   * transient renewal failure, it binds with the current token while that
+   * token is valid. If the bind request fails, the client keeps its current
+   * session. If the server refuses the renewal, the session ends.
+   *
+   * A bind that times out throws `TransportError`, but the server may still
+   * have applied it. Before the call throws, the session renews and follows
+   * the wallet that the server reports. After the error, check
+   * `account.wallet`. If it names `wallet`, you do not need to bind again.
    *
    * @example
    * ```ts
-   * const credentials = await secureClient.upgradeCredentials({ wallet });
+   * const credentials = await secureClient.bindCredentials({ wallet });
    * await saveCredentials(credentials);
    * ```
-   * @throws {@link UpgradeCredentialsError} Thrown if the wallet cannot be bound.
+   * @throws {@link BindCredentialsError} Thrown if the wallet cannot be bound.
    * @experimental May change without notice.
    */
-  async upgradeCredentials(
-    request: UpgradeCredentialsRequest,
+  async bindCredentials(
+    request: BindCredentialsRequest,
   ): Promise<BearerCredentials> {
-    const { wallet } = parseUserInput(request, UpgradeCredentialsRequestSchema);
+    const { wallet } = parseUserInput(request, BindCredentialsRequestSchema);
     const { auth, environment, session } = this.context;
     // Validate the wallet identity before the session changes.
     resolveAccountIdentity(environment, this.account.signer, wallet);
-    if (this.#upgrading)
-      throw new UserInputError('A credential upgrade is already in progress.');
+    if (this.#binding)
+      throw new UserInputError('A wallet bind is already in progress.');
     const bound = session.claims.wallet;
     if (bound !== undefined && isSameEvmAddress(bound, wallet))
       return session.credentials;
-    this.#upgrading = true;
+    this.#binding = true;
     try {
-      // Adopting the bound token moves `account` to the wallet and
-      // re-authenticates open subscriptions.
+      // Adopting the bound token moves `account` to the wallet. Open user
+      // subscriptions follow a first bind and end on a bind to another wallet.
       await session.bindWallet(wallet, (accessToken, signal) =>
         auth.post('/v1/auth/bind', {
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -800,9 +812,22 @@ class BaseSecureClient<
         }),
       );
     } finally {
-      this.#upgrading = false;
+      this.#binding = false;
     }
     return session.credentials;
+  }
+
+  /**
+   * Binds a wallet to this client's session and returns the new credentials.
+   *
+   * @deprecated Use `bindCredentials`.
+   * @throws {@link BindCredentialsError} Thrown if the wallet cannot be bound.
+   * @experimental May change without notice.
+   */
+  async upgradeCredentials(
+    request: BindCredentialsRequest,
+  ): Promise<BearerCredentials> {
+    return this.bindCredentials(request);
   }
 
   /** @internal */
@@ -1076,7 +1101,7 @@ export type SecureClientOptions = PublicClientOptions & {
    * then includes `wallet` only when you pass it. For a session without a
    * wallet, `account.wallet` is the `wallet` you pass, or otherwise the
    * signer's default Deposit Wallet address, which may not be deployed yet.
-   * Once onboarding completes, call `secureClient.upgradeCredentials` to
+   * Once onboarding completes, call `secureClient.bindCredentials` to
    * bind the wallet, or create a client from the saved credentials with
    * wallet setup enabled.
    *

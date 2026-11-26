@@ -395,7 +395,7 @@ describe('clients', () => {
       }
     });
 
-    it('signs in without a wallet when wallet setup is disabled, then upgrades the same client', async ({
+    it('signs in without a wallet when wallet setup is disabled, then binds the same client', async ({
       environment,
       randomEoaSigner,
     }) => {
@@ -415,7 +415,7 @@ describe('clients', () => {
         await expect(isWalletDeployed(secureClient)).resolves.toBe(false);
 
         const signTypedData = vi.spyOn(randomEoaSigner, 'signTypedData');
-        const credentials = await secureClient.upgradeCredentials({
+        const credentials = await secureClient.bindCredentials({
           wallet: signerAddress,
         });
 
@@ -460,7 +460,7 @@ describe('clients', () => {
 
       try {
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        const credentials = await secureClient.upgradeCredentials({
+        const credentials = await secureClient.bindCredentials({
           wallet: signerAddress,
         });
         expect(fetchSpy).not.toHaveBeenCalled();
@@ -501,9 +501,9 @@ describe('clients', () => {
           return 'ended';
         })();
 
-        await secureClient.upgradeCredentials({ wallet: signerAddress });
+        await secureClient.bindCredentials({ wallet: signerAddress });
 
-        // An upgrade that closed subscriptions would end the iterator here.
+        // A first bind keeps open subscriptions, so the iterator stays open.
         await expect(
           Promise.race([consumed, delay(5_000).then(() => 'open')]),
         ).resolves.toBe('open');
@@ -576,7 +576,7 @@ describe('clients', () => {
     });
   });
 
-  describe('SecureClient.upgradeCredentials', () => {
+  describe('SecureClient.bindCredentials', () => {
     it('rebinds a bound session to another wallet and keeps the client usable', async ({
       environment,
       randomEoaSigner,
@@ -590,10 +590,10 @@ describe('clients', () => {
       const depositWallet = secureClient.account.wallet;
 
       try {
-        await secureClient.upgradeCredentials({ wallet: signerAddress });
+        await secureClient.bindCredentials({ wallet: signerAddress });
         // The bind checks the wallet, not its deployment.
         const fetchSpy = vi.spyOn(globalThis, 'fetch');
-        await secureClient.upgradeCredentials({ wallet: depositWallet });
+        await secureClient.bindCredentials({ wallet: depositWallet });
         const binds = sentRequests(fetchSpy).filter((request) =>
           request.url.pathname.endsWith('/v1/auth/bind'),
         );
@@ -638,7 +638,7 @@ describe('clients', () => {
         expect(secondTab.account.walletType).toBe(WalletType.DEPOSIT_WALLET);
 
         // The first tab finishes onboarding and binds the wallet.
-        await firstTab.upgradeCredentials({ wallet: signerAddress });
+        await firstTab.bindCredentials({ wallet: signerAddress });
 
         // The second tab renews later and adopts the wallet the server bound.
         const renewed = await secondTab.refreshCredentials();
@@ -675,7 +675,7 @@ describe('clients', () => {
       }
     });
 
-    it('keeps a user subscription open across an upgrade', async ({
+    it('keeps a user subscription open across a first bind', async ({
       environment,
       randomEoaSigner,
     }) => {
@@ -695,7 +695,7 @@ describe('clients', () => {
           return 'ended';
         })();
 
-        await secureClient.upgradeCredentials({ wallet: signerAddress });
+        await secureClient.bindCredentials({ wallet: signerAddress });
 
         // The stream re-authenticates with the bound token and stays open.
         await expect(
@@ -743,7 +743,7 @@ describe('clients', () => {
           await deployment.wait();
           await expect(isWalletDeployed(secureClient)).resolves.toBe(true);
 
-          const bound = await secureClient.upgradeCredentials({
+          const bound = await secureClient.bindCredentials({
             wallet: depositWallet,
           });
 

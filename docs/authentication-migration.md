@@ -85,14 +85,20 @@ const secureClient = await createSecureClient({
 });
 ```
 
-Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.upgradeCredentials`. It needs no new signature and keeps the refresh token. It updates the same client and returns the new credentials: `secureClient.account` moves to the wallet, open subscriptions stay open, and the new access token also reaches `onCredentialsChanged`. Before the bind, the session renews a token close to expiry. After a transient renewal failure, it binds with the current token while that token is valid. If the bind request fails, the client keeps its current session. A bind that times out may still apply on the server, so the session then renews and follows the wallet that the server reports. If the server refuses the renewal, the session ends.
+Credentials from `publicClient.migrateCredentials` work the same way. Without `credentials`, the client signs in with `wallet` only when you pass one. For a session without a wallet, `secureClient.account.wallet` is the `wallet` you pass, or the signer's current Deposit Wallet address, which may not be deployed yet. When onboarding is complete, bind the wallet with `secureClient.bindCredentials`. It needs no new signature and keeps the refresh token. It updates the same client and returns the new credentials: `secureClient.account` moves to the wallet, and the new access token also reaches `onCredentialsChanged`. After a first bind, open subscriptions stay open. Before the bind, the session renews a token close to expiry. After a transient renewal failure, it binds with the current token while that token is valid. If the bind request fails, the client keeps its current session. If the server refuses the renewal, the session ends.
 
 ```ts
-const credentials = await secureClient.upgradeCredentials({ wallet });
+const credentials = await secureClient.bindCredentials({ wallet });
 await saveCredentials(credentials);
 ```
 
 A session already bound to `wallet` returns its current credentials without a request. A session bound to another wallet binds `wallet` in its place, for example after a wallet migration. After a restart, creating a client from the saved credentials with wallet setup enabled binds the wallet the same way.
+
+A bind to another wallet ends the open user subscriptions with `TransportError`, because their events belong to the previous wallet. Subscribe again to receive the events of the new wallet.
+
+A bind that times out throws `TransportError`, but the server may still have applied it. Before the call throws, the session renews and follows the wallet that the server reports. After the error, check `secureClient.account.wallet`. If it names the requested wallet, you do not need to bind again.
+
+`secureClient.upgradeCredentials` is the deprecated name of `bindCredentials`.
 
 ## Renewal
 

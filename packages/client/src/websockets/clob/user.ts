@@ -6,7 +6,11 @@ import {
   type UserEvent,
   UserEventSchema,
 } from '@polymarket/bindings/subscriptions';
-import { setNonBlockingTimeout } from '@polymarket/types';
+import {
+  type EvmAddress,
+  isSameEvmAddress,
+  setNonBlockingTimeout,
+} from '@polymarket/types';
 import type {
   SubscriptionHandle,
   UserSubscription,
@@ -48,7 +52,10 @@ export class ClobUserWebSocketManager
   #auth: { resolve: () => void; reject: (error: Error) => void } | undefined;
   #authUnavailable = 0;
   readonly #headers: Record<string, string> | undefined;
+  readonly #session: AuthSession;
   readonly #url: string;
+  // The wallet that the open subscriptions receive events for.
+  #wallet: EvmAddress | undefined;
   #closing: Promise<void> | undefined;
   readonly #connection = new WebSocketConnection({
     heartbeat: new ClobWebSocketHeartbeat(),
@@ -75,12 +82,19 @@ export class ClobUserWebSocketManager
       },
     });
     this.#headers = options.headers;
+    this.#session = options.session;
     this.#url = options.url;
+    // This listener precedes the socket's renewal listener. Ending the
+    // subscriptions removes that listener before it sends the token of
+    // another wallet.
+    options.session.onChange(() => this.#followWallet());
   }
 
   async subscribe(
     subscription: UserSubscription,
   ): Promise<SubscriptionHandle<UserEvent>> {
+    if (!this.#subscriptions.hasActiveSubscriptions())
+      this.#wallet = this.#session.claims.wallet;
     const { change, entry } = this.#subscriptions.add(subscription, {
       matches: userMatcherFor(subscription),
     });
@@ -89,6 +103,27 @@ export class ClobUserWebSocketManager
     return createSubscriptionHandle(entry.subscriber.queue, () =>
       this.#closeSubscriber(entry),
     );
+  }
+
+  /**
+   * A first bind keeps the open subscriptions, which then follow the bound
+   * wallet. A bind to another wallet ends them, so that the events of the
+   * new wallet do not reach them.
+   */
+  #followWallet(): void {
+    if (!this.#subscriptions.hasActiveSubscriptions()) return;
+    const { wallet } = this.#session.claims;
+    if (this.#wallet === undefined) {
+      this.#wallet = wallet;
+      return;
+    }
+    if (wallet !== undefined && isSameEvmAddress(wallet, this.#wallet)) return;
+    this.#subscriptions.endAll(
+      new TransportError(
+        'The wallet binding changed. Subscribe again to receive the events of the new wallet.',
+      ),
+    );
+    void this.close();
   }
 
   async #registerSubscriber(
