@@ -85,7 +85,9 @@ const ListEventsRequestSchema = z.object({
   order: z.string().optional(),
   parentEventId: z.number().int().optional(),
   partnerSlug: z.string().optional(),
-  recurrence: z.enum(['daily', 'weekly', 'monthly']).optional(),
+  recurrence: z
+    .enum(['daily', 'weekly', 'monthly', 'annual', 'hourly'])
+    .optional(),
   relatedTags: z.boolean().optional(),
   seriesIds: z.array(z.number().int()).optional(),
   slug: z.array(z.string()).optional(),

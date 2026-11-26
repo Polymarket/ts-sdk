@@ -53,7 +53,9 @@ const SearchRequestSchema = z.object({
   optimized: z.boolean().optional(),
   pageSize: PageSizeSchema.default(10),
   presets: z.array(z.string()).optional(),
-  recurrence: z.enum(['daily', 'weekly', 'monthly']).optional(),
+  recurrence: z
+    .enum(['daily', 'weekly', 'monthly', 'annual', 'hourly'])
+    .optional(),
   searchProfiles: z.boolean().optional(),
   searchTags: z.boolean().optional(),
   sort: z.enum(SearchSort).optional(),
