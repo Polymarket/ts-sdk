@@ -180,6 +180,13 @@ export enum TradingRestriction {
 }
 
 export type RequestRejectedErrorOptions = {
+  /** Server retry guidance, when reported. Does not change SDK retry policy. */
+  retryable?: boolean;
+  /** Server trace identifier for diagnosing the rejected request. */
+  traceId?: string;
+  /** Wire parameter identified by the server as invalid. */
+  parameter?: string;
+
   status: number;
   /**
    * Machine-readable error code from the response body, when the service
@@ -206,6 +213,13 @@ export class RequestRejectedError extends PolymarketError {
   override name: 'RequestRejectedError' | 'OrderHeartbeatMismatchError' =
     'RequestRejectedError';
 
+  /** Server retry guidance, when reported. Does not change SDK retry policy. */
+  readonly retryable?: boolean;
+  /** Server trace identifier for diagnosing the rejected request. */
+  readonly traceId?: string;
+  /** Wire parameter identified by the server as invalid. */
+  readonly parameter?: string;
+
   readonly status: number;
   /**
    * Machine-readable error code from the response body, when the service
@@ -228,6 +242,9 @@ export class RequestRejectedError extends PolymarketError {
     options: ErrorOptions & RequestRejectedErrorOptions,
   ) {
     super(message, options);
+    this.retryable = options.retryable;
+    this.traceId = options.traceId;
+    this.parameter = options.parameter;
     this.status = options.status;
     this.code = options.code;
     this.retryAfter = options.retryAfter;
@@ -245,13 +262,27 @@ export class OrderHeartbeatMismatchError extends RequestRejectedError {
   /** Currently expected ID. It can be empty after a legacy heartbeat. */
   readonly heartbeatId: string;
 
-  constructor(heartbeatId: string) {
-    super('Invalid Heartbeat ID', { status: 400 });
+  constructor(
+    heartbeatId: string,
+    options: ErrorOptions &
+      Pick<
+        RequestRejectedErrorOptions,
+        'retryable' | 'traceId' | 'parameter'
+      > = {},
+  ) {
+    super('Invalid Heartbeat ID', { ...options, status: 400 });
     this.heartbeatId = heartbeatId;
   }
 }
 
 export type RateLimitErrorOptions = {
+  /** Server retry guidance, when reported. Does not change SDK retry policy. */
+  retryable?: boolean;
+  /** Server trace identifier for diagnosing the rejected request. */
+  traceId?: string;
+  /** Wire parameter identified by the server as invalid. */
+  parameter?: string;
+
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -271,6 +302,13 @@ export type RateLimitErrorOptions = {
 export class RateLimitError extends PolymarketError {
   override name = 'RateLimitError' as const;
 
+  /** Server retry guidance, when reported. Does not change SDK retry policy. */
+  readonly retryable?: boolean;
+  /** Server trace identifier for diagnosing the rejected request. */
+  readonly traceId?: string;
+  /** Wire parameter identified by the server as invalid. */
+  readonly parameter?: string;
+
   /**
    * Server-requested delay in seconds before retrying, when the response
    * provided one.
@@ -287,6 +325,9 @@ export class RateLimitError extends PolymarketError {
     options: ErrorOptions & RateLimitErrorOptions = {},
   ) {
     super(message, options);
+    this.retryable = options.retryable;
+    this.traceId = options.traceId;
+    this.parameter = options.parameter;
     this.retryAfter = options.retryAfter;
     this.rateLimit = options.rateLimit;
   }

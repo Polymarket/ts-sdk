@@ -63,6 +63,36 @@ const RetryAfterSecondsSchema = z
   .nullish()
   .transform((value) => value ?? undefined);
 
+// Optional diagnostics must never hide an otherwise usable rejection.
+const ErrorMetadataFields = {
+  retryable: z
+    .boolean()
+    .nullish()
+    .catch(undefined)
+    .transform((value) => value ?? undefined),
+  trace_id: z
+    .string()
+    .min(1)
+    .nullish()
+    .catch(undefined)
+    .transform((value) => value ?? undefined),
+  parameter: z
+    .string()
+    .min(1)
+    .nullish()
+    .catch(undefined)
+    .transform((value) => value ?? undefined),
+};
+
+/** Optional server diagnostics, independent of the error envelope's message shape. */
+export const ErrorResponseMetadataSchema = z
+  .object(ErrorMetadataFields)
+  .transform(({ retryable, trace_id, parameter }) => ({
+    retryable,
+    traceId: trace_id,
+    parameter,
+  }));
+
 /** Native error envelope, retaining unrecognized codes for forward compatibility. */
 export const GatewayErrorResponseSchema = z
   .object({

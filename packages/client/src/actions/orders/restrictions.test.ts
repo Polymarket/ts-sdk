@@ -22,6 +22,9 @@ describe('mapTradingRestrictionError', () => {
     },
   ])('maps HTTP $status rejections to $expected', (testCase) => {
     const error = new RequestRejectedError('request rejected', {
+      retryable: false,
+      traceId: 'trace',
+      parameter: 'order',
       ...(testCase.code !== undefined ? { code: testCase.code } : {}),
       retryAfter: testCase.retryAfter,
       status: testCase.status,
@@ -29,6 +32,9 @@ describe('mapTradingRestrictionError', () => {
 
     expect(mapTradingRestrictionError(error)).toMatchObject({
       cause: error,
+      retryable: false,
+      traceId: 'trace',
+      parameter: 'order',
       code: testCase.code,
       restriction: testCase.expected,
       retryAfter: testCase.retryAfter,
