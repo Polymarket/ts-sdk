@@ -8,12 +8,17 @@
     "@polymarket/types": "0.3.0"
   },
   "changesets": [
+    "bearer-session-gasless",
     "bearer-sessions",
+    "challenge-signer-address",
+    "combo-rfq-bearer-session",
     "experimental-auth-surfaces",
     "ownership-challenge-action",
     "platform-application-keys",
     "predictions-action-routing",
     "remove-direct-credential-auth",
-    "request-retries"
+    "request-retries",
+    "session-bind-path",
+    "wallet-migration"
   ]
 }

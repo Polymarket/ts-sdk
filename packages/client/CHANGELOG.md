@@ -1,5 +1,24 @@
 # @polymarket/client
 
+## 1.0.0-next.2
+
+### Major Changes
+
+- 9132f52: **Breaking:** `createOwnershipChallenge` takes the signer as `signerAddress`, like `publicClient.migrateCredentials`. `remotePlatformApiKey` sends the same field to your challenge proxy, so a proxy that passes the body to `createOwnershipChallenge` works unchanged; one that reads `signer` from the body must read `signerAddress`. The unused `SetupGaslessWalletError` export is removed.
+
+### Minor Changes
+
+- fdafc68: Gasless actions run on the bearer session alone: Deposit Wallet deployment, gasless transactions such as `transferErc20`, collateral return, and session-key authorization and revocation no longer require a builder or relayer API key. `createSecureClient` can deploy the default Deposit Wallet without one too. A builder or relayer key, directly or as `submissionApiKey`, is still accepted and still adds its headers to these requests.
+- b2d4b77: Combo RFQ runs on the bearer session alone. Without a builder API key, `requestComboQuote`, `acceptComboQuote`, `fetchRfqStatus` and `waitForComboFill` use the requester routes instead of rejecting the call. These RFQs have no builder attribution, their quotes carry the zero builder code, and EOA wallets aren't accepted. With a builder key, nothing changes. The builder RFQ response schema accepts a missing `builder_code` and reads it as the zero builder code.
+- 0a4985a: `secureClient.bindCredentials` replaces `upgradeCredentials`, which stays as a deprecated name, and `BindCredentialsError` replaces `UpgradeCredentialsError`. The bind and wallet setup use `/v1/auth/bind`. A session bound to another wallet now binds the requested wallet in its place, instead of rejecting it with `UserInputError`. That bind ends the open user subscriptions with `TransportError`. A bind renews a token close to expiry first, except after a transient renewal failure. A short-lived bound token renews at once. A bind that times out renews the session before it throws, so `account.wallet` names the wallet that the server reports. `createSecureClient` rejects restored credentials with an explicit `wallet` when another client rebinds the session to another wallet during setup.
+- 581a627: The secure client can migrate an account from its Safe or Proxy wallet to its Deposit Wallet: `fetchWalletMigration`, `previewWalletMigration`, `migrateWallet`, `cancelWalletMigration`, `fetchWalletLeftovers` and `sweepWalletLeftovers`. `migrateWallet` binds the Deposit Wallet to the session when the migration completes, and returns the current wallet and credentials for an account that needs no migration. `migrateWallet`, `sweepWalletLeftovers` and `cancelWalletMigration` accept an abort `signal`. The methods are experimental.
+
+### Patch Changes
+
+- Updated dependencies [b2d4b77]
+- Updated dependencies [581a627]
+  - @polymarket/bindings@1.0.0-next.1
+
 ## 1.0.0-next.1
 
 ### Minor Changes
