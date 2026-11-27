@@ -1,5 +1,17 @@
 # @polymarket/client
 
+## 0.21.0
+
+### Minor Changes
+
+- d9d105e: **Breaking:** Remove the legacy `comments`, `prices.crypto.binance`, `prices.crypto.chainlink`, `prices.crypto.chainlink.twap`, and `prices.equity.pyth` subscription topics, along with their subscription, event, and event-type exports such as `CommentsSubscription`, `CommentsEvent`, `CryptoPricesSubscription`, `CryptoPricesEvent`, `CryptoPricesChainlinkTwapSubscription`, `CryptoPricesChainlinkTwapEvent`, `EquityPricesSubscription`, and `EquityPricesEvent`. The deprecated `rtds` environment endpoint and fork option are also removed. Use `prices.crypto`, `prices.crypto.twap`, and `prices.equity` with a secure client; 30-second TWAP has no replacement. Use `listComments()` to read comments; live comment and reaction events are no longer available. See the [migration guide](https://docs.polymarket.com/api-reference/live-data/migrating-from-rtds#migrate-sdks-to-polybolt).
+
+### Patch Changes
+
+- 8595073: Keep upper-case error identifiers such as `NOT_ALLOWED` as the error `code` on rejected requests.
+- Updated dependencies [d9d105e]
+  - @polymarket/bindings@0.19.0
+
 ## 0.20.1
 
 ### Patch Changes
