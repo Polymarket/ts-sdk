@@ -82,8 +82,6 @@ export type EnvironmentConfig = {
   perps: PerpsEndpoints;
   /** @internal */
   realtime: WebSocketEndpoint;
-  /** @internal @deprecated Retained temporarily for legacy RTDS streams. */
-  rtds: WebSocketEndpoint;
   /** @internal */
   sports: WebSocketEndpoint;
   /** @internal */
@@ -114,8 +112,6 @@ export type EnvironmentConfigFork = {
   };
   perps?: EnvironmentConfigForkEndpoint;
   realtime?: Partial<WebSocketEndpoint>;
-  /** @deprecated Retained temporarily for legacy RTDS streams. */
-  rtds?: Partial<WebSocketEndpoint>;
   sports?: Partial<WebSocketEndpoint>;
   relayerMaxPolls?: number;
   relayerPollFrequencyMs?: number;
@@ -221,7 +217,6 @@ export const production: EnvironmentConfig = {
     ws: 'wss://ws.perpetuals.polymarket.com/v1/ws',
   },
   realtime: { ws: 'wss://ws-live-v2.polymarket.com/ws' },
-  rtds: { ws: 'wss://ws-live-data.polymarket.com' },
   sports: { ws: 'wss://sports-api.polymarket.com/ws' },
   relayerMaxPolls: 100,
   relayerPollFrequencyMs: 2000,
@@ -270,7 +265,6 @@ export function forkEnvironmentConfig(
     },
     perps: forkRestWebSocketEndpoint(base.perps, fork.perps),
     realtime: forkWebSocketEndpoint(base.realtime, fork.realtime),
-    rtds: forkWebSocketEndpoint(base.rtds, fork.rtds),
     sports: forkWebSocketEndpoint(base.sports, fork.sports),
   };
 }
