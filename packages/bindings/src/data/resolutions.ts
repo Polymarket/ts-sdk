@@ -37,6 +37,8 @@ export enum ResolutionMarketType {
   Binary = 'BINARY',
   IncrementalNegRisk = 'INCREMENTAL_NEGRISK',
   AtomicNegRisk = 'ATOMIC_NEGRISK',
+  AtomicDirectional = 'ATOMIC_DIRECTIONAL',
+  IncrementalDirectional = 'INCREMENTAL_DIRECTIONAL',
 }
 
 export const ResolutionMarketTypeSchema = z.enum(ResolutionMarketType);

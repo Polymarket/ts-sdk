@@ -1,4 +1,5 @@
 import { NegRiskEventIdSchema } from '@polymarket/bindings';
+import { DirectionalEventIdSchema } from '@polymarket/bindings/protocol';
 import { z } from 'zod';
 
 const ExplicitAmountSchema = z
@@ -34,7 +35,7 @@ export const NegRiskOperationInputSchema = z.strictObject({
 });
 
 export const HorizontalOperationInputSchema = z.object({
-  protocolEventId: NegRiskEventIdSchema,
+  protocolEventId: z.union([NegRiskEventIdSchema, DirectionalEventIdSchema]),
   amount: ExplicitAmountSchema,
 });
 
