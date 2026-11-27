@@ -17,7 +17,7 @@ import {
   UnexpectedResponseError,
   UserInputError,
 } from './errors';
-import { withAbort } from './request-options';
+import { DEFAULT_REQUEST_TIMEOUT_MS, withAbort } from './request-options';
 
 export type CredentialsChanged = (
   credentials: BearerCredentials,
@@ -73,6 +73,7 @@ export class AuthSession {
   #clockOffset = 0;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #refreshing: Promise<BearerCredentials> | undefined;
+  #binding: Promise<void> | undefined;
   #retries = 0;
   #failure: Error | undefined;
   #closed = false;
@@ -158,9 +159,16 @@ export class AuthSession {
     this.assertActive();
     if (this.#refreshing !== undefined) return this.#refreshing;
     clearTimeout(this.#timer);
+    const binding = this.#binding;
     // Install the shared promise before invoking any consumer refresh callback.
     const refreshing = Promise.resolve()
-      .then(() => this.#renew())
+      .then(async () => {
+        // A renewal that the server answers before a bind still names the
+        // previous wallet, so a renewal requested during a bind starts after it.
+        if (binding !== undefined)
+          await withAbort(binding, this.#abort.signal).catch(() => undefined);
+        return this.#renew();
+      })
       .catch((cause: unknown) => {
         const error =
           cause instanceof Error
@@ -179,19 +187,80 @@ export class AuthSession {
     return refreshing;
   }
   /**
-   * Binds `wallet` to this signer-only session and adopts the wallet-bound
-   * access token. The refresh token does not change.
+   * Binds `wallet` to this session and adopts the wallet-bound access token.
+   * The session can already name another wallet. The bind keeps the refresh
+   * token. The bound token keeps the expiry of the token that the bind
+   * presents, so the bind first calls `ready()`, which renews a token that
+   * expires within the renewal lead. After a transient renewal failure,
+   * `ready()` returns the current token while it is still valid. The session
+   * renews a short-lived bound token at once, and each renewal replaces both
+   * tokens. The bind waits for a renewal in flight, and a renewal requested
+   * during the bind starts after it. The bind fails with `TransportError` when
+   * it does not finish within the request timeout. The session then ignores
+   * its answer and renews at once, because the server may have applied the
+   * bind. The bind throws when that renewal ends.
    */
   async bindWallet(
     wallet: EvmAddress,
-    upgrade: (accessToken: string) => Promise<AccessTokenResponse>,
+    upgrade: (
+      accessToken: string,
+      signal: AbortSignal,
+    ) => Promise<AccessTokenResponse>,
+  ): Promise<void> {
+    do {
+      await this.ready();
+    } while (this.#refreshing !== undefined);
+    // Publish the bind before its request, so that a renewal requested from
+    // now on waits for it.
+    const binding = Promise.resolve().then(() => this.#bind(wallet, upgrade));
+    this.#binding = binding;
+    try {
+      await binding;
+    } catch (error) {
+      // `ready()` waits for a renewal in flight. A bind that timed out
+      // started one, so the claims then name the wallet that the server
+      // reports when the bind throws.
+      await this.ready().catch(() => undefined);
+      throw error;
+    } finally {
+      if (this.#binding === binding) this.#binding = undefined;
+    }
+  }
+  async #bind(
+    wallet: EvmAddress,
+    upgrade: (
+      accessToken: string,
+      signal: AbortSignal,
+    ) => Promise<AccessTokenResponse>,
   ): Promise<void> {
     this.assertActive();
-    const next = await upgrade(this.#credentials.accessToken);
+    // A renewal waits for the bind, so the bind must end even when its
+    // response stalls. A late answer must not replace newer credentials.
+    const deadline = new AbortController();
+    const timer = setNonBlockingTimeout(
+      () => deadline.abort(),
+      DEFAULT_REQUEST_TIMEOUT_MS,
+    );
+    const signal = AbortSignal.any([this.#abort.signal, deadline.signal]);
+    let next: AccessTokenResponse;
+    try {
+      next = await withAbort(
+        upgrade(this.#credentials.accessToken, signal),
+        signal,
+      );
+    } catch (error) {
+      this.assertActive();
+      if (!deadline.signal.aborted) throw error;
+      // The server may have applied the bind before its answer stalled. Renew
+      // at once, so that requests use the wallet that the server reports.
+      void this.refresh().catch(() => undefined);
+      throw new TransportError('The wallet binding timed out.');
+    } finally {
+      clearTimeout(timer);
+    }
     this.assertActive();
     const claims = issuedClaims(next.accessToken);
     if (
-      next.expiresIn * 1000 <= RENEWAL_LEAD_MS ||
       !isSameEvmAddress(claims.sub, this.#claims.sub) ||
       claims.client_id !== this.#claims.client_id ||
       claims.wallet === undefined ||

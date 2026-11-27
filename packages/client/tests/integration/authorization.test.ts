@@ -269,7 +269,7 @@ describe('authorization', () => {
       ]);
     });
 
-    it('attributes sessions to the application and keeps the application ID across restore, renewal and upgrade', async ({
+    it('attributes sessions to the application and keeps the application ID across restore, renewal and bind', async ({
       environment,
       platformKey,
       publicClient,
@@ -305,7 +305,7 @@ describe('authorization', () => {
         const renewed = await restored.refreshCredentials();
         expect(clientIdOf(renewed.accessToken)).toBe(applicationId);
 
-        await restored.upgradeCredentials({ wallet: signerAddress });
+        await restored.bindCredentials({ wallet: signerAddress });
         expect(walletClaim(restored.credentials.accessToken)).toBe(
           signerAddress.toLowerCase(),
         );
@@ -399,7 +399,7 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 
@@ -417,7 +417,7 @@ describe('authorization', () => {
       }
 
       expect(
-        headerValues(sentRequests(fetchSpy), '/v1/auth/upgrade', 'x-api-key'),
+        headerValues(sentRequests(fetchSpy), '/v1/auth/bind', 'x-api-key'),
       ).toEqual([platformKey]);
     });
 
@@ -466,7 +466,7 @@ describe('authorization', () => {
           walletClaim(onboardingClient.credentials.accessToken),
         ).toBeUndefined();
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 
@@ -491,7 +491,7 @@ describe('authorization', () => {
         [platformKey],
       );
       const direct = requests.filter((request) =>
-        ['/v1/auth/login', '/v1/auth/upgrade', '/v1/me/orders'].some((path) =>
+        ['/v1/auth/login', '/v1/auth/bind', '/v1/me/orders'].some((path) =>
           request.url.pathname.endsWith(path),
         ),
       );
@@ -541,7 +541,7 @@ describe('authorization', () => {
           applicationId,
         );
 
-        await onboardingClient.upgradeCredentials({
+        await onboardingClient.bindCredentials({
           wallet: depositWalletAddress,
         });
 

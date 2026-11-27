@@ -67,6 +67,7 @@ export {
 } from './authorization';
 export type * from './clients';
 export {
+  BindCredentialsError,
   CreateSecureClientError,
   createPublicClient,
   createSecureClient,
