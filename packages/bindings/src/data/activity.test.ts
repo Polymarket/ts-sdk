@@ -101,6 +101,32 @@ describe('ActivitySchema', () => {
     expect(activity.type).toBe(type);
     expect(activity).toHaveProperty('amount', '12.5');
   });
+
+  it.each([
+    { label: 'a protocol v2 conversion', size: 25, usdcSize: 0 },
+    { label: 'a multi-outcome conversion', size: 10, usdcSize: 20 },
+  ])('reports shares and released collateral for $label', ({
+    size,
+    usdcSize,
+  }) => {
+    const activity = ActivitySchema.parse(
+      activityRow({
+        type: ActivityType.CONVERSION,
+        size,
+        usdc_size: usdcSize,
+        condition_id: `0x${'c'.repeat(64)}`,
+        title: 'Which bucket wins?',
+        slug: 'which-bucket-wins',
+        event_slug: 'bucket-event',
+      }),
+    );
+
+    expect(activity).toMatchObject({
+      type: ActivityType.CONVERSION,
+      shares: String(size),
+      amount: String(usdcSize),
+    });
+  });
 });
 
 describe('TradeSchema', () => {
