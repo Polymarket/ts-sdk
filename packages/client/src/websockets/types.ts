@@ -1,7 +1,4 @@
 import type {
-  CommentsEvent,
-  CryptoPricesEvent,
-  EquityPricesEvent,
   MarketEvent,
   PerpsMarketDataEvent,
   PriceEvent,
@@ -9,10 +6,6 @@ import type {
   UserEvent,
 } from '@polymarket/bindings/subscriptions';
 import type {
-  CommentsSubscription,
-  CryptoPricesChainlinkTwapSubscription,
-  CryptoPricesSubscription,
-  EquityPricesSubscription,
   MarketSubscription,
   PerpsMarketDataSubscription,
   PriceSubscription,
@@ -73,14 +66,6 @@ export type PublicWebSocketManagers = {
   readonly sports: WebSocketSubscriptionManager<
     SportsSubscription,
     SportsEvent
-  >;
-  /** @deprecated Compatibility transport for legacy topics. */
-  readonly rtds: WebSocketSubscriptionManager<
-    | CommentsSubscription
-    | CryptoPricesSubscription
-    | CryptoPricesChainlinkTwapSubscription
-    | EquityPricesSubscription,
-    CommentsEvent | CryptoPricesEvent | EquityPricesEvent
   >;
   /**
    * @experimental This API may change in a breaking way in any release, including patch releases.

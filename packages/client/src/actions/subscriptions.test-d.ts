@@ -2,8 +2,6 @@ import { type PositionId, type TokenId, toTokenId } from '@polymarket/bindings';
 import type * as BindingExports from '@polymarket/bindings/subscriptions';
 import type {
   CryptoPriceEvent,
-  CryptoPricesChainlinkTwapSixtyEvent,
-  CryptoPricesChainlinkTwapThirtyEvent,
   CryptoTwapPriceEvent,
   CustomMarketEvent,
   EquityPriceEvent,
@@ -97,15 +95,6 @@ describe('price subscription contracts', () => {
     expectTypeOf<ClientExports.EquityTwapPriceSubscription>()
       .toHaveProperty('provider')
       .toEqualTypeOf<PriceProvider | undefined>();
-    expectTypeOf<ClientExports.CryptoPricesSubscription>().not.toHaveProperty(
-      'provider',
-    );
-    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapSubscription>().not.toHaveProperty(
-      'provider',
-    );
-    expectTypeOf<ClientExports.EquityPricesSubscription>().not.toHaveProperty(
-      'provider',
-    );
     expectTypeOf<MarketSubscription>().not.toHaveProperty('provider');
     expectTypeOf<PriceSubscriptionConfirmation>().toEqualTypeOf<{
       symbol: string;
@@ -267,7 +256,7 @@ describe('price subscription contracts', () => {
     >().toEqualTypeOf<never>();
   });
 
-  it('requires authentication and explicit symbols while preserving deprecated topics', () => {
+  it('requires authentication and explicit symbols', () => {
     const publicClient = createPublicClient();
     // @ts-expect-error Crypto prices require a secure client.
     publicClient.subscribe([{ topic: 'prices.crypto', symbols: ['btcusd'] }]);
@@ -281,46 +270,22 @@ describe('price subscription contracts', () => {
     secureClient.subscribe([{ topic: 'prices.crypto' }]);
     // @ts-expect-error TWAP prices require explicit symbols.
     secureClient.subscribe([{ topic: 'prices.crypto.twap' }]);
-    expectTypeOf<BindingExports.CommentsEvent>();
-    expectTypeOf<ClientExports.CryptoPricesChainlinkTwapEvent>();
     // @ts-expect-error Managers are implementation details, not root exports.
     expectTypeOf<ClientExports.RealtimeWebSocketManager>();
-    // @ts-expect-error Managers are implementation details, not root exports.
-    expectTypeOf<ClientExports.RtdsWebSocketManager>();
-    publicClient.subscribe([
-      { topic: 'prices.crypto.binance', symbols: ['btcusdt'] },
-      { topic: 'prices.crypto.chainlink', symbols: ['btc/usd'] },
-      {
-        topic: 'prices.crypto.chainlink.twap',
-        symbols: ['btc/usd'],
-        windowSeconds: 60,
-      },
-      { topic: 'prices.equity.pyth', symbol: 'aapl', types: ['update'] },
-      { topic: 'comments' },
-    ]);
   });
 
-  it('preserves deprecated RTDS TWAP window narrowing', () => {
-    type ThirtySecond = EventForSubscriptionSpecs<
-      [
-        {
-          topic: 'prices.crypto.chainlink.twap';
-          symbols: ['btc/usd'];
-          windowSeconds: 30;
-        },
-      ]
-    >;
-    type SixtySecond = EventForSubscriptionSpecs<
-      [
-        {
-          topic: 'prices.crypto.chainlink.twap';
-          symbols: ['btc/usd'];
-          windowSeconds: 60;
-        },
-      ]
-    >;
-    expectTypeOf<ThirtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapThirtyEvent>();
-    expectTypeOf<SixtySecond>().toEqualTypeOf<CryptoPricesChainlinkTwapSixtyEvent>();
+  it('rejects removed legacy topics', () => {
+    const publicClient = createPublicClient();
+    // @ts-expect-error The comments stream was removed.
+    publicClient.subscribe([{ topic: 'comments' }]);
+    publicClient.subscribe([
+      // @ts-expect-error Legacy price topics were removed.
+      { topic: 'prices.crypto.chainlink', symbols: ['btc/usd'] },
+    ]);
+    secureClient.subscribe([
+      // @ts-expect-error Legacy price topics were removed.
+      { topic: 'prices.equity.pyth', symbol: 'aapl' },
+    ]);
   });
 });
 
