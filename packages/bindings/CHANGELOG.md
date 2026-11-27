@@ -1,5 +1,15 @@
 # @polymarket/bindings
 
+## 1.0.0-next.1
+
+### Minor Changes
+
+- 581a627: The secure client can migrate an account from its Safe or Proxy wallet to its Deposit Wallet: `fetchWalletMigration`, `previewWalletMigration`, `migrateWallet`, `cancelWalletMigration`, `fetchWalletLeftovers` and `sweepWalletLeftovers`. `migrateWallet` binds the Deposit Wallet to the session when the migration completes, and returns the current wallet and credentials for an account that needs no migration. `migrateWallet`, `sweepWalletLeftovers` and `cancelWalletMigration` accept an abort `signal`. The methods are experimental.
+
+### Patch Changes
+
+- b2d4b77: Combo RFQ runs on the bearer session alone. Without a builder API key, `requestComboQuote`, `acceptComboQuote`, `fetchRfqStatus` and `waitForComboFill` use the requester routes instead of rejecting the call. These RFQs have no builder attribution, their quotes carry the zero builder code, and EOA wallets aren't accepted. With a builder key, nothing changes. The builder RFQ response schema accepts a missing `builder_code` and reads it as the zero builder code.
+
 ## 1.0.0-next.0
 
 ### Major Changes
