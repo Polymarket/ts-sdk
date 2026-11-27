@@ -99,6 +99,13 @@ export type {
   BearerCredentials,
   OwnershipChallenge,
 } from '@polymarket/bindings';
+// A separate statement, so that the import organizer does not merge these
+// experimental enums into the stable gamma exports above.
+/** @experimental This API may change in a breaking way in any release, including patch releases. */
+export {
+  WalletMigrationKnownBlockerCode,
+  WalletMigrationKnownState,
+} from '@polymarket/bindings/gamma';
 export type {
   CreateOwnershipChallengeRequest,
   LoginRequest,

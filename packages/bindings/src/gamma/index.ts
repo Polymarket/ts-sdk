@@ -9,3 +9,4 @@ export * from './search';
 export * from './series';
 export * from './tag';
 export * from './wallet';
+export * from './wallet-migration';
